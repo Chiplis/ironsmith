@@ -58057,6 +58057,44 @@ fn parse_traveling_chocobo_top_library_lines_compile() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_cemetery_illuminator_top_library_source_exiled_type_permission() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Cemetery Illuminator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Flying\nWhenever this creature enters or attacks, exile a card from a graveyard.\nYou may look at the top card of your library any time.\nOnce each turn, you may cast a spell from the top of your library if it shares a card type with a card exiled with this creature.",
+        )
+        .expect("Cemetery Illuminator should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("once each turn")
+            && rendered_lower.contains("cast")
+            && rendered_lower.contains("from the top of your library")
+            && rendered_lower.contains("shares a card type with a card exiled with this creature"),
+        "expected source-exiled top-library cast permission in compiled text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("LookAtTopCardOfLibrary")
+            && debug.contains("PlayFrom")
+            && debug.contains("OnceEachTurn")
+            && debug.contains(crate::tag::SOURCE_EXILED_TAG)
+            && debug.contains("SharesCardType"),
+        "expected Cemetery Illuminator to lower into a limited top-library PlayFrom grant keyed to source-exiled card types, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_guardian_naga_banishing_coils_creature_face_strict() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Guardian Naga // Banishing Coils")
         .card_types(vec![CardType::Creature])

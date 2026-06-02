@@ -4452,6 +4452,30 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_source_exiled_type_grant() {
+    let tokens = lex_line(
+        "Once each turn, you may cast a spell from the top of your library if it shares a card type with a card exiled with this creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify once-per-turn top-library cast permission");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::GrantBySpec {
+            player: crate::cards::builders::PlayerAst::You,
+            spec,
+            lifetime: super::PermissionLifetime::Static,
+        })) if spec.zone == crate::zone::Zone::Library
+            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.usage_limit == Some(crate::grant::GrantUsageLimit::OnceEachTurn)
+            && spec.filter.tagged_constraints.iter().any(|constraint|
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+            )
+    ));
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_grants() {
     let tokens = lex_line(
         "Until your next turn, you may cast sorcery spells as though they had flash",

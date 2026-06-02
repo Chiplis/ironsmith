@@ -238,6 +238,7 @@ pub struct GrantedAlternativeCast {
 pub struct GrantedPlayFrom {
     pub source_id: ObjectId,
     pub zone: Zone,
+    pub usage_limit: Option<GrantUsageLimit>,
 }
 
 /// A unified grant that can represent either an ability or alternative casting method.
@@ -257,6 +258,8 @@ pub struct Grant {
     pub player: PlayerId,
     /// What is being granted (ability or alternative casting method).
     pub grantable: Grantable,
+    /// How often this grant may be used from the same source.
+    pub usage_limit: Option<GrantUsageLimit>,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -295,6 +298,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -316,6 +320,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -337,6 +342,7 @@ impl GrantRegistry {
             zone,
             player,
             grantable,
+            usage_limit: None,
             source,
         });
     }
@@ -494,7 +500,7 @@ impl GrantRegistry {
             } else if let Some(ref filter) = grant.filter {
                 // Filter-based grant - check if card matches filter
                 if let Some(card) = card {
-                    filter.matches(card, &ctx, game)
+                    filter.matches(card, &grant_filter_context(&ctx, grant, game), game)
                 } else {
                     false
                 }
@@ -521,7 +527,7 @@ impl GrantRegistry {
             let matches = if let Some(target_id) = grant.target_id {
                 target_id == card_id
             } else if let Some(ref filter) = grant.filter {
-                filter.matches(card, &ctx, game)
+                filter.matches(card, &grant_filter_context(&ctx, &grant, game), game)
             } else {
                 false
             };
@@ -592,6 +598,7 @@ impl GrantRegistry {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
+                    usage_limit: grant.usage_limit,
                 }),
                 _ => None,
             })
@@ -690,6 +697,7 @@ impl GrantRegistry {
                         zone: spec.zone,
                         player: player.id,
                         grantable: spec.grantable.clone(),
+                        usage_limit: spec.usage_limit,
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }
@@ -755,6 +763,28 @@ fn normalize_grant_filter(mut filter: ObjectFilter) -> ObjectFilter {
     dedupe_vec(&mut filter.supertypes);
     dedupe_vec(&mut filter.excluded_supertypes);
     filter
+}
+
+fn grant_filter_context(
+    ctx: &crate::filter::FilterContext,
+    grant: &Grant,
+    game: &crate::game_state::GameState,
+) -> crate::filter::FilterContext {
+    let mut ctx = ctx.clone();
+    let source_id = grant.source.source_id();
+    let source_exiled = game
+        .get_exiled_with_source_links(source_id)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id)
+                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.tagged_objects
+            .insert(crate::tag::SOURCE_EXILED_TAG.into(), source_exiled);
+    }
+    ctx
 }
 
 fn dedupe_vec<T: Eq + std::hash::Hash + Copy>(values: &mut Vec<T>) {

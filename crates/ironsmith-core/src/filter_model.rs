@@ -1421,6 +1421,13 @@ impl ObjectFilter {
                         .push("that shares a creature type with that object".to_string());
                 }
                 TaggedOpbjectRelation::SharesCardType => {
+                    if constraint.tag.as_str() == crate::SOURCE_EXILED_TAG {
+                        post_noun_qualifiers.push(
+                            "that shares a card type with a card exiled with this permanent"
+                                .to_string(),
+                        );
+                        continue;
+                    }
                     let permanent_type_context = self.zone == Some(Zone::Battlefield)
                         || (!self.card_types.is_empty()
                             && self.card_types.iter().all(|card_type| {

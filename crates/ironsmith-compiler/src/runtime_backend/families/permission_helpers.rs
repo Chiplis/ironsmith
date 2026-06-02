@@ -2,7 +2,7 @@ use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
 use crate::runtime_backend::GrantedAbilityAst;
 use crate::static_abilities::StaticAbility;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use winnow::combinator::alt;
@@ -19,8 +19,8 @@ use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, token_slice_first_is_any, token_slice_strip_word_prefix,
-    token_word_refs, trim_lexed_commas, word_slice_ends_with, word_slice_eq,
-    word_slice_starts_with,
+    parser_token_word_refs, token_word_refs, trim_lexed_commas, word_slice_ends_with,
+    word_slice_eq, word_slice_starts_with,
 };
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
@@ -1088,6 +1088,56 @@ fn parse_once_each_turn_graveyard_cast_permission(
     }))
 }
 
+fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
+    clause_refs: &[&str],
+) -> Option<PermissionClauseSpec> {
+    const PREFIX: &[&str] = &["once", "each", "turn", "you", "may", "cast"];
+    const TOP_LIBRARY_TAIL: &[&str] = &["from", "the", "top", "of", "your", "library"];
+    const CONDITION_PREFIX: &[&str] = &["if", "it", "shares", "a", "card", "type", "with"];
+    const SOURCE_EXILED_PREFIX: &[&str] = &["a", "card", "exiled", "with", "this"];
+
+    if !word_slice_starts_with(clause_refs, PREFIX) {
+        return None;
+    }
+    let rest = &clause_refs[PREFIX.len()..];
+    let subject_len = match rest {
+        ["a", "spell", ..] => 2,
+        ["spells", ..] => 1,
+        _ => return None,
+    };
+    let after_subject = &rest[subject_len..];
+    if !word_slice_starts_with(after_subject, TOP_LIBRARY_TAIL) {
+        return None;
+    }
+    let after_zone = &after_subject[TOP_LIBRARY_TAIL.len()..];
+    if !word_slice_starts_with(after_zone, CONDITION_PREFIX) {
+        return None;
+    }
+    let source_exiled = &after_zone[CONDITION_PREFIX.len()..];
+    if source_exiled.len() != SOURCE_EXILED_PREFIX.len() + 1
+        || !word_slice_starts_with(source_exiled, SOURCE_EXILED_PREFIX)
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::nonland();
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+
+    Some(PermissionClauseSpec::GrantBySpec {
+        player: PlayerAst::You,
+        spec: crate::grant::GrantSpec::new(
+            crate::grant::Grantable::play_from(),
+            filter,
+            Zone::Library,
+        )
+        .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
+        lifetime: PermissionLifetime::Static,
+    })
+}
+
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
@@ -1100,12 +1150,17 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         tokens = trim_lexed_commas(tokens);
     }
 
-    let clause_refs = token_word_refs(tokens);
+    let clause_refs = parser_token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
     }
 
     if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens, &clause_refs)? {
+        return Ok(Some(spec));
+    }
+    if let Some(spec) =
+        parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(&clause_refs)
+    {
         return Ok(Some(spec));
     }
 

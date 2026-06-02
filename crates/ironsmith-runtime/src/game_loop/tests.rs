@@ -39093,6 +39093,249 @@ fn thundermane_dragon_does_not_cast_top_creature_below_power_four() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cemetery_illuminator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Cemetery Illuminator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Flying\nWhenever this creature enters or attacks, exile a card from a graveyard.\nYou may look at the top card of your library any time.\nOnce each turn, you may cast a spell from the top of your library if it shares a card type with a card exiled with this creature.",
+        )
+        .expect("Cemetery Illuminator should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_cemetery_illuminator_in_cast_window(
+    game: &mut GameState,
+    active_player: PlayerId,
+    priority_player: PlayerId,
+) {
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = active_player;
+    game.turn.priority_player = Some(priority_player);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cemetery_illuminator_play_from_action(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+    source_id: ObjectId,
+) -> Option<CastingMethod> {
+    crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find_map(|action| match action {
+            LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Library,
+                casting_method:
+                    method @ CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Library,
+                        ..
+                    },
+            } if action_spell_id == spell_id && source == source_id => Some(method),
+            _ => None,
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_zero_cost_card(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    card_types: Vec<CardType>,
+    zone: Zone,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::new())
+        .card_types(card_types)
+        .build();
+    game.create_object_from_card(&card, player, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_casts_top_spell_sharing_type_with_source_exiled_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_some(),
+        "Cemetery Illuminator should allow casting a top-library spell sharing a card type with a card exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_does_not_cast_top_spell_without_source_exiled_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_none(),
+        "Cemetery Illuminator should not allow top-library casting before a card is exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_does_not_cast_top_spell_with_nonmatching_source_exiled_type() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_creature = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Creature",
+        vec![CardType::Creature],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_creature);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_none(),
+        "Cemetery Illuminator should require the top spell to share a card type with a source-exiled card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_can_cast_matching_top_instant_on_opponents_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_cemetery_illuminator_in_cast_window(&mut game, bob, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_some(),
+        "'Once each turn' should allow a matching top instant on an opponent's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_top_library_cast_is_limited_to_once_each_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let first_top = create_zero_cost_card(
+        &mut game,
+        alice,
+        "First Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, first_top, source_id).is_some(),
+        "first matching top spell should be castable"
+    );
+    game.turn_store
+        .grant_cast_uses_this_turn
+        .insert((alice, source_id));
+
+    let second_top = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Second Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, second_top, source_id).is_none(),
+        "Cemetery Illuminator should not allow a second top-library cast from the same source in one turn"
+    );
+}
+
 #[test]
 fn test_library_play_from_grant_offers_adventure_half_when_linked_face_matches() {
     let mut game = setup_game();
