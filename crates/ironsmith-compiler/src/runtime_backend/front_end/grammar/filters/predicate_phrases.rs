@@ -295,43 +295,6 @@ const OPPONENT_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
 const PLAYER_WHO_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["player", "who"]);
 const PLAYER_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["player"]);
-const YOUR_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["your", "life", "total"]);
-const THEIR_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["their", "life", "total"]);
-const THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "players", "life", "total"]);
-const TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "players", "life", "total"]);
-const TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "opponents", "life", "total"]);
-const OPPONENT_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["opponents", "life", "total"],
-            &["opponent", "life", "total"]
-        ]
-);
-const DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["defending", "players", "life", "total"]);
-const ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["attacking", "players", "life", "total"]);
-const HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["half", "your", "starting", "life", "total"],
-            &["half", "their", "starting", "life", "total"],
-            &["half", "that", "players", "starting", "life", "total"],
-            &["half", "target", "players", "starting", "life", "total"],
-            &["half", "target", "opponents", "starting", "life", "total"],
-            &["half", "opponents", "starting", "life", "total"],
-            &["half", "defending", "players", "starting", "life", "total"],
-            &["half", "attacking", "players", "starting", "life", "total"],
-        ]
-);
-const LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["less", "than", "or", "equal", "to"]);
-const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "than"]);
 const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
 const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
@@ -3238,6 +3201,90 @@ fn parse_battlefield_count_predicate(filtered: &[&str]) -> Option<PredicateAst> 
     })
 }
 
+fn parse_half_starting_life_total_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let life_total_phrases: &[&[&str]] = &[
+        &["your", "life", "total"],
+        &["their", "life", "total"],
+        &["that", "players", "life", "total"],
+        &["target", "players", "life", "total"],
+        &["target", "opponents", "life", "total"],
+        &["opponents", "life", "total"],
+        &["opponent", "life", "total"],
+        &["defending", "players", "life", "total"],
+        &["attacking", "players", "life", "total"],
+    ];
+    let comparison_phrases: &[&[&str]] =
+        &[&["less", "than", "or", "equal", "to"], &["less", "than"]];
+    let half_total_phrases: &[&[&str]] = &[
+        &["half", "your", "starting", "life", "total"],
+        &["half", "their", "starting", "life", "total"],
+        &["half", "that", "players", "starting", "life", "total"],
+        &["half", "target", "players", "starting", "life", "total"],
+        &["half", "target", "opponents", "starting", "life", "total"],
+        &["half", "opponents", "starting", "life", "total"],
+        &["half", "defending", "players", "starting", "life", "total"],
+        &["half", "attacking", "players", "starting", "life", "total"],
+    ];
+    let atoms = [
+        LexPattern::subject(
+            "life_total",
+            LexCaptureKind::UntilAnyPhrase(&[&["is"], &["are"]]),
+        ),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("comparison", LexCaptureKind::UntilAnyPhrase(&[&["half"]])),
+        LexPattern::object("half_total", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let life_total = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = match life_total.word_refs().as_slice() {
+        ["your", "life", "total"] => PlayerAst::You,
+        ["their", "life", "total"] => PlayerAst::That,
+        ["that", "players", "life", "total"] => PlayerAst::That,
+        ["target", "players", "life", "total"] => PlayerAst::Target,
+        ["target", "opponents", "life", "total"] => PlayerAst::TargetOpponent,
+        ["opponents", "life", "total"] | ["opponent", "life", "total"] => PlayerAst::Opponent,
+        ["defending", "players", "life", "total"] => PlayerAst::Defending,
+        ["attacking", "players", "life", "total"] => PlayerAst::Attacking,
+        _ => return None,
+    };
+    if !life_total_phrases
+        .iter()
+        .any(|phrase| life_total.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+
+    let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(copula.word_refs().as_slice(), ["is"] | ["are"]) {
+        return None;
+    }
+    let comparison = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let comparison_words = comparison.word_refs();
+    if !comparison_phrases
+        .iter()
+        .any(|phrase| comparison_words.as_slice() == *phrase)
+    {
+        return None;
+    }
+    let half_total = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !half_total_phrases
+        .iter()
+        .any(|phrase| half_total.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+
+    match comparison_words.as_slice() {
+        ["less", "than", "or", "equal", "to"] => {
+            Some(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player })
+        }
+        ["less", "than"] => Some(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player }),
+        _ => None,
+    }
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -4370,43 +4417,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             None
         }
     };
-    let parse_life_total_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
-        if YOUR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::You, 3))
-        } else if THEIR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 3))
-        } else if THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 4))
-        } else if TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Target, 4))
-        } else if TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::TargetOpponent, 4))
-        } else if OPPONENT_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Opponent, 3))
-        } else if DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Defending, 4))
-        } else if ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Attacking, 4))
-        } else {
-            None
-        }
-    };
-    if let Some((player, subject_len)) = parse_life_total_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| IS_OR_ARE_WORD_PATTERN.matches_word(word))
-    {
-        let tail = &filtered[subject_len + 1..];
-        if LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[5..])
-        {
-            return Ok(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player });
-        }
-        if LESS_THAN_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[2..])
-        {
-            return Ok(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
-        }
+    if let Some(predicate) = parse_half_starting_life_total_predicate(&filtered) {
+        return Ok(predicate);
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && filtered
@@ -6628,6 +6640,18 @@ mod tests {
                     left: crate::effect::Value::LifeTotal(PlayerFilter::Opponent),
                     operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                     right: crate::effect::Value::Fixed(10),
+                },
+            ),
+            (
+                "If your life total is less than or equal to half your starting life total",
+                PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If target opponents life total is less than half target opponents starting life total",
+                PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal {
+                    player: PlayerAst::TargetOpponent,
                 },
             ),
         ] {
