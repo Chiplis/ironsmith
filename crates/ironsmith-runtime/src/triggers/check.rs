@@ -1759,14 +1759,7 @@ pub fn check_delayed_triggers(
 
         let mut fired = false;
         for &source in candidate_sources {
-            let mut ctx = TriggerContext::for_source(source, delayed.controller, game);
-            for (tag, snapshots) in &delayed.tagged_objects {
-                ctx.filter_ctx
-                    .tagged_objects
-                    .entry(tag.clone())
-                    .or_default()
-                    .extend(snapshots.clone());
-            }
+            let ctx = TriggerContext::for_source(source, delayed.controller, game);
             if !delayed.trigger.matches(trigger_event, &ctx) {
                 continue;
             }

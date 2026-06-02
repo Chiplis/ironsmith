@@ -156,14 +156,6 @@ pub(crate) fn parse_delayed_return_timing_words(words: &[&str]) -> Option<Delaye
         return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::You));
     }
 
-    if matches!(
-        words,
-        ["at", "beginning", "of", "their", "next", "upkeep"]
-            | ["at", "the", "beginning", "of", "their", "next", "upkeep"]
-    ) {
-        return Some(DelayedReturnTimingAst::NextUpkeep(PlayerAst::ItsOwner));
-    }
-
     None
 }
 

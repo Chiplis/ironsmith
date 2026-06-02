@@ -2304,7 +2304,7 @@ fn compile_subject_verb_effect(
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let from_exile_tag = choose_spec_references_exiled_tag(&spec);
             let use_move_to_zone =
-                from_exile_tag || matches!(controller, ReturnControllerAst::You);
+                from_exile_tag || !matches!(controller, ReturnControllerAst::Preserve);
             let mut effects = Vec::new();
             let resolved_spec = if !spec.is_target() {
                 match &spec {
