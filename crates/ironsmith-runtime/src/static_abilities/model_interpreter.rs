@@ -1415,6 +1415,7 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbility::bloodthirst(*amount)
             }
+            ironsmith_core::StaticAbilityPayload::Tribute(amount) => StaticAbility::tribute(*amount),
             ironsmith_core::StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,

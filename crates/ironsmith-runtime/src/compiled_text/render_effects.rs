@@ -36491,6 +36491,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if text == "toxic" || text.starts_with("toxic ") {
         return Some(raw_text.to_string());
     }
+    if text.starts_with("tribute ") {
+        return Some(raw_text.to_string());
+    }
     let first_cycling_idx = words
         .iter()
         .position(|word| trim_cycling_punctuation(word).ends_with("cycling"));

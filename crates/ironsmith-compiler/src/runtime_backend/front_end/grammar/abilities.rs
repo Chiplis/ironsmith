@@ -1476,6 +1476,22 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
     .any(|phrase| primitives::words_match_prefix(head_tokens, phrase).is_some())
 }
 
+pub(crate) fn is_tribute_keyword_tokens_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let head_tokens = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::LParen)
+        .map(|idx| &tokens[..idx])
+        .unwrap_or(tokens);
+    let words = TokenWordView::new(head_tokens).to_word_refs();
+    if words.first().copied() != Some("tribute") {
+        return false;
+    }
+    matches!(
+        parse_number_words(words.get(1..).unwrap_or_default()),
+        Some((_, 1))
+    )
+}
+
 pub(crate) fn additional_cost_tail_tokens_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {

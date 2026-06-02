@@ -69,6 +69,7 @@ pub(crate) enum KeywordLineKindCst {
     Evoke,
     CastThisSpellOnly,
     Gift,
+    Tribute,
     Epic,
     Warp,
     ExertAttack,

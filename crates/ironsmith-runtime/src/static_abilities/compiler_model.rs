@@ -14,6 +14,13 @@ impl std::fmt::Display for StaticAbilityModelConversionError {
 impl std::error::Error for StaticAbilityModelConversionError {}
 
 impl StaticAbility {
+    fn parse_tribute_label(label: &str) -> Option<u32> {
+        label
+            .trim()
+            .strip_prefix("Tribute ")
+            .and_then(|amount| amount.trim().parse::<u32>().ok())
+    }
+
     fn parse_draw_replacement_exile_top_and_play_count(label: &str) -> Option<u32> {
         let prefix = "draw replacement exile top ";
         let suffix = " and play";
@@ -83,6 +90,14 @@ impl StaticAbility {
             Some(StaticAbilityId::Cascade) => Self::cascade(),
             Some(StaticAbilityId::ReadAhead) => Self::read_ahead(),
             Some(StaticAbilityId::Unleash) => Self::unleash(),
+            Some(StaticAbilityId::Tribute) => {
+                let amount = Self::parse_tribute_label(&label).ok_or_else(|| {
+                    StaticAbilityModelConversionError {
+                        detail: format!("could not parse tribute label '{label}'"),
+                    }
+                })?;
+                Self::tribute(amount)
+            }
             Some(StaticAbilityId::Unblockable) => Self::unblockable(),
             Some(StaticAbilityId::CantBlock) => Self::cant_block(),
             Some(StaticAbilityId::CantAttack) => Self::cant_attack(),

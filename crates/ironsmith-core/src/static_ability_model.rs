@@ -495,6 +495,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    Tribute(u32),
     PreventDamageToSelfRemoveCounter {
         counter_type: CounterType,
         amount: u32,
@@ -1437,6 +1438,7 @@ where
             StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbilityPayload::Bloodthirst(amount)
             }
+            StaticAbilityPayload::Tribute(amount) => StaticAbilityPayload::Tribute(amount),
             StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
@@ -2381,6 +2383,13 @@ impl<
             id: Some(StaticAbilityId::Bloodthirst),
             label: format!("bloodthirst {amount}"),
             payload: StaticAbilityPayload::Bloodthirst(amount),
+        }
+    }
+    pub fn tribute(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Tribute),
+            label: format!("Tribute {amount}"),
+            payload: StaticAbilityPayload::Tribute(amount),
         }
     }
     pub fn krrik_black_mana_may_be_paid_with_life() -> Self {

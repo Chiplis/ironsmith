@@ -1,6 +1,6 @@
 use super::TraitApplyResult;
 use crate::events::{Event, EventKind};
-use crate::filter::ObjectFilterExt as _;
+use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
 use crate::game_state::{GameState, Target};
 use crate::ids::PlayerId;
 use crate::object::CounterType;
@@ -265,6 +265,7 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: Some(filter.clone()),
+                    mark_label: None,
                     destinations: None,
                 }
             }
@@ -300,8 +301,35 @@ pub(super) fn apply_trait_replacement(
                     effect_id: effect.id,
                     object_id: effect.source,
                     filter: None,
+                    mark_label: None,
                     destinations: None,
                 }
+            }
+        }
+
+        ReplacementAction::InteractiveMarkLabel {
+            chooser,
+            label,
+            prompt,
+        } => {
+            let chooser = choose_replacement_player(game, effect.controller, chooser);
+            let source_name = game.object(effect.source).map(|o| o.name.clone());
+            let mut bool_ctx = crate::decisions::context::BooleanContext::new(
+                chooser,
+                Some(effect.source),
+                prompt.clone(),
+            );
+            if let Some(name) = source_name {
+                bool_ctx = bool_ctx.with_source_name(name);
+            }
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx: crate::decisions::context::DecisionContext::Boolean(bool_ctx),
+                redirect_zone: Zone::Battlefield,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: None,
+                mark_label: Some(label.clone()),
+                destinations: None,
             }
         }
 
@@ -347,10 +375,30 @@ pub(super) fn apply_trait_replacement(
                 effect_id: effect.id,
                 object_id: effect.source,
                 filter: None,
+                mark_label: None,
                 destinations: Some(destinations.clone()),
             }
         }
     }
+}
+
+fn choose_replacement_player(
+    game: &GameState,
+    controller: PlayerId,
+    chooser: &crate::target::PlayerFilter,
+) -> PlayerId {
+    let mut ctx = crate::target::FilterContext::new(controller);
+    ctx.opponents = game
+        .players
+        .iter()
+        .map(|player| player.id)
+        .filter(|player| *player != controller)
+        .collect();
+    game.players
+        .iter()
+        .map(|player| player.id)
+        .find(|player| chooser.matches_player(*player, &ctx))
+        .unwrap_or(controller)
 }
 
 fn apply_trait_enter_under_control(event: &Event, controller: PlayerId) -> Option<Event> {

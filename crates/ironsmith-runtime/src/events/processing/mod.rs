@@ -384,6 +384,7 @@ fn process_event_direct(
                 effect_id,
                 object_id,
                 filter,
+                mark_label,
                 destinations,
             } => TraitEventResult::NeedsInteraction {
                 decision_ctx,
@@ -398,6 +399,7 @@ fn process_event_direct(
                     }
                     _ => None,
                 },
+                mark_label,
                 destinations,
             },
         };
@@ -455,6 +457,7 @@ fn process_event_direct(
             effect_id,
             object_id,
             filter,
+            mark_label,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -464,6 +467,7 @@ fn process_event_direct(
             event: Box::new(event),
             filter,
             life_cost,
+            mark_label,
             destinations,
         },
     }
@@ -578,6 +582,7 @@ fn continue_interactive_replacement(
     filter: Option<&crate::target::ObjectFilter>,
     redirect_zone: Zone,
     life_cost: Option<u32>,
+    mark_label: Option<&str>,
     destinations: Option<&[Zone]>,
     provenance: crate::provenance::ProvNodeId,
     decision_maker: &mut dyn DecisionMaker,
@@ -599,6 +604,15 @@ fn continue_interactive_replacement(
     // Handle pay-life-or-enter-tapped (shock land pattern)
     if let Some(cost) = life_cost {
         return handle_pay_life_or_enter_tapped(game, response, controller, cost);
+    }
+
+    if let Some(label) = mark_label {
+        if matches!(response, InteractiveReplacementResponse::Accept)
+            && let Some(object) = game.object_mut(object_id)
+        {
+            object.optional_costs_paid.mark_label_paid(label);
+        }
+        return InteractiveReplacementResult::enters_battlefield();
     }
 
     if let Some(destinations) = destinations {
@@ -1121,6 +1135,8 @@ enum TraitApplyResult {
         object_id: crate::ids::ObjectId,
         /// The filter for discarding (for InteractiveDiscardOrRedirect).
         filter: Option<crate::target::ObjectFilter>,
+        /// Label to mark on the entering object if the interaction is accepted.
+        mark_label: Option<String>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
     },
@@ -1249,6 +1265,8 @@ pub enum TraitEventResult {
         filter: Option<crate::target::ObjectFilter>,
         /// The life cost (for InteractivePayLifeOrEnterTapped).
         life_cost: Option<u32>,
+        /// Label to mark on the entering object if the interaction is accepted.
+        mark_label: Option<String>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
     },
@@ -1981,6 +1999,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                         effect_id,
                         object_id,
                         filter,
+                        mark_label,
                         destinations,
                     } => {
                         return TraitEventResult::NeedsInteraction {
@@ -1996,6 +2015,7 @@ fn process_with_dm_and_additional_effects_and_applied(
                                 } => Some(*life_cost),
                                 _ => None,
                             },
+                            mark_label,
                             destinations,
                         };
                     }
@@ -3017,6 +3037,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         effect_id,
                         object_id,
                         filter,
+                        mark_label,
                         destinations,
                     } => {
                         let life_cost = match &chosen_effect.replacement {
@@ -3058,6 +3079,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             filter.as_ref(),
                             redirect_zone,
                             life_cost,
+                            mark_label.as_deref(),
                             destinations.as_deref(),
                             current_event.provenance(),
                             dm,
@@ -3085,6 +3107,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 event,
                 filter,
                 life_cost,
+                mark_label,
                 destinations,
             } => {
                 let controller = game
@@ -3116,6 +3139,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     filter.as_ref(),
                     redirect_zone,
                     life_cost,
+                    mark_label.as_deref(),
                     destinations.as_deref(),
                     event.provenance(),
                     dm,
@@ -3428,6 +3452,7 @@ pub fn process_event_with_chosen_replacement_trait(
             effect_id,
             object_id,
             filter,
+            mark_label,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -3442,6 +3467,7 @@ pub fn process_event_with_chosen_replacement_trait(
                 }
                 _ => None,
             },
+            mark_label,
             destinations,
         },
     }

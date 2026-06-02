@@ -441,6 +441,23 @@ fn is_hidden_gift_etb_ability(ability: &Ability) -> bool {
     rendered.starts_with("if the gift was promised") || is_standard_gift_render_payload(&rendered)
 }
 
+fn is_hidden_tribute_enter_with_counters_ability(ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    let rendered = static_ability.display().to_ascii_lowercase();
+    rendered.starts_with("enters the battlefield with ")
+        && rendered.contains("+1/+1 counter")
+        && rendered.ends_with(" if tribute was paid")
+}
+
+fn is_visible_tribute_keyword_ability(ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    static_ability.id() == crate::static_abilities::StaticAbilityId::Tribute
+}
+
 fn describe_single_self_replacement_segment(
     segment: &crate::resolution::ResolutionSegment,
 ) -> Option<String> {
@@ -2434,6 +2451,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .optional_costs
         .iter()
         .any(|cost| cost.label.trim().to_ascii_lowercase().starts_with("gift "));
+    let has_visible_tribute_line = def.abilities.iter().any(is_visible_tribute_keyword_ability);
     if let Some(filter) = &def.aura_attach_filter {
         out.push(format!("Enchant {}", describe_enchant_filter(filter)));
     }
@@ -2480,6 +2498,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if has_visible_gift_line && is_hidden_gift_etb_ability(ability) {
+                ability_idx += 1;
+                continue;
+            }
+            if has_visible_tribute_line && is_hidden_tribute_enter_with_counters_ability(ability) {
                 ability_idx += 1;
                 continue;
             }

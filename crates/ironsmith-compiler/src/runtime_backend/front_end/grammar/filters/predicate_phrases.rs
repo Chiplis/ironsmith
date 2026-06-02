@@ -295,6 +295,15 @@ const GIFT_NOT_PROMISED_PATTERN: ClauseShape<'static> = clause_shape!(
             &["gift", "was", "not", "promised"],
         ]
 );
+const TRIBUTE_PAID_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["tribute", "was", "paid"]);
+const TRIBUTE_NOT_PAID_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["tribute", "wasnt", "paid"],
+            &["tribute", "was", "not", "paid"],
+        ]
+);
 const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "paid"]);
 const COST_WASNT_PAID_TAIL_PATTERN: ClauseShape<'static> =
@@ -3275,6 +3284,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if GIFT_NOT_PROMISED_PATTERN.matches_words(&filtered) {
         return Ok(PredicateAst::Not(Box::new(
             PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
+        )));
+    }
+    if TRIBUTE_PAID_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Tribute".to_string()));
+    }
+    if TRIBUTE_NOT_PAID_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
         )));
     }
     if filtered.len() >= 4

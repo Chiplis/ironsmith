@@ -40515,6 +40515,226 @@ fn parse_oracle_scrapshooter_gift_etb_regression() {
 }
 
 #[test]
+fn parse_oracle_ornitharch_tribute_regression() {
+    let def = parse_oracle_card_definition("Ornitharch");
+
+    assert_eq!(
+        def.optional_costs.len(),
+        0,
+        "Tribute is an as-enters opponent choice, not a cast optional cost"
+    );
+
+    let raw = format!("{def:#?}");
+    assert!(
+        !raw.contains("KeywordFallbackText") && !raw.contains("unsupported"),
+        "Ornitharch should parse strictly without fallback markers, got {raw}"
+    );
+    assert!(
+        raw.contains("Tribute")
+            && raw.contains("Tribute(2)")
+            && raw.contains("EnterWithCountersIfCondition")
+            && raw.contains("PlusOnePlusOne")
+            && raw.contains("Fixed(2)")
+            && raw.contains("ThisSpellPaidLabel")
+            && raw.contains("Tribute"),
+        "expected Tribute 2 to structurally preserve keyword identity and add two +1/+1 counters when paid, got {raw}"
+    );
+    assert!(
+        raw.contains("Not(")
+            && raw.contains("ThisSpellPaidLabel(")
+            && raw.contains("CreateTokenEffect")
+            && raw.contains("Bird"),
+        "expected Ornitharch's unpaid-tribute ETB trigger to create Bird tokens, got {raw}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Tribute 2"),
+        "expected Ornitharch compiled text to include Tribute 2, got {rendered}"
+    );
+    assert!(
+        rendered.contains("When this creature enters, if tribute wasn't paid")
+            && rendered.contains("create two 1/1 white Bird creature tokens with flying"),
+        "expected Ornitharch compiled text to preserve the unpaid tribute trigger, got {rendered}"
+    );
+}
+
+#[test]
+fn ornitharch_paid_tribute_enters_with_counters_and_skips_birds() {
+    let def = parse_oracle_card_definition("Ornitharch");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut decision_maker = OrnitharchTributeDecisionMaker::new(bob, true);
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+        .expect("Ornitharch should enter the battlefield");
+    assert_eq!(
+        decision_maker.tribute_prompts,
+        1,
+        "paid-tribute branch should ask the chosen opponent once"
+    );
+    let ornitharch = game
+        .object(result.new_id)
+        .expect("Ornitharch should exist on the battlefield");
+    assert!(
+        ornitharch.optional_costs_paid.was_paid_label("Tribute"),
+        "accepted opponent Tribute choice should be recorded on the entering object"
+    );
+    assert_eq!(
+        ornitharch
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(2),
+        "paid Tribute 2 should make Ornitharch enter with two +1/+1 counters"
+    );
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            result.new_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggers.iter().all(|entry| entry.source != result.new_id),
+        "paid tribute should fail Ornitharch's unpaid-tribute intervening-if trigger"
+    );
+    assert_eq!(
+        ornitharch_bird_tokens(&game, alice),
+        0,
+        "paid tribute should not create Bird tokens"
+    );
+}
+
+#[test]
+fn ornitharch_unpaid_tribute_creates_two_flying_birds() {
+    let def = parse_oracle_card_definition("Ornitharch");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut decision_maker = OrnitharchTributeDecisionMaker::new(bob, false);
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+        .expect("Ornitharch should enter the battlefield");
+    assert_eq!(
+        decision_maker.tribute_prompts,
+        1,
+        "unpaid-tribute branch should ask the chosen opponent once"
+    );
+    let ornitharch = game
+        .object(result.new_id)
+        .expect("Ornitharch should exist on the battlefield");
+    assert!(
+        !ornitharch.optional_costs_paid.was_paid_label("Tribute"),
+        "declined opponent Tribute choice should not mark Tribute paid"
+    );
+    assert_eq!(
+        ornitharch
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        None,
+        "unpaid tribute should not add +1/+1 counters"
+    );
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            result.new_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == result.new_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "unpaid tribute should queue exactly one Ornitharch ETB trigger"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Ornitharch trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Ornitharch unpaid-tribute trigger should resolve");
+
+    assert_eq!(
+        ornitharch_bird_tokens(&game, alice),
+        2,
+        "unpaid tribute should create two Bird tokens"
+    );
+}
+
+fn ornitharch_bird_tokens(game: &crate::game_state::GameState, controller: PlayerId) -> usize {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            let Some(object) = game.object(*id) else {
+                return false;
+            };
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.name == "Bird"
+                && object.subtypes.contains(&Subtype::Bird)
+                && game.controller_of(object) == controller
+                && game.object_has_static_ability_id(*id, StaticAbilityId::Flying)
+        })
+        .count()
+}
+
+struct OrnitharchTributeDecisionMaker {
+    expected_player: PlayerId,
+    accept: bool,
+    tribute_prompts: usize,
+}
+
+impl OrnitharchTributeDecisionMaker {
+    fn new(expected_player: PlayerId, accept: bool) -> Self {
+        Self {
+            expected_player,
+            accept,
+            tribute_prompts: 0,
+        }
+    }
+}
+
+impl crate::decision::DecisionMaker for OrnitharchTributeDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        assert_eq!(
+            ctx.player, self.expected_player,
+            "Tribute should be offered to an opponent, not the controller"
+        );
+        assert!(
+            ctx.description.contains("+1/+1 counters"),
+            "Tribute prompt should describe the counter choice, got {:?}",
+            ctx.description
+        );
+        self.tribute_prompts += 1;
+        self.accept
+    }
+}
+
+#[test]
 fn parse_oracle_longstalk_brawl_gift_spell_line_keeps_main_effects() {
     let def = parse_oracle_card_definition("Longstalk Brawl");
 

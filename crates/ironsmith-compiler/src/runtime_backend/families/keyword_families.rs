@@ -58,6 +58,7 @@ pub(super) enum KeywordDispatchHint {
     Transmute,
     CastThisSpellOnly,
     Gift,
+    Tribute,
     Warp,
     Exploit,
 }
@@ -95,6 +96,12 @@ mod additional_costs {
             hints: &[KeywordDispatchHint::Gift],
             matches: registry::matches_gift,
             lower: registry::lower_gift,
+        },
+        KeywordLineRule {
+            cst_kind: super::super::cst::KeywordLineKindCst::Tribute,
+            hints: &[KeywordDispatchHint::Tribute],
+            matches: registry::matches_tribute,
+            lower: registry::lower_tribute,
         },
     ];
 }
@@ -387,6 +394,9 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     let word_view = TokenWordView::new(tokens);
     let word_refs = word_view.to_word_refs();
     let first = word_refs.first().copied()?;
+    if first == "tribute" {
+        return Some(KeywordDispatchHint::Tribute);
+    }
     if BASIC_LANDCYCLING_FALLBACK_PATTERN.matches_words(&word_refs) {
         return Some(KeywordDispatchHint::Cycling);
     }

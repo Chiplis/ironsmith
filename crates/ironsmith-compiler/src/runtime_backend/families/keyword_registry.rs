@@ -12,7 +12,7 @@ use super::cst::{KeywordLineCst, KeywordLineKindCst};
 use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::abilities::{
     additional_cost_tail_tokens_lexed, is_additional_cost_choice_line_lexed,
-    is_standard_gift_keyword_tokens_lexed,
+    is_standard_gift_keyword_tokens_lexed, is_tribute_keyword_tokens_lexed,
 };
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::ir::RewriteKeywordLine;
@@ -27,6 +27,7 @@ use super::lexer::{
 };
 use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
+    lower_tribute_keyword_line,
 };
 use super::preprocess::PreprocessedLine;
 use super::token_primitives::{
@@ -672,6 +673,20 @@ pub(super) fn lower_gift(
     _tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
     lower_gift_keyword_line(line)
+}
+
+pub(super) fn matches_tribute(
+    _line: &PreprocessedLine,
+    tokens: &[OwnedLexToken],
+) -> Result<bool, CardTextError> {
+    Ok(is_tribute_keyword_tokens_lexed(tokens))
+}
+
+pub(super) fn lower_tribute(
+    line: &RewriteKeywordLine,
+    _tokens: &[OwnedLexToken],
+) -> Result<LineAst, CardTextError> {
+    lower_tribute_keyword_line(line)
 }
 
 pub(super) fn lower_warp(

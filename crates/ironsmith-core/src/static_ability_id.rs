@@ -201,6 +201,7 @@ pub enum StaticAbilityId {
     EntersTappedUnlessCondition,
     EnterWithCounters,
     EnterWithCountersIfCondition,
+    Tribute,
     ShuffleIntoLibraryFromGraveyard,
     AllPermanentsEnterTapped,
     EnterTappedForFilter,
@@ -462,6 +463,7 @@ impl StaticAbilityId {
             | EntersTappedUnlessCondition
             | EnterWithCounters
             | EnterWithCountersIfCondition
+            | Tribute
             | ShuffleIntoLibraryFromGraveyard
             | AllPermanentsEnterTapped
             | EnterTappedForFilter
@@ -555,6 +557,7 @@ impl StaticAbilityId {
                 | Flanking
                 | Landwalk
                 | Bloodthirst
+                | Tribute
                 | Morph
                 | Disguise
                 | Megamorph

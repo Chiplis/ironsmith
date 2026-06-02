@@ -220,6 +220,20 @@ pub enum ReplacementAction {
         life_cost: u32,
     },
 
+    /// Interactive: mark a keyword choice as made without changing zones.
+    ///
+    /// Used by abilities like tribute, where another player may choose to make
+    /// the entering object carry a named result used by a separate replacement
+    /// effect and later branch conditions.
+    InteractiveMarkLabel {
+        /// Player asked to make the yes/no choice.
+        chooser: crate::target::PlayerFilter,
+        /// Label recorded on the entering object if the choice is accepted.
+        label: String,
+        /// Prompt text shown to the chooser.
+        prompt: String,
+    },
+
     /// Interactive: Choose alternate destination for a zone-changing event.
     ///
     /// Used by Library of Leng: "If an effect causes you to discard a card,

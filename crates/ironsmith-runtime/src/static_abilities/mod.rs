@@ -2121,6 +2121,10 @@ impl StaticAbility {
         ))
     }
 
+    pub fn tribute(amount: u32) -> Self {
+        Self::new(Tribute::new(amount))
+    }
+
     pub fn permanents_enter_tapped() -> Self {
         Self::new(AllPermanentsEnterTapped)
     }

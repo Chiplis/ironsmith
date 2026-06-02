@@ -47,6 +47,7 @@ pub(crate) use parser_semantic_lowering::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
     lower_rewrite_statement_token_groups_to_chunks, lower_rewrite_static_to_chunk,
     lower_rewrite_triggered_to_chunk,
+    lower_tribute_keyword_line,
 };
 pub(crate) use parser_semantic_lowering::{
     lower_special_rewrite_triggered_chunk, try_lower_optional_behold_additional_cost,

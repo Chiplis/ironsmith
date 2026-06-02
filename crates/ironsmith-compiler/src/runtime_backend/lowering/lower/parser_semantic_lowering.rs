@@ -1984,6 +1984,54 @@ pub(crate) fn lower_gift_keyword_line(line: &RewriteKeywordLine) -> Result<LineA
     })
 }
 
+pub(crate) fn lower_tribute_keyword_line(
+    line: &RewriteKeywordLine,
+) -> Result<LineAst, CardTextError> {
+    let head_tokens = line
+        .parse_tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::LParen)
+        .map(|idx| &line.parse_tokens[..idx])
+        .unwrap_or(line.parse_tokens.as_slice());
+    let words = parser_token_word_refs(head_tokens);
+    if words.first().copied() != Some("tribute") {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse tribute line '{}'",
+            line.info.raw_line
+        )));
+    }
+    let (count, used) = crate::runtime_backend::front_end::shared::util::parse_number(
+        head_tokens.get(1..).unwrap_or_default(),
+    )
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "rewrite keyword lowering could not parse tribute count '{}'",
+            line.info.raw_line
+        ))
+    })?;
+    if used != 1 {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite keyword lowering found unsupported tribute count shape '{}'",
+            line.info.raw_line
+        )));
+    }
+
+    let tribute = StaticAbility::tribute(count);
+    let counters = StaticAbility::enters_with_counters_if_condition(
+        crate::object::CounterType::PlusOnePlusOne,
+        crate::effect::Value::Fixed(count as i32),
+        crate::ConditionExpr::ThisSpellPaidLabel("Tribute".to_string()),
+        "tribute was paid".to_string(),
+    );
+
+    Ok(LineAst::Multiple(vec![
+        LineAst::StaticAbilities(vec![
+            crate::cards::builders::StaticAbilityAst::Static(tribute),
+            crate::cards::builders::StaticAbilityAst::Static(counters),
+        ]),
+    ]))
+}
+
 #[derive(Clone, Copy)]
 enum StandardGiftVariant {
     Card,
