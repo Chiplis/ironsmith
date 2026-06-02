@@ -493,31 +493,6 @@ const COUNTER_ON_SOURCE_PRONOUN_TAIL_PATTERN: ClauseShape<'static> = clause_shap
     prefix & ["on"];
     contains_any_words & [&["it", "him", "her", "them", "this", "that"]]
 );
-const IT_HAD_NO_COUNTER_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["it", "had", "no"]);
-const TYPED_OBJECT_HAD_NO_COUNTER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "creature", "had", "no"],
-            &["that", "creature", "had", "no"],
-            &["this", "permanent", "had", "no"],
-            &["that", "permanent", "had", "no"],
-        ]
-);
-const IT_HAD_COUNTER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it", "had"]);
-const TYPED_OBJECT_HAD_COUNTER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "creature", "had"],
-            &["that", "creature", "had"],
-            &["this", "permanent", "had"],
-            &["that", "permanent", "had"],
-        ]
-);
-const COUNTER_ON_TRIGGERING_OBJECT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["on"];
-    contains_any_words & [&["it", "them", "this", "that", "itself"]]
-);
 const COUNTER_ON_SOURCE_TAIL_ANY_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -827,6 +802,62 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         counter_type,
         count: 1,
     })
+}
+
+fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["had"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
+        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
+        LexPattern::modifier("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_triggering_object_counter_subject(&subject_clause.word_refs()) {
+        return None;
+    }
+    let target_clause = matched.capture_clause("target", clause)?;
+    if !is_exact_counter_on_triggering_object_tail(&target_clause.word_refs()) {
+        return None;
+    }
+    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_words = counter_clause.word_refs();
+    let counter_idx = find_index(&counter_words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    })?;
+    if counter_idx + 1 != counter_words.len() {
+        return None;
+    }
+    if matches!(counter_words.as_slice(), ["no", ..]) {
+        let counter_type =
+            parse_counter_type_from_tokens(counter_clause.tokens().get(1..=counter_idx)?)?;
+        return Some(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
+    }
+    let counter_type =
+        parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
+    Some(PredicateAst::TriggeringObjectHadCounterAtLeast {
+        counter_type,
+        count: 1,
+    })
+}
+
+fn is_triggering_object_counter_subject(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["it"]
+            | ["this", "creature"]
+            | ["that", "creature"]
+            | ["this", "permanent"]
+            | ["that", "permanent"]
+    )
+}
+
+fn is_exact_counter_on_triggering_object_tail(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["on", "it"] | ["on", "them"] | ["on", "this"] | ["on", "that"] | ["on", "itself"]
+    )
 }
 
 fn is_exact_counter_on_source_tail(words: &[&str]) -> bool {
@@ -3675,49 +3706,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let triggering_object_had_no_counter_prefix_len =
-        if IT_HAD_NO_COUNTER_PREFIX_PATTERN.matches_words(&raw_words) {
-            Some(3)
-        } else if TYPED_OBJECT_HAD_NO_COUNTER_PREFIX_PATTERN.matches_words(&raw_words) {
-            Some(4)
-        } else {
-            None
-        };
-    if let Some(prefix_len) = triggering_object_had_no_counter_prefix_len
-        && raw_words.len() >= prefix_len + 4
-        && let Some(counter_type) = parse_counter_type_word(raw_words[prefix_len])
-        && COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(raw_words[prefix_len + 1])
-        && raw_words
-            .get(prefix_len + 2..)
-            .is_some_and(|tail| COUNTER_ON_TRIGGERING_OBJECT_TAIL_PATTERN.matches_words(tail))
-    {
-        return Ok(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
-    }
-
-    let triggering_object_had_counter_prefix_len =
-        if IT_HAD_COUNTER_PREFIX_PATTERN.matches_words(&raw_words) {
-            Some(2)
-        } else if TYPED_OBJECT_HAD_COUNTER_PREFIX_PATTERN.matches_words(&raw_words) {
-            Some(3)
-        } else {
-            None
-        };
-    if let Some(prefix_len) = triggering_object_had_counter_prefix_len
-        && raw_words.len() >= prefix_len + 4
-        && let Some(counter_idx) = find_index(&raw_words[prefix_len..], |word| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-        })
-        && counter_idx > 0
-        && let Some(counter_type) =
-            parse_counter_type_from_tokens(&tokens[prefix_len..=prefix_len + counter_idx])
-        && raw_words
-            .get(prefix_len + counter_idx + 1..)
-            .is_some_and(|tail| COUNTER_ON_TRIGGERING_OBJECT_TAIL_PATTERN.matches_words(tail))
-    {
-        return Ok(PredicateAst::TriggeringObjectHadCounterAtLeast {
-            counter_type,
-            count: 1,
-        });
+    if let Some(predicate) = parse_triggering_object_had_counter_predicate(tokens) {
+        return Ok(predicate);
     }
 
     if THERE_ARE_PREFIX_PATTERN.matches_words(&raw_words)
@@ -5930,6 +5920,32 @@ mod tests {
                 }),
             )
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_triggering_object_counters_use_shared_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If it had no stun counters on it",
+                PredicateAst::TriggeringObjectHadNoCounter(CounterType::Stun),
+            ),
+            (
+                "If that creature had a +1/+1 counter on it",
+                PredicateAst::TriggeringObjectHadCounterAtLeast {
+                    counter_type: CounterType::PlusOnePlusOne,
+                    count: 1,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
