@@ -45076,6 +45076,63 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {
+    let def = parse_oracle_card_definition("Mistmeadow Skulk");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Lifelink, protection from mana value 3 or greater"),
+        "expected Mistmeadow Skulk to render its lifelink and mana-value protection clause, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("Lifelink")
+            && ability_debug.contains("Protection")
+            && ability_debug.contains("GreaterThanOrEqual(3)"),
+        "expected Mistmeadow Skulk to lower into lifelink plus mana-value protection, got {ability_debug}"
+    );
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let skulk_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    assert!(
+        game.current_has_static_ability_id(skulk_id, StaticAbilityId::Lifelink),
+        "Mistmeadow Skulk should have lifelink on the battlefield"
+    );
+    assert!(
+        game.current_has_static_ability_id(skulk_id, StaticAbilityId::Protection),
+        "Mistmeadow Skulk should have protection on the battlefield"
+    );
+
+    let high_mana_value_spell = CardDefinitionBuilder::new(CardId::new(), "Mana Value Three Bolt")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let high_source_id =
+        game.create_object_from_definition(&high_mana_value_spell, bob, Zone::Stack);
+    assert!(
+        crate::targeting::computation::has_protection_from_source(
+            &game,
+            skulk_id,
+            high_source_id,
+        ),
+        "Mistmeadow Skulk should be protected from a source with mana value 3"
+    );
+
+    let low_mana_value_spell = CardDefinitionBuilder::new(CardId::new(), "Mana Value Two Bolt")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let low_source_id = game.create_object_from_definition(&low_mana_value_spell, bob, Zone::Stack);
+    assert!(
+        !crate::targeting::computation::has_protection_from_source(&game, skulk_id, low_source_id),
+        "Mistmeadow Skulk should not be protected from a source with mana value 2"
+    );
+}
+
 #[test]
 fn departed_deckhand_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Departed Deckhand");
@@ -50679,6 +50736,7 @@ strict_parse_card_expected_fail_test!(
 );
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
+strict_parse_card_test!(strict_parse_mistmeadow_skulk, "Mistmeadow Skulk");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nesting_grounds, "Nesting Grounds");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");

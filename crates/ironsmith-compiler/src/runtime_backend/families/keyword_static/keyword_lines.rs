@@ -105,6 +105,20 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
+        if value == "mana" && words.get(idx + 2).copied() == Some("value") {
+            let comparison_tail = words.get(idx + 3..)?;
+            let (comparison, consumed) = parse_filter_comparison_tokens(
+                "mana value",
+                comparison_tail,
+                words,
+            )
+            .ok()??;
+            if consumed == comparison_tail.len() {
+                let mut filter = ObjectFilter::default();
+                filter.mana_value = Some(comparison);
+                return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
+        }
         if KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
             && KEYWORD_WITH_WORD_PATTERN.matches_word_at(words, idx + 2)
         {
