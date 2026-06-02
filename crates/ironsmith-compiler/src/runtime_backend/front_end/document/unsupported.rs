@@ -385,6 +385,11 @@ pub(super) fn diagnose_known_unsupported_rewrite_line(
         "planeswalker",
     ]) {
         "unsupported creature-token/player/planeswalker target clause"
+    } else if ctx.has_prefix(&["target", "face", "down"])
+        || ctx.has_prefix(&["target", "face-down"])
+        || ctx.has_prefix(&["target", "facedown"])
+    {
+        "unsupported face-down clause"
     } else if ctx.first_word() == Some("villainous") {
         "unsupported villainous-choice clause"
     } else if ctx.has_prefix(&["copy", "target", "spell"]) && ctx.contains_word("legendary") {

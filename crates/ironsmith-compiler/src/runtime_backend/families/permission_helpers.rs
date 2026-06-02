@@ -1718,6 +1718,16 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
+    if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
+        rest_tokens,
+        &normalized_words,
+        lead.player,
+        from_idx,
+        parse_simple_spell_type_list_filter_tokens,
+    )? {
+        return Ok(Some(effect));
+    }
+
     if let Some(without_idx) = normalized_words
         .iter()
         .position(|word| word.as_str() == "without")
@@ -1739,6 +1749,9 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 return Ok(None);
             };
             let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
+            if token_slice_first_is_any(filter_tokens, &["target"]) {
+                return Ok(None);
+            }
             let Some(mut filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens)
                 .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
             else {
@@ -1758,16 +1771,6 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 ),
             ));
         }
-    }
-
-    if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
-        rest_tokens,
-        &normalized_words,
-        lead.player,
-        from_idx,
-        parse_simple_spell_type_list_filter_tokens,
-    )? {
-        return Ok(Some(effect));
     }
 
     let normalized_tail = &normalized_words[from_idx..];

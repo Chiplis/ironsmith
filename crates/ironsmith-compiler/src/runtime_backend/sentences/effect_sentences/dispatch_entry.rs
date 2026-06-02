@@ -1142,18 +1142,18 @@ fn parse_effect_sentences_from_sentence_inputs(
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
 
-        if let Some(prefix) = split_leading_result_prefix_lexed(sentence) {
+        if starts_with_numeric_result_prefix(sentence)
+            && let Some(prefix) = split_leading_result_prefix_lexed(sentence)
+        {
             let mut row_sentences = vec![SentenceInput::from_lexed(prefix.trailing_tokens)];
             let mut consumed_sentences = 1usize;
-            if starts_with_numeric_result_prefix(sentence) {
-                while sentence_idx + consumed_sentences < sentences.len() {
-                    let next = sentences[sentence_idx + consumed_sentences].lowered();
-                    if split_leading_result_prefix_lexed(next).is_some() {
-                        break;
-                    }
-                    row_sentences.push(SentenceInput::from_lexed(next));
-                    consumed_sentences += 1;
+            while sentence_idx + consumed_sentences < sentences.len() {
+                let next = sentences[sentence_idx + consumed_sentences].lowered();
+                if starts_with_numeric_result_prefix(next) {
+                    break;
                 }
+                row_sentences.push(SentenceInput::from_lexed(next));
+                consumed_sentences += 1;
             }
 
             let row_effects = parse_effect_sentences_from_sentence_inputs(row_sentences)?;
