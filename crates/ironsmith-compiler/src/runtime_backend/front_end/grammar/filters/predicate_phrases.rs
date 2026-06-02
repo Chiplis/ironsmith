@@ -746,6 +746,22 @@ fn source_state_predicate_from_words(words: &[&str], negative: bool) -> Option<P
     }
 }
 
+fn parse_terminal_counter_phrase(
+    tokens: &[OwnedLexToken],
+) -> Option<Option<ironsmith_core::counter::CounterType>> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let counter_idx = find_index(&words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    })?;
+    if counter_idx + 1 != words.len() {
+        return None;
+    }
+    if counter_idx == 0 {
+        return Some(None);
+    }
+    parse_counter_type_from_tokens(tokens.get(..=counter_idx)?).map(Some)
+}
+
 fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
@@ -765,22 +781,14 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
     let counter_words = counter_clause.word_refs();
-    let counter_idx = find_index(&counter_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx + 1 != counter_words.len() {
-        return None;
-    }
     if matches!(counter_words.as_slice(), ["no", ..]) {
-        let counter_type =
-            parse_counter_type_from_tokens(counter_clause.tokens().get(1..=counter_idx)?)?;
+        let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         return Some(PredicateAst::SourceHasNoCounter(counter_type));
     }
     if OR_MORE_PREFIX_PATTERN.matches_words(counter_words.get(1..).unwrap_or_default()) {
         return None;
     }
-    let counter_type =
-        parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
+    let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count: 1,
@@ -809,14 +817,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let (comparison, used) = predicate_quantity_prefix(&counter_words)?;
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
-    let counter_tail_words = crate::runtime_backend::token_word_refs(counter_tail);
-    let counter_idx = find_index(&counter_tail_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx == 0 || counter_idx + 1 != counter_tail_words.len() {
-        return None;
-    }
-    let counter_type = parse_counter_type_from_tokens(counter_tail.get(..=counter_idx)?)?;
+    let counter_type = parse_terminal_counter_phrase(counter_tail)??;
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
@@ -855,15 +856,7 @@ fn parse_there_are_no_counters_on_source_predicate(
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let counter_words = counter_clause.word_refs();
-    let counter_idx = find_index(&counter_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx + 1 != counter_words.len() {
-        return None;
-    }
-    let counter_type =
-        parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
+    let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::SourceHasNoCounter(counter_type))
 }
 
@@ -982,17 +975,9 @@ fn parse_there_are_source_counters_at_least_predicate(
     let (comparison, used) = predicate_quantity_prefix(&counter_words)?;
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
-    let counter_tail_words = crate::runtime_backend::token_word_refs(counter_tail);
-    let counter_idx = find_index(&counter_tail_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx + 1 != counter_tail_words.len() {
-        return None;
-    }
-    if counter_idx == 0 {
+    let Some(counter_type) = parse_terminal_counter_phrase(counter_tail)? else {
         return Some(PredicateAst::SourceHasCountersAtLeast(count));
-    }
-    let counter_type = parse_counter_type_from_tokens(counter_tail.get(..=counter_idx)?)?;
+    };
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
@@ -1018,19 +1003,11 @@ fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Op
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
     let counter_words = counter_clause.word_refs();
-    let counter_idx = find_index(&counter_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx + 1 != counter_words.len() {
-        return None;
-    }
     if matches!(counter_words.as_slice(), ["no", ..]) {
-        let counter_type =
-            parse_counter_type_from_tokens(counter_clause.tokens().get(1..=counter_idx)?)?;
+        let counter_type = parse_terminal_counter_phrase(counter_clause.tokens().get(1..)?)??;
         return Some(PredicateAst::TriggeringObjectHadNoCounter(counter_type));
     }
-    let counter_type =
-        parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
+    let counter_type = parse_terminal_counter_phrase(counter_clause.tokens())??;
     Some(PredicateAst::TriggeringObjectHadCounterAtLeast {
         counter_type,
         count: 1,
