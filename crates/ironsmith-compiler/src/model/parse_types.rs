@@ -151,6 +151,7 @@ pub enum RedirectNextTimeDamageDestinationAst {
     SourceObject,
     Controller,
     SourceController,
+    TargetObject,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

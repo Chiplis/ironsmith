@@ -2,7 +2,7 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
 use crate::events::damage::matchers::{
@@ -14,20 +14,20 @@ use crate::game_state::GameState;
 use crate::replacement::{RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect};
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
-/// Matches damage events from a constrained source to a specific object target.
+/// Matches damage events from a constrained source to a specific damage target.
 #[derive(Debug, Clone)]
-struct DamageSourceToSpecificObjectMatcher {
+struct DamageSourceToSpecificTargetMatcher {
     source: DamageSourceConstraint,
-    target: crate::ids::ObjectId,
+    target: DamageTarget,
 }
 
-impl DamageSourceToSpecificObjectMatcher {
-    fn new(source: DamageSourceConstraint, target: crate::ids::ObjectId) -> Self {
+impl DamageSourceToSpecificTargetMatcher {
+    fn new(source: DamageSourceConstraint, target: DamageTarget) -> Self {
         Self { source, target }
     }
 }
 
-impl ReplacementMatcher for DamageSourceToSpecificObjectMatcher {
+impl ReplacementMatcher for DamageSourceToSpecificTargetMatcher {
     fn matches_event(&self, event: &dyn GameEventType, ctx: &crate::events::EventContext) -> bool {
         if event.event_kind() != EventKind::Damage {
             return false;
@@ -36,7 +36,7 @@ impl ReplacementMatcher for DamageSourceToSpecificObjectMatcher {
         else {
             return false;
         };
-        if damage.target != DamageTarget::Object(self.target) {
+        if damage.target != self.target {
             return false;
         }
         match &self.source {
@@ -66,6 +66,7 @@ pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
     SourceController,
+    TargetObject,
 }
 
 /// "The next time a source of your choice would deal damage to target creature this turn,
@@ -75,6 +76,7 @@ pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
+    pub destination_target: Option<ChooseSpec>,
     pub all_this_turn: bool,
 }
 
@@ -144,6 +146,7 @@ impl RedirectNextTimeDamageToSourceEffect {
             source,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
+            destination_target: None,
             all_this_turn: false,
         }
     }
@@ -153,17 +156,26 @@ impl RedirectNextTimeDamageToSourceEffect {
             source: RedirectNextTimeDamageSource::Target(source),
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
+            destination_target: None,
             all_this_turn: false,
         }
     }
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
         self
     }
 
     pub fn to_source_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::SourceController;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_target(mut self, target: ChooseSpec) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::TargetObject;
+        self.destination_target = Some(target);
         self
     }
 
@@ -243,17 +255,25 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
             RedirectNextTimeDamageDestination::SourceController => {
                 RedirectTarget::ToSourceController
             }
+            RedirectNextTimeDamageDestination::TargetObject => {
+                let target = self
+                    .destination_target
+                    .as_ref()
+                    .ok_or(ExecutionError::InvalidTarget)?;
+                let redirect_target = resolve_objects_for_effect(game, ctx, target)?
+                    .into_iter()
+                    .next()
+                    .ok_or(ExecutionError::InvalidTarget)?;
+                RedirectTarget::ToObject(redirect_target)
+            }
         };
 
         let replacement = if let Some(target) = &self.target {
-            let protected_target = resolve_objects_for_effect(game, ctx, target)?
-                .into_iter()
-                .next()
-                .ok_or(ExecutionError::InvalidTarget)?;
+            let protected_target = resolve_damage_target_for_effect(game, ctx, target)?;
             ReplacementEffect::with_matcher(
                 ctx.source,
                 ctx.controller,
-                DamageSourceToSpecificObjectMatcher::new(source_constraint, protected_target),
+                DamageSourceToSpecificTargetMatcher::new(source_constraint, protected_target),
                 ReplacementAction::Redirect {
                     target: redirect_target,
                     which: RedirectWhich::First,
@@ -287,15 +307,32 @@ impl EffectExecutor for RedirectNextTimeDamageToSourceEffect {
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
-        self.target.as_ref().or_else(|| match &self.source {
-            RedirectNextTimeDamageSource::Target(spec) => Some(spec),
-            _ => None,
-        })
+        self.destination_target
+            .as_ref()
+            .or(self.target.as_ref())
+            .or_else(|| match &self.source {
+                RedirectNextTimeDamageSource::Target(spec) => Some(spec),
+                _ => None,
+            })
     }
 
     fn target_description(&self) -> &'static str {
         "damage source or protected target for redirection"
     }
+}
+
+fn resolve_damage_target_for_effect(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    spec: &ChooseSpec,
+) -> Result<DamageTarget, ExecutionError> {
+    if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
+        && let Some(object) = objects.into_iter().next()
+    {
+        return Ok(DamageTarget::Object(object));
+    }
+
+    resolve_player_from_spec(game, spec, ctx).map(DamageTarget::Player)
 }
 
 #[cfg(test)]
@@ -681,6 +718,191 @@ mod tests {
 
         assert_eq!(protected_damage, 4);
         assert_eq!(controller_damage, 0);
+        assert!(!processed.replacement_prevented);
+    }
+
+    #[test]
+    fn generals_regalia_redirects_chosen_source_damage_from_you_to_target_creature_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_050);
+        let regalia_card = CardBuilder::new(CardId::from_raw(80_051), "General's Regalia")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let regalia = game.create_object_from_card(&regalia_card, alice, Zone::Battlefield);
+        let recipient = create_creature(&mut game, "Shielded Ally", alice, 80_052);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(regalia, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(recipient)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::you(),
+        )
+        .to_target(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().you_control(),
+        )))
+        .execute(&mut game, &mut ctx)
+        .expect("General's Regalia replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Player(alice),
+            5,
+            false,
+            EventCause::effect(),
+        );
+        let alice_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let recipient_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(recipient))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(alice_damage, 0);
+        assert_eq!(recipient_damage, 5);
+        assert!(!processed.replacement_prevented);
+
+        let second = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Player(alice),
+            2,
+            false,
+            EventCause::effect(),
+        );
+        let second_alice_damage: u32 = second
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let second_recipient_damage: u32 = second
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(recipient))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(second_alice_damage, 2);
+        assert_eq!(second_recipient_damage, 0);
+    }
+
+    #[test]
+    fn generals_regalia_does_not_redirect_nonchosen_source_damage_to_you() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let _chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_060);
+        let other_source = create_creature(&mut game, "Other Source", alice, 80_061);
+        let regalia_card = CardBuilder::new(CardId::from_raw(80_062), "General's Regalia")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let regalia = game.create_object_from_card(&regalia_card, alice, Zone::Battlefield);
+        let recipient = create_creature(&mut game, "Shielded Ally", alice, 80_063);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(regalia, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(recipient)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::you(),
+        )
+        .to_target(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().you_control(),
+        )))
+        .execute(&mut game, &mut ctx)
+        .expect("General's Regalia replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            other_source,
+            DamageTarget::Player(alice),
+            4,
+            false,
+            EventCause::effect(),
+        );
+        let alice_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(alice))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let recipient_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(recipient))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(alice_damage, 4);
+        assert_eq!(recipient_damage, 0);
+        assert!(!processed.replacement_prevented);
+    }
+
+    #[test]
+    fn generals_regalia_only_redirects_damage_that_would_be_dealt_to_you() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let chosen_source = create_creature(&mut game, "Chosen Source", alice, 80_070);
+        let regalia_card = CardBuilder::new(CardId::from_raw(80_071), "General's Regalia")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let regalia = game.create_object_from_card(&regalia_card, alice, Zone::Battlefield);
+        let recipient = create_creature(&mut game, "Shielded Ally", alice, 80_072);
+
+        let mut decision_maker = ChooseNamedSourceDecisionMaker {
+            source_name: "Chosen Source",
+        };
+        let mut ctx = ExecutionContext::new(regalia, alice, &mut decision_maker)
+            .with_targets(vec![ResolvedTarget::Object(recipient)]);
+        RedirectNextTimeDamageToSourceEffect::new(
+            RedirectNextTimeDamageSource::Choice,
+            ChooseSpec::you(),
+        )
+        .to_target(ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::creature().you_control(),
+        )))
+        .execute(&mut game, &mut ctx)
+        .expect("General's Regalia replacement should register");
+
+        let processed = crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Player(bob),
+            3,
+            false,
+            EventCause::effect(),
+        );
+        let bob_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Player(bob))
+            .map(|assignment| assignment.amount)
+            .sum();
+        let recipient_damage: u32 = processed
+            .assignments
+            .iter()
+            .filter(|assignment| assignment.target == DamageTarget::Object(recipient))
+            .map(|assignment| assignment.amount)
+            .sum();
+
+        assert_eq!(bob_damage, 3);
+        assert_eq!(recipient_damage, 0);
         assert!(!processed.replacement_prevented);
     }
 

@@ -1038,6 +1038,7 @@ where
                 source,
                 target: None,
                 destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
+                destination_target: None,
                 all_this_turn: false,
             }
         };
@@ -1046,6 +1047,14 @@ where
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
                 effect.to_source_controller()
+            }
+            ironsmith_core::RedirectNextTimeDamageDestination::TargetObject => {
+                let Some(target) = payload.destination_target.clone() else {
+                    return Err(hooks.unsupported_effect(
+                        "redirect next time damage to target object without a target".to_string(),
+                    ));
+                };
+                effect.to_target(target)
             }
         };
         let effect = if payload.all_this_turn {
