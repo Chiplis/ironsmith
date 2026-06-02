@@ -45152,6 +45152,247 @@ fn departed_deckhand_strict_parser_text_and_structure_regression() {
 }
 
 #[test]
+fn sengir_the_dark_baron_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "Whenever another player loses the game, you gain life equal to that player's life total as the turn began"
+        ),
+        "expected player-loses-game life-total trigger text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever another creature dies, put two +1/+1 counters on Sengir"),
+        "expected another-creature-dies counter trigger text, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("PlayerLosesGameTrigger")
+            && ability_debug.contains("LifeTotalAsTurnBegan"),
+        "expected player-loses-game trigger to lower to life-total-as-turn-began gain life, got {ability_debug}"
+    );
+}
+
+#[test]
+fn sengir_the_dark_baron_another_creature_dies_adds_two_counters_only_for_other_creatures() {
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_creature = CardDefinitionBuilder::new(CardId::new(), "Other Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let other_id = game.create_object_from_definition(&other_creature, alice, Zone::Battlefield);
+
+    let other_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(other_id).expect("other creature exists"),
+        &game,
+    );
+    let other_dies = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            other_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_sba(),
+            Some(other_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let triggered = crate::triggers::check_triggers(&game, &other_dies);
+    let entry = triggered
+        .iter()
+        .find(|entry| entry.source == sengir_id)
+        .expect("Sengir should trigger when another creature dies");
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sengir's counter trigger should resolve");
+    }
+    assert_eq!(
+        game.counter_count(sengir_id, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "Sengir should get two +1/+1 counters when another creature dies"
+    );
+
+    let sengir_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(sengir_id).expect("Sengir exists"),
+        &game,
+    );
+    let self_dies = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            sengir_id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::from_sba(),
+            Some(sengir_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &self_dies)
+            .into_iter()
+            .all(|entry| entry.source != sengir_id),
+        "Sengir should not trigger from its own death because the text says another creature"
+    );
+}
+
+#[test]
+fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_turn_start_total() {
+    fn stage_life_loss(game: &mut crate::game_state::GameState, player: PlayerId, amount: u32) {
+        game.lose_life(player, amount);
+        let event = crate::events::Event::life_loss(player, amount, false).into_raw();
+        game.stage_turn_history_event(&event);
+    }
+
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    stage_life_loss(&mut game, bob, 5);
+    assert_eq!(game.player(bob).expect("bob exists").life, 15);
+    stage_life_loss(&mut game, bob, 16);
+    assert_eq!(game.player(bob).expect("bob exists").life, -1);
+    game.add_player_counters_with_source(
+        bob,
+        crate::object::CounterType::Poison,
+        10,
+        None,
+        None,
+    );
+
+    assert!(
+        crate::rules::state_based::apply_state_based_actions(&mut game),
+        "Bob at negative life and ten poison counters should lose the game as a state-based action"
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let sengir_entries = trigger_queue
+        .entries
+        .iter()
+        .filter(|entry| entry.source == sengir_id)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        sengir_entries.len(),
+        1,
+        "Sengir should trigger once when a player loses the game, even with multiple simultaneous loss reasons"
+    );
+    let entry = sengir_entries[0];
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sengir's life-gain trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        40,
+        "Sengir should gain life equal to Bob's life total as the turn began, not Bob's current life total"
+    );
+}
+
+#[test]
+fn sengir_the_dark_baron_explicit_lose_game_effect_triggers_life_gain() {
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let lose_effect = crate::effect::Effect::lose_the_game_player(PlayerFilter::Opponent);
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice);
+    crate::effects::execute_effect(&mut game, &lose_effect, &mut ctx)
+        .expect("explicit lose-the-game effect should resolve");
+    assert!(game.player(bob).expect("bob exists").has_lost);
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let entry = trigger_queue
+        .entries
+        .iter()
+        .find(|entry| entry.source == sengir_id)
+        .expect("Sengir should trigger from explicit lose-the-game effects");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sengir's explicit-loss life-gain trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        40,
+        "Sengir should gain life equal to the losing player's turn-start life total for explicit loss effects"
+    );
+}
+
+#[test]
+fn sengir_the_dark_baron_win_game_effect_triggers_for_other_players_losing() {
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let win_effect = crate::effect::Effect::win_the_game();
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice);
+    crate::effects::execute_effect(&mut game, &win_effect, &mut ctx)
+        .expect("explicit win-the-game effect should resolve");
+    assert!(game.player(bob).expect("bob exists").has_lost);
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let entry = trigger_queue
+        .entries
+        .iter()
+        .find(|entry| entry.source == sengir_id)
+        .expect("Sengir should trigger when another player loses because its controller wins");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(sengir_id, alice)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sengir's win-effect life-gain trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        40,
+        "Sengir should gain life equal to the losing player's turn-start life total when another player loses from a win effect"
+    );
+}
+
+#[test]
+fn sengir_the_dark_baron_does_not_trigger_when_its_controller_loses_game() {
+    let def = parse_oracle_card_definition("Sengir, the Dark Baron");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.lose_life(alice, 21);
+
+    assert!(
+        crate::rules::state_based::apply_state_based_actions(&mut game),
+        "Alice at negative life should lose the game as a state-based action"
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue
+            .entries
+            .iter()
+            .all(|entry| entry.source != sengir_id),
+        "Sengir should not trigger when its controller loses the game because the text says another player"
+    );
+}
+
+#[test]
 fn departed_deckhand_runtime_targets_another_creature_and_allows_only_spirit_blockers() {
     fn creature_def(name: &str, subtype: Subtype) -> CardDefinition {
         CardDefinitionBuilder::new(CardId::new(), name)

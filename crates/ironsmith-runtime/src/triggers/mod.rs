@@ -690,6 +690,11 @@ impl Trigger {
         Self::new(PlayerLosesLifeTrigger::new(player))
     }
 
+    /// Create a "whenever [player] loses the game" trigger.
+    pub fn player_loses_game(player: PlayerFilter) -> Self {
+        Self::new(PlayerLosesGameTrigger::new(player))
+    }
+
     /// Create a "whenever [player] loses life during [turn-filter]'s turn" trigger.
     pub fn player_loses_life_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
         Self::new(PlayerLosesLifeTrigger::during_turn(player, during_turn))

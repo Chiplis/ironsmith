@@ -150,6 +150,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::you_gain_life_during_turn(during_turn)
         }
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
+        TriggerSpec::PlayerLosesGame(player) => Trigger::player_loses_game(player),
         TriggerSpec::PlayerLosesLifeDuringTurn {
             player,
             during_turn,
@@ -482,6 +483,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::PlayerLosesGame(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCard(_)
         | TriggerSpec::PlayerDrawsCardNotDuringTurn { .. }
@@ -555,6 +557,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
             }
         }
         TriggerSpec::PlayerLosesLife(_) => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerLosesGame(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerLosesLifeDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCard(_) => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerDrawsCardNotDuringTurn { .. } => Some(PlayerFilter::IteratedPlayer),

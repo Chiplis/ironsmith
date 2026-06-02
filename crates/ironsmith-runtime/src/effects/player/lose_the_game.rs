@@ -37,9 +37,7 @@ impl EffectExecutor for LoseTheGameEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        if let Some(player) = game.player_mut(player_id) {
-            player.has_lost = true;
-        }
+        game.mark_player_lost(player_id);
         Ok(EffectOutcome::resolved())
     }
 }

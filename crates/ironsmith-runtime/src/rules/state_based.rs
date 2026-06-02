@@ -885,9 +885,7 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::PlayerLoses { player, reason: _ } => {
-            if let Some(p) = game.player_mut(player) {
-                p.has_lost = true;
-            }
+            game.mark_player_lost(player);
         }
 
         StateBasedAction::StartEngines { player } => {

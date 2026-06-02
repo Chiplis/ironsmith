@@ -39,10 +39,14 @@ impl EffectExecutor for WinTheGameEffect {
         }
 
         // Player wins - mark all other players as lost
-        for other_player in &mut game.players {
-            if other_player.id != player_id && other_player.is_in_game() {
-                other_player.has_lost = true;
-            }
+        let losing_players: Vec<_> = game
+            .players
+            .iter()
+            .filter(|other_player| other_player.id != player_id && other_player.is_in_game())
+            .map(|other_player| other_player.id)
+            .collect();
+        for losing_player in losing_players {
+            game.mark_player_lost(losing_player);
         }
         Ok(EffectOutcome::resolved())
     }

@@ -27,6 +27,8 @@ pub enum EventKind {
     LifeGain,
     /// Player losing life
     LifeLoss,
+    /// Player losing the game
+    PlayerLosesGame,
     /// Counters being placed on a permanent
     PutCounters,
     /// Counters being removed from a permanent

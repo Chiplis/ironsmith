@@ -109,7 +109,7 @@ pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
-    MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerVote,
+    MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerLosesGameEvent, PlayerVote,
     PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent,
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
@@ -258,6 +258,14 @@ impl Event {
                 amount,
                 from_damage,
             },
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a player-loses-game event.
+    pub fn player_loses_game(player: PlayerId) -> Self {
+        Self::new_with_provenance(
+            PlayerLosesGameEvent::new(player),
             ProvNodeId::default(),
         )
     }

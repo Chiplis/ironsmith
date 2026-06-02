@@ -186,6 +186,9 @@ pub enum TriggerKind {
     PlayerLosesLife {
         player: PlayerFilter,
     },
+    PlayerLosesGame {
+        player: PlayerFilter,
+    },
     PlayerLosesLifeDuringTurn {
         player: PlayerFilter,
         during_turn: PlayerFilter,
@@ -754,6 +757,9 @@ impl Trigger {
     }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::typed("player_loses_life", TriggerKind::PlayerLosesLife { player })
+    }
+    pub fn player_loses_game(player: PlayerFilter) -> Self {
+        Self::typed("player_loses_game", TriggerKind::PlayerLosesGame { player })
     }
     pub fn player_loses_life_during_turn(player: PlayerFilter, during_turn: PlayerFilter) -> Self {
         Self::typed(
