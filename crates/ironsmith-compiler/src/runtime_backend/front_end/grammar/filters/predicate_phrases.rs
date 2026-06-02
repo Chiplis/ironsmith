@@ -2393,6 +2393,43 @@ fn parse_mana_symbol_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<Pre
     }))
 }
 
+fn parse_attached_tagged_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_this_permanent_attached_to_shape(&tokens)
+}
+
+fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["attached", "to"], &["is", "attached", "to"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("attached_to", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(
+            subject_clause.word_refs().as_slice(),
+            ["this", "permanent"] | ["that", "permanent"]
+        ) {
+            continue;
+        }
+        let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let mut filter = parse_object_filter(object_clause.tokens(), false).ok()?;
+        if filter.card_types.is_empty() {
+            filter.card_types.push(CardType::Creature);
+        }
+        return Some(PredicateAst::TaggedMatches(
+            TagKey::from("enchanted"),
+            filter,
+        ));
+    }
+    None
+}
+
 fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
@@ -3940,6 +3977,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_attached_tagged_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if filtered.len() >= 5
         && matches!(
             filtered.as_slice(),
@@ -5168,6 +5209,25 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_attached_tagged_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        for text in [
+            "If this permanent is attached to a creature",
+            "If that permanent attached to an artifact creature",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+            match parsed {
+                PredicateAst::TaggedMatches(tag, filter) => {
+                    assert_eq!(tag, TagKey::from("enchanted"), "{text}");
+                    assert!(!filter.card_types.is_empty(), "{text}: {filter:?}");
+                }
+                other => panic!("expected attached tagged predicate for {text}, got {other:?}"),
+            }
         }
         Ok(())
     }
