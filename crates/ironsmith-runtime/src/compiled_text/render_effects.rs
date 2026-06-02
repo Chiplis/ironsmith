@@ -36161,7 +36161,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
 
-        let mut spell_text = if let Some(kind) = may_cast_matching.filter.alternative_cast {
+        let mut spell_text = if may_cast_matching.filter
+            == crate::target::ObjectFilter::default()
+                .commander()
+                .owned_by(crate::target::PlayerFilter::You)
+        {
+            "your commander".to_string()
+        } else if let Some(kind) = may_cast_matching.filter.alternative_cast {
             format!("a spell with {}", alternative_cast_kind_text(kind))
         } else if !may_cast_matching.filter.card_types.is_empty() {
             let card_type_words: Vec<String> = may_cast_matching
@@ -36190,6 +36196,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else if !spell_text.starts_with("a ")
             && !spell_text.starts_with("an ")
             && !spell_text.starts_with("the ")
+            && !spell_text.starts_with("your ")
         {
             spell_text = format!("a {spell_text}");
         }

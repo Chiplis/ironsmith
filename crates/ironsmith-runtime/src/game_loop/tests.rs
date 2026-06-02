@@ -26586,6 +26586,187 @@ fn mindleech_mass_casts_spell_from_damaged_players_hand_without_paying() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn geode_golem_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(627_850), "Geode Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .parse_text(
+            "Trample\nWhenever this creature deals combat damage to a player, you may cast your commander from the command zone without paying its mana cost.",
+        )
+        .expect("Geode Golem should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_geode_golem_damage_trigger(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    source_id: ObjectId,
+    damaged_player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+) {
+    let controller = game
+        .controller_of_id(source_id)
+        .expect("Geode Golem should have a controller");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Geode Golem should have a combat damage trigger");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source_id,
+            crate::events::DamageTarget::Player(damaged_player),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(source_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new_default(source_id, controller)
+        .with_decision_maker(dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(game, effect, &mut ctx).expect("Geode Golem trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_casts_your_commander_from_command_zone_without_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let opponents_commander =
+        CardBuilder::new(CardId::from_raw(627_849), "Bob's Geode Commander")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .build();
+    let opponents_commander_id =
+        game.create_object_from_card(&opponents_commander, bob, Zone::Command);
+    game.set_as_commander(opponents_commander_id, bob);
+
+    let noncommander = CardBuilder::new(
+        CardId::from_raw(627_848),
+        "Geode Command-Zone Noncommander",
+    )
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let noncommander_id =
+        game.create_object_from_card(&noncommander, alice, Zone::Command);
+
+    let commander = CardBuilder::new(CardId::from_raw(627_851), "Geode Test Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Command);
+    game.set_as_commander(commander_id, alice);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(&mut game, &definition, geode_id, bob, &mut dm);
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("accepting Geode Golem should cast the commander onto the stack");
+    let stack_object = game
+        .object(stack_entry.object_id)
+        .expect("cast commander should exist on the stack");
+    assert_eq!(stack_object.name, "Geode Test Commander");
+    assert_eq!(stack_entry.controller, alice);
+    assert_eq!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            source: geode_id,
+            zone: Zone::Command,
+            use_alternative: None,
+        }
+    );
+    assert_eq!(
+        game.commander_cast_count(commander_id),
+        1,
+        "effect-driven command-zone casts should update commander cast count"
+    );
+    assert_eq!(
+        game.object(opponents_commander_id)
+            .expect("opponent commander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer an opponent's commander"
+    );
+    assert_eq!(
+        game.object(noncommander_id)
+            .expect("noncommander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer noncommander command-zone objects"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_does_not_cast_when_declined_or_no_commander_exists() {
+    let mut declined_game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id =
+        declined_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let commander = CardBuilder::new(CardId::from_raw(627_852), "Declined Geode Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = declined_game.create_object_from_card(&commander, alice, Zone::Command);
+    declined_game.set_as_commander(commander_id, alice);
+
+    let mut decline_dm = AutoPassDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut declined_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut decline_dm,
+    );
+    assert!(declined_game.stack.is_empty());
+    assert_eq!(
+        declined_game
+            .object(commander_id)
+            .expect("declined commander should remain in command zone")
+            .zone,
+        Zone::Command
+    );
+
+    let mut no_commander_game = setup_game();
+    let geode_id =
+        no_commander_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let mut accept_dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut no_commander_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut accept_dm,
+    );
+    assert!(
+        no_commander_game.stack.is_empty(),
+        "Geode Golem should not cast anything when you have no commander in the command zone"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn mindleech_mass_declining_look_prevents_free_cast_branch() {
     let mut game = setup_game();

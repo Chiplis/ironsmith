@@ -4692,6 +4692,47 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
 }
 
 #[test]
+fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
+    let tokens = lex_line(
+        "You may cast your commander from the command zone without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify commander command-zone free-cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("commander command-zone free-cast clause should parse");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+            ..
+        }] => (player, filter, zone),
+        [crate::cards::builders::EffectAst::MayByPlayer {
+            player: crate::cards::builders::PlayerAst::You,
+            effects,
+        }] => match effects.as_slice() {
+            [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+                ..
+            }] => (player, filter, zone),
+            _ => panic!("expected nested commander command-zone free-cast effect, got {effects:#?}"),
+        },
+        _ => panic!("expected commander command-zone free-cast effect, got {effects:#?}"),
+    };
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Command);
+    assert!(filter.is_commander, "expected commander filter, got {filter:#?}");
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
+}
+
+#[test]
 fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost() {
     let tokens = lex_line(
         "Cast target instant, sorcery, or artifact card from your graveyard without paying its mana cost",
