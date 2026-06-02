@@ -117,13 +117,6 @@ const IN_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
             &["in", "the", "graveyard"],
         ]
 );
-const IT_EXPLOITED_TRIGGERING_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "exploited", "that", "creature"],
-            &["it", "exploited", "that", "object"],
-        ]
-);
 const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
@@ -2450,6 +2443,42 @@ fn parse_opponent_controls_referenced_object_predicate(filtered: &[&str]) -> Opt
     Some(PredicateAst::ItMatches(filter))
 }
 
+fn parse_source_exploited_triggering_object_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["exploited"])),
+        LexPattern::action("exploit", LexCaptureKind::WordCount(1)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(source.word_refs().as_slice(), ["it"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["exploited"]) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        object.word_refs().as_slice(),
+        ["that", "creature"] | ["that", "object"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::And(
+        Box::new(PredicateAst::TaggedMatches(
+            TagKey::from(crate::tag::EXPLOITED_TAG),
+            ObjectFilter::tagged("triggering"),
+        )),
+        Box::new(PredicateAst::TaggedMatches(
+            TagKey::from(crate::tag::EXPLOITER_TAG),
+            ObjectFilter::source(),
+        )),
+    ))
+}
+
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["was"], &["wasnt"], &["was", "not"]];
@@ -3015,17 +3044,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if IT_EXPLOITED_TRIGGERING_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::And(
-            Box::new(PredicateAst::TaggedMatches(
-                TagKey::from(crate::tag::EXPLOITED_TAG),
-                ObjectFilter::tagged("triggering"),
-            )),
-            Box::new(PredicateAst::TaggedMatches(
-                TagKey::from(crate::tag::EXPLOITER_TAG),
-                ObjectFilter::source(),
-            )),
-        ));
+    if let Some(predicate) = parse_source_exploited_triggering_object_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(zone) = source_zone_from_words(&filtered) {
@@ -5021,6 +5041,33 @@ mod tests {
                 }),
                 "{text}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_exploited_triggering_object_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        let expected = PredicateAst::And(
+            Box::new(PredicateAst::TaggedMatches(
+                TagKey::from(crate::tag::EXPLOITED_TAG),
+                ObjectFilter::tagged("triggering"),
+            )),
+            Box::new(PredicateAst::TaggedMatches(
+                TagKey::from(crate::tag::EXPLOITER_TAG),
+                ObjectFilter::source(),
+            )),
+        );
+        for text in [
+            "if it exploited that creature",
+            "if it exploited that object",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
         }
         Ok(())
     }
