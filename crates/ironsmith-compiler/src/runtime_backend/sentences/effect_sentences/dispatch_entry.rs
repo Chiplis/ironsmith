@@ -2091,7 +2091,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }

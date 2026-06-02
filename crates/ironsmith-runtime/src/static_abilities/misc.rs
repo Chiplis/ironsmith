@@ -3529,6 +3529,7 @@ pub struct DoubleDamageAmountReplacement {
     pub source_filter: ObjectFilter,
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
+    pub factor: u32,
     pub display: String,
 }
 
@@ -3537,12 +3538,14 @@ impl DoubleDamageAmountReplacement {
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
+        factor: u32,
         display: impl Into<String>,
     ) -> Self {
         Self {
             source_filter,
             target_player_filter,
             target_object_filter,
+            factor,
             display: display.into(),
         }
     }
@@ -3573,7 +3576,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 noncombat_only: false,
                 amount_less_than: None,
             },
-            ReplacementAction::Double,
+            ReplacementAction::Modify(EventModification::Multiply(self.factor)),
         ))
     }
 }

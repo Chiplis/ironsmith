@@ -2911,10 +2911,27 @@ impl StaticAbility {
         target_object_filter: Option<crate::target::ObjectFilter>,
         display: String,
     ) -> Self {
+        Self::multiply_damage_amount_replacement(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            2,
+            display,
+        )
+    }
+
+    pub fn multiply_damage_amount_replacement(
+        source_filter: crate::target::ObjectFilter,
+        target_player_filter: Option<crate::target::PlayerFilter>,
+        target_object_filter: Option<crate::target::ObjectFilter>,
+        factor: u32,
+        display: String,
+    ) -> Self {
         Self::new(DoubleDamageAmountReplacement::new(
             source_filter,
             target_player_filter,
             target_object_filter,
+            factor,
             display,
         ))
     }
