@@ -681,6 +681,9 @@ fn parse_dynamic_payment_clause_as_total_cost(
     if tokens.is_empty() {
         return Ok(None);
     }
+    if let Some(energy_cost) = parse_dynamic_energy_payment_clause_as_total_cost(&tokens)? {
+        return Ok(Some(energy_cost));
+    }
     let token_words = words(&tokens);
     if MANA_PREFIX_PATTERN.matches_words(&token_words)
         && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
@@ -787,6 +790,64 @@ fn parse_dynamic_payment_clause_as_total_cost(
             ironsmith_core::DynamicManaDisplayHint::Default,
         )),
     )))
+}
+
+fn parse_dynamic_energy_payment_clause_as_total_cost(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TotalCost>, CardTextError> {
+    let mut idx = 0usize;
+    if tokens
+        .get(idx)
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(is_article)
+    {
+        idx += 1;
+    }
+    if !tokens
+        .get(idx)
+        .is_some_and(|token| token.as_word() == Some("amount"))
+    {
+        return Ok(None);
+    }
+    idx += 1;
+    if !tokens
+        .get(idx)
+        .is_some_and(|token| token.as_word() == Some("of"))
+    {
+        return Ok(None);
+    }
+    idx += 1;
+    if !tokens
+        .get(idx)
+        .is_some_and(|token| token.slice.as_str().eq_ignore_ascii_case("{E}"))
+    {
+        return Ok(None);
+    }
+    idx += 1;
+
+    let trailing = trim_edge_punctuation(&trim_commas(&tokens[idx..]));
+    if trailing.len() < 3
+        || trailing[0].as_word() != Some("equal")
+        || trailing[1].as_word() != Some("to")
+    {
+        return Ok(None);
+    }
+    let value_tokens = trim_edge_punctuation(&trim_commas(&trailing[2..]));
+    let Some((value, used)) = parse_value(&value_tokens) else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported dynamic energy payment amount (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    };
+    if !trim_edge_punctuation(&trim_commas(&value_tokens[used..])).is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing dynamic energy payment text (clause: '{}')",
+            words(tokens).join(" ")
+        )));
+    }
+
+    let cost = crate::costs::Cost::energy(value);
+    Ok(Some(TotalCost::from_cost(cost)))
 }
 
 pub(crate) fn marker_keyword_id(keyword: &str) -> Option<&'static str> {

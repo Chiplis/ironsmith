@@ -281,6 +281,11 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
 pub(super) fn run_triggered_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if line_starts_with_words(ctx.line, &["at", "the", "beginning", "of"])
+        && contains_token_word_sequence(&ctx.line.tokens, &["next", "end", "step"])
+    {
+        return Ok(None);
+    }
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
 }
 

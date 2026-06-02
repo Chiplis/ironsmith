@@ -1244,6 +1244,195 @@ fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn satya_aetherflux_genius_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_210), "Satya, Aetherflux Genius")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Artificer])
+        .power_toughness(PowerToughness::fixed(3, 5))
+        .parse_text(
+            "Menace, haste\n\
+             Whenever this creature attacks, create a tapped and attacking token that's a copy of up to one other target nontoken creature you control. You get {E}{E} (two energy counters). At the beginning of the next end step, sacrifice that token unless you pay an amount of {E} equal to its mana value.",
+        )
+        .expect("Satya should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn satya_copy_target_definition(mana_value: u8) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Satya Copy Target")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_satya_attack_trigger(
+    game: &mut GameState,
+    satya_id: ObjectId,
+    controller: PlayerId,
+    defender: PlayerId,
+    copy_target: ObjectId,
+) -> ObjectId {
+    let satya = satya_aetherflux_genius_definition();
+    let effects = satya
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:?}", triggered.effects).contains("CreateTokenCopyEffect") =>
+            {
+                Some(triggered.effects.clone())
+            }
+            _ => None,
+        })
+        .expect("Satya should have an attack trigger with a copy-token effect");
+
+    game.combat = Some(CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: satya_id,
+            target: AttackTarget::Player(defender),
+        }],
+        ..CombatState::default()
+    });
+
+    let attack_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            satya_id,
+            crate::triggers::AttackEventTarget::Player(defender),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(satya_id, controller)
+        .with_triggering_event(attack_event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(copy_target)]);
+    for effect in &effects {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Satya attack trigger effect should resolve");
+    }
+
+    let token_id = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == ObjectKind::Token && object.name == "Satya Copy Target"
+            })
+        })
+        .expect("Satya should create a copy token");
+    assert!(
+        game.is_tapped(token_id),
+        "Satya's copy token should enter tapped"
+    );
+    assert!(
+        game.combat.as_ref().is_some_and(|combat| combat
+            .attackers
+            .iter()
+            .any(|attacker| attacker.creature == token_id
+                && attacker.target == AttackTarget::Player(defender))),
+        "Satya's copy token should enter attacking the same defending player"
+    );
+    assert_eq!(
+        game.player(controller)
+            .expect("controller should exist")
+            .energy_counters,
+        2,
+        "Satya's attack trigger should grant two energy before the delayed payment"
+    );
+    assert_eq!(
+        game.effect_store.delayed_triggers.len(),
+        1,
+        "Satya should schedule exactly one delayed end-step sacrifice trigger"
+    );
+    token_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_satya_delayed_trigger(game: &mut GameState, dm: &mut impl DecisionMaker) {
+    let mut trigger_queue = TriggerQueue::new();
+    let end_step_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(game, &end_step_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Satya should have one delayed trigger to put on the stack"
+    );
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Satya delayed trigger should go on the stack");
+    resolve_stack_entry_with(game, dm).expect("Satya delayed trigger should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn satya_delayed_sacrifice_pays_energy_and_keeps_token() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    let satya = satya_aetherflux_genius_definition();
+    let satya_id = game.create_object_from_definition(&satya, alice, Zone::Battlefield);
+    let target = satya_copy_target_definition(2);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+
+    let token_id = execute_satya_attack_trigger(&mut game, satya_id, alice, bob, target_id);
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_satya_delayed_trigger(&mut game, &mut dm);
+
+    assert!(
+        game.battlefield.contains(&token_id),
+        "paying energy equal to the token's mana value should keep the token"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        0,
+        "paying the delayed cost should spend Satya's two energy"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn satya_delayed_sacrifice_without_enough_energy_sacrifices_token() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    let satya = satya_aetherflux_genius_definition();
+    let satya_id = game.create_object_from_definition(&satya, alice, Zone::Battlefield);
+    let target = satya_copy_target_definition(3);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+
+    let token_id = execute_satya_attack_trigger(&mut game, satya_id, alice, bob, target_id);
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_satya_delayed_trigger(&mut game, &mut dm);
+
+    assert!(
+        !game.battlefield.contains(&token_id),
+        "without enough energy to pay the token's mana value, Satya should sacrifice it"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        2,
+        "failing to pay the delayed cost should leave Satya's two energy unspent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn assaultron_dominator_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_260), "Assaultron Dominator")
         .mana_cost(ManaCost::from_pips(vec![

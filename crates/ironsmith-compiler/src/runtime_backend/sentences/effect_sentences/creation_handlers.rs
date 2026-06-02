@@ -1034,8 +1034,22 @@ pub(crate) fn parse_create(
                 || grammar::words_find_phrase(&tail_tokens, &["gain", "haste"]).is_some()
                 || grammar::words_find_phrase(&tail_tokens, &["gains", "haste"]).is_some()
                 || grammar::contains_word(&tail_tokens, "haste");
-            let mut enters_tapped = false;
-            let mut enters_attacking = false;
+            let token_modifier_words = tail_words
+                .iter()
+                .position(|word| *word == "token" || *word == "tokens")
+                .map(|idx| &tail_words[..idx])
+                .unwrap_or(&[]);
+            let copy_modifier_words = tail_words
+                .iter()
+                .position(|word| CREATE_COPY_OR_COPIES_WORD_PATTERN.matches_word(word))
+                .map(|idx| &tail_words[..idx])
+                .unwrap_or(&[]);
+            let mut enters_tapped = tapped
+                || CREATE_TAPPED_MARKER_PATTERN.matches_words(token_modifier_words)
+                || CREATE_TAPPED_MARKER_PATTERN.matches_words(copy_modifier_words);
+            let mut enters_attacking = attacking
+                || CREATE_ATTACKING_MARKER_PATTERN.matches_words(token_modifier_words)
+                || CREATE_ATTACKING_MARKER_PATTERN.matches_words(copy_modifier_words);
             let mut attack_target_player_or_planeswalker_controlled_by = None;
             if player == PlayerAst::Implicit {
                 player = PlayerAst::You;
@@ -1069,6 +1083,15 @@ pub(crate) fn parse_create(
                 enters_attacking = tail_attacking || inline_attacking;
                 attack_target_player_or_planeswalker_controlled_by = inline_attack_target_player;
                 if !source_tokens.is_empty() {
+                    if let Some(token_word_idx) = clause_words
+                        .iter()
+                        .position(|word| *word == "token" || *word == "tokens")
+                    {
+                        let token_prefix = &clause_words[..token_word_idx];
+                        enters_tapped |= CREATE_TAPPED_MARKER_PATTERN.matches_words(token_prefix);
+                        enters_attacking |=
+                            CREATE_ATTACKING_MARKER_PATTERN.matches_words(token_prefix);
+                    }
                     let source = parse_target_phrase(&source_tokens)?;
                     let references_iterated_object = target_references_it(&source);
                     let create = EffectAst::subject_verb(

@@ -3273,7 +3273,7 @@ impl ObjectFilterExt for ObjectFilter {
         for constraint in &self.tagged_constraints {
             match constraint.relation {
                 TaggedOpbjectRelation::IsTaggedObject => match constraint.tag.as_str() {
-                    "it" => parts.push("that".to_string()),
+                    "it" | "__it__" => parts.push("that".to_string()),
                     "enchanted" => parts.push("enchanted".to_string()),
                     "equipped" => parts.push("equipped".to_string()),
                     "convoked_this_spell" => {

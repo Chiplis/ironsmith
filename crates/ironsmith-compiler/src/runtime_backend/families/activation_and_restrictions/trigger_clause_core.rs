@@ -181,6 +181,8 @@ const YOU_GAIN_LIFE_TRIGGER_PATTERN: ClauseShape<'static> =
 const YOU_DRAW_CARD_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const BEGINNING_END_STEP_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "end", "step"]);
+const NEXT_END_STEP_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["next", "end", "step"]);
 const BEGINNING_UPKEEP_TRIGGER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["beginning", "upkeep"]);
 const BEGINNING_DRAW_STEP_TRIGGER_PATTERN: ClauseShape<'static> =
@@ -4064,7 +4066,8 @@ pub(crate) fn parse_trigger_clause_lexed(
                 during_turn: PlayerFilter::You,
             })
         }
-        _ if BEGINNING_END_STEP_TRIGGER_PATTERN.matches_words(&words) => Ok(
+        _ if BEGINNING_END_STEP_TRIGGER_PATTERN.matches_words(&words)
+            && !NEXT_END_STEP_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfEndStep(parse_possessive_clause_player_filter(&words)),
         ),
         _ if BEGINNING_UPKEEP_TRIGGER_PATTERN.matches_words(&words) => Ok(

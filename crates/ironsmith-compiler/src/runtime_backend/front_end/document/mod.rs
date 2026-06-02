@@ -289,6 +289,14 @@ fn line_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     if super::parser_support::looks_like_reflexive_followup_intro_lexed(tokens) {
         return false;
     }
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.starts_with(&["at", "the", "beginning", "of"])
+        && words
+            .windows(3)
+            .any(|window| window == ["next", "end", "step"])
+    {
+        return false;
+    }
     parse_trigger_intro_tokens(tokens).is_some()
 }
 
@@ -3201,6 +3209,15 @@ fn try_parse_triggered_line_dispatch(
     allow_unsupported: bool,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     if !line_starts_with_trigger_intro_tokens(&line.tokens) {
+        return Ok(None);
+    }
+
+    let words = crate::runtime_backend::token_word_refs(&line.tokens);
+    if words.starts_with(&["at", "the", "beginning", "of"])
+        && words
+            .windows(3)
+            .any(|window| window == ["next", "end", "step"])
+    {
         return Ok(None);
     }
 

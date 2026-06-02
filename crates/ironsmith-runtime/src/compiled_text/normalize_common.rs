@@ -415,7 +415,7 @@ pub(super) fn repeated_energy_symbols(count: usize) -> String {
 pub(super) fn describe_energy_payment_amount(value: &Value) -> String {
     match value {
         Value::Fixed(amount) if *amount > 0 => repeated_energy_symbols(*amount as usize),
-        _ => format!("{} energy counter(s)", describe_value(value)),
+        _ => format!("an amount of {{E}} equal to {}", describe_value(value)),
     }
 }
 

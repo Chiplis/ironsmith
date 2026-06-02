@@ -144,6 +144,38 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn satya_aetherflux_genius_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Satya, Aetherflux Genius");
+
+    let def = parse_oracle_card_definition("Satya, Aetherflux Genius");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        ability_debug.contains("CreateTokenCopyEffect")
+            && ability_debug.contains("enters_tapped: true")
+            && ability_debug.contains("enters_attacking: true")
+            && ability_debug.contains("EnergyCountersEffect")
+            && ability_debug.contains("ScheduleDelayedTriggerEffect")
+            && ability_debug.contains("UnlessPaysEffect")
+            && ability_debug.contains("PayEnergyEffect")
+            && ability_debug.contains("ManaValueOf"),
+        "Satya should structurally keep tapped-attacking copy, energy, delayed sacrifice, and dynamic energy payment, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "create a tapped and attacking token that's a copy of up to one other target nontoken creature you control"
+        ),
+        "expected Satya copy token text to keep tapped and attacking, got {rendered}"
+    );
+    assert!(
+        rendered.contains("At the beginning of the next end step, you sacrifice that token")
+            && rendered.contains("unless you pay an amount of {E} equal to its mana value"),
+        "expected Satya delayed sacrifice energy payment text, got {rendered}"
+    );
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 
