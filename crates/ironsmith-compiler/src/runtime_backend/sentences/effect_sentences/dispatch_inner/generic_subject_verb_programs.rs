@@ -304,8 +304,15 @@ const ABILITY_FIRST_STRIKE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["first", "strike"]]);
 const AND_GET_OR_GETS_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["and", "get"], &["and", "gets"]]]);
-const AND_GAIN_OR_GAINS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["and", "gain"], &["and", "gains"]]]);
+const AND_GAIN_OR_GAINS_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["and", "gain"],
+            &["and", "gains"],
+            &["and", "have"],
+            &["and", "has"],
+        ]]
+);
 const AND_GAIN_HAVE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
