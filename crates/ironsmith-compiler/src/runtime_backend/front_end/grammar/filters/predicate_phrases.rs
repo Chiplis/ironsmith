@@ -293,26 +293,6 @@ const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
             &["it", "the", "first", "combat", "phase", "of", "the", "turn"],
         ]
 );
-const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "it", "dealt", "combat", "damage", "to", "player", "this", "turn",
-            ],
-            &[
-                "it", "dealt", "combat", "damage", "to", "a", "player", "this", "turn",
-            ],
-        ]
-);
-const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["a", "player", "was", "dealt", "combat", "damage", "by",],
-            &["player", "was", "dealt", "combat", "damage", "by",],
-            &["an", "opponent", "was", "dealt", "combat", "damage", "by",],
-            &["opponent", "was", "dealt", "combat", "damage", "by",],
-        ]
-);
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -612,7 +592,6 @@ const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["
 const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
 const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
-const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     if SOURCE_IN_HAND_PATTERN.matches_words(words) {
@@ -2096,6 +2075,75 @@ fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<Predic
             filter,
         } => Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)),
     }
+}
+
+fn parse_combat_damage_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_source_dealt_combat_damage_this_turn_shape(&tokens)
+        .or_else(|| parse_player_dealt_combat_damage_by_subtype_this_turn_shape(&tokens))
+}
+
+fn parse_source_dealt_combat_damage_this_turn_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrase = &["dealt", "combat", "damage", "to"];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(subject_clause.word_refs().as_slice(), ["it"]) {
+        return None;
+    }
+    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        object_clause.word_refs().as_slice(),
+        ["player"] | ["a", "player"]
+    ) {
+        return None;
+    }
+    let window_clause = matched.capture_clause("window", clause)?;
+    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn)
+}
+
+fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrase = &["was", "dealt", "combat", "damage", "by"];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+        LexPattern::object("subtype", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = match subject_clause.word_refs().as_slice() {
+        ["a", "player"] | ["player"] => PlayerAst::Any,
+        ["an", "opponent"] | ["opponent"] => PlayerAst::Opponent,
+        _ => return None,
+    };
+    let subtype_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let subtype_words = subtype_clause.word_refs();
+    let subtype_word = match subtype_words.as_slice() {
+        [word] => *word,
+        ["a" | "an", word] => *word,
+        _ => return None,
+    };
+    let subtype = parse_subtype_word(subtype_word)?;
+    let window_clause = matched.capture_clause("window", clause)?;
+    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype })
 }
 
 fn parse_combat_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -4571,32 +4619,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::FirstCombatPhaseOfTurn);
     }
 
-    if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
-    }
-
-    if THIS_TURN_TAIL_PATTERN.matches_words(
-        filtered
-            .get(filtered.len().saturating_sub(2)..)
-            .unwrap_or_default(),
-    ) && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
-    {
-        let subtype_idx = filtered.len().saturating_sub(3);
-        let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported combat-damage source subtype predicate: {}",
-                filtered.join(" ")
-            ))
-        })?;
-        let player =
-            if filtered.first() == Some(&"opponent") || filtered.get(1) == Some(&"opponent") {
-                PlayerAst::Opponent
-            } else {
-                PlayerAst::Any
-            };
-        return Ok(
-            PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
-        );
+    if let Some(predicate) = parse_combat_damage_this_turn_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
@@ -5013,17 +5037,35 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn()
+    fn parse_predicate_combat_damage_this_turn_uses_shared_capture_parser()
     -> Result<(), CardTextError> {
-        let tokens = lex_line("if it dealt combat damage to a player this turn", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        for (text, expected) in [
+            (
+                "if it dealt combat damage to a player this turn",
+                PredicateAst::SourceDealtCombatDamageToPlayerThisTurn,
+            ),
+            (
+                "if a player was dealt combat damage by a Zombie this turn",
+                PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                    player: PlayerAst::Any,
+                    subtype: parse_subtype_word("zombie").expect("known subtype"),
+                },
+            ),
+            (
+                "if an opponent was dealt combat damage by a Dragon this turn",
+                PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                    player: PlayerAst::Opponent,
+                    subtype: parse_subtype_word("dragon").expect("known subtype"),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::SourceDealtCombatDamageToPlayerThisTurn
-        );
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
