@@ -18610,6 +18610,7 @@ fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
     let bob = PlayerId::from_index(1);
     let bob_attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
     let bob_nonattacker = create_winds_test_creature(&mut game, "Bob Nonattacker", bob, 3, 3);
+    let alice_creature = create_winds_test_creature(&mut game, "Alice Creature", alice, 2, 2);
 
     resolve_heavy_fog(&mut game, alice);
 
@@ -18669,6 +18670,19 @@ fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
     assert_eq!(
         attacking_damage_to_other_player, 3,
         "Heavy Fog should not prevent damage to players other than you"
+    );
+
+    let (attacking_damage_to_permanent, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        bob_attacker,
+        crate::events::DamageTarget::Object(alice_creature),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        attacking_damage_to_permanent, 3,
+        "Heavy Fog should not prevent damage to permanents you control"
     );
 }
 
