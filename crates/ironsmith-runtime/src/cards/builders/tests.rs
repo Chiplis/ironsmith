@@ -43494,6 +43494,57 @@ fn doomskar_warrior_no_matching_looked_card_puts_none_into_hand() {
 }
 
 #[test]
+fn doomskar_warrior_that_many_limits_the_looked_cards() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let triggered = doomskar_warrior_combat_damage_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let lower_land = CardBuilder::new(CardId::from_raw(90_525), "Lower Unlooked Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let top_instant = CardBuilder::new(CardId::from_raw(90_526), "Top Looked Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let lower_land_id = game.create_object_from_card(&lower_land, alice, Zone::Library);
+    let top_instant_id = game.create_object_from_card(&top_instant, alice, Zone::Library);
+    let lower_land_stable = game
+        .object(lower_land_id)
+        .expect("lower library card exists")
+        .stable_id;
+    let top_instant_stable = game
+        .object(top_instant_id)
+        .expect("top library card exists")
+        .stable_id;
+
+    resolve_doomskar_warrior_trigger(
+        &mut game,
+        warrior_id,
+        alice,
+        crate::events::DamageTarget::Player(bob),
+        1,
+        triggered,
+    );
+
+    assert_eq!(
+        stable_zone(&game, lower_land_stable),
+        Some(Zone::Library),
+        "a matching card below the one-card look window should not be chosen or moved"
+    );
+    assert_eq!(
+        stable_zone(&game, top_instant_stable),
+        Some(Zone::Library),
+        "the nonmatching looked card should remain in the library as the bottomed rest"
+    );
+    assert_eq!(
+        game.players[alice.index()].hand.len(),
+        0,
+        "Doomskar Warrior should not put a matching card into hand unless it was among the looked cards"
+    );
+}
+
+#[test]
 fn doomskar_warrior_player_damage_uses_damage_amount_for_look_count() {
     let def = parse_oracle_card_definition("Doomskar Warrior");
     let triggered = doomskar_warrior_combat_damage_trigger(&def);
