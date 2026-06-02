@@ -4586,6 +4586,34 @@ fn rewrite_lexed_permission_helpers_preserve_disjunctive_subject_filters_without
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_preserve_conjunctive_artifact_creature_subject_filters() {
+    let tokens = lex_line("You may cast artifact creature spells from your graveyard", 0)
+        .expect("rewrite lexer should classify artifact creature permission clause");
+
+    let parsed = super::permission_helpers::parse_permission_clause_spec_lexed(&tokens)
+        .expect("permission clause should parse")
+        .expect("permission clause should build a grant spec");
+
+    match parsed {
+        super::PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime,
+        } => {
+            assert_eq!(player, crate::cards::builders::PlayerAst::You);
+            assert_eq!(lifetime, super::PermissionLifetime::Static);
+            assert_eq!(spec.zone, crate::zone::Zone::Graveyard);
+            assert_eq!(spec.filter.card_types, Vec::<CardType>::new());
+            assert_eq!(
+                spec.filter.all_card_types,
+                vec![CardType::Artifact, CardType::Creature]
+            );
+        }
+        other => panic!("expected graveyard artifact creature cast grant, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_route_free_cast_spell_filters_through_grammar_entrypoint() {
     let tokens = lex_line(
         "You may cast creature spells from your hand without paying their mana costs",

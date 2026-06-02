@@ -698,22 +698,56 @@ fn permanent_spell_filter() -> ObjectFilter {
 }
 
 fn parse_simple_spell_type_list_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let words = token_word_refs(tokens);
-    let mut words = strip_leading_article_word_refs(&words).to_vec();
-    if words
-        .last()
-        .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
+    let mut start = 0;
+    if tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "a" | "an" | "the"))
     {
-        words.pop();
+        start = 1;
     }
-    if words.is_empty() {
+    let mut end = tokens.len();
+    if tokens
+        .get(end.saturating_sub(1))
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[word]))
+    {
+        end = end.saturating_sub(1);
+    }
+    if start >= end {
         return None;
     }
 
     let mut card_types = Vec::new();
-    for word in words {
+    let mut saw_or_separator = false;
+    let mut saw_separator = false;
+    let mut expect_type = true;
+    let mut saw_type = false;
+    for token in &tokens[start..end] {
+        if token.kind == TokenKind::Comma {
+            if !saw_type {
+                return None;
+            }
+            saw_separator = true;
+            expect_type = true;
+            continue;
+        }
+        let word = token.as_word()?;
+        if matches!(word, "or" | "and") {
+            if !saw_type {
+                return None;
+            }
+            if word == "or" {
+                saw_or_separator = true;
+            }
+            saw_separator = true;
+            expect_type = true;
+            continue;
+        }
+        if !expect_type {
+            return None;
+        }
         let card_type = match word {
-            "or" | "and" => continue,
             "artifact" => CardType::Artifact,
             "battle" => CardType::Battle,
             "creature" => CardType::Creature,
@@ -725,8 +759,10 @@ fn parse_simple_spell_type_list_filter_tokens(tokens: &[OwnedLexToken]) -> Optio
             _ => return None,
         };
         crate::slice_primitives::push_unique(&mut card_types, card_type);
+        saw_type = true;
+        expect_type = false;
     }
-    if card_types.is_empty() {
+    if !saw_or_separator || !saw_separator || expect_type || card_types.is_empty() {
         return None;
     }
     Some(ObjectFilter {
@@ -788,7 +824,20 @@ fn parse_permission_subject_filter_tokens_lexed(
         }));
     }
 
-    if let Ok(filter) = parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false) {
+    if let Ok(mut filter) =
+        parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)
+    {
+        if filter.all_card_types.is_empty()
+            && filter.card_types.len() > 1
+            && !filter_tokens.iter().any(|token| {
+                token.kind == TokenKind::Comma
+                    || token
+                        .as_word()
+                        .is_some_and(|word| matches!(word, "and" | "or"))
+            })
+        {
+            filter.all_card_types = std::mem::take(&mut filter.card_types);
+        }
         return Ok(Some(normalize_permission_subject_filter(filter)));
     }
 
