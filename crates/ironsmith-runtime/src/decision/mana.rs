@@ -3097,7 +3097,22 @@ pub(crate) fn apply_spell_cost_modifiers(
         if effect.player != player || effect.is_expired(current_turn) {
             continue;
         }
-        if spell_matches_filter(game, spell, player, &effect.filter, &ctx, casting_method) {
+        let temporary_ctx = with_source_exiled_tagged_objects(
+            game,
+            FilterContext::new(player)
+                .with_source(effect.source)
+                .with_active_player(game.turn.active_player)
+                .with_opponents(opponents_of(game, player)),
+            effect.source,
+        );
+        if spell_matches_filter(
+            game,
+            spell,
+            player,
+            &effect.filter,
+            &temporary_ctx,
+            casting_method,
+        ) {
             if let Some(generic_reduction) = &effect.generic_reduction {
                 let amount = resolve_cost_modifier_value(game, player, spell, generic_reduction);
                 if amount > 0 {
