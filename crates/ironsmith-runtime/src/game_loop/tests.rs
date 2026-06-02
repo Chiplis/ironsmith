@@ -1519,6 +1519,20 @@ fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn trusted_advisor_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_951), "Trusted Advisor")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(1, 2))
+        .parse_text(
+            "Your maximum hand size is increased by two.\n\
+             At the beginning of your upkeep, return a blue creature you control to its owner's hand.",
+        )
+        .expect("Trusted Advisor should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn ox_drover_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(73_950), "Ox Drover")
         .mana_cost(ManaCost::from_pips(vec![
@@ -2294,6 +2308,140 @@ fn twenty_toed_toad_static_ability_sets_maximum_hand_size_to_twenty() {
 
     assert_eq!(game.player(alice).unwrap().max_hand_size, 20);
     assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_static_ability_increases_only_controller_maximum_hand_size() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Battlefield);
+
+    game.update_cant_effects();
+
+    assert_eq!(game.player(alice).unwrap().max_hand_size, 9);
+    assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_in_hand_does_not_increase_maximum_hand_size() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Hand);
+
+    game.update_cant_effects();
+
+    assert_eq!(game.player(alice).unwrap().max_hand_size, 7);
+    assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_upkeep_returns_blue_creature_you_control_to_owners_hand() {
+    struct ChooseTrustedAdvisorCreatureDecisionMaker {
+        chosen: ObjectId,
+        seen_legal_objects: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseTrustedAdvisorCreatureDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            panic!("Trusted Advisor should choose, not target, got {ctx:?}");
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.seen_legal_objects = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            assert!(
+                self.seen_legal_objects.contains(&self.chosen),
+                "chosen blue creature you control should be legal, got {:?}",
+                ctx.candidates
+            );
+            vec![self.chosen]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Battlefield);
+    let borrowed_blue = create_colored_creature(
+        &mut game,
+        "Borrowed Drake",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    game.set_current_controller(borrowed_blue, alice);
+    let borrowed_stable_id = game
+        .object(borrowed_blue)
+        .expect("borrowed creature should exist")
+        .stable_id;
+    let controlled_green = create_colored_creature(
+        &mut game,
+        "Alice Bear",
+        alice,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let opponents_blue = create_colored_creature(
+        &mut game,
+        "Bob Drake",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Trusted Advisor should trigger at the beginning of its controller's upkeep"
+    );
+
+    let mut dm = ChooseTrustedAdvisorCreatureDecisionMaker {
+        chosen: borrowed_blue,
+        seen_legal_objects: Vec::new(),
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Trusted Advisor upkeep trigger should go on the stack without targets");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Trusted Advisor upkeep trigger should resolve");
+
+    assert!(dm.seen_legal_objects.contains(&borrowed_blue));
+    assert!(!dm.seen_legal_objects.contains(&controlled_green));
+    assert!(!dm.seen_legal_objects.contains(&opponents_blue));
+    let returned_borrowed = game
+        .find_object_by_stable_id(borrowed_stable_id)
+        .expect("returned creature should still be tracked by stable id");
+    assert!(
+        game.player(bob)
+            .is_some_and(|player| player.hand.contains(&returned_borrowed)),
+        "the chosen creature should return to its owner's hand"
+    );
+    assert!(!game.battlefield.contains(&borrowed_blue));
+    assert!(game.battlefield.contains(&controlled_green));
+    assert!(game.battlefield.contains(&opponents_blue));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

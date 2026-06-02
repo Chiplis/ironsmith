@@ -2069,6 +2069,8 @@ const MAX_HAND_SIZE_IS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["maximum", "hand", "size", "is"]);
 const MAX_HAND_SIZE_REDUCED_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["maximum", "hand", "size", "is", "reduced"]);
+const MAX_HAND_SIZE_INCREASED_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["maximum", "hand", "size", "is", "increased"]);
 const MAX_HAND_SIZE_SEVEN_MINUS_CARD_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -10014,6 +10016,43 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
         }
 
         return Ok(Some(StaticAbility::reduce_maximum_hand_size(
+            player, amount,
+        )));
+    }
+
+    if line_words
+        .get(idx..)
+        .is_some_and(|tail| MAX_HAND_SIZE_INCREASED_PATTERN.matches_words(tail))
+    {
+        idx += 5;
+        if !line_words
+            .get(idx)
+            .is_some_and(|word| BY_WORD_PATTERN.matches_word(word))
+        {
+            return Ok(None);
+        }
+        idx += 1;
+
+        let Some(amount_word) = line_words.get(idx) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing maximum-hand-size increase amount (clause: '{}')",
+                line_words.join(" ")
+            )));
+        };
+        let Some(amount) = parse_named_number(amount_word) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported maximum-hand-size increase amount '{}' (clause: '{}')",
+                amount_word,
+                line_words.join(" ")
+            )));
+        };
+        idx += 1;
+
+        if idx != line_words.len() {
+            return Ok(None);
+        }
+
+        return Ok(Some(StaticAbility::increase_maximum_hand_size(
             player, amount,
         )));
     }

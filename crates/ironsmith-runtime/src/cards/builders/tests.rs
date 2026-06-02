@@ -40594,6 +40594,35 @@ fn parse_each_opponents_maximum_hand_size_reduced_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn trusted_advisor_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Trusted Advisor");
+
+    let has_increase_max_hand_size = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::IncreaseMaximumHandSize
+        )
+    });
+    assert!(
+        has_increase_max_hand_size,
+        "Trusted Advisor should compile its maximum hand size increase as a static ability"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "Your maximum hand size is increased by two.".to_string(),
+            "At the beginning of your upkeep, return a blue creature you control to its owner's hand."
+                .to_string(),
+        ],
+        "Trusted Advisor should render its full oracle text"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn twenty_toed_toad_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Twenty-Toed Toad");
 

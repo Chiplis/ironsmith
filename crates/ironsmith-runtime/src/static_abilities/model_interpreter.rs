@@ -1061,6 +1061,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbility::reduce_maximum_hand_size(player.clone(), *by)
             }
+            ironsmith_core::StaticAbilityPayload::IncreaseMaximumHandSize { player, by } => {
+                StaticAbility::increase_maximum_hand_size(player.clone(), *by)
+            }
             ironsmith_core::StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
                 player,
                 min_card_types,
