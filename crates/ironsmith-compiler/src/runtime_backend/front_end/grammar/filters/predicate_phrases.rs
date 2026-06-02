@@ -2119,6 +2119,53 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
+fn parse_implicit_subject_and_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::modifier("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let left_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing left side in and predicate".to_string())
+        })?;
+    let right_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing right side in and predicate".to_string())
+        })?;
+    let right_words = right_clause.word_refs();
+    if left_clause.word_refs().is_empty() || right_words.is_empty() {
+        return Ok(None);
+    }
+    let Some(right_first) = right_words.first().copied() else {
+        return Ok(None);
+    };
+    if !HAVE_WORD_PATTERN.matches_word(right_first) && !YOU_WORD_PATTERN.matches_word(right_first) {
+        return Ok(None);
+    }
+
+    let left = parse_predicate(left_clause.tokens())?;
+    let right_tokens = if HAVE_WORD_PATTERN.matches_word(right_first) {
+        let mut words = Vec::with_capacity(right_words.len() + 1);
+        words.push("you");
+        words.extend(right_words.iter().copied());
+        crate::runtime_backend::lexer::synthetic_word_tokens(words)
+    } else {
+        right_clause.tokens().to_vec()
+    };
+    let right = parse_predicate(&right_tokens)?;
+    Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
+}
+
 fn parse_while_conjoined_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -4682,28 +4729,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(and_idx) = find_index(&filtered, |word| AND_WORD_PATTERN.matches_word(word))
-        && and_idx > 0
-        && and_idx + 1 < filtered.len()
-    {
-        let right_first = filtered.get(and_idx + 1).copied();
-        if right_first.is_some_and(|word| {
-            HAVE_WORD_PATTERN.matches_word(word) || YOU_WORD_PATTERN.matches_word(word)
-        }) {
-            let left_words = &filtered[..and_idx];
-            let mut right_words = filtered[and_idx + 1..].to_vec();
-            if right_words
-                .first()
-                .is_some_and(|word| HAVE_WORD_PATTERN.matches_word(word))
-            {
-                right_words.insert(0, "you");
-            }
-            let left_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(left_words);
-            let right_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(right_words);
-            let left = parse_predicate(&left_tokens)?;
-            let right = parse_predicate(&right_tokens)?;
-            return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
-        }
+    if let Some(predicate) = parse_implicit_subject_and_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_while_conjoined_predicate(&filtered)? {
@@ -6262,6 +6289,39 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_implicit_subject_and_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_right) in [
+            (
+                "If you're monarch and you have the initiative",
+                PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If you're monarch and have the initiative",
+                PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::And(
+                    Box::new(PredicateAst::PlayerIsMonarch {
+                        player: PlayerAst::You,
+                    }),
+                    Box::new(expected_right),
+                ),
+                "{text}"
+            );
         }
         Ok(())
     }
