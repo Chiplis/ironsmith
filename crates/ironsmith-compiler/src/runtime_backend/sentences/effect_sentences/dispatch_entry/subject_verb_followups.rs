@@ -155,6 +155,57 @@ fn is_then_that_player_shuffles_sentence(tokens: &[OwnedLexToken]) -> bool {
     ])
 }
 
+fn is_if_you_do_return_source_exiled_cards_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
+    if words.len() < 7 || words.get(0..5) != Some(&["if", "you", "do", "return", "those"]) {
+        return false;
+    }
+    if words.get(5) != Some(&"cards") || words.get(6) != Some(&"to") {
+        return false;
+    }
+    words.iter().any(|word| *word == "battlefield")
+        && words
+            .iter()
+            .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
+        && words.iter().any(|word| *word == "control")
+}
+
+fn sacrifice_effect_targets_tagged_it(effect: &EffectAst) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Sacrifice {
+                filter,
+                count,
+                target,
+            },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+    *count == 1
+        && target.is_none()
+        && filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].tag.as_str() == crate::cards::builders::IT_TAG
+        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::IsTaggedObject
+}
+
+fn sacrifice_effect_targets_source(effect: &EffectAst) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Sacrifice {
+                filter,
+                count,
+                target,
+            },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+    *count == 1 && target.is_none() && filter.source
+}
+
 fn rule_matches_sentence_head(heads: &[&str], tokens: &[OwnedLexToken]) -> bool {
     if heads.is_empty() {
         return true;
@@ -302,6 +353,45 @@ fn pre_rule_library_shuffle_followups(
     }
 
     Ok(None)
+}
+
+fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if !is_if_you_do_return_source_exiled_cards_sentence(sentence_tokens) {
+        return Ok(None);
+    }
+
+    let Some(previous) = state.effects.last_mut() else {
+        return Ok(None);
+    };
+    if sacrifice_effect_targets_tagged_it(previous) {
+        *previous = EffectAst::subject_verb_sacrifice(
+            PlayerAst::You,
+            ObjectFilter::source(),
+            1,
+            None,
+        );
+    } else if !sacrifice_effect_targets_source(previous) {
+        return Ok(None);
+    }
+
+    state.effects.push(EffectAst::IfResult {
+        predicate: IfResultPredicate::Did,
+        effects: vec![EffectAst::subject_verb_return_all_to_battlefield(
+            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+            false,
+            false,
+            ReturnControllerAst::Owner,
+        )],
+    });
+    Ok(Some(PreParseFollowupResult::Handled {
+        consumed_sentences: 1,
+        route: Some("subject-verb verb=Return subject=source-exiled recognizer=source-sacrifice-followup"),
+    }))
 }
 
 fn pre_rule_future_zone_replacement_followup(
@@ -1176,6 +1266,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 55,
         heads: &["if"],
         run: pre_rule_exile_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "source-exiled-return-if-sacrificed",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_return_source_exiled_cards_if_source_sacrificed,
     },
     SubjectVerbFollowupRuleDef {
         id: "milled-this-way",

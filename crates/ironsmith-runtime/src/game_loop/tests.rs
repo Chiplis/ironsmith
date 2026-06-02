@@ -114,6 +114,55 @@ fn graveyard_scroll_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn colfenors_urn_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(696_471), "Colfenor's Urn")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature with toughness 4 or greater is put into your graveyard from the battlefield, you may exile it.\n\
+             At the beginning of the end step, if three or more cards have been exiled with this artifact, sacrifice it. If you do, return those cards to the battlefield under their owner's control.",
+        )
+        .expect("Colfenor's Urn should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vanilla_creature_definition(
+    card_id: u32,
+    name: &str,
+    power: i32,
+    toughness: i32,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_colfenor_end_step_trigger_on_stack(game: &mut GameState) -> usize {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Colfenor's Urn end-step trigger processing should succeed");
+    game.stack.len()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn count_named_objects_in_zone(game: &GameState, zone: Zone, name: &str) -> usize {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| object.name == name)
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
     game.calculated_characteristics(object_id)
         .expect("object should have calculated characteristics")
@@ -121,6 +170,133 @@ fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
         .iter()
         .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_death_trigger_exiles_only_toughness_four_or_greater_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+
+    let small = vanilla_creature_definition(696_472, "Small Creature", 3, 3);
+    let large = vanilla_creature_definition(696_473, "Large Creature", 4, 4);
+    let small_id = game.create_object_from_definition(&small, alice, Zone::Battlefield);
+    let large_id = game.create_object_from_definition(&large, alice, Zone::Battlefield);
+
+    game.move_object_by_effect(small_id, Zone::Graveyard)
+        .expect("small creature should move to graveyard");
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Colfenor's Urn should not trigger for toughness below four"
+    );
+
+    game.move_object_by_effect(large_id, Zone::Graveyard)
+        .expect("large creature should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Colfenor's Urn should trigger for a creature with toughness four or greater"
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Colfenor's Urn death trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Colfenor's Urn death trigger should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Large Creature"),
+        1,
+        "accepting Colfenor's Urn optional trigger should exile the large creature card"
+    );
+    assert_eq!(
+        game.get_exiled_with_source_links(urn_id).len(),
+        1,
+        "the exiled card should be linked to Colfenor's Urn as cards exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_end_step_requires_three_source_exiled_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+    let card = vanilla_creature_definition(696_474, "Exiled Creature", 2, 2);
+    let unrelated_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+
+    for idx in 0..2 {
+        let card_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(urn_id, card_id);
+        assert_eq!(
+            game.get_exiled_with_source_links(urn_id).len(),
+            idx + 1,
+            "test setup should link exiled cards to Colfenor's Urn"
+        );
+    }
+
+    assert_eq!(
+        put_colfenor_end_step_trigger_on_stack(&mut game),
+        0,
+        "Colfenor's Urn should not count unrelated exiled cards toward its threshold"
+    );
+    assert_eq!(
+        game.object(unrelated_id).expect("unrelated card exists").zone,
+        Zone::Exile,
+        "unrelated exiled cards should remain exiled below the source-linked threshold"
+    );
+    assert_eq!(
+        game.object(urn_id).expect("urn exists").zone,
+        Zone::Battlefield,
+        "below threshold Colfenor's Urn should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_end_step_sacrifices_and_returns_source_exiled_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+    let card = vanilla_creature_definition(696_475, "Exiled Creature", 2, 2);
+    let unrelated_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+    let mut exiled = Vec::new();
+
+    for _ in 0..3 {
+        let card_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(urn_id, card_id);
+        exiled.push(card_id);
+    }
+
+    assert_eq!(
+        put_colfenor_end_step_trigger_on_stack(&mut game),
+        1,
+        "Colfenor's Urn should trigger once when three cards have been exiled with it"
+    );
+    resolve_stack_entry(&mut game).expect("Colfenor's Urn end-step trigger should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Colfenor's Urn"),
+        1,
+        "Colfenor's Urn should sacrifice itself when the threshold trigger resolves"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Battlefield, "Exiled Creature"),
+        exiled.len(),
+        "only cards exiled with Colfenor's Urn should return to the battlefield"
+    );
+    assert_eq!(
+        game.object(unrelated_id).expect("unrelated card exists").zone,
+        Zone::Exile,
+        "unrelated exiled cards should not return with Colfenor's Urn"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

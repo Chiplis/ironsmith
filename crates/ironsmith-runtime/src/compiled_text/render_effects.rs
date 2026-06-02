@@ -951,6 +951,43 @@ fn describe_exile_it_then_return_all_to_battlefield(
     ))
 }
 
+fn describe_source_sacrifice_then_return_source_exiled(
+    first: &Effect,
+    second: &Effect,
+) -> Option<String> {
+    let with_id = first.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sacrifice = with_id
+        .effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+
+    let if_effect = second.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+    {
+        return None;
+    }
+    let [return_effect] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let return_all = return_effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    if !is_source_exiled_cards_filter(&return_all.filter)
+        || return_all.tapped
+        || return_all.face_down
+        || return_all.battlefield_controller != crate::effects::BattlefieldController::Owner
+    {
+        return None;
+    }
+
+    Some(
+        "sacrifice it. If you do, return those cards to the battlefield under their owners' control"
+            .to_string(),
+    )
+}
+
 fn describe_prevention_follow_up_target(target: &ChooseSpec) -> &'static str {
     let described = describe_choose_spec(target);
     if described.contains("creature") {
@@ -6630,6 +6667,12 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if filtered.len() == 2
         && let Some(compact) =
             describe_exile_it_then_return_all_to_battlefield(filtered[0], filtered[1])
+    {
+        return compact;
+    }
+    if filtered.len() == 2
+        && let Some(compact) =
+            describe_source_sacrifice_then_return_source_exiled(filtered[0], filtered[1])
     {
         return compact;
     }
@@ -16207,6 +16250,42 @@ fn describe_trigger_surface_with_frequency(
         if !chapter_text.is_empty() && chapter_text.len() == chapters.len() {
             return chapter_text.join(", ");
         }
+    }
+
+    if let Some(zone_change) = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+        && zone_change.player == crate::triggers::zone_changes::PlayerRelation::Any
+        && zone_change.count_mode == crate::triggers::zone_changes::CountMode::Each
+        && zone_change.from
+            == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        && zone_change.to == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+        && zone_change.object_filter.owner == Some(PlayerFilter::You)
+    {
+        let mut filter = zone_change.object_filter.clone();
+        filter.owner = None;
+        let subject = with_indefinite_article(&filter.description());
+        return format!(
+            "Whenever {subject} is put into your graveyard from the battlefield"
+        );
+    }
+
+    if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::phase_step::BeginningOfEndStepTrigger>()
+        .is_some_and(|trigger| trigger.player == PlayerFilter::Any)
+        && triggered.intervening_if.as_ref().is_some_and(|condition| {
+            matches!(
+                condition,
+                Condition::ValueComparison {
+                    left: Value::Count(filter),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    ..
+                } if is_source_exiled_cards_filter(filter)
+            )
+        })
+    {
+        return "At the beginning of the end step".to_string();
     }
 
     let mut trigger_surface = triggered.trigger.display();

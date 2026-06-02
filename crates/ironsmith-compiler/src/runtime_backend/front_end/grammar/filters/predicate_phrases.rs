@@ -116,6 +116,13 @@ const CONTROL_OR_CONTROLLED_WORD_PATTERN: ClauseShape<'static> =
 const CARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["card"]);
 const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["been", "exiled", "with", "this"],
+            &["exiled", "with", "this"],
+        ]
+);
 const IN_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2001,6 +2008,45 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
     })
 }
 
+fn parse_counted_source_exiled_objects_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 7 {
+        return None;
+    }
+    let (comparison, used) = predicate_quantity_prefix(words)?;
+    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
+    let have_idx = find_index(words, |word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
+    if have_idx <= used {
+        return None;
+    }
+    let object_words = &words[used..have_idx];
+    let tail_words = &words[have_idx + 1..];
+    if object_words.is_empty() || !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(tail_words)
+    {
+        return None;
+    }
+
+    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
+    let mut filter = if object_words
+        .iter()
+        .all(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
+        ObjectFilter::default()
+    } else {
+        parse_object_filter(&object_tokens, false).ok()?
+    };
+    filter.zone = Some(Zone::Exile);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator,
+        right: Value::Fixed(count),
+    })
+}
+
 fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAst> {
     let cleaned = word_refs_except(words, &[","]);
     let words = cleaned.as_slice();
@@ -2247,6 +2293,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_counted_objects_have_counter_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_counted_source_exiled_objects_predicate(&filtered) {
         return Ok(predicate);
     }
 

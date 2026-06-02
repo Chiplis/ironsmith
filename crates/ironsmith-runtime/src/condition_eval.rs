@@ -527,6 +527,20 @@ fn evaluate_value_comparison(
     right: &Value,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    let source_exiled = game
+        .get_exiled_with_source_links(source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
+    }
     let Ok(left_value) = resolve_value(game, left, &mut ctx) else {
         return false;
     };
