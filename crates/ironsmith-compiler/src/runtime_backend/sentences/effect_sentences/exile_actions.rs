@@ -188,14 +188,8 @@ pub(crate) fn parse_exile(
             clause_words.join(" ")
         )));
     }
-    let has_attached_bundle = grammar::contains_word(tokens, "and")
-        && grammar::contains_word(tokens, "all")
-        && grammar::contains_word(tokens, "attached");
-    if has_attached_bundle {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported attached-object exile bundle (clause: '{}')",
-            clause_words.join(" ")
-        )));
+    if let Some(effect) = parse_attached_object_exile_bundle(tokens, face_down)? {
+        return Ok(effect);
     }
     let has_same_name_token_bundle = grammar::contains_word(tokens, "and")
         && grammar::contains_word(tokens, "tokens")
@@ -258,6 +252,60 @@ pub(crate) fn parse_exile(
     } else {
         EffectAst::subject_verb_exile(target, face_down)
     })
+}
+
+fn parse_attached_object_exile_bundle(
+    tokens: &[OwnedLexToken],
+    face_down: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((target_tokens, attached_tokens)) =
+        crate::runtime_backend::grammar::primitives::split_lexed_once_on_separator(tokens, || {
+            use winnow::Parser as _;
+            crate::runtime_backend::grammar::primitives::kw("and").void()
+        })
+    else {
+        return Ok(None);
+    };
+    let Some(attached_tokens) =
+        crate::runtime_backend::grammar::primitives::strip_lexed_prefix_phrase(
+            attached_tokens,
+            &["all"],
+        )
+    else {
+        return Ok(None);
+    };
+    let Some(attached_idx) = attached_tokens
+        .iter()
+        .position(|token| token.as_word().is_some_and(|word| word == "attached"))
+    else {
+        return Ok(None);
+    };
+    if !attached_tokens
+        .get(attached_idx + 1)
+        .is_some_and(|token| token.as_word().is_some_and(|word| word == "to"))
+    {
+        return Ok(None);
+    }
+    let attachment_filter_tokens = &attached_tokens[..attached_idx];
+    let attachment_target_tokens = &attached_tokens[attached_idx + 2..];
+    if target_tokens.is_empty()
+        || attachment_filter_tokens.is_empty()
+        || attachment_target_tokens.is_empty()
+    {
+        return Ok(None);
+    }
+    let attachment_target_words = crate::runtime_backend::token_word_refs(attachment_target_tokens);
+    if attachment_target_words.as_slice() != ["it"] {
+        return Ok(None);
+    }
+
+    let target = parse_target_phrase(target_tokens)?;
+    let attachment_filter = parse_object_filter_lexed(attachment_filter_tokens, false)?;
+    Ok(Some(EffectAst::subject_verb_exile_all_attached_to(
+        attachment_filter,
+        target,
+        face_down,
+    )))
 }
 
 pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(

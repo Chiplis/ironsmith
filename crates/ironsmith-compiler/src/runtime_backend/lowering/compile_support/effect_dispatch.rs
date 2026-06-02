@@ -4845,6 +4845,62 @@ fn compile_subject_verb_effect(
             prelude.push(effect);
             Ok((prelude, choices))
         }
+        SubjectVerbActionAst::ExileAllAttachedTo {
+            filter,
+            target,
+            face_down,
+        } => {
+            let (target_spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut prelude = Vec::new();
+            let mut choices = choices;
+            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
+            let target_tag = if let ChooseSpec::Tagged(tag) = &target_spec {
+                tag.as_str().to_string()
+            } else {
+                if !choose_spec_targets_object(&target_spec) || !target_spec.is_target() {
+                    return Err(CardTextError::ParseError(
+                        "exile-attached target must be a target object or tagged object"
+                            .to_string(),
+                    ));
+                }
+                let tag = ctx.next_tag("attachment_target");
+                prelude.push(
+                    Effect::new(crate::effects::TargetOnlyEffect::new(target_spec.clone()))
+                        .tag(tag.clone()),
+                );
+                tag
+            };
+            ctx.last_object_tag = Some(target_tag.clone());
+
+            resolved_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from(target_tag.as_str()),
+                    relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+                });
+
+            let (mut filter_prelude, filter_choices) =
+                target_context_prelude_for_filter(&resolved_filter);
+            for choice in filter_choices {
+                push_choice(&mut choices, choice);
+            }
+            prelude.append(&mut filter_prelude);
+            prelude.push(Effect::new(
+                crate::effects::ExileEffect::all(resolved_filter).with_face_down(*face_down),
+            ));
+
+            let tagged_target = ChooseSpec::Tagged(TagKey::from(target_tag.as_str()));
+            let target_exile = if *face_down {
+                Effect::new(
+                    crate::effects::ExileEffect::with_spec(tagged_target).with_face_down(true),
+                )
+            } else {
+                Effect::move_to_zone(tagged_target, Zone::Exile, true)
+            };
+            prelude.push(target_exile);
+            Ok((prelude, choices))
+        }
         SubjectVerbActionAst::Exile { target, face_down } => {
             if let Some(compiled) = lower_hand_exile_target(target, *face_down, ctx)? {
                 return Ok(compiled);

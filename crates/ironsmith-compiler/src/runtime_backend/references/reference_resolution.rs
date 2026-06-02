@@ -743,6 +743,12 @@ fn advance_reference_frame_for_effect(
                     }
                     track_player_from_object_filter(filter, frame);
                 }
+                SubjectVerbActionAst::ExileAllAttachedTo { filter, .. } => {
+                    if frame.auto_tag_object_targets {
+                        frame.last_object_tag = Some(next_reference_tag(id_gen, "affected"));
+                    }
+                    track_player_from_object_filter(filter, frame);
+                }
                 SubjectVerbActionAst::ExchangeValues { left, right, .. } => {
                     match left {
                         crate::cards::builders::ExchangeValueAst::LifeTotal(player) => {
@@ -2124,6 +2130,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ExchangeControl { .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
@@ -2739,7 +2746,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
-            SubjectVerbActionAst::DestroyAllAttachedTo { filter, target } => {
+            SubjectVerbActionAst::DestroyAllAttachedTo { filter, target }
+            | SubjectVerbActionAst::ExileAllAttachedTo { filter, target, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }

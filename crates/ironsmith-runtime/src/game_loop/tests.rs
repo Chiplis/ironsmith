@@ -36931,6 +36931,211 @@ fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn soul_nova_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(48_101), "Soul Nova")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Exile target attacking creature and all Equipment attached to it.")
+        .expect("Soul Nova should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_soul_nova_exiles_attacking_creature_and_attached_equipment_only() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 5);
+
+    let soul_nova = soul_nova_definition();
+    let soul_nova_id = game.create_object_from_definition(&soul_nova, alice, Zone::Hand);
+    let attacker_id = create_creature(&mut game, "Soul Nova Attacker", bob, 3, 3);
+    let other_creature_id = create_creature(&mut game, "Soul Nova Bystander", bob, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut combat = CombatState::default();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("Soul Nova target creature should be able to attack");
+
+    let equipment_def = CardBuilder::new(CardId::new(), "Soul Nova Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let equipment_id = game.create_object_from_card(&equipment_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment_id,
+            crate::object::AttachmentTarget::Object(attacker_id),
+        ),
+        "equipment should attach to the attacking creature"
+    );
+
+    let second_equipment_def = CardBuilder::new(CardId::new(), "Soul Nova Other Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let other_equipment_id =
+        game.create_object_from_card(&second_equipment_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            other_equipment_id,
+            crate::object::AttachmentTarget::Object(other_creature_id),
+        ),
+        "other equipment should attach to the non-target creature"
+    );
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Soul Nova Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text("Enchant creature")
+        .expect("aura should parse");
+    let aura_id = game.create_object_from_definition(&aura_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            aura_id,
+            crate::object::AttachmentTarget::Object(attacker_id),
+        ),
+        "aura should attach to the attacking creature"
+    );
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: soul_nova_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("Soul Nova cast should start successfully");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+        ),
+        "Soul Nova should ask for one attacking creature target"
+    );
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(attacker_id)]),
+    )
+    .expect("choosing the attacking creature should complete Soul Nova");
+    assert_eq!(game.stack.len(), 1, "Soul Nova should be on the stack");
+    resolve_stack_entry(&mut game).expect("Soul Nova should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Attacker"),
+        1,
+        "Soul Nova should exile the target attacking creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Equipment"),
+        1,
+        "Soul Nova should exile Equipment attached to the target creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Battlefield, "Soul Nova Other Equipment"),
+        1,
+        "Soul Nova should not exile Equipment attached to a different creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Aura"),
+        0,
+        "Soul Nova should not exile non-Equipment attachments"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_soul_nova_targets_only_attacking_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 5);
+
+    let soul_nova = soul_nova_definition();
+    let soul_nova_id = game.create_object_from_definition(&soul_nova, alice, Zone::Hand);
+    let attacker_id = create_creature(&mut game, "Soul Nova Legal Attacker", bob, 3, 3);
+    let nonattacker_id = create_creature(&mut game, "Soul Nova Illegal Bystander", bob, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut combat = CombatState::default();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attacker should be legal");
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: soul_nova_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Soul Nova cast should ask for targets");
+
+    let targets_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => {
+            ctx
+        }
+        other => panic!("expected Soul Nova target prompt, got {other:?}"),
+    };
+    let legal_targets = &targets_ctx.requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(attacker_id)),
+        "Soul Nova should be able to target the attacking creature"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(nonattacker_id)),
+        "Soul Nova should not be able to target a nonattacking creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_asinine_antics_flash_extra_cost_is_available_at_instant_timing_only_as_alternative() {
     let mut game = setup_game();

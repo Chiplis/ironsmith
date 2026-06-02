@@ -6003,6 +6003,27 @@ fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_soul_nova_parses_and_renders_attached_equipment_exile_bundle() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(48_101), "Soul Nova")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Exile target attacking creature and all Equipment attached to it.")
+        .expect("Soul Nova text should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Exile target attacking creature and all Equipment attached to it.",
+        "Soul Nova should render the attached Equipment exile bundle as one structural clause"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_deadlock_trap_its_activated_abilities_cant_be_activated_this_turn() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Deadlock Trap Test")
         .card_types(vec![CardType::Artifact])

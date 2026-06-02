@@ -448,6 +448,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ExchangeControl { .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
