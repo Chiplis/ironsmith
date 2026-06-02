@@ -17229,10 +17229,7 @@ fn test_kadenas_silencer_strict_parse_counter_all_opponent_abilities() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("counter")
-            && compiled.contains("all")
-            && compiled.contains("abilities")
-            && compiled.contains("opponent"),
+        compiled.contains("counter all abilities your opponents control"),
         "expected compiled text for countering all opponent abilities, got {compiled}"
     );
     assert!(

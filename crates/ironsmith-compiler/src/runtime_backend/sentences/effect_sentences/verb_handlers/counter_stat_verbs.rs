@@ -37,9 +37,9 @@ const COUNTER_TRIGGERED_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
 const COUNTER_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["ability"], &["abilities"]]);
 const COUNTER_ABILITY_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["ability"], &["abilities"]]);
+    clause_shape!(contains_any_words & [&["ability", "abilities"]]);
 const COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["activated"], &["triggered"]]);
+    clause_shape!(contains_any_words & [&["activated", "triggered"]]);
 const COUNTER_SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
 const COUNTER_INSTANT_SPELL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["instant", "spell"]);
