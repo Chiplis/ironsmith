@@ -248,33 +248,10 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const YOU_CONTROLLED_TAGGED_PERMANENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "controlled", "that", "permanent"],
-            &["you", "control", "that", "permanent"],
-        ]
-);
-const TAGGED_ENTERED_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "entered", "under", "your", "control"],
-            &["that", "card", "entered", "under", "your", "control"],
-            &["that", "permanent", "entered", "under", "your", "control"],
-        ]
-);
 const YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "put"]; suffix & ["onto", "the", "battlefield", "this", "way"]);
 const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
-const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "wasnt", "blocking"],
-            &["it", "was", "not", "blocking"],
-            &["that", "creature", "wasnt", "blocking"],
-        ]
-);
 const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
 const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2501,7 +2478,98 @@ fn parse_tagged_exiled_predicate(words: &[&str]) -> Option<PredicateAst> {
 
 fn parse_tagged_state_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    parse_it_soulbond_paired_shape(&tokens).or_else(|| parse_tagged_creature_filter_shape(&tokens))
+    parse_tagged_controlled_permanent_shape(&tokens)
+        .or_else(|| parse_tagged_entered_under_your_control_shape(&tokens))
+        .or_else(|| parse_tagged_wasnt_blocking_shape(&tokens))
+        .or_else(|| parse_it_soulbond_paired_shape(&tokens))
+        .or_else(|| parse_tagged_creature_filter_shape(&tokens))
+}
+
+fn parse_tagged_controlled_permanent_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["control"], &["controlled"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controlled"])),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(object_clause.word_refs().as_slice(), ["that", "permanent"]) {
+        return None;
+    }
+    Some(PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
+        tag: TagKey::from(IT_TAG),
+        filter: ObjectFilter::default(),
+    })
+}
+
+fn parse_tagged_entered_under_your_control_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrase = &["entered", "under"];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+        LexPattern::object("controller", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        subject_clause.word_refs().as_slice(),
+        ["it"] | ["that", "card"] | ["that", "permanent"]
+    ) {
+        return None;
+    }
+    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        controller_clause.word_refs().as_slice(),
+        ["your", "control"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+        player: PlayerAst::You,
+        tag: TagKey::from(IT_TAG),
+    })
+}
+
+fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["wasnt"], &["wasn't"], &["was", "not"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("state", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(
+            subject_clause.word_refs().as_slice(),
+            ["it"] | ["that", "creature"]
+        ) {
+            continue;
+        }
+        let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        if !matches!(state_clause.word_refs().as_slice(), ["blocking"]) {
+            continue;
+        }
+        return Some(PredicateAst::TaggedMatches(
+            TagKey::from(IT_TAG),
+            ObjectFilter {
+                nonblocking: true,
+                ..Default::default()
+            },
+        ));
+    }
+    None
 }
 
 fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4405,21 +4473,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if YOU_CONTROLLED_TAGGED_PERMANENT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-            filter: ObjectFilter::default(),
-        });
-    }
-
-    if TAGGED_ENTERED_UNDER_YOUR_CONTROL_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-        });
-    }
-
     if filtered.len() >= 8 && YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN.matches_words(&filtered) {
         let filter_words = &filtered[2..filtered.len() - 5];
         let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
@@ -4441,16 +4494,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(predicate) = parse_negative_put_tagged_object_predicate(&filtered) {
         return Ok(predicate);
-    }
-
-    if TAGGED_WASNT_BLOCKING_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TaggedMatches(
-            TagKey::from(IT_TAG),
-            ObjectFilter {
-                nonblocking: true,
-                ..Default::default()
-            },
-        ));
     }
 
     if NO_CREATURES_ON_BATTLEFIELD_PATTERN.matches_words(&filtered) {
@@ -5246,6 +5289,31 @@ mod tests {
             (
                 "If it is paired with another creature",
                 PredicateAst::ItIsSoulbondPaired,
+            ),
+            (
+                "If you controlled that permanent",
+                PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                    filter: ObjectFilter::default(),
+                },
+            ),
+            (
+                "If that card entered under your control",
+                PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                },
+            ),
+            (
+                "If that creature was not blocking",
+                PredicateAst::TaggedMatches(
+                    TagKey::from(IT_TAG),
+                    ObjectFilter {
+                        nonblocking: true,
+                        ..Default::default()
+                    },
+                ),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
