@@ -86,6 +86,7 @@ pub enum Value {
     ToughnessOf(Box<ChooseSpec>),
     ManaValueOf(Box<ChooseSpec>),
     LifeTotal(PlayerFilter),
+    LifeTotalAsTurnBegan(PlayerFilter),
     LifeTotalDifference(PlayerFilter),
     Speed(PlayerFilter),
     StartingLifeTotal(PlayerFilter),

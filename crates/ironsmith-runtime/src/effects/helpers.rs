@@ -1165,6 +1165,16 @@ pub fn resolve_value(
                 .ok_or(ExecutionError::PlayerNotFound(player_id))?;
             Ok(player.life)
         }
+        Value::LifeTotalAsTurnBegan(player_spec) => {
+            let player_id = resolve_player_filter(game, player_spec, ctx)?;
+            let player = game
+                .player(player_id)
+                .ok_or(ExecutionError::PlayerNotFound(player_id))?;
+            let history = &game.turn_store.turn_history;
+            let gained = history.total_life_gained_for_players(&[player_id]) as i32;
+            let lost = history.total_life_lost_for_players(&[player_id]) as i32;
+            Ok(player.life + lost - gained)
+        }
         Value::LifeTotalDifference(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;

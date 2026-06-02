@@ -890,6 +890,9 @@ pub(crate) fn parse_life_equal_to_value(
         if let Some(value) = parse_possessive_target_stat_value(value_tokens, &value_words) {
             return Ok(Some(value));
         }
+        if let Some(value) = parse_life_total_as_turn_began_value(&value_words) {
+            return Ok(Some(value));
+        }
 
         if let Some((value, used)) = parse_value(value_tokens)
             && used == value_tokens.len()
@@ -963,6 +966,27 @@ fn parse_possessive_target_stat_value(tokens: &[OwnedLexToken], words: &[&str]) 
     let spec =
         crate::runtime_backend::references::reference_helpers::choose_spec_for_target(&target);
     Some(constructor(Box::new(spec)))
+}
+
+fn parse_life_total_as_turn_began_value(words: &[&str]) -> Option<Value> {
+    let tail = ["life", "total", "as", "the", "turn", "began"];
+    if words.len() <= tail.len() || !words.ends_with(&tail) {
+        return None;
+    }
+
+    let subject = &words[..words.len() - tail.len()];
+    let player = match subject {
+        ["your"] | ["you"] => PlayerFilter::You,
+        ["that", "player"] | ["that", "player's"] => PlayerFilter::IteratedPlayer,
+        ["target", "player"] | ["target", "player's"] => PlayerFilter::target_player(),
+        ["target", "opponent"] | ["target", "opponent's"] => PlayerFilter::target_opponent(),
+        ["opponent"] | ["opponent's"] | ["an", "opponent"] | ["an", "opponent's"] => {
+            PlayerFilter::Opponent
+        }
+        ["each", "opponent"] | ["each", "opponent's"] => PlayerFilter::Opponent,
+        _ => return None,
+    };
+    Some(Value::LifeTotalAsTurnBegan(player))
 }
 
 pub(crate) fn parse_life_amount_from_trailing(
