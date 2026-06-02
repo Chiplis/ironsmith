@@ -443,10 +443,6 @@ const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
 const NOT_TOKEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["not", "token"]);
 const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "enchantment"]);
-const EQUIPPED_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["equipped", "creature"]);
-const ENCHANTED_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["enchanted", "creature"]);
 const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["your", "graveyard"]);
 const YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
@@ -2347,6 +2343,87 @@ fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     None
 }
 
+fn parse_tagged_exiled_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["remain"], &["remains"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object("zone", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        subject_clause.word_refs().as_slice(),
+        ["any", "of", "those", "cards"] | ["those", "cards"] | ["that", "card"] | ["it"]
+    ) {
+        return None;
+    }
+    let zone_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(zone_clause.word_refs().as_slice(), ["exiled"]) {
+        return None;
+    }
+    Some(PredicateAst::TaggedMatches(
+        TagKey::from(IT_TAG),
+        ObjectFilter::default().in_zone(Zone::Exile),
+    ))
+}
+
+fn parse_tagged_state_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_it_soulbond_paired_shape(&tokens).or_else(|| parse_tagged_creature_filter_shape(&tokens))
+}
+
+fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["paired", "with"], &["is", "paired", "with"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("partner", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(subject_clause.word_refs().as_slice(), ["it"]) {
+            continue;
+        }
+        let partner_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        if !matches!(
+            partner_clause.word_refs().as_slice(),
+            ["creature"] | ["another", "creature"]
+        ) {
+            continue;
+        }
+        return Some(PredicateAst::ItIsSoulbondPaired);
+    }
+    None
+}
+
+fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("tagged_subject", LexCaptureKind::WordCount(2)),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let tagged_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let tag = match tagged_clause.word_refs().as_slice() {
+        ["equipped", "creature"] => "equipped",
+        ["enchanted", "creature"] => "enchanted",
+        _ => return None,
+    };
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let mut filter = parse_object_filter(filter_clause.tokens(), false).ok()?;
+    if filter.card_types.is_empty() {
+        filter.card_types.push(CardType::Creature);
+    }
+    Some(PredicateAst::TaggedMatches(TagKey::from(tag), filter))
+}
+
 fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
@@ -3870,17 +3947,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if matches!(
-        filtered.as_slice(),
-        ["any", "of", "those", "cards", "remain", "exiled"]
-            | ["those", "cards", "remain", "exiled"]
-            | ["that", "card", "remains", "exiled"]
-            | ["it", "remains", "exiled"]
-    ) {
-        return Ok(PredicateAst::TaggedMatches(
-            TagKey::from(IT_TAG),
-            ObjectFilter::default().in_zone(Zone::Exile),
-        ));
+    if let Some(predicate) = parse_tagged_exiled_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if ITS_WORD_PATTERN.matches_word_at(&filtered, 0) {
@@ -3901,34 +3969,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         None
     };
 
-    let is_it_soulbond_paired = matches!(
-        filtered.as_slice(),
-        ["it", "paired", "with", "creature"]
-            | ["it", "paired", "with", "another", "creature"]
-            | ["it", "s", "paired", "with", "creature"]
-            | ["it", "s", "paired", "with", "another", "creature"]
-    );
-    if is_it_soulbond_paired {
-        return Ok(PredicateAst::ItIsSoulbondPaired);
-    }
-
-    if filtered.len() >= 2 {
-        let tag = if EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&filtered) {
-            Some("equipped")
-        } else if ENCHANTED_CREATURE_PREFIX_PATTERN.matches_words(&filtered) {
-            Some("enchanted")
-        } else {
-            None
-        };
-        if let Some(tag) = tag {
-            let remainder = filtered[2..].to_vec();
-            let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(remainder);
-            let mut filter = parse_object_filter(&tokens, false)?;
-            if filter.card_types.is_empty() {
-                filter.card_types.push(CardType::Creature);
-            }
-            return Ok(PredicateAst::TaggedMatches(TagKey::from(tag), filter));
-        }
+    if let Some(predicate) = parse_tagged_state_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     let onto_battlefield_idx = ONTO_BATTLEFIELD_PATTERN.find_exact_window_range(&filtered, 2, 3);
@@ -5031,6 +5073,41 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If those cards remain exiled",
+                PredicateAst::TaggedMatches(
+                    TagKey::from(IT_TAG),
+                    ObjectFilter::default().in_zone(Zone::Exile),
+                ),
+            ),
+            (
+                "If it is paired with another creature",
+                PredicateAst::ItIsSoulbondPaired,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+            assert_eq!(parsed, expected, "{text}");
+        }
+
+        let tokens = lex_line("If enchanted creature is a Zombie", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        match parsed {
+            PredicateAst::TaggedMatches(tag, filter) => {
+                assert_eq!(tag, TagKey::from("enchanted"));
+                assert!(
+                    !filter.subtypes.is_empty() || !filter.card_types.is_empty(),
+                    "{filter:?}"
+                );
+            }
+            other => panic!("expected enchanted tagged predicate, got {other:?}"),
         }
         Ok(())
     }
