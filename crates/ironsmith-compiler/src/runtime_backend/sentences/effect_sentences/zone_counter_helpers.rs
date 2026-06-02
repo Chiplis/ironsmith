@@ -281,12 +281,16 @@ pub(crate) fn parse_counter_descriptor(
 ) -> Result<(u32, CounterType), CardTextError> {
     let descriptor = trim_commas(tokens);
     let descriptor_text = render_clause_words(&descriptor);
-    let (count, used) = parse_number(&descriptor).ok_or_else(|| {
-        CardTextError::ParseError(format!(
+    let (count, used) = if let Some((count, used)) = parse_number(&descriptor) {
+        (count, used)
+    } else if token_slice_at_is(&descriptor, 0, "a") || token_slice_at_is(&descriptor, 0, "an") {
+        (1, 1)
+    } else {
+        return Err(CardTextError::ParseError(format!(
             "missing counter amount (clause: '{}')",
             descriptor_text
-        ))
-    })?;
+        )));
+    };
     let rest = &descriptor[used..];
     if !rest
         .iter()
