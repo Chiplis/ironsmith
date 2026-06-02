@@ -2845,8 +2845,31 @@ impl StaticAbilityKind for BuybackCostReduction {
 }
 
 /// Players skip their upkeep steps.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PlayersSkipUpkeep;
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayersSkipUpkeep {
+    pub player: PlayerFilter,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl PlayersSkipUpkeep {
+    pub fn new(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+
+    fn condition_matches(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> bool {
+        self.condition.as_ref().is_none_or(|condition| {
+            super::static_condition_is_active(condition, game, source, controller)
+        })
+    }
+}
 
 impl StaticAbilityKind for PlayersSkipUpkeep {
     fn id(&self) -> StaticAbilityId {
@@ -2854,7 +2877,43 @@ impl StaticAbilityKind for PlayersSkipUpkeep {
     }
 
     fn display(&self) -> String {
-        "Players skip their upkeep steps".to_string()
+        let base = match self.player {
+            PlayerFilter::You => "Skip your upkeep step".to_string(),
+            PlayerFilter::Opponent => "Each opponent skips their upkeep step".to_string(),
+            PlayerFilter::Any => "Players skip their upkeep steps".to_string(),
+            _ => "Matching players skip their upkeep steps".to_string(),
+        };
+        if let Some(condition) = &self.condition {
+            if matches!(self.player, PlayerFilter::You)
+                && let crate::ConditionExpr::PlayerCardsInHandOrFewer {
+                    player: PlayerFilter::You,
+                    count: 0,
+                } = condition
+            {
+                return "Skip your upkeep step if you have no cards in hand".to_string();
+            }
+            let condition = super::describe_static_condition(condition);
+            format!("{base} {condition}")
+        } else {
+            base
+        }
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn skips_upkeep_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.condition_matches(game, source, controller)
+            && self
+                .player
+                .matches_player(player, &game.filter_context_for(controller, Some(source)))
     }
 }
 

@@ -20936,6 +20936,33 @@ fn parse_spell_line_instead_followup_merges_non_control_predicate() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn gibbering_descent_parses_hellbent_skip_upkeep_static_line() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gibbering Descent")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of each player's upkeep, that player loses 1 life and discards a card.\n\
+             Hellbent — Skip your upkeep step if you have no cards in hand.\n\
+             Madness {2}{B}{B} (If you discard this card, discard it into exile. When you do, cast it for its madness cost or put it into your graveyard.)",
+        )
+        .expect("Gibbering Descent should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Skip your upkeep step if you have no cards in hand"),
+        "expected hellbent skip-upkeep clause in compiled text, got {rendered}"
+    );
+    assert!(
+        def.abilities.iter().any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::PlayersSkipUpkeep)
+        }),
+        "expected Gibbering Descent to compile a skip-upkeep static ability, got {:?}",
+        def.abilities
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_cabal_ritual_threshold_instead_compiles_to_self_replacement_branch() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Cabal Ritual Variant")
         .card_types(vec![CardType::Instant])

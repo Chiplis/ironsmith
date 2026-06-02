@@ -859,6 +859,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::AttachedChosenLandwalkGrant(grant) => {
                 StaticAbility::attached_chosen_landwalk_grant(grant.display.clone(), grant.snow)
             }
+            ironsmith_core::StaticAbilityPayload::PlayersSkipUpkeep { player } => {
+                StaticAbility::players_skip_upkeep_for(player.clone())
+            }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, condition } => {
                 let converted = StaticAbility::from_model((**ability).clone());
                 converted.with_condition(condition.clone()).unwrap_or_else(|| {

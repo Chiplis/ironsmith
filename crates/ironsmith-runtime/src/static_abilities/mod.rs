@@ -347,6 +347,16 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         true
     }
 
+    fn skips_upkeep_for_player(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+        _player: PlayerId,
+    ) -> bool {
+        false
+    }
+
     // ========================================================================
     // Query methods for specific ability checks
     // These allow checking ability properties without pattern matching.
@@ -1217,6 +1227,17 @@ impl StaticAbility {
     /// Check if this ability is currently active.
     pub fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
         self.0.is_active(game, source)
+    }
+
+    pub fn skips_upkeep_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.0
+            .skips_upkeep_for_player(game, source, controller, player)
     }
 
     /// Generate a replacement effect for this ability.
@@ -2747,7 +2768,11 @@ impl StaticAbility {
     }
 
     pub fn players_skip_upkeep() -> Self {
-        Self::new(PlayersSkipUpkeep)
+        Self::players_skip_upkeep_for(crate::target::PlayerFilter::Any)
+    }
+
+    pub fn players_skip_upkeep_for(player: crate::target::PlayerFilter) -> Self {
+        Self::new(PlayersSkipUpkeep::new(player))
     }
 
     pub fn starting_life_bonus(amount: i32) -> Self {
