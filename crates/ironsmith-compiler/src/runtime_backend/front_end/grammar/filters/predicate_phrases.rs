@@ -325,8 +325,6 @@ const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["attached"], &["tapped"], &["untapped"], &["saddled"]]);
 const SOURCE_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["its"]]);
-const ENCHANTED_BY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["enchanted", "by"]);
 const AURA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["aura"], &["auras"]]);
 const CONTROL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["control"]);
 const CONTROL_OR_CONTROLS_WORD_PATTERN: ClauseShape<'static> =
@@ -446,6 +444,66 @@ fn parse_attachment_quantity_prefix(
     tokens: &[OwnedLexToken],
 ) -> Result<(crate::effect::Comparison, usize), CardTextError> {
     parse_quantity_comparison_prefix(tokens, false, false, "attachment-count predicate")
+}
+
+fn parse_source_attachment_count_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let copula_phrases: &[&[&str]] = &[&["is"], &["are"]];
+    let enchanted_by_phrase = &["enchanted", "by"];
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action("copula", LexCaptureKind::OneOf(&["is", "are"])),
+        LexPattern::capture(
+            "enchanted_by",
+            LexCaptureKind::WordCount(enchanted_by_phrase.len()),
+        ),
+        LexPattern::amount("quantity", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let source = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing source in attachment predicate".to_string())
+        })?;
+    if !is_source_state_subject_words(&source.word_refs()) {
+        return Ok(None);
+    }
+    let enchanted_by = matched
+        .capture_clause("enchanted_by", clause)
+        .ok_or_else(|| CardTextError::ParseError("missing enchanted-by phrase".to_string()))?;
+    if !matches!(enchanted_by.word_refs().as_slice(), ["enchanted", "by"]) {
+        return Ok(None);
+    }
+    let attachment = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .ok_or_else(|| CardTextError::ParseError("missing attachment count".to_string()))?;
+    let (comparison, used) = parse_attachment_quantity_prefix(attachment.tokens())?;
+    let filter_tokens = attachment.tokens().get(used..).unwrap_or_default();
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(filter_tokens, false).or_else(|_| {
+        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+        if AURA_WORD_PATTERN.matches_words(&filter_words) {
+            Ok(ObjectFilter::default().with_subtype(Subtype::Aura))
+        } else {
+            Err(CardTextError::ParseError(format!(
+                "unsupported attachment-count predicate tail (predicate: '{}')",
+                words.join(" ")
+            )))
+        }
+    })?;
+
+    Ok(Some(PredicateAst::SourceHasAttachmentsMatching {
+        filter,
+        comparison,
+        display: words.join(" "),
+    }))
 }
 
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -4367,34 +4425,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(is_idx) = find_index(&filtered, |word| IS_OR_ARE_WORD_PATTERN.matches_word(word)) {
-        let subject_words = &filtered[..is_idx];
-        let is_source_subject = is_source_reference_words(subject_words)
-            || SOURCE_REFERENCE_WORD_PATTERN.matches_words(subject_words);
-        if is_source_subject && ENCHANTED_BY_PREFIX_PATTERN.matches_words(&filtered[is_idx + 1..]) {
-            let attachment_tokens =
-                crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[is_idx + 3..]);
-            let (comparison, used) = parse_attachment_quantity_prefix(&attachment_tokens)?;
-            let filter_tokens = &attachment_tokens[used..];
-            if !filter_tokens.is_empty() {
-                let filter = parse_object_filter(filter_tokens, false).or_else(|_| {
-                    let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-                    if AURA_WORD_PATTERN.matches_words(&filter_words) {
-                        Ok(ObjectFilter::default().with_subtype(Subtype::Aura))
-                    } else {
-                        Err(CardTextError::ParseError(format!(
-                            "unsupported attachment-count predicate tail (predicate: '{}')",
-                            filtered.join(" ")
-                        )))
-                    }
-                })?;
-                return Ok(PredicateAst::SourceHasAttachmentsMatching {
-                    filter,
-                    comparison,
-                    display: filtered.join(" "),
-                });
-            }
-        }
+    if let Some(predicate) = parse_source_attachment_count_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     let source_filter_predicate = {
@@ -5172,6 +5204,30 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, PredicateAst::SecretChoicesMatch, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_attachment_count_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If this creature is enchanted by two or more Auras", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        match parsed {
+            PredicateAst::SourceHasAttachmentsMatching {
+                filter,
+                comparison,
+                display,
+            } => {
+                assert_eq!(
+                    comparison,
+                    crate::effect::Comparison::GreaterThanOrEqual(2),
+                    "{display}"
+                );
+                assert!(filter.subtypes.contains(&Subtype::Aura), "{filter:?}");
+                assert_eq!(display, "this creature is enchanted by two or more auras");
+            }
+            other => panic!("expected source attachment predicate, got {other:?}"),
         }
         Ok(())
     }
