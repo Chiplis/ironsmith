@@ -1150,7 +1150,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         tokens = trim_lexed_commas(tokens);
     }
 
-    let clause_refs = parser_token_word_refs(tokens);
+    let clause_refs = token_word_refs(tokens);
     if clause_refs.is_empty() {
         return Ok(None);
     }
@@ -1158,8 +1158,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens, &clause_refs)? {
         return Ok(Some(spec));
     }
-    if let Some(spec) =
-        parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(&clause_refs)
+    let parser_clause_refs = parser_token_word_refs(tokens);
+    if let Some(spec) = parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
+        &parser_clause_refs,
+    )
     {
         return Ok(Some(spec));
     }
