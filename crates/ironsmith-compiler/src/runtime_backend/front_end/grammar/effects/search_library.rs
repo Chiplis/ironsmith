@@ -622,6 +622,35 @@ pub(crate) fn is_default_search_library_card_selector(tokens: &[OwnedLexToken]) 
     CARD_OR_CARDS_PATTERN.matches_words(&words)
 }
 
+pub(crate) fn parse_search_library_basic_land_type_slots_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<SearchLibrarySlotAst>> {
+    let parser_words = parser_token_word_refs(tokens);
+    let words = crate::runtime_backend::util::non_article_word_refs(&parser_words);
+    if words.as_slice() != ["land", "card", "of", "each", "basic", "land", "type"] {
+        return None;
+    }
+
+    Some(
+        [
+            Subtype::Plains,
+            Subtype::Island,
+            Subtype::Swamp,
+            Subtype::Mountain,
+            Subtype::Forest,
+        ]
+        .into_iter()
+        .map(|subtype| SearchLibrarySlotAst {
+            filter: ObjectFilter::default()
+                .in_zone(Zone::Library)
+                .with_type(CardType::Land)
+                .with_subtype(subtype),
+            optional: true,
+        })
+        .collect(),
+    )
+}
+
 pub(crate) fn find_search_library_marker_lexed(
     tokens: &[OwnedLexToken],
     parser: for<'a> fn(&mut LexStream<'a>) -> Result<(), ErrMode<ContextError>>,

@@ -3831,6 +3831,7 @@ fn compile_subject_verb_effect(
         )),
         SubjectVerbActionAst::SearchLibrarySlotsToHand {
             slots,
+            destination,
             reveal,
             progress_tag,
         } => {
@@ -3852,12 +3853,14 @@ fn compile_subject_verb_effect(
             ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
             ctx.last_player_filter = Some(player_filter.clone());
             Ok((
-                vec![Effect::search_library_slots_to_hand(
+                vec![Effect::new(crate::effects::SearchLibrarySlotsEffect::new(
                     resolved_slots,
+                    *destination,
+                    player_filter.clone(),
                     player_filter,
                     *reveal,
                     resolved_tag,
-                )],
+                ))],
                 subject.into_choices(),
             ))
         }

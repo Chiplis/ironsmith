@@ -4,8 +4,8 @@ use winnow::prelude::*;
 
 use crate::cards::builders::{
     CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst, LibraryConsultModeAst,
-    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SearchLibrarySlotAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
@@ -13,6 +13,7 @@ use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers:
 };
 use crate::target::PlayerFilter;
 use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use ironsmith_core::Value;
 
@@ -1239,11 +1240,21 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     };
     let (filter_tokens, distinct_names) =
         strip_search_library_different_names_clause_lexed(&filter_tokens);
-    let same_name_split = parse_search_library_same_name_reference_lexed(
-        &filter_tokens,
-        filter_tokens.clone(),
-        &words_all,
-    )?;
+    let mut basic_land_type_slots =
+        parse_search_library_basic_land_type_slots_lexed(&filter_tokens);
+    let same_name_split = if basic_land_type_slots.is_none() {
+        parse_search_library_same_name_reference_lexed(
+            &filter_tokens,
+            filter_tokens.clone(),
+            &words_all,
+        )?
+    } else {
+        SearchLibrarySameNameSplit {
+            filter_tokens: filter_tokens.clone(),
+            same_name_reference: None,
+            same_name_relation: TaggedOpbjectRelation::SameNameAsTagged,
+        }
+    };
     let filter_tokens = same_name_split.filter_tokens;
     let same_name_reference = same_name_split.same_name_reference;
     let same_name_relation = same_name_split.same_name_relation;
@@ -1253,12 +1264,16 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             | Some(SearchLibrarySameNameReference::Choose { .. })
     );
 
-    let named_filters = if count_used == 0 {
+    let named_filters = if basic_land_type_slots.is_none() && count_used == 0 {
         split_search_named_item_filters_lexed(&filter_tokens, &words_all)?
     } else {
         None
     };
-    let mut filter = parse_search_library_object_filter_lexed(&filter_tokens, &words_all)?;
+    let mut filter = if basic_land_type_slots.is_none() {
+        parse_search_library_object_filter_lexed(&filter_tokens, &words_all)?
+    } else {
+        ObjectFilter::default()
+    };
     filter.distinct_names = distinct_names;
     if let Some(same_name_tag) = same_name_reference
         .as_ref()
@@ -1311,7 +1326,28 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     let split_battlefield_and_hand = effect_routing.split_battlefield_and_hand;
     let library_position_from_top = effect_routing.library_position_from_top.clone();
     let mut handled_direct_may_in_iterated_search = false;
-    let mut effects = if let Some(iterated_filter) = iterated_subject_filter.clone()
+    let mut effects = if let Some(mut slots) = basic_land_type_slots.take() {
+        if !has_explicit_destination || !search_zones_are_library_only {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported each-basic-land-type search-library clause (clause: '{}')",
+                words_all.join(" ")
+            )));
+        }
+        for slot in &mut slots {
+            if slot.filter.owner.is_none()
+                && let Some(owner) = forced_library_owner.clone()
+            {
+                slot.filter.owner = Some(owner);
+            }
+        }
+        vec![EffectAst::subject_verb_search_library_slots(
+            player,
+            slots,
+            destination,
+            reveal,
+            TagKey::from("search_library_slots_progress"),
+        )]
+    } else if let Some(iterated_filter) = iterated_subject_filter.clone()
         && has_explicit_destination
         && named_filters.is_none()
         && !split_battlefield_and_hand

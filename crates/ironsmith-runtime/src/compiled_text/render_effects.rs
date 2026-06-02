@@ -20438,6 +20438,38 @@ fn title_case_named_card_selection(selection: &str) -> String {
     format!("{head} named {}", title_case_card_name_fragment(name))
 }
 
+fn describe_basic_land_type_search_slots(
+    search_slots: &crate::effects::SearchLibrarySlotsEffect,
+) -> Option<&'static str> {
+    if search_slots.slots.len() != 5 {
+        return None;
+    }
+
+    let basic_land_types = [
+        Subtype::Plains,
+        Subtype::Island,
+        Subtype::Swamp,
+        Subtype::Mountain,
+        Subtype::Forest,
+    ];
+    for subtype in basic_land_types {
+        let expected = ObjectFilter::default()
+            .in_zone(Zone::Library)
+            .with_type(CardType::Land)
+            .with_subtype(subtype);
+        let has_slot = search_slots.slots.iter().any(|slot| {
+            let mut filter = slot.filter.clone();
+            filter.owner = None;
+            filter == expected
+        });
+        if !has_slot {
+            return None;
+        }
+    }
+
+    Some("a land card of each basic land type")
+}
+
 pub(super) fn describe_cost_list(costs: &[crate::costs::Cost]) -> String {
     describe_cost_component_parts(costs).join(", ")
 }
@@ -32627,6 +32659,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_possessive_player_filter(&search_slots.player)
             )
         };
+        if let Some(selection) = describe_basic_land_type_search_slots(search_slots) {
+            if search_slots.reveal {
+                return format!(
+                    "Search {search_origin} for {selection}, reveal those cards, put them {destination}, then shuffle"
+                );
+            }
+            return format!(
+                "Search {search_origin} for {selection}, put them {destination}, then shuffle"
+            );
+        }
         let selections: Vec<String> = search_slots
             .slots
             .iter()

@@ -1423,6 +1423,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     SearchLibrarySlotsToHand {
         slots: Vec<SearchLibrarySlotAst>,
+        destination: Zone,
         reveal: bool,
         progress_tag: TagKey,
     },
@@ -2865,11 +2866,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::SearchLibrarySlotsToHand {
                 slots,
+                destination,
                 reveal,
                 progress_tag,
             } => f
                 .debug_struct("SearchLibrarySlotsToHand")
                 .field("slots", slots)
+                .field("destination", destination)
                 .field("reveal", reveal)
                 .field("progress_tag", progress_tag)
                 .finish(),
@@ -4830,11 +4833,22 @@ impl EffectAst {
         reveal: bool,
         progress_tag: TagKey,
     ) -> Self {
+        Self::subject_verb_search_library_slots(player, slots, Zone::Hand, reveal, progress_tag)
+    }
+
+    pub(crate) fn subject_verb_search_library_slots(
+        player: PlayerAst,
+        slots: Vec<SearchLibrarySlotAst>,
+        destination: Zone,
+        reveal: bool,
+        progress_tag: TagKey,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::SearchLibrarySlotsToHand {
                 slots,
+                destination,
                 reveal,
                 progress_tag,
             },

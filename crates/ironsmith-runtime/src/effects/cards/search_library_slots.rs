@@ -228,14 +228,65 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
-    fn push_basic_land(game: &mut GameState, controller: PlayerId, name: &str, subtype: Subtype) {
+    fn push_basic_land_in_zone(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+        subtype: Subtype,
+        zone: Zone,
+    ) {
         let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Land])
             .supertypes(vec![Supertype::Basic])
             .subtypes(vec![subtype])
             .mana_cost(ManaCost::new())
             .build();
+        game.create_object_from_card(&card, controller, zone);
+    }
+
+    fn push_land_with_subtypes(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+        subtypes: Vec<Subtype>,
+    ) {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Land])
+            .subtypes(subtypes)
+            .mana_cost(ManaCost::new())
+            .build();
         game.create_object_from_card(&card, controller, Zone::Library);
+    }
+
+    fn push_basic_land(game: &mut GameState, controller: PlayerId, name: &str, subtype: Subtype) {
+        push_basic_land_in_zone(game, controller, name, subtype, Zone::Library);
+    }
+
+    fn gaeas_balance_search_effect() -> SearchLibrarySlotsEffect {
+        SearchLibrarySlotsEffect::new(
+            [
+                Subtype::Plains,
+                Subtype::Island,
+                Subtype::Swamp,
+                Subtype::Mountain,
+                Subtype::Forest,
+            ]
+            .into_iter()
+            .map(|subtype| {
+                SearchLibrarySlot::optional(
+                    ObjectFilter::default()
+                        .in_zone(Zone::Library)
+                        .with_type(CardType::Land)
+                        .with_subtype(subtype),
+                )
+            })
+            .collect(),
+            Zone::Battlefield,
+            PlayerFilter::You,
+            PlayerFilter::You,
+            false,
+            "gaeas_balance_progress",
+        )
     }
 
     struct PendingOnSecondChoiceDm {
@@ -366,5 +417,113 @@ mod tests {
         assert_eq!(second.output_objects().len(), 2);
         assert!(ctx.get_tagged_all("progress").is_none());
         assert_eq!(game.player(alice).expect("alice exists").hand.len(), 2);
+    }
+
+    #[test]
+    fn gaeas_balance_slots_put_each_basic_land_type_onto_battlefield() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        for (name, subtype) in [
+            ("Plains", Subtype::Plains),
+            ("Island", Subtype::Island),
+            ("Swamp", Subtype::Swamp),
+            ("Mountain", Subtype::Mountain),
+            ("Forest", Subtype::Forest),
+        ] {
+            push_basic_land(&mut game, alice, name, subtype);
+        }
+
+        let source = ObjectId::from_raw(2001);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = gaeas_balance_search_effect()
+            .execute(&mut game, &mut ctx)
+            .expect("Gaea's Balance search should resolve");
+
+        assert_eq!(outcome.output_objects().len(), 5);
+        let battlefield_names: Vec<_> = game
+            .battlefield
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+            .collect();
+        for name in ["Plains", "Island", "Swamp", "Mountain", "Forest"] {
+            assert!(
+                battlefield_names.iter().any(|candidate| candidate == name),
+                "Gaea's Balance should put {name} onto the battlefield, got {battlefield_names:?}"
+            );
+        }
+        assert!(ctx.get_tagged_all("gaeas_balance_progress").is_none());
+    }
+
+    #[test]
+    fn gaeas_balance_slots_do_not_find_missing_type_from_graveyard() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        for (name, subtype) in [
+            ("Plains", Subtype::Plains),
+            ("Island", Subtype::Island),
+            ("Mountain", Subtype::Mountain),
+            ("Forest", Subtype::Forest),
+        ] {
+            push_basic_land(&mut game, alice, name, subtype);
+        }
+        push_basic_land_in_zone(
+            &mut game,
+            alice,
+            "Graveyard Swamp",
+            Subtype::Swamp,
+            Zone::Graveyard,
+        );
+
+        let source = ObjectId::from_raw(2002);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = gaeas_balance_search_effect()
+            .execute(&mut game, &mut ctx)
+            .expect("Gaea's Balance partial search should resolve");
+
+        assert_eq!(outcome.output_objects().len(), 4);
+        assert!(
+            !game.battlefield.iter().any(|id| game
+                .object(*id)
+                .is_some_and(|obj| obj.name == "Graveyard Swamp")),
+            "Gaea's Balance must not find a missing basic land type from the graveyard"
+        );
+        let graveyard_names: Vec<_> = game
+            .player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+            .collect();
+        assert!(
+            graveyard_names.iter().any(|name| name == "Graveyard Swamp"),
+            "Gaea's Balance should leave the graveyard Swamp in the graveyard, got {graveyard_names:?}"
+        );
+    }
+
+    #[test]
+    fn gaeas_balance_slots_use_multitype_land_for_only_one_slot() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        push_land_with_subtypes(
+            &mut game,
+            alice,
+            "Savannah",
+            vec![Subtype::Plains, Subtype::Forest],
+        );
+
+        let source = ObjectId::from_raw(2003);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = gaeas_balance_search_effect()
+            .execute(&mut game, &mut ctx)
+            .expect("Gaea's Balance dual-land search should resolve");
+
+        assert_eq!(
+            outcome.output_objects().len(),
+            1,
+            "one land card with two basic land types must not satisfy two slots"
+        );
+        assert!(game.battlefield.iter().any(|id| game
+            .object(*id)
+            .is_some_and(|obj| obj.name == "Savannah")));
     }
 }

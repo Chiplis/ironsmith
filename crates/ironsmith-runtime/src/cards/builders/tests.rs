@@ -144,6 +144,49 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn gaeas_balance_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Gaea's Balance");
+
+    let def = parse_oracle_card_definition("Gaea's Balance");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let cost_debug = format!("{:#?}", def.additional_cost);
+
+    assert_eq!(def.name(), "Gaea's Balance");
+    assert_eq!(
+        rendered,
+        "As an additional cost to cast this spell, sacrifice five lands.\nSearch your library for a land card of each basic land type, put them onto the battlefield, then shuffle.",
+        "Gaea's Balance compiled text should preserve the full additional-cost and each-basic-land-type search clauses"
+    );
+    assert!(
+        rendered_lower.contains("as an additional cost to cast this spell, sacrifice five lands"),
+        "Gaea's Balance should render the additional sacrifice cost, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("a land card of each basic land type"),
+        "Gaea's Balance should preserve each-basic-land-type search text, got {rendered}"
+    );
+    assert!(
+        spell_debug.contains("SearchLibrarySlotsEffect")
+            && spell_debug.contains("destination: Battlefield")
+            && ["Plains", "Island", "Swamp", "Mountain", "Forest"]
+                .iter()
+                .all(|subtype| spell_debug.contains(subtype)),
+        "Gaea's Balance should lower to battlefield search slots for every basic land type, got {spell_debug}"
+    );
+    assert!(
+        cost_debug.contains("ChooseObjectsEffect")
+            && cost_debug.contains("SacrificePlayerEffect")
+            && cost_debug.contains("min: 5")
+            && cost_debug.contains("max: Some(")
+            && cost_debug.contains("Fixed(")
+            && cost_debug.contains("Land"),
+        "Gaea's Balance should require sacrificing exactly five lands as an additional cost, got {cost_debug}"
+    );
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 
