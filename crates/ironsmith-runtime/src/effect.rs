@@ -2663,18 +2663,8 @@ impl Effect {
     }
 
     /// Create an "exile cards from your graveyard" cost effect.
-    pub fn exile_from_graveyard_as_cost(
-        count: u32,
-        card_type: Option<crate::types::CardType>,
-    ) -> Self {
+    pub fn exile_from_graveyard_as_cost(count: u32, filter: ObjectFilter) -> Self {
         use crate::effects::ExileEffect;
-
-        let mut filter = ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You);
-        if let Some(card_type) = card_type {
-            filter = filter.with_type(card_type);
-        }
 
         Self::new(ExileEffect::with_spec(
             ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),

@@ -30185,6 +30185,304 @@ fn maestros_ascendancy_is_once_each_turn_and_only_on_your_turn() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn demilich_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_190), "Demilich")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Skeleton, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "This spell costs {U} less to cast for each instant and sorcery spell you've cast this turn.\n\
+             Whenever this creature attacks, exile up to one target instant or sorcery card from your graveyard. Copy it. You may cast the copy.\n\
+             You may cast this card from your graveyard by exiling four instant and/or sorcery cards from your graveyard in addition to paying its other costs.",
+        )
+        .expect("Demilich should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn demilich_graveyard_cast_action(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+) -> Option<LegalAction> {
+    compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: action_spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Graveyard,
+                        use_alternative: Some(_),
+                    },
+                } if *action_spell_id == spell_id && *source == spell_id
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_cost_card(name: &str, card_type: CardType) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .mana_cost(ManaCost::new())
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_demilich_test_spell_cast(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    card_type: CardType,
+) {
+    let spell_id = game.create_object_from_card(
+        &graveyard_cost_card(name, card_type),
+        player,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, player, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_cost_reduction_removes_one_blue_for_each_instant_or_sorcery_cast() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id = game.create_object_from_definition(&demilich_definition(), alice, Zone::Hand);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let base_cost = demilich
+        .mana_cost
+        .as_ref()
+        .expect("Demilich has mana cost")
+        .clone();
+    assert_eq!(base_cost.to_oracle(), "{U}{U}{U}{U}");
+
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Instant", CardType::Instant);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let reduced_once = crate::decision::calculate_effective_mana_cost(
+        &game, alice, demilich, &base_cost,
+    );
+    assert_eq!(reduced_once.to_oracle(), "{U}{U}{U}");
+
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Sorcery", CardType::Sorcery);
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Creature", CardType::Creature);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let reduced_twice = crate::decision::calculate_effective_mana_cost(
+        &game, alice, demilich, &base_cost,
+    );
+    assert_eq!(reduced_twice.to_oracle(), "{U}{U}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_casts_from_graveyard_by_exiling_four_instant_or_sorcery_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id =
+        game.create_object_from_definition(&demilich_definition(), alice, Zone::Graveyard);
+    for idx in 0..4 {
+        record_demilich_test_spell_cast(
+            &mut game,
+            alice,
+            &format!("Previously Cast Instant {idx}"),
+            CardType::Instant,
+        );
+    }
+    let valid_cards = [
+        game.create_object_from_card(
+            &graveyard_cost_card("First Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Second Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Third Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Buried Sorcery", CardType::Sorcery),
+            alice,
+            Zone::Graveyard,
+        ),
+    ];
+    let artifact_id = game.create_object_from_card(
+        &graveyard_cost_card("Buried Artifact", CardType::Artifact),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let action = demilich_graveyard_cast_action(&game, alice, demilich_id)
+        .expect("Demilich should be castable from graveyard with four instant/sorcery cards to exile");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("Demilich graveyard cast should start");
+
+    for _ in 0..8 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.to_ascii_lowercase().contains("exile"))
+                    .map(|option| option.index)
+                    .expect("Demilich cast should offer an exile cost step");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                    &mut dm,
+                )
+                .expect("Demilich cast should accept the exile cost step")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .all(|candidate| candidate.id != artifact_id || !candidate.legal),
+                    "Demilich exile cost must not allow artifact cards"
+                );
+                let card_id = ctx
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .expect("Demilich exile cost should have an instant or sorcery choice");
+                assert!(
+                    valid_cards.contains(&card_id),
+                    "Demilich exile cost should choose only the prepared instant/sorcery cards"
+                );
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(card_id),
+                    &mut dm,
+                )
+                .expect("Demilich cast should accept an instant or sorcery exile choice")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("expected Demilich exile cost flow, got {other:?}"),
+        };
+    }
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_))
+        ),
+        "Demilich cast should finish after four exile choices, got {progress:?}"
+    );
+    assert!(
+        game.stack.iter().any(|entry| game
+            .object(entry.object_id)
+            .is_some_and(|object| object.name == "Demilich")),
+        "Demilich should be on the stack after paying its graveyard-cast cost"
+    );
+    for name in [
+        "First Buried Instant",
+        "Second Buried Instant",
+        "Third Buried Instant",
+        "Buried Sorcery",
+    ] {
+        assert!(
+            game.exile
+                .iter()
+                .any(|id| game.object(*id).is_some_and(|object| object.name == name)),
+            "{name} should be exiled to pay Demilich's graveyard-cast cost"
+        );
+    }
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .graveyard
+            .iter()
+            .any(|id| *id == artifact_id),
+        "the artifact card should remain in the graveyard because it is not a legal Demilich cost card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_graveyard_cast_requires_four_instant_or_sorcery_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id =
+        game.create_object_from_definition(&demilich_definition(), alice, Zone::Graveyard);
+    for idx in 0..4 {
+        record_demilich_test_spell_cast(
+            &mut game,
+            alice,
+            &format!("Previously Cast Instant {idx}"),
+            CardType::Instant,
+        );
+    }
+    for idx in 0..3 {
+        game.create_object_from_card(
+            &graveyard_cost_card(&format!("Buried Instant {idx}"), CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        );
+    }
+    game.create_object_from_card(
+        &graveyard_cost_card("Buried Artifact", CardType::Artifact),
+        alice,
+        Zone::Graveyard,
+    );
+
+    assert!(
+        demilich_graveyard_cast_action(&game, alice, demilich_id).is_none(),
+        "Demilich should not be castable from graveyard with only three instant/sorcery cards plus an artifact"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn demon_of_fates_design_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(92_200), "Demon of Fate's Design")
         .mana_cost(ManaCost::from_pips(vec![

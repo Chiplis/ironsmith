@@ -387,6 +387,11 @@ pub trait CostPayer: std::fmt::Debug + Send + Sync + CostPayerClone + Any {
         None
     }
 
+    /// Returns the exile from graveyard details (count, allowed card types) if applicable.
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[crate::types::CardType])> {
+        None
+    }
+
     /// Returns true if this is a remove counters cost.
     fn is_remove_counters(&self) -> bool {
         false

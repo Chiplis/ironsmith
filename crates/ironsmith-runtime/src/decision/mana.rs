@@ -3039,7 +3039,14 @@ pub(crate) fn apply_spell_cost_modifiers(
                 chosen_targets,
                 Some(&spell.optional_costs_paid),
             ) {
-                reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                let repetitions = reduction
+                    .repetitions
+                    .as_ref()
+                    .map(|value| resolve_cost_modifier_value(game, player, spell, value).max(0))
+                    .unwrap_or(1);
+                for _ in 0..repetitions {
+                    reduction_pips.extend(reduction.reduction.pips().iter().cloned());
+                }
             }
         }
         if !functions_in_current_zone {

@@ -52,6 +52,10 @@ impl ironsmith_core::CostComponent for Cost {
         self.exile_from_hand_details()
     }
 
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[crate::types::CardType])> {
+        self.exile_from_graveyard_details()
+    }
+
     fn mana_cost_ref(&self) -> Option<&ManaCost> {
         self.mana_cost_ref()
     }

@@ -121,6 +121,18 @@ impl<C: CostComponent> DerivedAlternativeCast<C> {
         }
     }
 
+    pub fn graveyard_cast_from_cards_mana_cost(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::GraveyardCastFromCardManaCost {
+            additional_costs,
+            usage_limit: None,
+            condition: None,
+            exiles_after_resolution,
+        }
+    }
+
     pub fn life_equal_mana_value_from_hand(usage_limit: Option<GrantUsageLimit>) -> Self {
         Self::LifeEqualManaValueFromHand { usage_limit }
     }
@@ -257,6 +269,18 @@ where
     ) -> Self {
         Self::DerivedAlternativeCast(
             DerivedAlternativeCast::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
+                additional_costs,
+                exiles_after_resolution,
+            ),
+        )
+    }
+
+    pub fn graveyard_cast_from_cards_mana_cost(
+        additional_costs: Vec<C>,
+        exiles_after_resolution: bool,
+    ) -> Self {
+        Self::DerivedAlternativeCast(
+            DerivedAlternativeCast::graveyard_cast_from_cards_mana_cost(
                 additional_costs,
                 exiles_after_resolution,
             ),
@@ -469,6 +493,24 @@ where
             }
         }
 
+        fn list_card_types_and_or(types: &[CardType]) -> String {
+            let names = types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            match names.as_slice() {
+                [] => String::new(),
+                [one] => one.clone(),
+                [left, right] => format!("{left} and/or {right}"),
+                _ => {
+                    let Some((last, rest)) = names.split_last() else {
+                        return String::new();
+                    };
+                    format!("{}, and/or {last}", rest.join(", "))
+                }
+            }
+        }
+
         fn is_simple_card_type_filter(filter: &ObjectFilter) -> bool {
             if filter.card_types.is_empty() {
                 return false;
@@ -607,6 +649,26 @@ where
                 && let Some(filter_text) = sacrifice_cost_filter_description(filter)
             {
                 return format!("sacrificing {filter_text} in addition to paying its other costs");
+            }
+
+            if let [cost] = additional_costs
+                && let Some((count, card_types)) = cost.exile_from_graveyard_details()
+            {
+                let count_text = if count == 1 {
+                    "a".to_string()
+                } else {
+                    crate::cardinal_word(count).unwrap_or_else(|| count.to_string())
+                };
+                let type_text = list_card_types_and_or(card_types);
+                let type_prefix = if type_text.is_empty() {
+                    String::new()
+                } else {
+                    format!("{type_text} ")
+                };
+                let card_word = if count == 1 { "card" } else { "cards" };
+                return format!(
+                    "exiling {count_text} {type_prefix}{card_word} from your graveyard in addition to paying its other costs"
+                );
             }
 
             if additional_costs.is_empty() {
@@ -980,6 +1042,10 @@ where
                 {
                     line.push_str(" as long as ");
                     line.push_str(&condition_text);
+                }
+                if !additional_costs.is_empty() {
+                    line.push_str(" by ");
+                    line.push_str(&cost_text);
                 }
                 if *exiles_after_resolution {
                     line.push_str(". If you cast it this way and it would be put into your graveyard, exile it instead");

@@ -4873,6 +4873,36 @@ fn parse_oracle_maestros_ascendancy_graveyard_cast_cost_and_exile_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_demilich_graveyard_cast_additional_exile_cost() {
+    assert_oracle_card_parses_strict("Demilich");
+    let def = parse_oracle_card_definition("Demilich");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+    assert!(
+        rendered.contains(
+            "This spell costs {U} less to cast for each instant and sorcery spell you've cast this turn"
+        ),
+        "expected Demilich to render its dynamic blue cost reduction, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "You may cast this card from your graveyard by exiling four instant and/or sorcery cards from your graveyard in addition to paying its other costs"
+        ),
+        "expected Demilich to render its graveyard-cast additional exile cost, got {rendered}"
+    );
+    assert!(
+        debug.contains("GraveyardCastFromCardManaCost")
+            && debug.contains("ExileEffect")
+            && debug.contains("min: 4")
+            && debug.contains("Instant")
+            && debug.contains("Sorcery"),
+        "expected Demilich to lower to a graveyard-cast grant with a four-card instant/sorcery exile cost, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_squee_the_immortal_graveyard_or_exile_cast_permission() {
     assert_oracle_card_parses_strict("Squee, the Immortal");
     let def = parse_oracle_card_definition("Squee, the Immortal");

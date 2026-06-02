@@ -240,6 +240,9 @@ impl Cost {
                 count,
                 color_filter,
             } => Self::exile_from_hand(count, color_filter),
+            ironsmith_core::Cost::ExileFromGraveyard { count, card_types } => {
+                Self::exile_from_graveyard_types(count, card_types)
+            }
             ironsmith_core::Cost::ReturnSelfToHand => Self::return_self_to_hand(),
             ironsmith_core::Cost::Effect(effect)
                 if Self::is_tagged_type_marker_effect(&effect) =>
@@ -305,8 +308,17 @@ impl Cost {
 
     /// Create an exile from graveyard cost.
     pub fn exile_from_graveyard(count: u32, card_type: Option<CardType>) -> Self {
+        Self::exile_from_graveyard_types(count, card_type.into_iter().collect())
+    }
+
+    /// Create an exile-from-graveyard cost with one-or-more allowed card types.
+    pub fn exile_from_graveyard_types(count: u32, card_types: Vec<CardType>) -> Self {
+        let mut filter = crate::filter::ObjectFilter::default()
+            .in_zone(crate::zone::Zone::Graveyard)
+            .owned_by(crate::target::PlayerFilter::You);
+        filter.card_types = card_types;
         Self::validated_effect(crate::effect::Effect::exile_from_graveyard_as_cost(
-            count, card_type,
+            count, filter,
         ))
     }
 
@@ -492,6 +504,11 @@ impl Cost {
     /// Get the exile from hand details if applicable.
     pub fn exile_from_hand_details(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
         self.0.exile_from_hand_details()
+    }
+
+    /// Get the exile from graveyard details if applicable.
+    pub fn exile_from_graveyard_details(&self) -> Option<(u32, &[crate::types::CardType])> {
+        self.0.exile_from_graveyard_details()
     }
 
     /// Check if this is a remove counters cost.

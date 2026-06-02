@@ -4676,6 +4676,44 @@ fn describe_revealed_cards_opponent_may_put_or_draw(effects: &[&Effect]) -> Opti
     ))
 }
 
+fn tagged_exile_effect_tag(effect: &Effect) -> Option<&str> {
+    let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    tagged
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .map(|_| tagged.tag.as_str())
+}
+
+fn copied_spell_targets_tag(effect: &Effect, tag: &str) -> bool {
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return false;
+    };
+    let Some(with_id) = tagged
+        .effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+    else {
+        return false;
+    };
+    with_id
+        .effect
+        .downcast_ref::<crate::effects::CopySpellEffect>()
+        .is_some_and(|copy| {
+            matches!(&copy.target, ChooseSpec::Tagged(copy_tag) if copy_tag.as_str() == tag)
+        })
+}
+
+fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
+    let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() else {
+        return false;
+    };
+    let [cast_effect] = may.effects.as_slice() else {
+        return false;
+    };
+    cast_effect
+        .downcast_ref::<crate::effects::CastTaggedEffect>()
+        .is_some_and(|cast| cast.as_copy && cast.tag.as_str() == tag)
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
@@ -10691,6 +10729,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
         {
             idx += 1;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(exiled_tag) = tagged_exile_effect_tag(filtered[idx])
+            && copied_spell_targets_tag(filtered[idx + 1], exiled_tag)
+            && may_cast_copy_targets_tag(filtered[idx + 2], exiled_tag)
+        {
+            let exile_text = describe_effect(filtered[idx]).replace(" in your graveyard", " from your graveyard");
+            parts.push(format!("{exile_text}. Copy it. You may cast the copy"));
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()

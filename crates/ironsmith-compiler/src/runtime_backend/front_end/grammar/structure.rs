@@ -665,6 +665,16 @@ pub(crate) fn classify_static_line_family_lexed(
         return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
     }
 
+    if primitives::contains_any_phrase(
+        tokens,
+        &[
+            &["you", "may", "cast", "this", "card", "from", "your", "graveyard"],
+            &["you", "may", "cast", "this", "spell", "from", "your", "graveyard"],
+        ],
+    ) {
+        return Some(StaticLineFamily::Generic);
+    }
+
     if let Some(quote_idx) = primitives::find_token_index(tokens, |token| token.is_quote()) {
         let head = trim_lexed_commas(&tokens[..quote_idx]);
         if !head.is_empty()

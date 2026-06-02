@@ -432,6 +432,21 @@ impl CostPayer for CostEffect {
         self.effect.0.exile_from_hand_cost_info()
     }
 
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[crate::types::CardType])> {
+        let exile = self.effect.downcast_ref::<crate::effects::ExileEffect>()?;
+        let crate::target::ChooseSpec::Object(filter) = exile.spec.base() else {
+            return None;
+        };
+        if filter.zone != Some(crate::zone::Zone::Graveyard) {
+            return None;
+        }
+        let count = exile.spec.count();
+        if count.min == 0 || count.max != Some(count.min) {
+            return None;
+        }
+        Some((count.min as u32, &filter.card_types))
+    }
+
     fn is_remove_counters(&self) -> bool {
         self.effect
             .downcast_ref::<crate::effects::RemoveCountersEffect>()
