@@ -8292,6 +8292,40 @@ fn test_parse_put_counter_then_it_deals_damage_equal_to_its_power() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_lyzolda_the_blood_witch_parses_sacrificed_creature_color_branches() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lyzolda, the Blood Witch")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Cleric])
+        .power_toughness(PowerToughness::fixed(3, 1))
+        .parse_text(
+            "{2}, Sacrifice a creature: Lyzolda deals 2 damage to any target if the sacrificed creature was red. Draw a card if the sacrificed creature was black.",
+        )
+        .expect("Lyzolda, the Blood Witch should parse strictly");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "{2}, Sacrifice a creature: Lyzolda deals 2 damage to any target if the sacrificed creature was red. Draw a card if the sacrificed creature was black."
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("sacrifice_cost_0")
+            && debug.contains("TaggedObjectMatches")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("DrawCardsEffect"),
+        "expected Lyzolda to lower both sacrificed-creature color branches, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_exile_named_source_with_time_counters() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Suspend Setup Variant")
         .card_types(vec![CardType::Sorcery])

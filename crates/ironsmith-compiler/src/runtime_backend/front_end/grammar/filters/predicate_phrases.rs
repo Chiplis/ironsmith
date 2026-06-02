@@ -3398,11 +3398,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
-    if filtered.len() >= 4
-        && SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 0)
-        && WAS_WORD_PATTERN.matches_word_at(&filtered, 2)
+    let sacrificed_idx = if SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 0) {
+        Some(0usize)
+    } else if filtered.len() >= 2
+        && matches!(filtered[0], "the" | "a" | "an")
+        && SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 1)
     {
-        let sacrificed_head = filtered[1];
+        Some(1usize)
+    } else {
+        None
+    };
+    if let Some(sacrificed_idx) = sacrificed_idx
+        && filtered.len() >= sacrificed_idx + 4
+        && WAS_WORD_PATTERN.matches_word_at(&filtered, sacrificed_idx + 2)
+    {
+        let sacrificed_head = filtered[sacrificed_idx + 1];
         let subject_card_type =
             parse_card_type(sacrificed_head).filter(|card_type| is_permanent_type(*card_type));
         let subject_is_permanent =
@@ -3410,8 +3420,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
         if subject_is_permanent {
             let descriptor_tokens =
-                crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[3..]);
-            let mut filter = parse_object_filter(&descriptor_tokens, false)?;
+                crate::runtime_backend::lexer::synthetic_word_tokens(
+                    &filtered[sacrificed_idx + 3..],
+                );
+            let mut filter = match parse_object_filter(&descriptor_tokens, false) {
+                Ok(filter) => filter,
+                Err(err) => parse_color_only_object_filter_words(&filtered[sacrificed_idx + 3..])
+                    .ok_or(err)?,
+            };
             if filter.card_types.is_empty() {
                 if let Some(card_type) = subject_card_type {
                     filter.card_types.push(card_type);
