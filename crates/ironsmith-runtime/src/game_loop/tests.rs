@@ -39374,6 +39374,417 @@ fn brain_in_a_jar_ability_index(game: &GameState, brain_id: ObjectId, needle: &s
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn surtland_elementalist_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(93_100), "Surtland Elementalist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "As an additional cost to cast this spell, reveal a Giant card from your hand or pay {2}.\nWhenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost.",
+        )
+        .expect("Surtland Elementalist should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+enum SurtlandAdditionalCostMode {
+    Reveal,
+    Pay,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SurtlandDecisionMaker {
+    cast_free_spell: bool,
+    additional_cost_mode: Option<SurtlandAdditionalCostMode>,
+    object_choice: Option<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SurtlandDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.cast_free_spell
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if let Some(mode) = self.additional_cost_mode.as_ref() {
+            let needle = match mode {
+                SurtlandAdditionalCostMode::Reveal => "reveal",
+                SurtlandAdditionalCostMode::Pay => "pay {2}",
+            };
+            if let Some(option) = ctx.options.iter().find(|option| {
+                option.legal && option.description.to_ascii_lowercase().contains(needle)
+            }) {
+                return vec![option.index];
+            }
+        }
+
+        ctx.options
+            .iter()
+            .filter(|option| option.legal)
+            .map(|option| option.index)
+            .take(ctx.min)
+            .collect()
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if let Some(object_id) = self.object_choice
+            && ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.legal && candidate.id == object_id)
+        {
+            return vec![object_id];
+        }
+
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attack_with_surtland(game: &mut GameState, surtland_id: ObjectId) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.remove_summoning_sickness(surtland_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: surtland_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Surtland Elementalist should be able to attack");
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stack_contains_named_object(game: &GameState, name: &str) -> bool {
+    game.stack.iter().any(|entry| {
+        game.object(entry.object_id)
+            .is_some_and(|object| object.name == name)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finish_surtland_cast(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    dm: &mut SurtlandDecisionMaker,
+) {
+    for _ in 0..32 {
+        if stack_contains_named_object(game, "Surtland Elementalist") {
+            return;
+        }
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                let choice = dm.object_choice.unwrap_or_else(|| {
+                    ctx.candidates
+                        .iter()
+                        .find(|candidate| candidate.legal)
+                        .expect("Surtland additional cost should have a legal object choice")
+                        .id
+                });
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::CardCostChoice(choice),
+                    dm,
+                )
+                .expect("Surtland additional cost object choice should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let choice = dm
+                    .decide_options(game, &ctx)
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| {
+                        ctx.options
+                            .iter()
+                            .find(|option| option.legal)
+                            .expect("Surtland cast should have a legal option")
+                            .index
+                    });
+                let description = ctx.description.to_ascii_lowercase();
+                let response = if description.starts_with("choose the next cost to pay") {
+                    PriorityResponse::NextCostChoice(choice)
+                } else {
+                    PriorityResponse::ManaPayment(choice)
+                };
+                apply_priority_response_with_dm(game, trigger_queue, state, &response, dm)
+                    .expect("Surtland cast option should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            )
+            | crate::decision::GameProgress::Continue => return,
+            other => panic!("unexpected Surtland cast flow state: {other:?}"),
+        };
+    }
+    panic!("Surtland cast flow did not finish after repeated decisions");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_attack_trigger_casts_matching_hand_spell_for_free() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_101), "Surtland Matching Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(9)]))
+        .build();
+    let nonmatching_type = CardBuilder::new(CardId::from_raw(93_102), "Surtland Hand Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let opponent_spell = CardBuilder::new(CardId::from_raw(93_103), "Opponent Surtland Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let nonmatching_id = game.create_object_from_card(&nonmatching_type, alice, Zone::Hand);
+    let opponent_spell_id = game.create_object_from_card(&opponent_spell, bob, Zone::Hand);
+
+    let mut trigger_queue = attack_with_surtland(&mut game, surtland_id);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Surtland Elementalist should trigger when it attacks"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Surtland Elementalist attack trigger should go on the stack");
+
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: true,
+        additional_cost_mode: None,
+        object_choice: None,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Surtland Elementalist attack trigger should resolve");
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Matching Instant"),
+        "the matching instant should be cast onto the stack without paying its mana cost"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching creature should still exist")
+            .zone,
+        Zone::Hand,
+        "the trigger should not cast a non-instant, non-sorcery card"
+    );
+    assert_eq!(
+        game.object(opponent_spell_id)
+            .expect("opponent spell should still exist")
+            .zone,
+        Zone::Hand,
+        "the trigger should not cast a spell from another player's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_attack_trigger_can_be_declined() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_104), "Declined Surtland Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(9)]))
+        .build();
+    let matching_id = game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+
+    let mut trigger_queue = attack_with_surtland(&mut game, surtland_id);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Surtland Elementalist attack trigger should go on the stack");
+
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: None,
+        object_choice: None,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Surtland Elementalist attack trigger should resolve when declined");
+
+    assert_eq!(
+        game.object(matching_id)
+            .expect("declined spell should still exist")
+            .zone,
+        Zone::Hand,
+        "declining the may trigger should leave the matching spell in hand"
+    );
+    assert!(
+        !stack_contains_named_object(&game, "Declined Surtland Instant"),
+        "declining the may trigger should not cast the spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_additional_cost_can_reveal_giant_instead_of_paying_two() {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Hand);
+    let giant = CardBuilder::new(CardId::from_raw(93_105), "Revealed Giant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let giant_id = game.create_object_from_card(&giant, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 5);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: Some(SurtlandAdditionalCostMode::Reveal),
+        object_choice: Some(giant_id),
+    };
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: surtland_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("Surtland Elementalist should cast by revealing a Giant with only its mana cost available");
+    finish_surtland_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+    );
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Elementalist"),
+        "Surtland Elementalist should be on the stack after revealing the Giant additional cost"
+    );
+    assert_eq!(
+        game.object(giant_id)
+            .expect("revealed Giant should remain in hand")
+            .zone,
+        Zone::Hand,
+        "revealing a Giant should not move it out of hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_additional_cost_can_pay_two_without_giant() {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 7);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: Some(SurtlandAdditionalCostMode::Pay),
+        object_choice: None,
+    };
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: surtland_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("Surtland Elementalist should cast by paying {2} with no Giant in hand");
+    finish_surtland_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+    );
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Elementalist"),
+        "Surtland Elementalist should be on the stack after paying {{2}} additional cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_omniscience_grants_free_cast_from_hand_without_mana() {
     use crate::cards::definitions::lightning_bolt;

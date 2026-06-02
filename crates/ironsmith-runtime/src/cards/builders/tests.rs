@@ -22468,6 +22468,52 @@ fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_surtland_elementalist_strictly_and_renders_hand_free_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Surtland Elementalist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "As an additional cost to cast this spell, reveal a Giant card from your hand or pay {2}.\nWhenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost.",
+        )
+        .expect("Surtland Elementalist should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("as an additional cost to cast this spell, reveal a giant card from your hand or pay {2}"),
+        "expected reveal-or-pay additional cost in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("whenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost"),
+        "expected attack-triggered hand free-cast clause in compiled output, got {rendered}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("ThisAttacksTrigger")
+            && ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && ability_debug.contains("Instant")
+            && ability_debug.contains("Sorcery"),
+        "expected Surtland Elementalist to lower to an attack-triggered instant/sorcery free-cast effect, got {ability_debug}"
+    );
+    let cost_debug = format!("{:?}", def.additional_cost);
+    assert!(
+        cost_debug.contains("ChooseModeEffect")
+            && cost_debug.contains("RevealTaggedEffect")
+            && cost_debug.contains("Giant")
+            && cost_debug.contains("PayManaEffect"),
+        "expected Surtland Elementalist to keep reveal-or-pay additional cost structurally, got {cost_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_kentaro_static_mana_value_permission() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Kentaro Variant")
         .card_types(vec![CardType::Creature])
