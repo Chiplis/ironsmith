@@ -333,7 +333,7 @@ impl EffectOutcome {
         )
     }
 
-    fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
+    pub(crate) fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
         let mut other = Vec::new();
         let mut chosen_objects = Vec::new();
         let mut affected_objects = Vec::new();
@@ -813,24 +813,51 @@ pub(crate) trait RestrictionExt {
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
         iterated_player: Option<crate::ids::PlayerId>,
-    );
-}
+    ) {
+        self.apply_with_tagged_objects(
+            game,
+            tracker,
+            controller,
+            source,
+            iterated_player,
+            &std::collections::HashMap::new(),
+        );
+    }
 
-impl RestrictionExt for Restriction {
-    fn apply(
+    fn apply_with_tagged_objects(
         &self,
         game: &mut crate::game_state::GameState,
         tracker: &mut crate::game_state::CantEffectTracker,
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
         iterated_player: Option<crate::ids::PlayerId>,
+        tagged_objects: &std::collections::HashMap<
+            TagKey,
+            Vec<crate::snapshot::ObjectSnapshot>,
+        >,
+    );
+}
+
+impl RestrictionExt for Restriction {
+    fn apply_with_tagged_objects(
+        &self,
+        game: &mut crate::game_state::GameState,
+        tracker: &mut crate::game_state::CantEffectTracker,
+        controller: crate::ids::PlayerId,
+        source: Option<crate::ids::ObjectId>,
+        iterated_player: Option<crate::ids::PlayerId>,
+        tagged_objects: &std::collections::HashMap<
+            TagKey,
+            Vec<crate::snapshot::ObjectSnapshot>,
+        >,
     ) {
         use crate::game_loop::player_matches_filter_with_combat;
 
         let combat = game.combat.as_ref();
         let ctx = game
             .filter_context_for_combat(controller, source, None, None)
-            .with_iterated_player(iterated_player);
+            .with_iterated_player(iterated_player)
+            .with_tagged_objects(tagged_objects);
         let player_matches_restriction_filter =
             |player_id, filter: &crate::target::PlayerFilter| {
                 filter.matches_player(player_id, &ctx)
@@ -950,6 +977,13 @@ impl RestrictionExt for Restriction {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
                         tracker.cant_lose_life.insert(player.id);
+                    }
+                }
+            }
+            Restriction::DamageCauseLifeLoss(filter) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker.damage_cant_cause_life_loss.insert(player.id);
                     }
                 }
             }
@@ -2259,9 +2293,17 @@ impl Effect {
     }
 
     /// Create an effect that reveals cards from your hand.
-    pub fn reveal_from_hand(count: u32, card_type: Option<crate::types::CardType>) -> Self {
+    pub fn reveal_from_hand(
+        count: impl Into<Value>,
+        card_type: Option<crate::types::CardType>,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
         use crate::effects::RevealFromHandEffect;
-        Self::new(RevealFromHandEffect::new(count, card_type))
+        Self::new(RevealFromHandEffect::with_color_filter(
+            count,
+            card_type,
+            color_filter,
+        ))
     }
 
     /// Create a "move counters from one permanent to another" effect.
@@ -3228,6 +3270,17 @@ impl Effect {
     pub fn for_players(filter: PlayerFilter, effects: Vec<Effect>) -> Self {
         use crate::effects::ForPlayersEffect;
         Self::new(ForPlayersEffect::new(filter, effects))
+    }
+
+    /// Create an effect that executes for each matching player, starting with the controller.
+    pub fn for_players_starting_with_controller(
+        filter: PlayerFilter,
+        effects: Vec<Effect>,
+    ) -> Self {
+        use crate::effects::ForPlayersEffect;
+        Self::new(ForPlayersEffect::new_starting_with_controller(
+            filter, effects,
+        ))
     }
 
     /// Create an effect that executes for each tagged object.

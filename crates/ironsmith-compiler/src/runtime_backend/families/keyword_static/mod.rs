@@ -106,7 +106,7 @@ use super::util::{
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
     parse_counter_type_word, parse_filter_counter_constraint_words, parse_flashback_keyword_line,
     parse_for_each_count_value_words, parse_greater_than_or_equal_quantity_prefix,
-    parse_less_than_or_equal_quantity_prefix, parse_number_word_i32,
+    parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible, parse_number_word_i32,
     parse_quantity_comparison_prefix, parse_subtype_flexible, parse_value, parse_value_expr_words,
     parse_zone_word, preserve_keyword_prefix_for_parse,
     source_reference_surface_for_possessive_words, strip_leading_article_word_refs,
@@ -10777,6 +10777,31 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if clause_words.len() == 25
+        && word_slice_eq(&clause_words[0..3], &["you", "may", "spend"])
+        && word_slice_eq(&clause_words[4..25], &[
+            "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "you", "may",
+            "spend", "other", "mana", "only", "as", "though", "it", "were", "colorless",
+            "mana",
+        ])
+        && let Some(symbol) = parse_mana_symbol_word_flexible(clause_words[3])
+        && !matches!(symbol, ManaSymbol::Colorless)
+    {
+        let display = format!(
+            "You may spend {} mana as though it were mana of any color. You may spend other mana only as though it were colorless mana",
+            clause_words[3]
+        );
+        return Ok(Some(StaticAbilityAst::Static(
+            StaticAbility::mana_spend_permission(
+                crate::effect::ManaSpendPermission::mana_symbol_as_any_color_other_as_colorless(
+                    PlayerFilter::You,
+                    symbol,
+                ),
+                display,
+            ),
+        )));
+    }
+
     if SPEND_MANA_ANY_TYPE_CAST_PREFIX_PATTERN.matches_words(&clause_words) {
         let filter_start = 9usize;
         let filter_tokens = trim_edge_punctuation(&tokens[filter_start..]);

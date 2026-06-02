@@ -407,6 +407,7 @@ pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bo
             | "harmonize"
             | "boast"
             | "modular"
+            | "partner"
             | "replicate"
             | "reinforce"
             | "renew"

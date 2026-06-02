@@ -4,6 +4,7 @@
 //! Each cost knows its own processing mode, eliminating if-else chains in the game loop.
 
 use crate::color::ColorSet;
+use crate::effect::Value;
 use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::types::CardType;
@@ -71,9 +72,11 @@ pub enum CostProcessingMode {
     /// Cost requires selecting cards to reveal from hand.
     RevealFromHand {
         /// Number of cards to reveal.
-        count: u32,
+        count: Value,
         /// Optional card type restriction.
         card_type: Option<CardType>,
+        /// Optional color restriction.
+        color_filter: Option<ColorSet>,
     },
 
     /// Cost requires selecting a permanent to return to hand.
@@ -160,14 +163,31 @@ impl CostProcessingMode {
                 }
             }
 
-            CostProcessingMode::RevealFromHand { count, card_type } => {
-                let type_str = card_type
-                    .map(|ct| ct.card_phrase().to_string())
-                    .unwrap_or_else(|| "card".to_string());
-                if *count == 1 {
+            CostProcessingMode::RevealFromHand {
+                count,
+                card_type,
+                color_filter,
+            } => {
+                let mut type_str = String::new();
+                if let Some(colors) = color_filter
+                    && colors.count() == 1
+                    && let Some(color) = crate::color::Color::ALL
+                        .iter()
+                        .find(|&&color| colors.contains(color))
+                {
+                    type_str.push_str(color.name());
+                    type_str.push(' ');
+                }
+                type_str.push_str(card_type.map_or("card", |ct| ct.card_phrase()));
+                if *count == Value::Fixed(1) {
                     format!("Reveal a {} from your hand", type_str)
                 } else {
-                    format!("Reveal {} {}s from your hand", count, type_str)
+                    let count_text = match count {
+                        Value::Fixed(count) => count.to_string(),
+                        Value::X => "X".to_string(),
+                        other => format!("{other:?}"),
+                    };
+                    format!("Reveal {count_text} {type_str}s from your hand")
                 }
             }
 

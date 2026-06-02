@@ -87,7 +87,9 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         crate::effect::Value::Add(left, right) => {
             value_mentions_iterated_player(left) || value_mentions_iterated_player(right)
         }
-        crate::effect::Value::Scaled(inner, _) | crate::effect::Value::HalfRoundedDown(inner) => {
+        crate::effect::Value::Scaled(inner, _)
+        | crate::effect::Value::DividedRoundedDown(inner, _)
+        | crate::effect::Value::HalfRoundedDown(inner) => {
             value_mentions_iterated_player(inner)
         }
         crate::effect::Value::Count(filter)

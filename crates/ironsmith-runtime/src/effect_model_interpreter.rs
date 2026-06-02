@@ -742,10 +742,16 @@ where
         return Ok(converted);
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::ForPlayersEffect<M::Effect>>(&effect) {
-        return Ok(Effect::new(crate::effects::ForPlayersEffect::new(
-            payload.filter.clone(),
-            convert_effects(payload.effects.iter().cloned(), hooks)?,
-        )));
+        let effects = convert_effects(payload.effects.iter().cloned(), hooks)?;
+        let converted = if payload.starting_with_controller {
+            crate::effects::ForPlayersEffect::new_starting_with_controller(
+                payload.filter.clone(),
+                effects,
+            )
+        } else {
+            crate::effects::ForPlayersEffect::new(payload.filter.clone(), effects)
+        };
+        return Ok(Effect::new(converted));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachTaggedEffect<M::Effect>>(&effect)
@@ -1616,6 +1622,7 @@ where
         crate::effects::MoveToLibraryTopOrBottomChoiceEffect,
         crate::effects::MoveToZoneEffect,
         crate::effects::PayAnyEnergyEffect,
+        crate::effects::PayAnyLifeEffect,
         crate::effects::PayEnergyEffect,
         crate::effects::PayManaEffect,
         crate::effects::PopulateEffect,
@@ -1626,6 +1633,7 @@ where
         crate::effects::RetargetStackObjectEffect,
         crate::effects::ReturnAllToBattlefieldEffect,
         crate::effects::ReturnToHandEffect,
+        crate::effects::RevealFromHandEffect,
         crate::effects::RevealSourceFromHandEffect,
         crate::effects::RevealTaggedEffect,
         crate::effects::SacrificeTargetEffect,

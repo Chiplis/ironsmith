@@ -908,6 +908,18 @@ impl Effect {
         Self::new(crate::effects::ForPlayersEffect {
             filter: _filter,
             effects: _effects,
+            starting_with_controller: false,
+        })
+    }
+
+    pub fn for_players_starting_with_controller(
+        filter: crate::target::PlayerFilter,
+        effects: Vec<Effect>,
+    ) -> Self {
+        Self::new(crate::effects::ForPlayersEffect {
+            filter,
+            effects,
+            starting_with_controller: true,
         })
     }
 
@@ -915,6 +927,7 @@ impl Effect {
         Self::new(crate::effects::ForPlayersEffect {
             filter: crate::target::PlayerFilter::Opponent,
             effects,
+            starting_with_controller: false,
         })
     }
 
@@ -1676,6 +1689,18 @@ impl Effect {
 
     pub fn reveal_source_from_hand() -> Self {
         Self::new(crate::effects::RevealSourceFromHandEffect::new())
+    }
+
+    pub fn reveal_from_hand(
+        count: impl Into<Value>,
+        card_type: Option<crate::types::CardType>,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
+        Self::new(crate::effects::RevealFromHandEffect::with_color_filter(
+            count,
+            card_type,
+            color_filter,
+        ))
     }
 
     pub fn cipher() -> Self {

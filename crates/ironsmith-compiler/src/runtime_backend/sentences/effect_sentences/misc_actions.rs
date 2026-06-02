@@ -884,10 +884,20 @@ pub(crate) fn parse_pay(
     {
         return Ok(EffectAst::subject_verb_pay_any_energy(player, 0));
     }
+    if grammar::words_match_any_prefix(tokens, ANY_AMOUNT_OF_PREFIXES).is_some()
+        && grammar::contains_word(tokens, "life")
+    {
+        return Ok(EffectAst::subject_verb_pay_any_life(player, 0));
+    }
     if grammar::words_match_any_prefix(tokens, &[&["one", "or", "more"]]).is_some()
         && (grammar::contains_word(tokens, "e") || energy_symbol_count > 0)
     {
         return Ok(EffectAst::subject_verb_pay_any_energy(player, 1));
+    }
+    if grammar::words_match_any_prefix(tokens, &[&["one", "or", "more"]]).is_some()
+        && grammar::contains_word(tokens, "life")
+    {
+        return Ok(EffectAst::subject_verb_pay_any_life(player, 1));
     }
     let has_for_each = FOR_EACH_MARKER_PATTERN.matches_words(&clause_words);
     let references_tagged_choice = clause_words

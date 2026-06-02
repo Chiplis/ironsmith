@@ -2005,9 +2005,16 @@ fn pay_activation_card_choice_without_execution_context(
         crate::game_loop::ActivationCardCostChoice::RevealFromHand {
             cost,
             card_type,
+            color_filter,
             description,
         } => {
-            let candidates = legal_reveal_cards(game, cost_ctx.payer, cost_ctx.source, *card_type);
+            let candidates = legal_reveal_cards(
+                game,
+                cost_ctx.payer,
+                cost_ctx.source,
+                *card_type,
+                *color_filter,
+            );
             let Some(target_id) = choose_single_cost_object(
                 game,
                 cost_ctx,
@@ -2653,9 +2660,13 @@ fn resolve_cost_choice(
                 )),
             }
         }
-        CostProcessingMode::RevealFromHand { count, card_type } => {
-            let candidates = legal_reveal_cards(game, ctx.payer, ctx.source, card_type);
-            let required = count as usize;
+        CostProcessingMode::RevealFromHand {
+            count,
+            card_type,
+            color_filter,
+        } => {
+            let candidates = legal_reveal_cards(game, ctx.payer, ctx.source, card_type, color_filter);
+            let required = resolve_cost_count(&count, ctx.x_value) as usize;
             if candidates.len() < required {
                 return Err(CostPaymentError::InsufficientCardsToReveal);
             }
@@ -2866,6 +2877,7 @@ fn legal_reveal_cards(
     payer: PlayerId,
     source: ObjectId,
     card_type: Option<crate::types::CardType>,
+    color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
     game.player(payer)
         .map(|p| {
@@ -2876,16 +2888,32 @@ fn legal_reveal_cards(
                     if card_id == source {
                         return false;
                     }
-                    if let Some(ct) = card_type {
+                    let Some(obj) = game.object(card_id) else {
+                        return false;
+                    };
+                    if let Some(ct) = card_type
+                        && !obj.has_card_type(ct)
+                    {
+                        return false;
+                    }
+                    if let Some(required_colors) = color_filter {
                         return game
-                            .object(card_id)
-                            .is_some_and(|obj| obj.has_card_type(ct));
+                            .current_colors(card_id)
+                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
                     }
                     true
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn resolve_cost_count(count: &crate::effect::Value, x_value: Option<u32>) -> u32 {
+    match count {
+        crate::effect::Value::Fixed(count) => (*count).max(0) as u32,
+        crate::effect::Value::X => x_value.unwrap_or(0),
+        _ => 0,
+    }
 }
 
 fn legal_return_targets(

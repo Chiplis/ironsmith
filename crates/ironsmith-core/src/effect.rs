@@ -1106,6 +1106,66 @@ impl RevealSourceFromHandEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RevealFromHandEffect {
+    pub count: Value,
+    pub card_type: Option<CardType>,
+    pub color_filter: Option<ColorSet>,
+}
+
+impl RevealFromHandEffect {
+    pub fn new(count: impl Into<Value>, card_type: Option<CardType>) -> Self {
+        Self::with_color_filter(count, card_type, None)
+    }
+
+    pub fn with_color_filter(
+        count: impl Into<Value>,
+        card_type: Option<CardType>,
+        color_filter: Option<ColorSet>,
+    ) -> Self {
+        Self {
+            count: count.into(),
+            card_type,
+            color_filter,
+        }
+    }
+
+    fn count_display(&self) -> String {
+        match self.count {
+            Value::Fixed(1) => "a".to_string(),
+            Value::Fixed(count) => count.to_string(),
+            Value::X => "X".to_string(),
+            _ => format!("{:?}", self.count),
+        }
+    }
+
+    fn color_display(&self) -> Option<&'static str> {
+        let colors = self.color_filter?;
+        if colors.count() != 1 {
+            return None;
+        }
+        Color::ALL
+            .iter()
+            .find(|&&color| colors.contains(color))
+            .map(|&color| color.name())
+    }
+
+    pub fn cost_display(&self) -> String {
+        let mut card_desc = String::new();
+        if let Some(color) = self.color_display() {
+            card_desc.push_str(color);
+            card_desc.push(' ');
+        }
+        card_desc.push_str(self.card_type.map_or("card", |ct| ct.card_phrase()));
+
+        if self.count == Value::Fixed(1) {
+            format!("Reveal a {card_desc} from your hand")
+        } else {
+            format!("Reveal {} {card_desc}s from your hand", self.count_display())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChooseSpellCastHistoryEffect {
     pub chooser: PlayerFilter,
     pub cast_by: PlayerFilter,
@@ -3241,6 +3301,18 @@ pub struct PayAnyEnergyEffect {
 }
 
 impl PayAnyEnergyEffect {
+    pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
+        Self { player, min_amount }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PayAnyLifeEffect {
+    pub player: ChooseSpec,
+    pub min_amount: u32,
+}
+
+impl PayAnyLifeEffect {
     pub fn new(player: ChooseSpec, min_amount: u32) -> Self {
         Self { player, min_amount }
     }
@@ -6135,6 +6207,7 @@ pub struct UnlessActionEffect<E> {
 pub struct ForPlayersEffect<E> {
     pub filter: PlayerFilter,
     pub effects: Vec<E>,
+    pub starting_with_controller: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

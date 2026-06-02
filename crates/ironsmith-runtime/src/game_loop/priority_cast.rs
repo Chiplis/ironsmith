@@ -504,16 +504,16 @@ pub(super) fn compute_spell_cast_x_bounds(
     let mut max_x = None;
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
-        let allow_any_color = game.can_spend_mana_as_any_color(caster, Some(stack_id));
+        let mana_spend_policy = game.mana_spend_policy(caster, Some(stack_id));
         let allow_black_life = game.player_can_pay_black_with_life_for_reason(
             caster,
             Some(stack_id),
             crate::costs::PaymentReason::CastSpell,
         );
         max_x = Some(
-            compute_potential_mana(game, caster).max_x_for_cost_with_any_color_and_black_life(
+            compute_potential_mana(game, caster).max_x_for_cost_with_mana_spend_policy_and_black_life(
                 cost,
-                allow_any_color,
+                &mana_spend_policy,
                 allow_black_life,
             ),
         );
@@ -1782,7 +1782,7 @@ pub(super) fn continue_spell_cast_mana_payment(
         .map(|o| o.name.clone())
         .unwrap_or_else(|| "spell".to_string());
 
-    let allow_any_color = game.can_spend_mana_as_any_color(player_id, Some(source));
+    let mana_spend_policy = game.mana_spend_policy(player_id, Some(source));
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(
         player_id,
         Some(source),
@@ -1794,7 +1794,7 @@ pub(super) fn continue_spell_cast_mana_payment(
         player_id,
         &pip,
         display_pip,
-        allow_any_color,
+        &mana_spend_policy,
         allow_black_life,
         Some(source),
         &mut *decision_maker,
@@ -1816,7 +1816,7 @@ pub(super) fn continue_spell_cast_mana_payment(
             player_id,
             Some(source),
             &pip,
-            allow_any_color,
+            &mana_spend_policy,
             &action,
             &mut *decision_maker,
             &mut pending.payment_trace,
@@ -1901,14 +1901,14 @@ pub(super) fn compute_mana_ability_payment_options(
         }
 
         // Get the mana this ability produces and check if it can help pay the cost
-        let allow_any_color = game.can_spend_mana_as_any_color(player, Some(pending.source));
+    let mana_spend_policy = game.mana_spend_policy(player, Some(pending.source));
         let can_help = if game.object(*perm_id).is_some()
             && let Some(ability) = game.current_ability(*perm_id, *ability_index)
             && let AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_runtime_mana_ability(game, *perm_id, player)
         {
             let produced = mana_ability.inferred_mana_symbols(game, *perm_id, player);
-            mana_can_help_pay_cost(&produced, &pending.mana_cost, game, player, allow_any_color)
+            mana_can_help_pay_cost(&produced, &pending.mana_cost, game, player, &mana_spend_policy)
         } else {
             // If we can't determine, include it
             true
@@ -1953,7 +1953,7 @@ pub(super) fn mana_can_help_pay_cost(
     cost: &crate::mana::ManaCost,
     game: &GameState,
     player: PlayerId,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> bool {
     use crate::mana::ManaSymbol;
 
@@ -1977,18 +1977,19 @@ pub(super) fn mana_can_help_pay_cost(
                 | ManaSymbol::Black
                 | ManaSymbol::Red
                 | ManaSymbol::Green => {
-                    // If any-color spending is allowed, any mana helps with colored pips
-                    if allow_any_color {
-                        if !mana_produced.is_empty() {
-                            return true;
-                        }
-                    } else if mana_produced.contains(alternative) {
+                    if mana_produced
+                        .iter()
+                        .any(|symbol| mana_spend_policy.can_pay_symbol(*symbol, *alternative))
+                    {
                         return true;
                     }
                 }
                 // Colorless mana can only be paid by colorless
                 ManaSymbol::Colorless => {
-                    if mana_produced.contains(&ManaSymbol::Colorless) {
+                    if mana_produced
+                        .iter()
+                        .any(|symbol| mana_spend_policy.can_pay_symbol(*symbol, ManaSymbol::Colorless))
+                    {
                         return true;
                     }
                 }
@@ -2220,6 +2221,7 @@ pub(super) fn get_legal_reveal_from_hand_cards(
     player: PlayerId,
     source: ObjectId,
     card_type: Option<crate::types::CardType>,
+    color_filter: Option<crate::color::ColorSet>,
 ) -> Vec<ObjectId> {
     game.player(player)
         .map(|p| {
@@ -2230,12 +2232,20 @@ pub(super) fn get_legal_reveal_from_hand_cards(
                     if card_id == source {
                         return false;
                     }
-                    if let Some(ct) = card_type {
-                        game.object(card_id)
-                            .is_some_and(|obj| obj.has_card_type(ct))
-                    } else {
-                        true
+                    let Some(obj) = game.object(card_id) else {
+                        return false;
+                    };
+                    if let Some(ct) = card_type
+                        && !obj.has_card_type(ct)
+                    {
+                        return false;
                     }
+                    if let Some(required_colors) = color_filter {
+                        return game
+                            .current_colors(card_id)
+                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                    }
+                    true
                 })
                 .collect()
         })
@@ -2341,11 +2351,12 @@ pub(super) fn card_cost_choice_description_and_candidates(
         ),
         ActivationCardCostChoice::RevealFromHand {
             card_type,
+            color_filter,
             description,
             ..
         } => (
             format!("Choose a card to reveal: {}", description),
-            get_legal_reveal_from_hand_cards(game, player, source, *card_type),
+            get_legal_reveal_from_hand_cards(game, player, source, *card_type, *color_filter),
         ),
         ActivationCardCostChoice::ReturnToHand {
             filter,
@@ -3094,17 +3105,17 @@ pub(super) fn continue_activation(
         ActivationStage::ChoosingX => {
             // Need to choose X value first
             let mut max_x = if let Some(ref cost) = pending.mana_cost_to_pay {
-                let allow_any_color =
-                    game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+                let mana_spend_policy =
+                    game.mana_spend_policy(pending.activator, Some(pending.source));
                 let allow_black_life = game.player_can_pay_black_with_life_for_reason(
                     pending.activator,
                     Some(pending.source),
                     crate::costs::PaymentReason::ActivateAbility,
                 );
                 compute_potential_mana(game, pending.activator)
-                    .max_x_for_cost_with_any_color_and_black_life(
+                    .max_x_for_cost_with_mana_spend_policy_and_black_life(
                         cost,
-                        allow_any_color,
+                        &mana_spend_policy,
                         allow_black_life,
                     )
                     .into()
@@ -3309,7 +3320,7 @@ pub(super) fn continue_activation(
                 .map(|o| format!("{}'s ability", o.name))
                 .unwrap_or_else(|| "ability".to_string());
 
-            let allow_any_color = game.can_spend_mana_as_any_color(player_id, Some(source));
+            let mana_spend_policy = game.mana_spend_policy(player_id, Some(source));
             let allow_black_life = game.player_can_pay_black_with_life_for_reason(
                 player_id,
                 Some(source),
@@ -3322,7 +3333,7 @@ pub(super) fn continue_activation(
                 player_id,
                 &pip,
                 display_pip,
-                allow_any_color,
+                &mana_spend_policy,
                 allow_black_life,
                 Some(source),
                 &mut *decision_maker,
@@ -3344,7 +3355,7 @@ pub(super) fn continue_activation(
                     player_id,
                     Some(source),
                     &pip,
-                    allow_any_color,
+                    &mana_spend_policy,
                     &action,
                     &mut *decision_maker,
                     &mut pending.payment_trace,

@@ -475,6 +475,13 @@ pub(crate) enum PredicateAst {
     PlayerHasCitysBlessing {
         player: PlayerAst,
     },
+    SourceIsRingBearer {
+        player: PlayerAst,
+    },
+    PlayerRingTemptedThisGameOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerCompletedDungeon {
         player: PlayerAst,
         dungeon_name: Option<String>,
@@ -951,6 +958,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     LookAtObjects {
         filter: ObjectFilter,
+    },
+    LookAtTarget {
+        target: TargetAst,
     },
     PutIntoHand {
         object: ObjectRefAst,
@@ -1648,6 +1658,9 @@ pub(crate) enum SubjectVerbActionAst {
     PayAnyEnergy {
         min_amount: u32,
     },
+    PayAnyLife {
+        min_amount: u32,
+    },
     PayMana {
         cost: ManaCost,
     },
@@ -2096,6 +2109,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("LookAtObjects")
                 .field("filter", filter)
                 .finish(),
+            Self::LookAtTarget { target } => {
+                f.debug_tuple("LookAtTarget").field(target).finish()
+            }
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
                 .debug_struct("MayMoveToZone")
@@ -3168,6 +3184,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
             Self::PayAnyEnergy { min_amount } => f
                 .debug_struct("PayAnyEnergy")
+                .field("min_amount", min_amount)
+                .finish(),
+            Self::PayAnyLife { min_amount } => f
+                .debug_struct("PayAnyLife")
                 .field("min_amount", min_amount)
                 .finish(),
             Self::PayMana { cost } => f.debug_tuple("PayMana").field(cost).finish(),
@@ -5627,6 +5647,14 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_look_at_target(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::LookAtTarget { target },
+        )
+    }
+
     fn subject_verb_top_library_cards(
         player: PlayerAst,
         count: Value,
@@ -6351,6 +6379,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::PayAnyEnergy { min_amount },
+        )
+    }
+
+    pub(crate) fn subject_verb_pay_any_life(player: PlayerAst, min_amount: u32) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::PayAnyLife { min_amount },
         )
     }
 

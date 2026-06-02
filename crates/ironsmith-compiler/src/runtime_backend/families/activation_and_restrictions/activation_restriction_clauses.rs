@@ -277,6 +277,17 @@ const PLAYER_GET_POISON_COUNTERS_TAIL_PATTERN: ClauseShape<'static> = clause_sha
 const PLAYER_CAST_MORE_THAN_ONE_SPELL_EACH_TURN_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["cast", "more", "than", "one", "spell", "each", "turn"]);
 const BE_PREVENTED_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["be", "prevented"]);
+const DAMAGE_CAUSE_YOU_LOSE_LIFE_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["cause", "you", "to", "lose", "life"]);
+const DAMAGE_CAUSE_PLAYERS_LOSE_LIFE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["cause", "players", "to", "lose", "life"],
+            &["cause", "each", "player", "to", "lose", "life"],
+        ]
+);
+const DAMAGE_CAUSE_THAT_PLAYER_LOSE_LIFE_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["cause", "that", "player", "to", "lose", "life"]);
 const ATTACK_YOU_OR_PLANESWALKERS_YOU_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["attack", "you", "or", "planeswalkers", "you", "control"]);
 const BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN: ClauseShape<'static> =
@@ -533,6 +544,24 @@ fn player_negated_restriction_from_tail(
         Some(Restriction::cast_spells_matching(
             player,
             ObjectFilter::spell(),
+        ))
+    } else {
+        None
+    }
+}
+
+fn damage_cause_life_loss_restriction_from_tail(
+    words: &[&str],
+) -> Option<crate::effect::Restriction> {
+    use crate::effect::Restriction;
+
+    if DAMAGE_CAUSE_YOU_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+        Some(Restriction::damage_cause_life_loss(PlayerFilter::You))
+    } else if DAMAGE_CAUSE_PLAYERS_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+        Some(Restriction::damage_cause_life_loss(PlayerFilter::Any))
+    } else if DAMAGE_CAUSE_THAT_PLAYER_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+        Some(Restriction::damage_cause_life_loss(
+            PlayerFilter::IteratedPlayer,
         ))
     } else {
         None
@@ -1684,6 +1713,14 @@ pub(crate) fn parse_negated_object_restriction_clause(
     {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::prevent_damage(),
+            target: None,
+        }));
+    }
+    if DAMAGE_RESTRICTION_SUBJECT_PATTERN.matches_words(&subject_words)
+        && let Some(restriction) = damage_cause_life_loss_restriction_from_tail(&remainder_words)
+    {
+        return Ok(Some(ParsedCantRestriction {
+            restriction,
             target: None,
         }));
     }

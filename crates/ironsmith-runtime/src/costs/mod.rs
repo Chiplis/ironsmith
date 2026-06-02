@@ -347,7 +347,20 @@ impl Cost {
 
     /// Create a reveal from hand cost.
     pub fn reveal_from_hand(count: u32, card_type: Option<CardType>) -> Self {
-        Self::validated_effect(crate::effect::Effect::reveal_from_hand(count, card_type))
+        Self::reveal_from_hand_with_color_filter(count, card_type, None)
+    }
+
+    /// Create a reveal from hand cost with an optional color restriction.
+    pub fn reveal_from_hand_with_color_filter(
+        count: impl Into<crate::effect::Value>,
+        card_type: Option<CardType>,
+        color_filter: Option<crate::color::ColorSet>,
+    ) -> Self {
+        Self::validated_effect(crate::effect::Effect::reveal_from_hand(
+            count,
+            card_type,
+            color_filter,
+        ))
     }
 
     /// Create a remove-any-counters-from-source cost.

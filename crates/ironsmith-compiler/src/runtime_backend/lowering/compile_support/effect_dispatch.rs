@@ -1359,6 +1359,28 @@ fn compile_subject_verb_effect(
                 subject.into_choices(),
             ))
         }
+        SubjectVerbActionAst::LookAtTarget { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if !choose_spec_targets_object(&spec) {
+                return Err(CardTextError::ParseError(
+                    "look-at-target object clause requires an object target".to_string(),
+                ));
+            }
+            let tag = TagKey::from(ctx.next_tag("targeted").as_str());
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            Ok((
+                vec![
+                    Effect::new(crate::effects::TargetOnlyEffect::new(spec)).tag(tag.clone()),
+                    Effect::new(crate::effects::LookAtObjectsEffect::new(
+                        ObjectFilter::tagged(tag),
+                        PlayerFilter::You,
+                        PlayerFilter::You,
+                    )),
+                ],
+                choices,
+            ))
+        }
         SubjectVerbActionAst::PutIntoHand { object } => {
             let ObjectRefAst::Tagged(tag) = object;
             let tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
@@ -5344,6 +5366,25 @@ fn compile_subject_verb_effect(
                 },
             )
         }
+        SubjectVerbActionAst::PayAnyLife { min_amount } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
+            compile_player_effect_from_resolved_filter(
+                subject.into_player_filter(),
+                subject.into_choices(),
+                || {
+                    Effect::new(crate::effects::PayAnyLifeEffect::new(
+                        ChooseSpec::Player(PlayerFilter::You),
+                        *min_amount,
+                    ))
+                },
+                |filter| {
+                    Effect::new(crate::effects::PayAnyLifeEffect::new(
+                        ChooseSpec::Player(filter),
+                        *min_amount,
+                    ))
+                },
+            )
+        }
         SubjectVerbActionAst::PayMana { cost } => {
             compile_player_role_effect(role, player, ctx, false, false, true, |subject| {
                 Effect::new(crate::effects::PayManaEffect::new(
@@ -5948,6 +5989,26 @@ fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFil
             metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
         },
         Value::EffectValueOffset(effect_id, offset) => Value::EffectMetricOffset {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+            offset,
+        },
+        Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+        } => Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::IteratedPlayerCount,
+        },
+        Value::EffectMetricOffset {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::Outcome,
+            metric: ironsmith_core::EffectMetric::Count,
+            offset,
+        } => Value::EffectMetricOffset {
             effect_id,
             source: ironsmith_core::EffectMetricSource::Outcome,
             metric: ironsmith_core::EffectMetric::IteratedPlayerCount,

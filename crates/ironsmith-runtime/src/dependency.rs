@@ -516,6 +516,13 @@ fn evaluate_value(
                 _ => ValueEval::Unknown,
             }
         }
+        Value::DividedRoundedDown(value, divisor) => {
+            let value = evaluate_value(value, source, effect_controller, baseline, objects, game);
+            match value {
+                ValueEval::Scalar(value) if *divisor != 0 => ValueEval::Scalar(value.div_euclid(*divisor)),
+                _ => ValueEval::Unknown,
+            }
+        }
         Value::CreatureTypesAmong(filter) => {
             let mut seen = std::collections::HashSet::new();
             for (id, chars) in baseline {
@@ -710,6 +717,10 @@ fn evaluate_source_scalar_value(
         Value::Add(left, right) => Some(
             evaluate_source_scalar_value(left, source_power, source_toughness)?
                 + evaluate_source_scalar_value(right, source_power, source_toughness)?,
+        ),
+        Value::DividedRoundedDown(value, divisor) if *divisor != 0 => Some(
+            evaluate_source_scalar_value(value, source_power, source_toughness)?
+                .div_euclid(*divisor),
         ),
         Value::HalfRoundedDown(value) => {
             Some(evaluate_source_scalar_value(value, source_power, source_toughness)?.div_euclid(2))
@@ -1301,8 +1312,9 @@ fn value_references_pt(value: &Value) -> bool {
         Value::Add(left, right) | Value::Min(left, right) => {
             value_references_pt(left) || value_references_pt(right)
         }
-        Value::Scaled(value, _) => value_references_pt(value),
-        Value::HalfRoundedDown(value) => value_references_pt(value),
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_pt(value),
 
         // EffectValue could reference P/T from a prior effect
         Value::EffectValue(_) | Value::EffectValueOffset(_, _) => true,
@@ -1863,7 +1875,9 @@ fn value_is_independent_count_or_fixed(value: &Value) -> bool {
         Value::Min(left, right) => {
             value_is_independent_count_or_fixed(left) && value_is_independent_count_or_fixed(right)
         }
-        Value::HalfRoundedDown(value) => value_is_independent_count_or_fixed(value),
+        Value::DividedRoundedDown(value, _) | Value::HalfRoundedDown(value) => {
+            value_is_independent_count_or_fixed(value)
+        }
         _ => false,
     }
 }

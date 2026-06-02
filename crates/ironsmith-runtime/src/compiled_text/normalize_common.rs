@@ -8097,6 +8097,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 format!("{factor} times {}", describe_value(value))
             }
         }
+        Value::DividedRoundedDown(value, divisor) => {
+            format!("{} divided by {divisor}, rounded down", describe_value(value))
+        }
         Value::Min(left, right) => {
             format!("the lesser of {} and {}", describe_value(left), describe_value(right))
         }
@@ -10345,6 +10348,17 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::LoseLife(filter) => {
             format!("{} can't lose life", describe_player_set_filter(filter))
         }
+        crate::effect::Restriction::DamageCauseLifeLoss(filter) => match filter {
+            PlayerFilter::You => "damage doesn't cause you to lose life".to_string(),
+            PlayerFilter::Any => "damage doesn't cause players to lose life".to_string(),
+            PlayerFilter::IteratedPlayer => {
+                "damage doesn't cause that player to lose life".to_string()
+            }
+            _ => format!(
+                "damage doesn't cause {} to lose life",
+                describe_player_filter(filter)
+            ),
+        },
         crate::effect::Restriction::ChangeLifeTotal(filter) => {
             format!(
                 "{} can't have life total changed",
@@ -11507,6 +11521,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     count
                 )
             }
+        }
+        Condition::SourceIsRingBearer { player } => format!(
+            "this creature is {} Ring-bearer",
+            describe_possessive_player_filter(player)
+        ),
+        Condition::PlayerRingTemptedThisGameOrMore { player, count } => {
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            format!(
+                "the Ring has tempted {} {count_text} or more times this game",
+                describe_player_filter(player)
+            )
         }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             format!(

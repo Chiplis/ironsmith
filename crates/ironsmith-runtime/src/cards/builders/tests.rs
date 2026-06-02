@@ -143,6 +143,291 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Boss's Chauffeur");
+
+    let def = parse_oracle_card_definition("Boss's Chauffeur");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "This creature enters with a number of +1/+1 counters on it equal to one plus the number of other creatures you control."
+        ),
+        "Boss's Chauffeur should render the equal-to ETB counter count, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Alliance — Whenever another creature you control enters, put a +1/+1 counter on this creature."
+        ),
+        "Boss's Chauffeur should render its Alliance trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature dies, create a 1/1 green and white Citizen creature token for each +1/+1 counter on it."
+        ),
+        "Boss's Chauffeur should render token creation for each +1/+1 counter on it, got {rendered}"
+    );
+}
+
+#[test]
+fn archon_of_coronation_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Archon of Coronation");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Archon of Coronation should parse its enters trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("BecomeMonarchEffect")
+            && ability_debug.contains("DamageCauseLifeLoss")
+            && ability_debug.contains("PlayerIsMonarch"),
+        "expected monarch trigger and conditional damage-life-loss restriction, got {ability_debug}"
+    );
+    assert!(
+        rendered_lower.contains("you become the monarch")
+            && rendered_lower.contains("damage doesn't cause you to lose life")
+            && rendered_lower.contains("as long as you're the monarch"),
+        "expected Archon compiled text to preserve monarch and damage-life-loss clauses, got {rendered}"
+    );
+}
+
+#[test]
+fn plague_of_vermin_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Plague of Vermin");
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let effect_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        effect_debug.contains("RepeatProcessEffect")
+            && effect_debug.contains("PayAnyLifeEffect")
+            && effect_debug.contains("ForPlayersEffect")
+            && effect_debug.contains("CreateTokenEffect")
+            && effect_debug.contains("IteratedPlayerCount"),
+        "Plague of Vermin should lower to repeat per-player life payments and per-player token counts, got {effect_debug}"
+    );
+    assert!(
+        rendered.contains("Starting with you, each player may pay any amount of life")
+            && rendered.contains("Repeat this process until no one pays life")
+            && rendered.contains(
+                "Each player creates a 1/1 black Rat creature token for each 1 life they paid this way"
+            ),
+        "expected repeated life-payment token text to be preserved, got {rendered}"
+    );
+}
+
+#[test]
+fn plague_of_vermin_runtime_uses_each_players_paid_life_for_rat_tokens() {
+    struct PlaguePayments {
+        payments: Vec<u32>,
+        next: usize,
+    }
+
+    impl crate::decision::DecisionMaker for PlaguePayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            let payment = self.payments.get(self.next).copied().unwrap_or(ctx.min);
+            self.next += 1;
+            payment.clamp(ctx.min, ctx.max)
+        }
+    }
+
+    fn rat_tokens_controlled_by(
+        game: &crate::game_state::GameState,
+        controller: PlayerId,
+    ) -> usize {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|id| {
+                let Some(object) = game.object(*id) else {
+                    return false;
+                };
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Rat"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Rat)
+                    && object.color_override == Some(crate::color::ColorSet::BLACK)
+                    && matches!(object.base_power, Some(crate::card::PtValue::Fixed(1)))
+                    && matches!(object.base_toughness, Some(crate::card::PtValue::Fixed(1)))
+                    && game.controller_of(object) == controller
+            })
+            .count()
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = PlaguePayments {
+        payments: vec![2, 1, 0, 0],
+        next: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice").life,
+        18,
+        "Alice should pay exactly 2 life across the repeated process"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob").life,
+        19,
+        "Bob should pay exactly 1 life across the repeated process"
+    );
+    assert_eq!(rat_tokens_controlled_by(&game, alice), 2);
+    assert_eq!(rat_tokens_controlled_by(&game, bob), 1);
+    assert_eq!(
+        dm.next, 4,
+        "the repeated process should ask both players again and stop when no one pays"
+    );
+}
+
+#[test]
+fn plague_of_vermin_runtime_sums_life_paid_across_multiple_rounds() {
+    struct PlaguePayments {
+        payments: Vec<u32>,
+        next: usize,
+    }
+
+    impl crate::decision::DecisionMaker for PlaguePayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            let payment = self.payments.get(self.next).copied().unwrap_or(ctx.min);
+            self.next += 1;
+            payment.clamp(ctx.min, ctx.max)
+        }
+    }
+
+    fn rat_tokens_controlled_by(
+        game: &crate::game_state::GameState,
+        controller: PlayerId,
+    ) -> usize {
+        game.objects_in_zone(Zone::Battlefield)
+            .into_iter()
+            .filter(|id| {
+                let Some(object) = game.object(*id) else {
+                    return false;
+                };
+                object.kind == crate::object::ObjectKind::Token
+                    && object.name == "Rat"
+                    && game.controller_of(object) == controller
+            })
+            .count()
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = PlaguePayments {
+        payments: vec![2, 1, 3, 0, 0, 0],
+        next: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(game.player(alice).expect("alice").life, 15);
+    assert_eq!(game.player(bob).expect("bob").life, 19);
+    assert_eq!(rat_tokens_controlled_by(&game, alice), 5);
+    assert_eq!(rat_tokens_controlled_by(&game, bob), 1);
+    assert_eq!(dm.next, 6);
+}
+
+#[test]
+fn plague_of_vermin_runtime_starts_payment_rounds_with_spell_controller() {
+    struct RecordingPayments {
+        payments: HashMap<PlayerId, Vec<u32>>,
+        prompted_players: Vec<PlayerId>,
+    }
+
+    impl crate::decision::DecisionMaker for RecordingPayments {
+        fn decide_number(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            self.prompted_players.push(ctx.player);
+            self.payments
+                .get_mut(&ctx.player)
+                .and_then(|payments| payments.pop())
+                .unwrap_or(ctx.min)
+                .clamp(ctx.min, ctx.max)
+        }
+    }
+
+    let def = parse_oracle_card_definition("Plague of Vermin");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn_store.turn_order = vec![charlie, bob, alice];
+    let source = game.create_object_from_definition(&def, bob, Zone::Stack);
+    let mut dm = RecordingPayments {
+        payments: HashMap::from([
+            (bob, vec![0, 1]),
+            (alice, vec![0, 0]),
+            (charlie, vec![0, 0]),
+        ]),
+        prompted_players: Vec::new(),
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(source, bob, &mut dm);
+    let effects = &def
+        .spell_effect
+        .as_ref()
+        .expect("Plague of Vermin should have spell effects")
+        .segments[0]
+        .default_effects;
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Plague of Vermin effect should resolve");
+    }
+
+    assert_eq!(
+        dm.prompted_players,
+        vec![bob, alice, charlie, bob, alice, charlie],
+        "payment rounds should start with the spell controller and continue in turn order"
+    );
+}
+
+#[test]
 fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Commander Liara Portyr");
     let ability_debug = format!("{:#?}", def.abilities);
@@ -14657,6 +14942,129 @@ fn spy_network_runtime_reorders_your_top_four_library_cards() {
     );
 }
 
+#[derive(Debug)]
+struct SmokeTellerViewCall {
+    viewer: PlayerId,
+    subject: PlayerId,
+    zone: Zone,
+    cards: Vec<ObjectId>,
+}
+
+#[derive(Debug, Default)]
+struct SmokeTellerCaptureDm {
+    calls: Vec<SmokeTellerViewCall>,
+}
+
+impl crate::decision::DecisionMaker for SmokeTellerCaptureDm {
+    fn view_cards(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.calls.push(SmokeTellerViewCall {
+            viewer,
+            subject: ctx.subject,
+            zone: ctx.zone,
+            cards: cards.to_vec(),
+        });
+    }
+}
+
+fn smoke_teller_creature(name: &str) -> crate::card::Card {
+    crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build()
+}
+
+fn smoke_teller_add_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let card = smoke_teller_creature(name);
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+fn smoke_teller_activated_effects(def: &CardDefinition) -> &[Effect] {
+    let ability = def.abilities.first().expect("Smoke Teller activated ability");
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        panic!("Smoke Teller should have an activated ability, got {ability:?}");
+    };
+    activated
+        .effects
+        .segments
+        .first()
+        .expect("Smoke Teller resolution segment")
+        .default_effects
+        .as_slice()
+}
+
+#[test]
+fn smoke_teller_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Smoke Teller");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(rendered, "{1}{U}: Look at target face-down creature.");
+
+    let debug = format!("{:#?}", smoke_teller_activated_effects(&def));
+    assert!(debug.contains("TargetOnlyEffect"), "{debug}");
+    assert!(debug.contains("LookAtObjectsEffect"), "{debug}");
+}
+
+#[test]
+fn smoke_teller_targets_and_views_only_the_selected_face_down_creature() {
+    let def = parse_oracle_card_definition("Smoke Teller");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let face_down = smoke_teller_add_creature(&mut game, bob, "Face-Down Creature");
+    let face_up = smoke_teller_add_creature(&mut game, bob, "Face-Up Creature");
+    game.set_face_down(face_down);
+
+    let choice = def
+        .abilities
+        .first()
+        .and_then(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated.choices.first(),
+            _ => None,
+        })
+        .expect("Smoke Teller should require a target");
+    let ChooseSpec::Target(inner) = choice else {
+        panic!("Smoke Teller should use a target object choice, got {choice:?}");
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        panic!("Smoke Teller should target a filtered object, got {choice:?}");
+    };
+    let filter_ctx = crate::filter::FilterContext::default();
+    assert!(
+        filter.matches(game.object(face_down).expect("face-down object"), &filter_ctx, &game),
+        "target filter should allow face-down creatures"
+    );
+    assert!(
+        !filter.matches(game.object(face_up).expect("face-up object"), &filter_ctx, &game),
+        "target filter should reject face-up creatures"
+    );
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut dm = SmokeTellerCaptureDm::default();
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(face_down)]);
+    for effect in smoke_teller_activated_effects(&def) {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Smoke Teller target and look effects should resolve");
+    }
+
+    assert_eq!(dm.calls.len(), 1, "expected one view call, got {dm:?}");
+    assert_eq!(dm.calls[0].viewer, alice);
+    assert_eq!(dm.calls[0].subject, alice);
+    assert_eq!(dm.calls[0].zone, Zone::Battlefield);
+    assert_eq!(dm.calls[0].cards, vec![face_down]);
+    assert!(!dm.calls[0].cards.contains(&face_up));
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_keeper_of_the_mind_target_condition_survives_rendering() {
@@ -22057,6 +22465,52 @@ fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast() {
         ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
             && ability_debug.contains("mana_value_eq_counters_on_source: Some(Charge)"),
         "expected Brain in a Jar to lower to a charge-counter-gated free-cast effect, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_surtland_elementalist_strictly_and_renders_hand_free_cast() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Surtland Elementalist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "As an additional cost to cast this spell, reveal a Giant card from your hand or pay {2}.\nWhenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost.",
+        )
+        .expect("Surtland Elementalist should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("as an additional cost to cast this spell, reveal a giant card from your hand or pay {2}"),
+        "expected reveal-or-pay additional cost in compiled output, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("whenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost"),
+        "expected attack-triggered hand free-cast clause in compiled output, got {rendered}"
+    );
+
+    let ability_debug = format!("{:?}", def.abilities);
+    assert!(
+        ability_debug.contains("ThisAttacksTrigger")
+            && ability_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && ability_debug.contains("Instant")
+            && ability_debug.contains("Sorcery"),
+        "expected Surtland Elementalist to lower to an attack-triggered instant/sorcery free-cast effect, got {ability_debug}"
+    );
+    let cost_debug = format!("{:?}", def.additional_cost);
+    assert!(
+        cost_debug.contains("ChooseModeEffect")
+            && cost_debug.contains("RevealTaggedEffect")
+            && cost_debug.contains("Giant")
+            && cost_debug.contains("PayManaEffect"),
+        "expected Surtland Elementalist to keep reveal-or-pay additional cost structurally, got {cost_debug}"
     );
 }
 
@@ -31255,6 +31709,31 @@ fn parse_aura_barbs_attached_target_contraction_keeps_second_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn sage_of_hours_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Sage of Hours");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Heroic")
+            && rendered.contains("Whenever you cast a spell that targets this creature"),
+        "Sage of Hours should preserve its heroic trigger in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("For each five counters removed this way, you take an extra turn after this one"),
+        "Sage of Hours should render the counter-group extra-turn clause, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("RemoveAnyCountersFromSourceEffect")
+            && abilities_debug.contains("RepeatEffectsEffect")
+            && abilities_debug.contains("DividedRoundedDown")
+            && abilities_debug.contains("ExtraTurnEffect"),
+        "Sage of Hours should lower removed-counter groups into repeated extra turns, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_for_each_of_x_target_permanents_builds_choose_then_for_each_tagged() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Doppelgang Variant")
         .parse_text(
@@ -33974,6 +34453,179 @@ fn parse_existing_mana_spend_as_any_color_static_patterns() {
         refractor_rendered
             .contains("spend mana as though it were mana of any color to pay the activation costs"),
         "expected source activation mana-spend permission, got {refractor_rendered}"
+    );
+}
+
+#[test]
+fn celestial_dawn_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Celestial Dawn");
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered_lower.contains("lands you control are plains"),
+        "Celestial Dawn should render the Plains-changing static ability, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("nonland permanents you control are white. the same is true for spells you control and nonland cards you own that aren't on the battlefield"),
+        "Celestial Dawn should render the same-is-true color static ability, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("you may spend white mana as though it were mana of any color. you may spend other mana only as though it were colorless mana"),
+        "Celestial Dawn should render the white-mana spend permission and other-mana restriction, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ManaSpendPermission")
+            && ability_debug.contains("any_color_mana_symbol: Some(White)")
+            && ability_debug.contains("other_mana_only_as_colorless: true"),
+        "Celestial Dawn should structurally lower its mana-spend rule, got {ability_debug}"
+    );
+}
+
+#[test]
+fn celestial_dawn_mana_spend_runtime_uses_white_as_any_color_only() {
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.update_cant_effects();
+
+    let blue_spell = CardDefinitionBuilder::new(
+        CardId::from_raw(700_900),
+        "Celestial Dawn Blue Cost Probe",
+    )
+    .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+    .card_types(vec![CardType::Sorcery])
+    .build();
+    let blue_spell_id = game.create_object_from_definition(&blue_spell, alice, Zone::Stack);
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+    let view = crate::derived_view::DerivedGameView::new(&game);
+    assert!(
+        view.can_potentially_pay_with_reason(
+            alice,
+            Some(blue_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Celestial Dawn should also make the derived affordability path see white mana as usable for blue"
+    );
+    assert!(
+        game.can_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "Celestial Dawn should let white mana pay a blue pip"
+    );
+    assert!(
+        game.try_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "white mana should actually be spent as blue"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "white mana should be consumed by the blue-pip payment"
+    );
+}
+
+#[test]
+fn celestial_dawn_mana_spend_runtime_treats_other_mana_as_colorless_only() {
+    let def = parse_oracle_card_definition("Celestial Dawn");
+    let alice = PlayerId::from_index(0);
+
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+    let colorless_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Colorless]]);
+    let spell = CardDefinitionBuilder::new(CardId::from_raw(700_901), "Celestial Dawn Cost Probe")
+        .mana_cost(blue_cost.clone())
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let mut nonwhite_for_blue = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    nonwhite_for_blue.create_object_from_definition(&def, alice, Zone::Battlefield);
+    nonwhite_for_blue.update_cant_effects();
+    let blue_spell_id = nonwhite_for_blue.create_object_from_definition(&spell, alice, Zone::Stack);
+    nonwhite_for_blue
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    let nonwhite_view = crate::derived_view::DerivedGameView::new(&nonwhite_for_blue);
+    assert!(
+        !nonwhite_view.can_potentially_pay_with_reason(
+            alice,
+            Some(blue_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Celestial Dawn should also make the derived affordability path reject nonwhite mana for colored pips"
+    );
+    assert!(
+        !nonwhite_for_blue.can_pay_mana_cost(alice, Some(blue_spell_id), &blue_cost, 0),
+        "Celestial Dawn should not let nonwhite mana pay colored pips"
+    );
+
+    let mut nonwhite_for_colorless = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    nonwhite_for_colorless.create_object_from_definition(&def, alice, Zone::Battlefield);
+    nonwhite_for_colorless.update_cant_effects();
+    let colorless_spell_id =
+        nonwhite_for_colorless.create_object_from_definition(&spell, alice, Zone::Stack);
+    nonwhite_for_colorless
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+    assert!(
+        nonwhite_for_colorless.can_pay_mana_cost(
+            alice,
+            Some(colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "Celestial Dawn should let nonwhite mana be spent as colorless"
+    );
+    assert!(
+        nonwhite_for_colorless.try_pay_mana_cost(
+            alice,
+            Some(colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "nonwhite mana should actually be spendable as colorless"
+    );
+
+    let mut white_for_colorless = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    white_for_colorless.create_object_from_definition(&def, alice, Zone::Battlefield);
+    white_for_colorless.update_cant_effects();
+    let white_colorless_spell_id =
+        white_for_colorless.create_object_from_definition(&spell, alice, Zone::Stack);
+    white_for_colorless
+        .player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+    assert!(
+        !white_for_colorless.can_pay_mana_cost(
+            alice,
+            Some(white_colorless_spell_id),
+            &colorless_cost,
+            0,
+        ),
+        "Celestial Dawn's white-as-any-color permission should not turn white mana into colorless mana"
     );
 }
 
@@ -42109,6 +42761,77 @@ fn assert_oracle_card_fails_strict(name: &str) {
         result.is_err(),
         "strict parser regression expected failure for '{name}', but parse succeeded.\nOracle text:\n{}",
         oracle
+    );
+}
+
+#[test]
+fn frodo_adventurous_hobbit_strict_parser_and_compiled_text_regression() {
+    let oracle = oracle_text_by_name()
+        .get("Frodo, Adventurous Hobbit")
+        .expect("missing Frodo, Adventurous Hobbit oracle text")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Frodo, Adventurous Hobbit")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Frodo, Adventurous Hobbit should parse strictly");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Frodo, Adventurous Hobbit should parse its attack trigger strictly"
+    );
+    assert!(
+        ability_debug.contains("RingTemptsYouEffect")
+            && ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("SourceIsRingBearer")
+            && ability_debug.contains("PlayerRingTemptedThisGameOrMore")
+            && ability_debug.contains("DrawCardsEffect"),
+        "expected Ring temptation plus Ring-bearer draw gate, got {ability_debug}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "if frodo is your ring-bearer and the ring has tempted you two or more times this game"
+        ) && rendered_lower.contains("draw a card"),
+        "expected Frodo's Ring-bearer temptation gate to render, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported predicate")
+            && !rendered_lower.contains("unsupported effect"),
+        "Frodo should compile without unsupported fallbacks, got {rendered}"
+    );
+}
+
+#[test]
+fn martyr_of_spores_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Martyr of Spores");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let ability_debug_compact = format!("{:?}", def.abilities);
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Martyr of Spores should strictly parse its activated ability"
+    );
+    assert!(
+        rendered.contains("Reveal X green cards from your hand"),
+        "Martyr of Spores compiled text should preserve the X green reveal cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Target creature gets +X/+X until end of turn"),
+        "Martyr of Spores compiled text should preserve the target pump effect, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("RevealFromHandEffect")
+            && ability_debug.contains("count: X")
+            && ability_debug_compact.contains(&format!("{:?}", crate::color::ColorSet::GREEN)),
+        "Martyr of Spores should lower reveal-X-green-cards structurally, got {ability_debug}"
     );
 }
 
@@ -57181,6 +57904,152 @@ fn parse_full_throttle_two_additional_combats() {
     assert!(
         rendered.contains("After this main phase, there are two additional combat phases"),
         "expected Full Throttle additional-combat surface, got {rendered}"
+    );
+}
+
+#[test]
+fn last_night_together_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Last Night Together");
+
+    let def = parse_oracle_card_definition("Last Night Together");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Choose two target creatures")
+            && rendered.contains("Put two +1/+1 counters on each of them")
+            && rendered.contains("They gain vigilance, indestructible, and haste until end of turn")
+            && rendered.contains("After this main phase, there is an additional combat phase")
+            && rendered.contains("Only the chosen creatures can attack during that combat phase"),
+        "expected Last Night Together compiled text to preserve the full chosen-creature combat restriction, got {rendered}"
+    );
+    assert!(
+        debug.contains("AdditionalPhasesEffect")
+            && debug.contains("CantEffect")
+            && debug.contains("EndOfCombat"),
+        "expected Last Night Together to lower to additional combat plus end-of-combat attack restriction, got {debug}"
+    );
+}
+
+#[test]
+fn last_night_together_runtime_limits_attackers_to_chosen_creatures_for_that_combat() {
+    let def = parse_oracle_card_definition("Last Night Together");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let chosen_one = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_001), "Chosen One")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let chosen_two = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_002), "Chosen Two")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let unchosen = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_003), "Unchosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    for creature in [chosen_one, chosen_two, unchosen] {
+        game.remove_summoning_sickness(creature);
+        game.tap(creature);
+    }
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Last Night Together should have a spell effect")
+        .flattened_default_effects();
+    let target_spec = effects[0]
+        .0
+        .get_target_spec()
+        .expect("Last Night Together should start with target selection")
+        .clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(chosen_one),
+            crate::effects::ResolvedTarget::Object(chosen_two),
+        ])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..2,
+        }]);
+    ctx.snapshot_targets(&game);
+
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|err| {
+            panic!("Last Night Together effect should resolve: {err:?}; effect={effect:?}")
+        });
+    }
+
+    assert_eq!(
+        game.turn_store.additional_phases,
+        vec![crate::game_state::Phase::Combat],
+        "Last Night Together should insert an additional combat phase"
+    );
+    for chosen in [chosen_one, chosen_two] {
+        assert!(!game.is_tapped(chosen), "chosen creatures should be untapped");
+        assert_eq!(
+            game.counter_count(chosen, crate::object::CounterType::PlusOnePlusOne),
+            2,
+            "chosen creatures should get two +1/+1 counters"
+        );
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Vigilance));
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Indestructible));
+        assert!(game.object_has_static_ability_id(chosen, StaticAbilityId::Haste));
+        assert!(game.can_attack(chosen), "chosen creatures should be allowed to attack");
+    }
+    assert!(
+        !game.can_attack(unchosen),
+        "unchosen creatures should be prohibited from attacking during that combat"
+    );
+
+    crate::turn::advance_phase(&mut game).expect("advance to the inserted combat phase");
+    assert_eq!(game.turn.phase, crate::game_state::Phase::Combat);
+    assert!(!game.can_attack(unchosen));
+
+    let late_unchosen = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(71_004), "Late Unchosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.remove_summoning_sickness(late_unchosen);
+    game.update_cant_effects();
+    assert!(
+        !game.can_attack(late_unchosen),
+        "creatures that enter before that combat are still not chosen and cannot attack"
+    );
+
+    game.turn.step = None;
+    crate::turn::advance_phase(&mut game).expect("advance out of the restricted combat phase");
+    assert!(
+        game.can_attack(unchosen),
+        "the chosen-creatures-only restriction should expire after that combat phase"
+    );
+    assert!(
+        game.can_attack(late_unchosen),
+        "late unchosen creatures should be able to attack after the restricted combat ends"
     );
 }
 

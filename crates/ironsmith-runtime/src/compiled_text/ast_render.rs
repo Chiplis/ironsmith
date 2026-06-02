@@ -1076,6 +1076,7 @@ pub(super) fn substitute_legendary_source_reference(
         || conditional_static_self_surface
         || lower.contains("if this land has ")
         || lower.contains(" counters on this artifact")
+        || lower.starts_with("whenever this creature attacks")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")

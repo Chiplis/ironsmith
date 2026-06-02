@@ -345,10 +345,13 @@ fn resolve_effect_metric(
             };
             outcome
                 .player_counts()
-                .and_then(|counts| {
-                    counts.iter().find_map(|(count_player, count)| {
-                        (*count_player == player_id).then_some(*count)
-                    })
+                .map(|counts| {
+                    counts
+                        .iter()
+                        .filter_map(|(count_player, count)| {
+                            (*count_player == player_id).then_some(*count)
+                        })
+                        .sum()
                 })
                 .unwrap_or(0)
         }
@@ -449,6 +452,14 @@ pub fn resolve_value(
             .ok_or_else(|| ExecutionError::UnresolvableValue("X value not set".to_string())),
 
         Value::Scaled(value, multiplier) => Ok(resolve_value(game, value, ctx)? * *multiplier),
+        Value::DividedRoundedDown(value, divisor) => {
+            if *divisor == 0 {
+                return Err(ExecutionError::UnresolvableValue(
+                    "division by zero in dynamic value".to_string(),
+                ));
+            }
+            Ok(resolve_value(game, value, ctx)?.div_euclid(*divisor))
+        }
         Value::Min(left, right) => {
             Ok(resolve_value(game, left, ctx)?.min(resolve_value(game, right, ctx)?))
         }

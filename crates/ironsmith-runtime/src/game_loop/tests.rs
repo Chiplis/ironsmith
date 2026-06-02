@@ -422,6 +422,69 @@ fn lost_monarch_of_ifnir_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn archon_of_coronation_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(559_764), "Archon of Coronation")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .flying()
+        .parse_text(
+            "When this creature enters, you become the monarch.\n\
+             As long as you're the monarch, damage doesn't cause you to lose life.",
+        )
+        .expect("Archon of Coronation should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn deal_test_combat_damage_to_player(
+    game: &mut GameState,
+    source: ObjectId,
+    player: PlayerId,
+    amount: u32,
+) -> CombatDamageEvent {
+    let cause = crate::events::cause::EventCause::combat_damage(source);
+    let processed = crate::events::processing::process_damage_assignments_with_event(
+        game,
+        source,
+        crate::events::DamageTarget::Player(player),
+        amount,
+        true,
+        cause.clone(),
+    );
+    let keywords = crate::rules::damage::source_damage_keywords(game, source, None);
+    let mut damage_dealt = 0u32;
+    let mut life_lost = 0u32;
+    for assignment in processed.assignments {
+        let applied = crate::rules::damage::apply_processed_damage_assignment(
+            game,
+            source,
+            assignment.target,
+            assignment.amount,
+            keywords,
+            cause.clone(),
+        );
+        assert!(applied.applied, "combat damage assignment should apply");
+        damage_dealt = damage_dealt.saturating_add(assignment.amount);
+        life_lost = life_lost.saturating_add(applied.life_lost);
+    }
+
+    CombatDamageEvent {
+        source,
+        target: DamageEventTarget::Player(player),
+        amount: damage_dealt,
+        life_lost,
+        result: DamageResult {
+            damage_dealt,
+            ..DamageResult::default()
+        },
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn create_typed_creature(
     game: &mut GameState,
     name: &str,
@@ -1265,6 +1328,146 @@ fn clue_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId
             })
         })
         .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sophina_spearsage_deserter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(105_941), "Sophina, Spearsage Deserter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::White],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Soldier])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Menace\nWhenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this artifact: Draw a card.\")\nPartner—Friends forever (You can have two commanders if both have this ability.)",
+        )
+        .expect("Sophina, Spearsage Deserter should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_strict_parse_and_compiled_text_preserve_investigate_count() {
+    let def = sophina_spearsage_deserter_definition();
+
+    let rendered_lines = crate::compiled_text::compiled_text_lines(&def);
+    let rendered = rendered_lines.join(" ");
+    assert_eq!(
+        rendered_lines,
+        vec![
+            "Menace".to_string(),
+            "Whenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature.".to_string(),
+            "Partner—Friends forever".to_string(),
+        ],
+        "Sophina compiled text should preserve the exact attack trigger, investigate count, and Partner variant label, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("InvestigateEffect")
+            && debug.contains("Count")
+            && debug.contains("attacking: true")
+            && debug.contains("nontoken: true"),
+        "Sophina should structurally investigate for each nontoken attacking creature, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_attack_trigger_counts_nontoken_attackers_and_ignores_tokens() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sophina = sophina_spearsage_deserter_definition();
+    let sophina_id = game.create_object_from_definition(&sophina, alice, Zone::Battlefield);
+    let nontoken_attacker = create_creature(&mut game, "Nontoken Attacker", alice, 2, 2);
+    let token_attacker = create_creature(&mut game, "Token Attacker", alice, 1, 1);
+    game.object_mut(token_attacker)
+        .expect("token attacker should exist")
+        .kind = ObjectKind::Token;
+
+    for creature in [sophina_id, nontoken_attacker, token_attacker] {
+        game.remove_summoning_sickness(creature);
+    }
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![
+        AttackerDeclaration {
+            creature: sophina_id,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: nontoken_attacker,
+            target: AttackTarget::Player(bob),
+        },
+        AttackerDeclaration {
+            creature: token_attacker,
+            target: AttackTarget::Player(bob),
+        },
+    ];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("Sophina and other creatures should be able to attack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sophina attack trigger should go on stack");
+    assert_eq!(game.stack.len(), 1, "Sophina should create one attack trigger");
+
+    resolve_stack_entry(&mut game).expect("Sophina attack trigger should resolve");
+
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        2,
+        "Sophina should investigate for Sophina and the other nontoken attacker, but not the token attacker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sophina_spearsage_deserter_does_not_trigger_when_only_other_creatures_attack() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let sophina = sophina_spearsage_deserter_definition();
+    let sophina_id = game.create_object_from_definition(&sophina, alice, Zone::Battlefield);
+    let other_attacker = create_creature(&mut game, "Other Attacker", alice, 2, 2);
+    game.remove_summoning_sickness(sophina_id);
+    game.remove_summoning_sickness(other_attacker);
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    let declarations = vec![AttackerDeclaration {
+        creature: other_attacker,
+        target: AttackTarget::Player(bob),
+    }];
+    apply_attacker_declarations(&mut game, &mut combat, &mut trigger_queue, &declarations)
+        .expect("other creature should be able to attack without Sophina");
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("putting non-Sophina attack triggers on stack should succeed");
+
+    assert!(
+        game.stack.is_empty(),
+        "Sophina should not trigger when only another creature attacks"
+    );
+    assert_eq!(
+        clue_tokens_controlled_by(&game, alice).len(),
+        0,
+        "Sophina should not investigate without its own attack trigger"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -6650,6 +6853,121 @@ fn test_monarch_changes_when_creature_deals_combat_damage_to_monarch() {
         game.monarch,
         Some(alice),
         "the attacking creature's controller should become the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_enters_trigger_makes_controller_the_monarch() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let archon = archon_of_coronation_definition();
+    let archon_id = game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            archon_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == archon_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Archon of Coronation should trigger when it enters"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Archon of Coronation enters trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Archon of Coronation enters trigger should resolve");
+
+    assert_eq!(
+        game.monarch,
+        Some(alice),
+        "Archon of Coronation's controller should become the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_monarch_takes_damage_without_losing_life_and_still_loses_monarch() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let archon = archon_of_coronation_definition();
+    game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let attacker = create_creature(&mut game, "Archon Challenger", bob, 3, 3);
+    game.monarch = Some(alice);
+    game.update_cant_effects();
+
+    assert!(
+        game.can_lose_life(alice),
+        "Archon should not stop non-damage life loss"
+    );
+    assert_eq!(
+        game.lose_life(alice, 2),
+        2,
+        "non-damage life loss should still happen while Archon's controller is monarch"
+    );
+    let life_before_damage = game.player(alice).expect("alice exists").life;
+
+    let event = deal_test_combat_damage_to_player(&mut game, attacker, alice, 3);
+    assert_eq!(event.life_lost, 0, "combat damage should not cause life loss");
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before_damage,
+        "damage should be dealt without reducing the monarch's life total"
+    );
+
+    generate_damage_triggers(&mut game, &[event], &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "combat damage still dealt to the monarch should queue the transfer trigger"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("monarch transfer trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("monarch transfer trigger should resolve");
+
+    assert_eq!(
+        game.monarch,
+        Some(bob),
+        "combat damage to the monarch should still make the attacker's controller the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn archon_of_coronation_nonmonarch_controller_still_loses_life_to_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let archon = archon_of_coronation_definition();
+    game.create_object_from_definition(&archon, alice, Zone::Battlefield);
+    let attacker = create_creature(&mut game, "Archon Challenger", bob, 3, 3);
+    game.monarch = Some(bob);
+    game.update_cant_effects();
+    let life_before_damage = game.player(alice).expect("alice exists").life;
+
+    let event = deal_test_combat_damage_to_player(&mut game, attacker, alice, 3);
+
+    assert_eq!(
+        event.life_lost, 3,
+        "Archon should not stop damage-caused life loss when its controller is not monarch"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        life_before_damage - 3,
+        "nonmonarch Archon controller should lose life from damage normally"
     );
 }
 
@@ -14881,6 +15199,173 @@ fn magma_mine_activated_ability_uses_current_pressure_counter_count_when_zero() 
     );
 }
 
+fn sage_of_hours_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(994_200), "Sage of Hours")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "Heroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on it.\n\
+             Remove all +1/+1 counters from this creature: For each five counters removed this way, take an extra turn after this one.",
+        )
+        .expect("Sage of Hours should parse for runtime tests")
+}
+
+fn sage_of_hours_extra_turn_ability_index(game: &GameState, sage_id: ObjectId) -> usize {
+    game.object(sage_id)
+        .expect("Sage of Hours should exist")
+        .abilities
+        .iter()
+        .position(|ability| {
+            if let AbilityKind::Activated(activated) = &ability.kind {
+                format!("{:?}", activated.effects).contains("ExtraTurnEffect")
+            } else {
+                false
+            }
+        })
+        .expect("Sage of Hours should have an extra-turn activated ability")
+}
+
+fn activate_sage_of_hours_extra_turn_ability(counter_count: u32) -> GameState {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let sage_def = sage_of_hours_definition();
+    let sage_id = game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    game.add_counters(
+        sage_id,
+        crate::object::CounterType::PlusOnePlusOne,
+        counter_count,
+    )
+    .expect("+1/+1 counters should be addable to Sage of Hours");
+
+    let ability_index = sage_of_hours_extra_turn_ability_index(&game, sage_id);
+    let activate_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == sage_id && *idx == ability_index
+            )
+        })
+        .expect("Sage of Hours activation should be legal");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Sage of Hours activation should be put on the stack");
+
+    assert_eq!(
+        game.counter_count(sage_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Sage of Hours activation cost should remove all +1/+1 counters"
+    );
+    resolve_stack_entry(&mut game).expect("Sage of Hours activation should resolve");
+    game
+}
+
+#[test]
+fn sage_of_hours_activation_takes_one_extra_turn_per_five_removed_counters() {
+    let game = activate_sage_of_hours_extra_turn_ability(10);
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        game.turn_store.extra_turns,
+        vec![alice, alice],
+        "ten removed counters should schedule two extra turns for Sage of Hours controller"
+    );
+}
+
+#[test]
+fn sage_of_hours_activation_below_five_removed_counters_takes_no_extra_turns() {
+    let game = activate_sage_of_hours_extra_turn_ability(4);
+
+    assert!(
+        game.turn_store.extra_turns.is_empty(),
+        "fewer than five removed counters should not schedule an extra turn"
+    );
+}
+
+fn queue_spell_cast_targeting(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    caster: PlayerId,
+    target: ObjectId,
+) {
+    let spell = CardBuilder::new(CardId::from_raw(994_201), "Sage Targeting Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_card(&spell, caster, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, caster).with_targets(vec![Target::Object(target)]),
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+}
+
+#[test]
+fn sage_of_hours_heroic_adds_counter_when_your_spell_targets_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sage_def = sage_of_hours_definition();
+    let sage_id = game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_spell_cast_targeting(&mut game, &mut trigger_queue, alice, sage_id);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sage of Hours should trigger when Alice casts a spell targeting it"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sage of Hours heroic trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Sage of Hours heroic trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sage_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Sage of Hours heroic trigger should add a +1/+1 counter"
+    );
+}
+
+#[test]
+fn sage_of_hours_heroic_does_not_trigger_for_spell_targeting_another_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sage_def = sage_of_hours_definition();
+    game.create_object_from_definition(&sage_def, alice, Zone::Battlefield);
+    let other_id = create_creature(&mut game, "Other Target", alice, 1, 1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_spell_cast_targeting(&mut game, &mut trigger_queue, alice, other_id);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sage of Hours should not trigger when the spell targets a different creature"
+    );
+}
+
 #[test]
 fn molten_hydra_activated_damage_uses_number_of_removed_plus1_counters() {
     let mut game = setup_game();
@@ -20598,6 +21083,194 @@ fn parsed_dies_token_count_uses_source_lki_after_prior_counter_trigger() {
     assert_eq!(
         tokens, 2,
         "Elenda-like dies triggers should create tokens from the source's LKI power"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn boss_s_chauffeur_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(671_495), "Boss's Chauffeur")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Citizen])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "This creature enters with a number of +1/+1 counters on it equal to one plus the number of other creatures you control.\n\
+             Alliance — Whenever another creature you control enters, put a +1/+1 counter on this creature.\n\
+             When this creature dies, create a 1/1 green and white Citizen creature token for each +1/+1 counter on it.",
+        )
+        .expect("Boss's Chauffeur should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn plus_one_counters(game: &GameState, object_id: ObjectId) -> u32 {
+    game.object(object_id)
+        .expect("object should exist")
+        .counters
+        .get(&crate::object::CounterType::PlusOnePlusOne)
+        .copied()
+        .unwrap_or(0)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn citizen_token_count(game: &GameState) -> usize {
+    game.battlefield
+        .iter()
+        .filter(|id| game.object(**id).is_some_and(|object| object.name == "Citizen"))
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_boss_s_chauffeur_onto_battlefield(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    controller: PlayerId,
+) -> ObjectId {
+    let object_id = game.create_object_from_definition(definition, controller, Zone::Hand);
+    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
+        .expect("Boss's Chauffeur should move onto the battlefield")
+        .new_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_plain_creature_onto_battlefield(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let object_id = game.create_object_from_card(&card, controller, Zone::Hand);
+    game.move_object_with_etb_processing(object_id, Zone::Battlefield)
+        .expect("test creature should move onto the battlefield")
+        .new_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_enters_with_one_plus_other_creatures_you_control() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chauffeur = boss_s_chauffeur_definition();
+
+    create_creature(&mut game, "Alice Creature One", alice, 2, 2);
+    create_creature(&mut game, "Alice Creature Two", alice, 2, 2);
+    create_creature(&mut game, "Bob Creature", bob, 2, 2);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("no Boss's Chauffeur triggers should exist before it enters");
+    assert!(game.stack_is_empty());
+
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+
+    assert!(
+        game.stack_is_empty(),
+        "Boss's Chauffeur's Alliance trigger should not count its own enter event"
+    );
+    assert_eq!(
+        plus_one_counters(&game, chauffeur_id),
+        3,
+        "Boss's Chauffeur should enter with one plus Alice's two other creatures, ignoring itself and Bob's creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_alliance_triggers_only_for_another_creature_you_control() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chauffeur = boss_s_chauffeur_definition();
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+    assert!(game.stack_is_empty());
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 1);
+
+    put_plain_creature_onto_battlefield(&mut game, "Opponent Creature", bob);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("opponent creature enter should not create an Alliance trigger");
+    assert!(
+        game.stack_is_empty(),
+        "Boss's Chauffeur should not trigger for a creature an opponent controls"
+    );
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 1);
+
+    put_plain_creature_onto_battlefield(&mut game, "Alice Followup Creature", alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Alice's other creature should create an Alliance trigger");
+    assert!(
+        !game.stack_is_empty(),
+        "Boss's Chauffeur should trigger for another creature Alice controls"
+    );
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Alliance trigger should resolve");
+    }
+
+    assert_eq!(
+        plus_one_counters(&game, chauffeur_id),
+        2,
+        "Boss's Chauffeur should get one +1/+1 counter from the Alliance trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn boss_s_chauffeur_dies_creates_citizens_for_each_plus_one_counter_on_it() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let chauffeur = boss_s_chauffeur_definition();
+
+    create_creature(&mut game, "Alice Creature One", alice, 2, 2);
+    create_creature(&mut game, "Alice Creature Two", alice, 2, 2);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("setup creatures should not create Boss's Chauffeur triggers");
+    assert!(game.stack_is_empty());
+
+    let chauffeur_id = put_boss_s_chauffeur_onto_battlefield(&mut game, &chauffeur, alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur should not trigger on itself entering");
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 3);
+
+    put_plain_creature_onto_battlefield(&mut game, "Alice Followup Creature", alice);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Alliance trigger should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("Alliance trigger should resolve");
+    }
+    assert_eq!(plus_one_counters(&game, chauffeur_id), 4);
+
+    game.move_object_by_effect(chauffeur_id, Zone::Graveyard)
+        .expect("Boss's Chauffeur should die");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Boss's Chauffeur dies trigger should stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("dies trigger should resolve");
+    }
+
+    assert_eq!(
+        citizen_token_count(&game),
+        4,
+        "Boss's Chauffeur should create one Citizen token for each +1/+1 counter it had using source LKI"
     );
 }
 
@@ -38698,6 +39371,417 @@ fn brain_in_a_jar_ability_index(game: &GameState, brain_id: ObjectId, needle: &s
         .unwrap_or_else(|| {
             panic!("Brain in a Jar should have activated ability containing {needle}")
         })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn surtland_elementalist_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(93_100), "Surtland Elementalist")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(
+            "As an additional cost to cast this spell, reveal a Giant card from your hand or pay {2}.\nWhenever this creature attacks, you may cast an instant or sorcery spell from your hand without paying its mana cost.",
+        )
+        .expect("Surtland Elementalist should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+enum SurtlandAdditionalCostMode {
+    Reveal,
+    Pay,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SurtlandDecisionMaker {
+    cast_free_spell: bool,
+    additional_cost_mode: Option<SurtlandAdditionalCostMode>,
+    object_choice: Option<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SurtlandDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.cast_free_spell
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if let Some(mode) = self.additional_cost_mode.as_ref() {
+            let needle = match mode {
+                SurtlandAdditionalCostMode::Reveal => "reveal",
+                SurtlandAdditionalCostMode::Pay => "pay {2}",
+            };
+            if let Some(option) = ctx.options.iter().find(|option| {
+                option.legal && option.description.to_ascii_lowercase().contains(needle)
+            }) {
+                return vec![option.index];
+            }
+        }
+
+        ctx.options
+            .iter()
+            .filter(|option| option.legal)
+            .map(|option| option.index)
+            .take(ctx.min)
+            .collect()
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if let Some(object_id) = self.object_choice
+            && ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.legal && candidate.id == object_id)
+        {
+            return vec![object_id];
+        }
+
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn attack_with_surtland(game: &mut GameState, surtland_id: ObjectId) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.remove_summoning_sickness(surtland_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: surtland_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Surtland Elementalist should be able to attack");
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn stack_contains_named_object(game: &GameState, name: &str) -> bool {
+    game.stack.iter().any(|entry| {
+        game.object(entry.object_id)
+            .is_some_and(|object| object.name == name)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn finish_surtland_cast(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    state: &mut PriorityLoopState,
+    mut progress: crate::decision::GameProgress,
+    dm: &mut SurtlandDecisionMaker,
+) {
+    for _ in 0..32 {
+        if stack_contains_named_object(game, "Surtland Elementalist") {
+            return;
+        }
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                let choice = dm.object_choice.unwrap_or_else(|| {
+                    ctx.candidates
+                        .iter()
+                        .find(|candidate| candidate.legal)
+                        .expect("Surtland additional cost should have a legal object choice")
+                        .id
+                });
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    state,
+                    &PriorityResponse::CardCostChoice(choice),
+                    dm,
+                )
+                .expect("Surtland additional cost object choice should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let choice = dm
+                    .decide_options(game, &ctx)
+                    .first()
+                    .copied()
+                    .unwrap_or_else(|| {
+                        ctx.options
+                            .iter()
+                            .find(|option| option.legal)
+                            .expect("Surtland cast should have a legal option")
+                            .index
+                    });
+                let description = ctx.description.to_ascii_lowercase();
+                let response = if description.starts_with("choose the next cost to pay") {
+                    PriorityResponse::NextCostChoice(choice)
+                } else {
+                    PriorityResponse::ManaPayment(choice)
+                };
+                apply_priority_response_with_dm(game, trigger_queue, state, &response, dm)
+                    .expect("Surtland cast option should be accepted")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            )
+            | crate::decision::GameProgress::Continue => return,
+            other => panic!("unexpected Surtland cast flow state: {other:?}"),
+        };
+    }
+    panic!("Surtland cast flow did not finish after repeated decisions");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_attack_trigger_casts_matching_hand_spell_for_free() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_101), "Surtland Matching Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(9)]))
+        .build();
+    let nonmatching_type = CardBuilder::new(CardId::from_raw(93_102), "Surtland Hand Creature")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    let opponent_spell = CardBuilder::new(CardId::from_raw(93_103), "Opponent Surtland Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .build();
+    game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+    let nonmatching_id = game.create_object_from_card(&nonmatching_type, alice, Zone::Hand);
+    let opponent_spell_id = game.create_object_from_card(&opponent_spell, bob, Zone::Hand);
+
+    let mut trigger_queue = attack_with_surtland(&mut game, surtland_id);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Surtland Elementalist should trigger when it attacks"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Surtland Elementalist attack trigger should go on the stack");
+
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: true,
+        additional_cost_mode: None,
+        object_choice: None,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Surtland Elementalist attack trigger should resolve");
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Matching Instant"),
+        "the matching instant should be cast onto the stack without paying its mana cost"
+    );
+    assert_eq!(
+        game.object(nonmatching_id)
+            .expect("nonmatching creature should still exist")
+            .zone,
+        Zone::Hand,
+        "the trigger should not cast a non-instant, non-sorcery card"
+    );
+    assert_eq!(
+        game.object(opponent_spell_id)
+            .expect("opponent spell should still exist")
+            .zone,
+        Zone::Hand,
+        "the trigger should not cast a spell from another player's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_attack_trigger_can_be_declined() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Battlefield);
+    let matching_spell = CardBuilder::new(CardId::from_raw(93_104), "Declined Surtland Instant")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(9)]))
+        .build();
+    let matching_id = game.create_object_from_card(&matching_spell, alice, Zone::Hand);
+
+    let mut trigger_queue = attack_with_surtland(&mut game, surtland_id);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Surtland Elementalist attack trigger should go on the stack");
+
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: None,
+        object_choice: None,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Surtland Elementalist attack trigger should resolve when declined");
+
+    assert_eq!(
+        game.object(matching_id)
+            .expect("declined spell should still exist")
+            .zone,
+        Zone::Hand,
+        "declining the may trigger should leave the matching spell in hand"
+    );
+    assert!(
+        !stack_contains_named_object(&game, "Declined Surtland Instant"),
+        "declining the may trigger should not cast the spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_additional_cost_can_reveal_giant_instead_of_paying_two() {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Hand);
+    let giant = CardBuilder::new(CardId::from_raw(93_105), "Revealed Giant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let giant_id = game.create_object_from_card(&giant, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 5);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: Some(SurtlandAdditionalCostMode::Reveal),
+        object_choice: Some(giant_id),
+    };
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: surtland_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("Surtland Elementalist should cast by revealing a Giant with only its mana cost available");
+    finish_surtland_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+    );
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Elementalist"),
+        "Surtland Elementalist should be on the stack after revealing the Giant additional cost"
+    );
+    assert_eq!(
+        game.object(giant_id)
+            .expect("revealed Giant should remain in hand")
+            .zone,
+        Zone::Hand,
+        "revealing a Giant should not move it out of hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn surtland_elementalist_additional_cost_can_pay_two_without_giant() {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let surtland = surtland_elementalist_definition();
+    let surtland_id = game.create_object_from_definition(&surtland, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 7);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SurtlandDecisionMaker {
+        cast_free_spell: false,
+        additional_cost_mode: Some(SurtlandAdditionalCostMode::Pay),
+        object_choice: None,
+    };
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: surtland_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("Surtland Elementalist should cast by paying {2} with no Giant in hand");
+    finish_surtland_cast(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+    );
+
+    assert!(
+        stack_contains_named_object(&game, "Surtland Elementalist"),
+        "Surtland Elementalist should be on the stack after paying {{2}} additional cost"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

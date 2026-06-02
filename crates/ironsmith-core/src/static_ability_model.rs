@@ -2337,6 +2337,9 @@ impl<
     pub fn partner() -> Self {
         Self::identified(StaticAbilityId::Partner, "partner")
     }
+    pub fn partner_variant(display: impl AsRef<str>) -> Self {
+        Self::identified(StaticAbilityId::Partner, display.as_ref().trim())
+    }
     pub fn partner_with(partner_name: impl AsRef<str>) -> Self {
         Self::identified(
             StaticAbilityId::PartnerWith,

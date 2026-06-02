@@ -88,6 +88,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::Destroy { target, .. }
             | SubjectVerbActionAst::Exile { target, .. }
             | SubjectVerbActionAst::LookAtHand { target }
+            | SubjectVerbActionAst::LookAtTarget { target }
             | SubjectVerbActionAst::Counter { target }
             | SubjectVerbActionAst::CounterUnlessPays { target, .. }
             | SubjectVerbActionAst::PutCounters { target, .. }
@@ -374,8 +375,9 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::Add(left, right) => {
             value_references_tag(left, tag) || value_references_tag(right, tag)
         }
-        Value::Scaled(value, _) => value_references_tag(value, tag),
-        Value::HalfRoundedDown(value) => value_references_tag(value, tag),
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_tag(value, tag),
         Value::Count(filter) | Value::CountScaled(filter, _) => filter
             .tagged_constraints
             .iter()
@@ -493,7 +495,9 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
             value_references_event_derived_amount(left)
                 || value_references_event_derived_amount(right)
         }
-        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => {
             value_references_event_derived_amount(value)
         }
         _ => false,
@@ -593,6 +597,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealTagged { .. }
         | SubjectVerbActionAst::RevealCardsFromHand { .. }
         | SubjectVerbActionAst::LookAtObjects { .. }
+        | SubjectVerbActionAst::LookAtTarget { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::EmitKeywordAction { .. }
@@ -662,6 +667,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::LoseGame
         | SubjectVerbActionAst::WinGame
         | SubjectVerbActionAst::PayAnyEnergy { .. }
+        | SubjectVerbActionAst::PayAnyLife { .. }
         | SubjectVerbActionAst::PayMana { .. }
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }

@@ -20,6 +20,9 @@ fn effect_zones(effect: &TagMatchingObjectsEffect) -> Vec<Zone> {
             zones.push(*zone);
         }
     }
+    if zones.is_empty() {
+        zones.push(Zone::Battlefield);
+    }
     zones
 }
 
@@ -126,5 +129,34 @@ mod tests {
             .get_tagged_all("matched")
             .expect("tagged snapshots should be stored");
         assert_eq!(tagged.len(), 2);
+    }
+
+    #[test]
+    fn tags_matching_objects_on_battlefield_when_no_zone_is_specified() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let creature_id = game.create_object_from_card(
+            &make_card("Battlefield Bear"),
+            alice,
+            Zone::Battlefield,
+        );
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = TagMatchingObjectsEffect::new(ObjectFilter::creature(), "matched");
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("effect resolves");
+        let crate::effect::OutcomeValue::Objects(ids) = outcome.value else {
+            panic!("expected tagged object ids");
+        };
+        assert_eq!(ids, vec![creature_id]);
+
+        let tagged = ctx
+            .get_tagged_all("matched")
+            .expect("tagged snapshots should be stored");
+        assert_eq!(tagged.len(), 1);
+        assert_eq!(tagged[0].object_id, creature_id);
     }
 }

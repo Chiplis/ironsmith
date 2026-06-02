@@ -330,6 +330,45 @@ fn starts_like_create_fragment_lexed(tokens: &[OwnedLexToken]) -> bool {
     starts_like_count && CHAIN_TOKEN_OR_TOKENS_PATTERN.matches_words(&words)
 }
 
+fn is_for_each_counter_group_removed_this_way_prefix_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["for", "each", ..] | ["each", ..]) {
+        return false;
+    }
+    let count_start = if words.first() == Some(&"each") { 1 } else { 2 };
+    let Some((_group_size, used_tokens)) = parse_number_from_lexed(&tokens[count_start..]) else {
+        return false;
+    };
+    let after_count = count_start + used_tokens;
+    let Some(counter_word_idx) = words
+        .iter()
+        .enumerate()
+        .skip(after_count)
+        .find_map(|(idx, word)| matches!(*word, "counter" | "counters").then_some(idx))
+    else {
+        return false;
+    };
+
+    words.get(counter_word_idx + 1..counter_word_idx + 4) == Some(&["removed", "this", "way"])
+        && words.len() == counter_word_idx + 4
+}
+
+fn merge_for_each_counter_group_segments_lexed(
+    segments: Vec<Vec<OwnedLexToken>>,
+) -> Vec<Vec<OwnedLexToken>> {
+    let mut merged = Vec::new();
+    let mut iter = segments.into_iter().peekable();
+    while let Some(mut segment) = iter.next() {
+        if is_for_each_counter_group_removed_this_way_prefix_lexed(&segment)
+            && let Some(next) = iter.next()
+        {
+            segment.extend(next);
+        }
+        merged.push(segment);
+    }
+    merged
+}
+
 pub(super) fn parse_effect_chain_rule_lexed(
     view: &LexClauseView<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1032,6 +1071,7 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     .collect();
     segments = expand_segments_with_comma_action_clauses_lexed(segments);
     segments = expand_segments_with_multi_create_clauses_lexed(segments);
+    segments = merge_for_each_counter_group_segments_lexed(segments);
     let mut carried_context: Option<CarryContext> = None;
     let leading_duration = leading_duration_for_followup_carry(tokens);
     let mut carried_duration: Option<Until> = leading_duration.clone();
@@ -2290,6 +2330,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
+                | SubjectVerbActionAst::PayAnyLife { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool
@@ -2364,6 +2405,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
+                | SubjectVerbActionAst::PayAnyLife { .. }
                 | SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::DoubleManaPool
                 | SubjectVerbActionAst::EmptyManaPool

@@ -1,4 +1,6 @@
 use crate::cards::builders::{CardDefinitionBuilder, CardTextError, ChoiceCount};
+use crate::color::ColorSet;
+use crate::effect::Value;
 use crate::ids::CardId;
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
@@ -4584,6 +4586,34 @@ fn rewrite_lexed_permission_helpers_preserve_disjunctive_subject_filters_without
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_preserve_conjunctive_artifact_creature_subject_filters() {
+    let tokens = lex_line("You may cast artifact creature spells from your graveyard", 0)
+        .expect("rewrite lexer should classify artifact creature permission clause");
+
+    let parsed = super::permission_helpers::parse_permission_clause_spec_lexed(&tokens)
+        .expect("permission clause should parse")
+        .expect("permission clause should build a grant spec");
+
+    match parsed {
+        super::PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime,
+        } => {
+            assert_eq!(player, crate::cards::builders::PlayerAst::You);
+            assert_eq!(lifetime, super::PermissionLifetime::Static);
+            assert_eq!(spec.zone, crate::zone::Zone::Graveyard);
+            assert_eq!(spec.filter.card_types, Vec::<CardType>::new());
+            assert_eq!(
+                spec.filter.all_card_types,
+                vec![CardType::Artifact, CardType::Creature]
+            );
+        }
+        other => panic!("expected graveyard artifact creature cast grant, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_route_free_cast_spell_filters_through_grammar_entrypoint() {
     let tokens = lex_line(
         "You may cast creature spells from your hand without paying their mana costs",
@@ -4803,6 +4833,39 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
             crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
         )))
     );
+}
+
+#[test]
+fn rewrite_lexed_parse_surtland_elementalist_trigger_clause_without_mana_value_gate() {
+    let tokens = lex_line(
+        "Cast an instant or sorcery spell from your hand without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Surtland Elementalist cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Surtland Elementalist cast clause should parse as a supported effect");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+                ..
+            },
+        ] => (player, filter, zone),
+        _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
+    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
+    assert_eq!(filter.mana_value, None);
 }
 
 #[test]
@@ -12060,6 +12123,24 @@ fn rewrite_lexed_effect_entrypoint_supports_investigate_for_each_creatures_died(
 }
 
 #[test]
+fn rewrite_lexed_effect_entrypoint_supports_investigate_once_for_each_attacking_creature() {
+    let text = "Investigate once for each nontoken attacking creature.";
+    let lexed = lex_line(text, 0)
+        .expect("rewrite lexer should classify investigate-once-for-each effect");
+    let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("lexed investigate-once-for-each parser should succeed");
+
+    let debug = format!("{native:?}");
+    assert!(
+        debug.contains("Investigate")
+            && debug.contains("Count")
+            && debug.contains("attacking: true")
+            && debug.contains("nontoken: true"),
+        "expected dynamic nontoken attacking creature count in investigate clause, got {debug}"
+    );
+}
+
+#[test]
 fn rewrite_cost_reduction_line_rejects_unmodeled_activate_if_condition() {
     let tokens = lex_line(
         "this ability costs 1 less to activate if you control an artifact.",
@@ -12523,6 +12604,17 @@ fn rewrite_activation_cost_parses_energy_and_counter_variants() {
     assert!(matches!(
         reveal_typed_source.segments.as_slice(),
         [super::ActivationCostSegmentCst::RevealSourceFromHand]
+    ));
+
+    let reveal_x_green = parse_activation_cost_rewrite("Reveal X green cards from your hand")
+        .expect("parser should parse reveal-X-color-from-hand costs");
+    assert!(matches!(
+        reveal_x_green.segments.as_slice(),
+        [super::ActivationCostSegmentCst::RevealFromHand {
+            count: Value::X,
+            color_filter: Some(colors),
+            card_type: None,
+        }] if *colors == ColorSet::GREEN
     ));
 }
 

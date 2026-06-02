@@ -3,68 +3,61 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::context::ViewCardsContext;
 use crate::decisions::{ChooseObjectsSpec, make_decision_with_fallback};
-use crate::effect::EffectOutcome;
-use crate::effects::helpers::normalize_object_selection;
+use crate::effect::{EffectOutcome, Value};
+use crate::effects::helpers::{normalize_object_selection, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
-use crate::types::CardType;
 use crate::zone::Zone;
 
 pub type RevealSourceFromHandEffect = ironsmith_core::RevealSourceFromHandEffect;
+pub type RevealFromHandEffect = ironsmith_core::RevealFromHandEffect;
 
-/// Effect that reveals cards from the controller's hand.
-///
-/// Revealing is primarily a visibility action in this engine model.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RevealFromHandEffect {
-    pub count: u32,
-    pub card_type: Option<CardType>,
+fn valid_reveal_from_hand_cards(
+    effect: &RevealFromHandEffect,
+    game: &GameState,
+    player: crate::ids::PlayerId,
+    source: crate::ids::ObjectId,
+) -> Vec<ObjectId> {
+    game.player(player)
+        .map(|p| {
+            p.hand
+                .iter()
+                .copied()
+                .filter(|card_id| {
+                    if *card_id == source {
+                        return false;
+                    }
+                    let Some(obj) = game.object(*card_id) else {
+                        return false;
+                    };
+                    if effect
+                        .card_type
+                        .is_some_and(|card_type| !obj.has_card_type(card_type))
+                    {
+                        return false;
+                    }
+                    if let Some(required_colors) = effect.color_filter {
+                        return game
+                            .current_colors(*card_id)
+                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                    }
+                    true
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
-impl RevealFromHandEffect {
-    pub fn new(count: u32, card_type: Option<CardType>) -> Self {
-        Self { count, card_type }
-    }
-
-    fn valid_cards(
-        &self,
-        game: &GameState,
-        player: crate::ids::PlayerId,
-        source: crate::ids::ObjectId,
-    ) -> Vec<ObjectId> {
-        game.player(player)
-            .map(|p| {
-                p.hand
-                    .iter()
-                    .copied()
-                    .filter(|card_id| {
-                        if *card_id == source {
-                            return false;
-                        }
-                        self.card_type.map_or(true, |card_type| {
-                            game.object(*card_id)
-                                .is_some_and(|obj| obj.has_card_type(card_type))
-                        })
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    pub fn cost_display(&self) -> String {
-        let type_str = self
-            .card_type
-            .map_or("card".to_string(), |ct| ct.card_phrase().to_string());
-        if self.count == 1 {
-            format!("Reveal a {} from your hand", type_str)
-        } else {
-            format!("Reveal {} {}s from your hand", self.count, type_str)
-        }
-    }
+fn required_reveal_count(
+    effect: &RevealFromHandEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<usize, ExecutionError> {
+    Ok(resolve_value(game, &effect.count, ctx)?.max(0) as usize)
 }
 
 impl EffectExecutor for RevealFromHandEffect {
@@ -77,8 +70,14 @@ impl EffectExecutor for RevealFromHandEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let valid_cards = self.valid_cards(game, ctx.controller, ctx.source);
-        let required = (self.count as usize).min(valid_cards.len());
+        let valid_cards = valid_reveal_from_hand_cards(self, game, ctx.controller, ctx.source);
+        let required = required_reveal_count(self, game, ctx)?;
+        if valid_cards.len() < required {
+            return Err(ExecutionError::Impossible(format!(
+                "cannot reveal {required} card(s): only {} matching card(s) are available",
+                valid_cards.len()
+            )));
+        }
         if required == 0 {
             return Ok(EffectOutcome::count(0));
         }
@@ -181,6 +180,22 @@ impl EffectExecutor for RevealFromHandEffect {
     fn cost_description(&self) -> Option<String> {
         Some(self.cost_display())
     }
+
+    fn references_cost_x(&self) -> bool {
+        self.count == Value::X
+    }
+
+    fn max_cost_x(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Option<u32> {
+        if !self.references_cost_x() {
+            return None;
+        }
+        u32::try_from(valid_reveal_from_hand_cards(self, game, controller, source).len()).ok()
+    }
 }
 
 impl CostExecutableEffect for RevealFromHandEffect {
@@ -190,7 +205,12 @@ impl CostExecutableEffect for RevealFromHandEffect {
         source: crate::ids::ObjectId,
         controller: crate::ids::PlayerId,
     ) -> Result<(), CostValidationError> {
-        if self.valid_cards(game, controller, source).len() < self.count as usize {
+        let Value::Fixed(count) = self.count else {
+            return Ok(());
+        };
+        if valid_reveal_from_hand_cards(self, game, controller, source).len()
+            < count.max(0) as usize
+        {
             return Err(CostValidationError::NotEnoughCards);
         }
         Ok(())
@@ -289,10 +309,12 @@ impl CostExecutableEffect for RevealSourceFromHandEffect {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::color::ColorSet;
     use crate::costs::{Cost, CostContext, CostPaymentResult};
     use crate::decision::DecisionMaker;
     use crate::effects::{ExecutionContext, ResolvedTarget};
     use crate::ids::{CardId, PlayerId};
+    use crate::types::CardType;
     use crate::zone::Zone;
 
     #[derive(Debug, Default)]
@@ -323,6 +345,13 @@ mod tests {
             .build()
     }
 
+    fn colored_card(name: &str, id: u32, colors: ColorSet) -> crate::card::Card {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .color_indicator(colors)
+            .build()
+    }
+
     #[test]
     fn display_text() {
         assert_eq!(
@@ -349,6 +378,87 @@ mod tests {
         let mut ctx = CostContext::new(source, alice, &mut dm).with_pre_chosen_cards(vec![id1]);
 
         assert_eq!(cost.pay(&mut game, &mut ctx), Ok(CostPaymentResult::Paid));
+    }
+
+    #[test]
+    fn martyr_of_spores_reveal_x_green_cost_reveals_only_green_cards() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = colored_card("Martyr of Spores", 99, ColorSet::GREEN);
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let green_one = game.create_object_from_card(
+            &colored_card("Green Card One", 1, ColorSet::GREEN),
+            alice,
+            Zone::Hand,
+        );
+        let blue_card = game.create_object_from_card(
+            &colored_card("Blue Card", 2, ColorSet::BLUE),
+            alice,
+            Zone::Hand,
+        );
+        let green_two = game.create_object_from_card(
+            &colored_card("Green Card Two", 3, ColorSet::GREEN),
+            alice,
+            Zone::Hand,
+        );
+
+        let cost = Cost::effect(RevealFromHandEffect::with_color_filter(
+            Value::X,
+            None,
+            Some(ColorSet::GREEN),
+        ));
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = CostContext::new(source, alice, &mut dm)
+            .with_x(2)
+            .with_pre_chosen_cards(vec![green_one, blue_card, green_two]);
+
+        assert_eq!(cost.pay(&mut game, &mut ctx), Ok(CostPaymentResult::Paid));
+        let revealed = ctx
+            .tagged_objects
+            .get(&TagKey::from(crate::effects::PUBLIC_REVEALED_TAG))
+            .expect("Martyr of Spores reveal cost should tag revealed cards");
+        let revealed_ids: Vec<_> = revealed.iter().map(|snapshot| snapshot.object_id).collect();
+        assert_eq!(revealed_ids, vec![green_one, green_two]);
+        assert!(
+            !revealed_ids.contains(&blue_card),
+            "Martyr of Spores should not allow non-green cards to pay the reveal-X-green cost"
+        );
+    }
+
+    #[test]
+    fn martyr_of_spores_reveal_x_green_cost_requires_enough_green_cards() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = colored_card("Martyr of Spores", 100, ColorSet::GREEN);
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let green_card = game.create_object_from_card(
+            &colored_card("Only Green Card", 4, ColorSet::GREEN),
+            alice,
+            Zone::Hand,
+        );
+        game.create_object_from_card(
+            &colored_card("Non-green Card", 5, ColorSet::BLUE),
+            alice,
+            Zone::Hand,
+        );
+
+        let cost = Cost::effect(RevealFromHandEffect::with_color_filter(
+            Value::X,
+            None,
+            Some(ColorSet::GREEN),
+        ));
+        let mut dm = CaptureViewDm::default();
+        let mut ctx = CostContext::new(source, alice, &mut dm)
+            .with_x(2)
+            .with_pre_chosen_cards(vec![green_card]);
+
+        let err = cost
+            .pay(&mut game, &mut ctx)
+            .expect_err("Martyr of Spores should require X green cards to pay X=2");
+        assert!(
+            err.to_string().contains("cannot reveal 2 card"),
+            "expected insufficient matching green cards error, got {err:?}"
+        );
     }
 
     #[test]

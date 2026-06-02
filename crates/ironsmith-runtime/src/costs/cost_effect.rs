@@ -452,8 +452,9 @@ impl CostPayer for CostEffect {
 
         if let Some(effect) = self.effect.downcast_ref::<RevealFromHandEffect>() {
             return CostProcessingMode::RevealFromHand {
-                count: effect.count,
+                count: effect.count.clone(),
                 card_type: effect.card_type,
+                color_filter: effect.color_filter,
             };
         }
 

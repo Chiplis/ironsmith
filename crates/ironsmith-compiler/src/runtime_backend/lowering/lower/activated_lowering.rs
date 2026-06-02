@@ -55,7 +55,9 @@ fn activation_cost_defines_x_for_mana_ability(cost: &TotalCost) -> bool {
 
         match value {
             Value::X | Value::XTimes(_) => true,
-            Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => value_uses_x(inner),
+            Value::Scaled(inner, _)
+            | Value::DividedRoundedDown(inner, _)
+            | Value::HalfRoundedDown(inner) => value_uses_x(inner),
             Value::Add(left, right) => value_uses_x(left) || value_uses_x(right),
             _ => false,
         }
@@ -137,7 +139,9 @@ fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
             bind_event_amount_to_cost_x(left);
             bind_event_amount_to_cost_x(right);
         }
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
             bind_event_amount_to_cost_x(inner);
         }
         Value::SurfaceHinted { value, .. } => bind_event_amount_to_cost_x(value),

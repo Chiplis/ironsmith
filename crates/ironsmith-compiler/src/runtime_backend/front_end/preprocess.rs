@@ -562,9 +562,7 @@ fn replace_names_with_map(
             || next.is_some_and(|word| {
                 matches!(
                     word,
-                    b"attack"
-                        | b"attacks"
-                        | b"become"
+                    b"become"
                         | b"becomes"
                         | b"becoming"
                         | b"deal"

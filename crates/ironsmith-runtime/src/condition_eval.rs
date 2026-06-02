@@ -223,6 +223,70 @@ mod tests {
     }
 
     #[test]
+    fn frodo_ring_bearer_threshold_condition_requires_bearer_and_two_temptations() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let frodo = CardBuilder::new(CardId::from_raw(71_571), "Frodo, Adventurous Hobbit")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 3))
+            .build();
+        let other_creature = CardBuilder::new(CardId::from_raw(71_572), "Other Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&frodo, alice, Zone::Battlefield);
+        let other_source = game.create_object_from_card(&other_creature, alice, Zone::Battlefield);
+        let condition = Condition::And(
+            Box::new(Condition::SourceIsRingBearer {
+                player: PlayerFilter::You,
+            }),
+            Box::new(Condition::PlayerRingTemptedThisGameOrMore {
+                player: PlayerFilter::You,
+                count: 2,
+            }),
+        );
+        let ctx = ExecutionContext::new_default(source, alice);
+
+        game.set_ring_bearer(alice, source);
+        game.increment_ring_temptations(bob);
+        game.increment_ring_temptations(bob);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("opponent temptations should evaluate cleanly"),
+            "Frodo's draw gate must use its controller's Ring temptation count"
+        );
+
+        game.increment_ring_temptations(alice);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("one temptation should evaluate cleanly"),
+            "Frodo's draw gate must stay false before the Ring has tempted you twice"
+        );
+
+        game.increment_ring_temptations(alice);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("two temptations should evaluate cleanly"),
+            "Frodo's draw gate should be true once he is your Ring-bearer and you have two temptations"
+        );
+
+        game.set_ring_bearer(alice, other_source);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("different Ring-bearer should evaluate cleanly"),
+            "Frodo's draw gate must require the source itself to be your Ring-bearer"
+        );
+
+        game.clear_ring_bearer(alice);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("missing Ring-bearer should evaluate cleanly"),
+            "Frodo's draw gate must stay false when the source is no longer your Ring-bearer"
+        );
+    }
+
+    #[test]
     fn evaluate_player_has_no_opponent_with_more_life_than_allows_ties() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;
@@ -965,6 +1029,16 @@ fn evaluate_condition_shared_core(
             game.player(*player)
                 .is_some_and(|p| p.graveyard.len() >= *count),
         ),
+        Condition::SourceIsRingBearer { player } => Some(
+            matching_condition_players_simple(game, ctx.controller, player)
+                .into_iter()
+                .any(|player_id| game.current_ring_bearer(player_id) == Some(ctx.source)),
+        ),
+        Condition::PlayerRingTemptedThisGameOrMore { player, count } => Some(
+            matching_condition_players_simple(game, ctx.controller, player)
+                .into_iter()
+                .any(|player_id| game.ring_temptations(player_id) >= *count),
+        ),
         Condition::YouControlCommander => {
             if let Some(player) = game.player(ctx.controller) {
                 let commanders = player.get_commanders();
@@ -1133,6 +1207,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerIsMonarch { .. } => {}
         Condition::PlayerHasInitiative { .. } => {}
         Condition::PlayerHasCitysBlessing { .. } => {}
+        Condition::SourceIsRingBearer { .. } => {}
+        Condition::PlayerRingTemptedThisGameOrMore { .. } => {}
         Condition::PlayerCommittedCrimeThisTurn { .. } => {}
         Condition::PlayerRolledResultThisTurn { .. } => {}
         Condition::PlayerCompletedDungeon { .. } => {}
@@ -1942,6 +2018,8 @@ pub fn evaluate_condition_external(
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
+        | Condition::SourceIsRingBearer { .. }
+        | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
@@ -2673,6 +2751,8 @@ fn evaluate_condition_simple(
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
+        | Condition::SourceIsRingBearer { .. }
+        | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::ValueComparison { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
@@ -3789,6 +3869,8 @@ fn evaluate_condition(
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
         | Condition::ColorsOfManaSpentToCastThisSpellOrMore(_)
         | Condition::PlayerGraveyardHasCardsAtLeast { .. }
+        | Condition::SourceIsRingBearer { .. }
+        | Condition::PlayerRingTemptedThisGameOrMore { .. }
         | Condition::YouControlCommander
         | Condition::ThisAbilityResolvedThisTurnExactly(_)
         | Condition::Not(_)

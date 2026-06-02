@@ -7,12 +7,15 @@ use crate::effects::executor_trait::CostValidationError;
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::LifeLossEvent;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, PlayerFilter};
+use crate::triggers::TriggerEvent;
 pub type PayEnergyEffect = ironsmith_core::PayEnergyEffect;
 pub type PayAnyEnergyEffect = ironsmith_core::PayAnyEnergyEffect;
+pub type PayAnyLifeEffect = ironsmith_core::PayAnyLifeEffect;
 
 impl EffectExecutor for PayEnergyEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
@@ -168,6 +171,76 @@ impl EffectExecutor for PayAnyEnergyEffect {
     }
 }
 
+impl EffectExecutor for PayAnyLifeEffect {
+    fn execute(
+        &self,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
+        if !game.can_lose_life(player_id) {
+            return Ok(EffectOutcome::count(0));
+        }
+        let available = game.player(player_id).map(|player| player.life).unwrap_or(0);
+        let available = available.max(0) as u32;
+
+        if available < self.min_amount {
+            return Ok(EffectOutcome::count(0));
+        }
+
+        let number_spec = if self.min_amount == 0 {
+            NumberSpec::up_to(ctx.source, available, "Choose how much life to pay")
+        } else {
+            NumberSpec::range(
+                ctx.source,
+                self.min_amount,
+                available,
+                "Choose how much life to pay",
+            )
+        };
+
+        let chosen = make_decision_with_fallback(
+            game,
+            &mut ctx.decision_maker,
+            player_id,
+            Some(ctx.source),
+            number_spec,
+            FallbackStrategy::Maximum,
+        );
+        if ctx.decision_maker.awaiting_choice() {
+            return Ok(EffectOutcome::count(0));
+        }
+        let chosen = chosen.clamp(self.min_amount, available);
+
+        if chosen == 0 {
+            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
+        }
+
+        if !game.pay_life(player_id, chosen) {
+            return Ok(EffectOutcome::count(0));
+        }
+        let event = TriggerEvent::new_with_provenance(
+            LifeLossEvent::from_effect(player_id, chosen),
+            ctx.provenance,
+        );
+        Ok(EffectOutcome::count(chosen as i32)
+            .with_event(event)
+            .with_execution_fact(ExecutionFact::ChosenNumber(chosen)))
+    }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        if self.player.is_target() {
+            Some(&self.player)
+        } else {
+            None
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "player to pay life"
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,5 +270,34 @@ mod tests {
                 .any(|event| event.kind() == EventKind::MarkersChanged),
             "paying energy should emit MarkersChangedEvent"
         );
+    }
+
+    #[test]
+    fn pay_any_life_respects_cant_lose_life() {
+        struct PayMaximum;
+
+        impl crate::decision::DecisionMaker for PayMaximum {
+            fn decide_number(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::NumberContext,
+            ) -> u32 {
+                ctx.max
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        game.effect_store.cant_effects.cant_lose_life.insert(alice);
+
+        let source = game.new_object_id();
+        let mut dm = PayMaximum;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        let outcome = PayAnyLifeEffect::new(ChooseSpec::Player(PlayerFilter::You), 0)
+            .execute(&mut game, &mut ctx)
+            .expect("pay any life should resolve");
+
+        assert_eq!(outcome.as_count(), Some(0));
+        assert_eq!(game.player(alice).expect("alice exists").life, 20);
     }
 }

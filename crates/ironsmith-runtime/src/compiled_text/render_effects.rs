@@ -1623,6 +1623,18 @@ fn is_tagged_only_filter(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
     normalized == ObjectFilter::tagged(tag.clone())
 }
 
+fn describe_target_then_look_at_tagged_object(effects: &[&Effect]) -> Option<String> {
+    let [target_effect, look_effect] = effects else {
+        return None;
+    };
+    let (target_tag, target_only) = tagged_target_only_effect(target_effect)?;
+    let look = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()?;
+    if look.viewer != PlayerFilter::You || !is_tagged_only_filter(&look.filter, target_tag) {
+        return None;
+    }
+    Some(format!("Look at {}", describe_choose_spec(&target_only.target)))
+}
+
 fn describe_choose_same_controller_targets_then_sacrifice_one(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -3178,6 +3190,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_each_player_repeat_pay_life_tokens_sequence(effects) {
+        return Some(compact);
+    }
+
     if effects.len() == 3 {
         let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
@@ -3208,6 +3224,88 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn unwrap_with_id(effect: &Effect) -> (&Effect, Option<crate::effect::EffectId>) {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return (&with_id.effect, Some(with_id.id));
+    }
+    (effect, None)
+}
+
+fn describe_each_player_repeat_pay_life_tokens_sequence(effects: &[Effect]) -> Option<String> {
+    let [repeat_effect, token_effect] = effects else {
+        return None;
+    };
+    let (repeat_unwrapped, repeat_id) = unwrap_with_id(repeat_effect);
+    let repeat = repeat_unwrapped.downcast_ref::<crate::effects::RepeatProcessEffect>()?;
+    if !matches!(repeat.predicate, crate::effect::EffectPredicate::Happened) {
+        return None;
+    }
+    let [pay_players_effect] = repeat.effects.as_slice() else {
+        return None;
+    };
+    let (pay_players_unwrapped, _) = unwrap_with_id(pay_players_effect);
+    let pay_players = pay_players_unwrapped.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if pay_players.filter != PlayerFilter::Any || !pay_players.starting_with_controller {
+        return None;
+    }
+    let [pay_life_effect] = pay_players.effects.as_slice() else {
+        return None;
+    };
+    let pay_life = pay_life_effect.downcast_ref::<crate::effects::PayAnyLifeEffect>()?;
+    if pay_life.min_amount != 0
+        || pay_life.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+
+    let token_players = token_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if token_players.filter != PlayerFilter::Any {
+        return None;
+    }
+    let [create_effect] = token_players.effects.as_slice() else {
+        return None;
+    };
+    let create = unwrap_basic_tag_wrappers(create_effect)
+        .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if create.controller != PlayerFilter::IteratedPlayer
+        || !create.token.card.is_token
+        || create.token.card.name != "Rat"
+    {
+        return None;
+    }
+    if !create
+        .token
+        .card
+        .card_types
+        .contains(&crate::types::CardType::Creature)
+        || !create.token.card.subtypes.contains(&crate::types::Subtype::Rat)
+        || create.token.card.color_indicator != Some(crate::color::ColorSet::BLACK)
+        || !create
+            .token
+            .card
+            .power_toughness
+            .is_some_and(|pt| {
+                matches!(pt.power, crate::card::PtValue::Fixed(1))
+                    && matches!(pt.toughness, crate::card::PtValue::Fixed(1))
+            })
+    {
+        return None;
+    }
+    let Value::EffectMetric {
+        effect_id,
+        source: crate::effect::EffectMetricSource::Outcome,
+        metric: crate::effect::EffectMetric::IteratedPlayerCount,
+    } = &create.count
+    else {
+        return None;
+    };
+    if repeat_id != Some(*effect_id) {
+        return None;
+    }
+
+    Some("Starting with you, each player may pay any amount of life. Repeat this process until no one pays life. Each player creates a 1/1 black Rat creature token for each 1 life they paid this way".to_string())
 }
 
 fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) -> Option<String> {
@@ -14524,6 +14622,30 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
+            && let Some(for_each) = filtered[idx].downcast_ref::<crate::effects::ForEachObject>()
+            && let Some(tagged) = filtered[idx + 1].downcast_ref::<crate::effects::TaggedEffect>()
+            && let Some(compact) =
+                describe_for_each_chosen_put_counters_then_gain_keywords(for_each, tagged)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(additional_phases) = filtered[idx]
+                .downcast_ref::<crate::effects::AdditionalPhasesEffect>()
+            && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
+            && let Some(compact) =
+                describe_additional_combat_then_chosen_attack_or_block_restriction(
+                    additional_phases,
+                    cant,
+                )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
             && let Some(tagged) = filtered[idx].downcast_ref::<crate::effects::TaggedEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
@@ -14880,6 +15002,17 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     let effect_refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
         return Some(compact);
+    }
+
+    if effects.len() >= 2
+        && let Some(first) = describe_target_then_look_at_tagged_object(&effect_refs[..2])
+    {
+        if effects.len() == 2 {
+            return Some(first);
+        }
+        let rest = describe_effect_clause_list(&effects[2..])
+            .unwrap_or_else(|| lowercase_first(&describe_effect_list(&effects[2..])));
+        return Some(format!("{first}. {rest}"));
     }
 
     if effects.len() >= 3
@@ -16272,6 +16405,16 @@ fn describe_triggered_inline_ability(
     line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
     line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
+    if triggered.presentation_label.is_none()
+        && line.starts_with("Whenever you cast a spell that targets this creature")
+    {
+        line = format!("Heroic — {line}");
+    }
+    if triggered.presentation_label.is_none()
+        && line.starts_with("Whenever another creature you control enters")
+    {
+        line = format!("Alliance — {line}");
+    }
     apply_triggered_presentation_label(triggered, line)
 }
 
@@ -16778,6 +16921,7 @@ mod tests {
                     PlayerFilter::IteratedPlayer,
                 )),
             ]))],
+            starting_with_controller: false,
         })];
 
         assert_eq!(
@@ -17484,6 +17628,7 @@ mod tests {
                     party.clone(),
                     PlayerFilter::IteratedPlayer,
                 ))],
+                starting_with_controller: false,
             }),
             Effect::new(crate::effects::GainLifeEffect::you(party)),
         ];
@@ -21036,6 +21181,114 @@ pub(super) fn describe_choose_then_cant_pile_restriction(
     Some(sentence)
 }
 
+pub(super) fn describe_additional_combat_then_chosen_attack_or_block_restriction(
+    additional_phases: &crate::effects::AdditionalPhasesEffect,
+    cant: &crate::effects::CantEffect,
+) -> Option<String> {
+    if additional_phases.phases != [crate::effects::AdditionalPhase::Combat]
+        || cant.duration != crate::effect::Until::EndOfCombat
+    {
+        return None;
+    }
+
+    let (filter, verb) = match &cant.restriction {
+        crate::effect::Restriction::Attack(filter) => (filter, "attack"),
+        crate::effect::Restriction::Block(filter) => (filter, "block"),
+        _ => return None,
+    };
+    let references_chosen_tag = filter.tagged_constraints.iter().all(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+    }) && filter.tagged_constraints.iter().any(|constraint| {
+        let tag = constraint.tag.as_str();
+        matches!(tag, "__it__" | "it")
+            || tag.starts_with("targeted_")
+            || tag.starts_with("untapped_")
+    });
+    if !references_chosen_tag {
+        return None;
+    }
+    let mut base_filter = filter.clone();
+    base_filter.tagged_constraints.clear();
+    if base_filter != ObjectFilter::creature() {
+        return None;
+    }
+
+    Some(format!(
+        "After this main phase, there is an additional combat phase. Only the chosen creatures can {verb} during that combat phase"
+    ))
+}
+
+pub(super) fn describe_for_each_chosen_put_counters_then_gain_keywords(
+    for_each: &crate::effects::ForEachObject,
+    tagged: &crate::effects::TaggedEffect,
+) -> Option<String> {
+    let tag = for_each.filter.tagged_constraints.iter().find_map(|constraint| {
+        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            .then_some(&constraint.tag)
+    })?;
+    let [put_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if !matches!(put.target, ChooseSpec::Iterated) || put.target_count.is_some() || put.distributed
+    {
+        return None;
+    }
+
+    let apply = tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if apply.until != crate::effect::Until::EndOfTurn
+        || apply.condition.is_some()
+        || !apply.runtime_modifications.is_empty()
+        || !matches!(apply.target_spec.as_ref(), Some(ChooseSpec::Tagged(found)) if found == tag)
+    {
+        return None;
+    }
+
+    fn keyword_label(ability: &crate::static_abilities::StaticAbility) -> Option<String> {
+        Some(
+            match ability.id() {
+                crate::static_abilities::StaticAbilityId::Flying => "flying",
+                crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+                crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+                crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+                crate::static_abilities::StaticAbilityId::Haste => "haste",
+                crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+                crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+                crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+                crate::static_abilities::StaticAbilityId::Menace => "menace",
+                crate::static_abilities::StaticAbilityId::Reach => "reach",
+                crate::static_abilities::StaticAbilityId::Trample => "trample",
+                crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+                _ => return None,
+            }
+            .to_string(),
+        )
+    }
+
+    let mut keywords = Vec::new();
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &apply.modification else {
+        return None;
+    };
+    keywords.push(keyword_label(ability)?);
+    for modification in &apply.additional_modifications {
+        let crate::continuous::Modification::AddAbility(ability) = modification else {
+            return None;
+        };
+        keywords.push(keyword_label(ability)?);
+    }
+    if keywords.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Put {} on each of them. They gain {} until end of turn",
+        describe_put_counter_phrase(&put.amount, put.counter_type),
+        join_with_and(&keywords),
+    ))
+}
+
 pub(super) fn describe_tagged_target_then_cant_restriction(
     tagged: &crate::effects::TaggedEffect,
     cant: &crate::effects::CantEffect,
@@ -21953,6 +22206,16 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         }
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
+        Value::CountersOnSource(counter_type) => Some(format!(
+            "{} counter on it",
+            describe_counter_type(*counter_type)
+        )),
+        Value::CountersOn(spec, Some(counter_type)) => Some(format!(
+            "{} counter on {}",
+            describe_counter_type(*counter_type),
+            describe_choose_spec(spec)
+        )),
+        Value::CountersOn(spec, None) => Some(format!("counter on {}", describe_choose_spec(spec))),
         _ => None,
     }
 }
@@ -33136,7 +33399,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             (Value::CountScaled(filter, multiplier), "you") if *multiplier == 1 => {
                 format!(
-                    "Investigate for each {}",
+                    "Investigate once for each {}",
                     describe_for_each_count_filter(filter)
                 )
             }
@@ -33147,7 +33410,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_for_each_count_filter(filter)
             ),
             (Value::CountScaled(filter, multiplier), _) if *multiplier == 1 => format!(
-                "{player} investigates for each {}",
+                "{player} investigates once for each {}",
                 describe_for_each_count_filter(filter)
             ),
             _ if player == "you" => format!("Investigate {}", describe_value(&investigate.count)),
@@ -33228,6 +33491,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("Pay {amount}");
         }
         return format!("{payer} {} {amount}", player_verb(&payer, "pay", "pays"));
+    }
+    if let Some(pay_any_life) = effect.downcast_ref::<crate::effects::PayAnyLifeEffect>() {
+        let payer = describe_choose_spec(&pay_any_life.player);
+        let payment = match pay_any_life.min_amount {
+            0 => "any amount of life".to_string(),
+            1 => "one or more life".to_string(),
+            amount => format!("{amount} or more life"),
+        };
+        if payer == "you" {
+            return format!("Pay {payment}");
+        }
+        return format!("{payer} {} {payment}", player_verb(&payer, "pay", "pays"));
     }
     if let Some(energy) = effect.downcast_ref::<crate::effects::EnergyCountersEffect>() {
         let player = describe_player_filter(&energy.player);
@@ -35399,6 +35674,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 repeated
             );
         }
+        if repeat
+            .count
+            .has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay)
+            && let Value::DividedRoundedDown(value, divisor) = repeat.count.unhinted()
+            && matches!(value.as_ref(), Value::X)
+            && *divisor > 0
+        {
+            let group = small_number_word(*divisor as u32).unwrap_or_else(|| divisor.to_string());
+            return format!("For each {group} counters removed this way, {repeated}");
+        }
         return format!(
             "Repeat {} {} times",
             repeated,
@@ -36292,7 +36577,7 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
         return Some("Partner".to_string());
     }
     if text.starts_with("partner-") || text.starts_with("partner\u{2014}") {
-        return Some(raw_text.to_string());
+        return Some(raw_text.trim_end_matches('.').to_string());
     }
     if text.starts_with("partner with ") {
         return Some(raw_text.to_string());
@@ -38714,6 +38999,16 @@ pub(super) fn describe_ability(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
             );
+            if triggered.presentation_label.is_none()
+                && trigger_surface.starts_with("Whenever you cast a spell that targets this creature")
+            {
+                trigger_surface = format!("Heroic — {trigger_surface}");
+            }
+            if triggered.presentation_label.is_none()
+                && trigger_surface.starts_with("Whenever another creature you control enters")
+            {
+                trigger_surface = format!("Alliance — {trigger_surface}");
+            }
             if matches!(intervening_condition, Some(Condition::YourTurn))
                 && trigger_surface
                     .to_ascii_lowercase()

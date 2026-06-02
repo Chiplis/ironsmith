@@ -515,6 +515,9 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::LookAtHand { target } => {
                     track_target_player(target, frame);
                 }
+                SubjectVerbActionAst::LookAtTarget { target } => {
+                    maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
@@ -1454,7 +1457,9 @@ fn value_references_only_other_number_metric(value: &Value) -> bool {
             value_references_only_other_number_metric(left)
                 || value_references_only_other_number_metric(right)
         }
-        Value::Scaled(value, _) | Value::HalfRoundedDown(value) => {
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => {
             value_references_only_other_number_metric(value)
         }
         _ => false,
@@ -1932,6 +1937,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
+            | SubjectVerbActionAst::LookAtTarget { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }
@@ -2001,6 +2007,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
+            | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
@@ -2277,7 +2284,9 @@ fn resolve_effect_result_value(
             resolve_effect_result_value(left, state)?;
             resolve_effect_result_value(right, state)?;
         }
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
             resolve_effect_result_value(inner, state)?;
         }
         Value::SurfaceHinted { value, .. } => {
@@ -2483,6 +2492,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::LoseGame
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
+            | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::PayMana { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
             SubjectVerbActionAst::LoseLife { amount }
@@ -2660,6 +2670,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::LookAtObjects { filter } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
+            }
+            SubjectVerbActionAst::LookAtTarget { target } => {
+                bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::PutIntoHand { object } => {
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)

@@ -1149,6 +1149,10 @@ fn check_first_strike(game: &GameState, combat: &CombatState) -> bool {
 }
 
 fn next_runner_state_after_phase(game: &mut GameState, normal_next: TurnState) -> TurnState {
+    if matches!(game.turn.phase, Phase::Combat) {
+        game.cleanup_restrictions_end_of_combat();
+    }
+
     let next_phase = if !game.turn_store.additional_phases.is_empty() {
         Some(game.turn_store.additional_phases.remove(0))
     } else if game.turn_store.additional_phase_continuation.is_some() {

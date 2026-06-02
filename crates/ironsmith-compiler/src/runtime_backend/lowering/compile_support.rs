@@ -410,6 +410,17 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
         }
+        PredicateAst::SourceIsRingBearer { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::SourceIsRingBearer { player }
+        }
+        PredicateAst::PlayerRingTemptedThisGameOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerRingTemptedThisGameOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::PlayerCompletedDungeon {
             player,
             dungeon_name,
@@ -1040,7 +1051,9 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
             bind_relative_iterated_player_in_value_to_player_filter(left, player_filter);
             bind_relative_iterated_player_in_value_to_player_filter(right, player_filter);
         }
-        Value::Scaled(inner, _) | Value::HalfRoundedDown(inner) => {
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => {
             bind_relative_iterated_player_in_value_to_player_filter(inner, player_filter);
         }
         Value::Min(left, right) => {

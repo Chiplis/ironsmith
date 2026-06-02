@@ -39,12 +39,32 @@ pub struct ForPlayersEffect {
     pub filter: PlayerFilter,
     /// Effects to execute for each matching player.
     pub effects: Vec<Effect>,
+    /// Whether iteration should begin with the effect controller and proceed in turn order.
+    pub starting_with_controller: bool,
 }
 
 impl ForPlayersEffect {
     /// Create a new ForPlayers effect.
     pub fn new(filter: PlayerFilter, effects: Vec<Effect>) -> Self {
-        Self { filter, effects }
+        Self {
+            filter,
+            effects,
+            starting_with_controller: false,
+        }
+    }
+
+    pub fn new_starting_with_controller(filter: PlayerFilter, effects: Vec<Effect>) -> Self {
+        Self {
+            filter,
+            effects,
+            starting_with_controller: true,
+        }
+    }
+}
+
+fn rotate_players_to_start(players: &mut Vec<PlayerId>, start: PlayerId) {
+    if let Some(start_pos) = players.iter().position(|&player_id| player_id == start) {
+        players.rotate_left(start_pos);
     }
 }
 
@@ -67,13 +87,29 @@ impl EffectExecutor for ForPlayersEffect {
         let filter_ctx = ctx.filter_context(game);
 
         // Iterate over all players that match the filter
-        let players: Vec<PlayerId> = game
+        let mut players: Vec<PlayerId> = game
             .players
             .iter()
             .filter(|p| p.is_in_game())
             .filter(|p| self.filter.matches_player(p.id, &filter_ctx))
             .map(|p| p.id)
             .collect();
+
+        if self.starting_with_controller {
+            let mut ordered_players: Vec<PlayerId> = game
+                .turn_store
+                .turn_order
+                .iter()
+                .copied()
+                .filter(|&player_id| players.contains(&player_id))
+                .collect();
+            if ordered_players.len() == players.len() {
+                rotate_players_to_start(&mut ordered_players, ctx.controller);
+                players = ordered_players;
+            } else {
+                rotate_players_to_start(&mut players, ctx.controller);
+            }
+        }
 
         if players.is_empty() {
             return Ok(EffectOutcome::count(0));

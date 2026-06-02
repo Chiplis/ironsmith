@@ -230,7 +230,7 @@ pub(super) fn build_pip_payment_options(
     player: PlayerId,
     pip: &[crate::mana::ManaSymbol],
     display_pip: Option<&[crate::mana::ManaSymbol]>,
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     allow_black_life: bool,
     source_for_pip_alternatives: Option<ObjectId>,
     decision_maker: &mut impl DecisionMaker,
@@ -239,7 +239,7 @@ pub(super) fn build_pip_payment_options(
 
     let mut options = Vec::new();
     let mut index = 0;
-    let mut added_any_color_options = false;
+    let mut added_pool_symbols = Vec::new();
 
     // Get the player's mana pool
     let pool = game.player(player).map(|p| &p.mana_pool);
@@ -248,155 +248,76 @@ pub(super) fn build_pip_payment_options(
     for symbol in pip {
         match symbol {
             ManaSymbol::White => {
-                if allow_any_color {
-                    if !added_any_color_options {
-                        add_any_color_pool_options(
-                            game,
-                            player,
-                            source_for_pip_alternatives,
-                            &mut options,
-                            &mut index,
-                        );
-                        added_any_color_options = true;
-                    }
-                } else if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::White,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {W} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::White),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Blue => {
-                if allow_any_color {
-                    if !added_any_color_options {
-                        add_any_color_pool_options(
-                            game,
-                            player,
-                            source_for_pip_alternatives,
-                            &mut options,
-                            &mut index,
-                        );
-                        added_any_color_options = true;
-                    }
-                } else if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::Blue,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {U} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Blue),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Black => {
-                if allow_any_color {
-                    if !added_any_color_options {
-                        add_any_color_pool_options(
-                            game,
-                            player,
-                            source_for_pip_alternatives,
-                            &mut options,
-                            &mut index,
-                        );
-                        added_any_color_options = true;
-                    }
-                } else if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::Black,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {B} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Black),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Red => {
-                if allow_any_color {
-                    if !added_any_color_options {
-                        add_any_color_pool_options(
-                            game,
-                            player,
-                            source_for_pip_alternatives,
-                            &mut options,
-                            &mut index,
-                        );
-                        added_any_color_options = true;
-                    }
-                } else if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::Red,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {R} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Red),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Green => {
-                if allow_any_color {
-                    if !added_any_color_options {
-                        add_any_color_pool_options(
-                            game,
-                            player,
-                            source_for_pip_alternatives,
-                            &mut options,
-                            &mut index,
-                        );
-                        added_any_color_options = true;
-                    }
-                } else if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::Green,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {G} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Green),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Colorless => {
-                if pool_symbol_count(
+                add_policy_pool_options_for_required(
                     game,
                     player,
                     ManaSymbol::Colorless,
                     source_for_pip_alternatives,
-                ) > 0
-                {
-                    options.push(ManaPipPaymentOption {
-                        index,
-                        description: "Use {C} from mana pool".to_string(),
-                        action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Colorless),
-                    });
-                    index += 1;
-                }
+                    mana_spend_policy,
+                    &mut options,
+                    &mut index,
+                    &mut added_pool_symbols,
+                );
             }
             ManaSymbol::Generic(_) => {
                 // Generic can be paid with any mana in the pool
@@ -480,8 +401,8 @@ pub(super) fn build_pip_payment_options(
     if !has_pool_options || is_phyrexian {
         let mana_abilities = get_available_mana_abilities(game, player, decision_maker);
         for (perm_id, ability_index, description) in mana_abilities {
-            let allow_source_any_color = allow_any_color
-                || game.can_spend_mana_as_any_color_from_mana_source(
+            let mut source_policy = mana_spend_policy.clone();
+            source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
                     player,
                     source_for_pip_alternatives,
                     perm_id,
@@ -493,7 +414,7 @@ pub(super) fn build_pip_payment_options(
                 ability_index,
                 source_for_pip_alternatives,
                 pip,
-                allow_source_any_color,
+                &source_policy,
             ) {
                 options.push(ManaPipPaymentOption {
                     index,
@@ -646,6 +567,46 @@ pub(super) fn add_any_color_pool_options(
             action: ManaPipPaymentAction::UseFromPool(ManaSymbol::Colorless),
         });
         *index += 1;
+    }
+}
+
+fn add_policy_pool_options_for_required(
+    game: &GameState,
+    player: PlayerId,
+    required: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    options: &mut Vec<ManaPipPaymentOption>,
+    index: &mut usize,
+    added_symbols: &mut Vec<crate::mana::ManaSymbol>,
+) {
+    use crate::mana::ManaSymbol;
+
+    for symbol in [
+        ManaSymbol::White,
+        ManaSymbol::Blue,
+        ManaSymbol::Black,
+        ManaSymbol::Red,
+        ManaSymbol::Green,
+        ManaSymbol::Colorless,
+    ] {
+        if added_symbols.contains(&symbol)
+            || !mana_spend_policy.can_pay_symbol(symbol, required)
+            || pool_symbol_count(game, player, symbol, payment_source) == 0
+        {
+            continue;
+        }
+
+        options.push(ManaPipPaymentOption {
+            index: *index,
+            description: format!(
+                "Use {} from mana pool",
+                crate::mana::ManaCost::from_symbols(vec![symbol]).to_oracle()
+            ),
+            action: ManaPipPaymentAction::UseFromPool(symbol),
+        });
+        *index += 1;
+        added_symbols.push(symbol);
     }
 }
 
@@ -1024,7 +985,7 @@ pub(super) fn mana_ability_can_pay_pip(
     ability_index: usize,
     payment_source: Option<ObjectId>,
     pip: &[crate::mana::ManaSymbol],
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> bool {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
@@ -1059,31 +1020,21 @@ pub(super) fn mana_ability_can_pay_pip(
     let produced_symbols =
         mana_ability.inferred_mana_symbols(game, perm_id, game.controller_of(obj));
 
-    let pip_has_colored = pip.iter().any(|s| {
-        matches!(
-            s,
-            ManaSymbol::White
-                | ManaSymbol::Blue
-                | ManaSymbol::Black
-                | ManaSymbol::Red
-                | ManaSymbol::Green
-        )
-    });
-
     for produced in &produced_symbols {
         for pip_symbol in pip {
             match (produced, pip_symbol) {
                 // Any mana can pay generic
                 (_, ManaSymbol::Generic(_)) => return true,
-                // Exact color matches
-                (ManaSymbol::White, ManaSymbol::White) => return true,
-                (ManaSymbol::Blue, ManaSymbol::Blue) => return true,
-                (ManaSymbol::Black, ManaSymbol::Black) => return true,
-                (ManaSymbol::Red, ManaSymbol::Red) => return true,
-                (ManaSymbol::Green, ManaSymbol::Green) => return true,
-                (ManaSymbol::Colorless, ManaSymbol::Colorless) => return true,
-                // Any-color spending: any produced mana can pay colored pips
-                _ if allow_any_color && pip_has_colored => return true,
+                (_, ManaSymbol::White)
+                | (_, ManaSymbol::Blue)
+                | (_, ManaSymbol::Black)
+                | (_, ManaSymbol::Red)
+                | (_, ManaSymbol::Green)
+                | (_, ManaSymbol::Colorless) => {
+                    if mana_spend_policy.can_pay_symbol(*produced, *pip_symbol) {
+                        return true;
+                    }
+                }
                 _ => {}
             }
         }
@@ -1131,26 +1082,35 @@ pub fn mana_ability_is_undo_safe(game: &GameState, source: ObjectId, ability_ind
 
 pub(super) fn pip_mana_color_restriction(
     pip: &[crate::mana::ManaSymbol],
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> Option<Vec<crate::color::Color>> {
     use crate::color::Color;
     use crate::mana::ManaSymbol;
-
-    if allow_any_color {
-        return None;
-    }
 
     let mut colors = Vec::new();
     let mut has_non_colored_mana_alternative = false;
 
     for symbol in pip {
         match symbol {
-            ManaSymbol::White => colors.push(Color::White),
-            ManaSymbol::Blue => colors.push(Color::Blue),
-            ManaSymbol::Black => colors.push(Color::Black),
-            ManaSymbol::Red => colors.push(Color::Red),
-            ManaSymbol::Green => colors.push(Color::Green),
-            ManaSymbol::Colorless | ManaSymbol::Generic(_) | ManaSymbol::Snow => {
+            ManaSymbol::White
+            | ManaSymbol::Blue
+            | ManaSymbol::Black
+            | ManaSymbol::Red
+            | ManaSymbol::Green
+            | ManaSymbol::Colorless => {
+                for (produced, color) in [
+                    (ManaSymbol::White, Color::White),
+                    (ManaSymbol::Blue, Color::Blue),
+                    (ManaSymbol::Black, Color::Black),
+                    (ManaSymbol::Red, Color::Red),
+                    (ManaSymbol::Green, Color::Green),
+                ] {
+                    if mana_spend_policy.can_pay_symbol(produced, *symbol) {
+                        colors.push(color);
+                    }
+                }
+            }
+            ManaSymbol::Generic(_) | ManaSymbol::Snow => {
                 has_non_colored_mana_alternative = true;
             }
             ManaSymbol::Life(_) | ManaSymbol::X => {}
@@ -1222,7 +1182,7 @@ pub(super) fn execute_pip_payment_action(
     player: PlayerId,
     source: Option<ObjectId>,
     pip: &[crate::mana::ManaSymbol],
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     action: &ManaPipPaymentAction,
     decision_maker: &mut impl DecisionMaker,
     payment_trace: &mut Vec<CostStep>,
@@ -1250,9 +1210,10 @@ pub(super) fn execute_pip_payment_action(
             let before_pool = game
                 .player(player)
                 .map(|player_obj| player_obj.mana_pool.clone());
-            let allow_source_any_color = allow_any_color
-                || game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id);
-            let mana_color_restriction = pip_mana_color_restriction(pip, allow_source_any_color);
+            let mut source_policy = mana_spend_policy.clone();
+            source_policy.allow_any_color |=
+                game.can_spend_mana_as_any_color_from_mana_source(player, source, *source_id);
+            let mana_color_restriction = pip_mana_color_restriction(pip, &source_policy);
             let emitted_events =
                 crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
                 game,
@@ -1283,7 +1244,7 @@ pub(super) fn execute_pip_payment_action(
                 player,
                 source,
                 pip,
-                allow_source_any_color,
+                &source_policy,
                 &produced_symbols,
             ) {
                 if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
@@ -1362,7 +1323,7 @@ pub(super) fn spend_pool_mana_for_pip(
     player: PlayerId,
     payment_source: Option<ObjectId>,
     pip: &[crate::mana::ManaSymbol],
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
     preferred_symbols: &[crate::mana::ManaSymbol],
 ) -> Option<SpentManaInfo> {
     use crate::mana::ManaSymbol;
@@ -1381,7 +1342,7 @@ pub(super) fn spend_pool_mana_for_pip(
         ) {
             continue;
         }
-        if symbol_can_pay_pip(symbol, pip, allow_any_color) && !candidates.contains(&symbol) {
+        if symbol_can_pay_pip(symbol, pip, mana_spend_policy) && !candidates.contains(&symbol) {
             candidates.push(symbol);
         }
     }
@@ -1394,7 +1355,7 @@ pub(super) fn spend_pool_mana_for_pip(
         ManaSymbol::Green,
         ManaSymbol::Colorless,
     ] {
-        if symbol_can_pay_pip(symbol, pip, allow_any_color) && !candidates.contains(&symbol) {
+        if symbol_can_pay_pip(symbol, pip, mana_spend_policy) && !candidates.contains(&symbol) {
             candidates.push(symbol);
         }
     }
@@ -1411,20 +1372,9 @@ pub(super) fn spend_pool_mana_for_pip(
 pub(super) fn symbol_can_pay_pip(
     symbol: crate::mana::ManaSymbol,
     pip: &[crate::mana::ManaSymbol],
-    allow_any_color: bool,
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
 ) -> bool {
     use crate::mana::ManaSymbol;
-
-    let has_colored_requirement = pip.iter().any(|candidate| {
-        matches!(
-            candidate,
-            ManaSymbol::White
-                | ManaSymbol::Blue
-                | ManaSymbol::Black
-                | ManaSymbol::Red
-                | ManaSymbol::Green
-        )
-    });
 
     pip.iter().any(|candidate| match candidate {
         ManaSymbol::Generic(_) | ManaSymbol::Snow => matches!(
@@ -1436,22 +1386,12 @@ pub(super) fn symbol_can_pay_pip(
                 | ManaSymbol::Green
                 | ManaSymbol::Colorless
         ),
-        ManaSymbol::White => {
-            symbol == ManaSymbol::White || (allow_any_color && has_colored_requirement)
-        }
-        ManaSymbol::Blue => {
-            symbol == ManaSymbol::Blue || (allow_any_color && has_colored_requirement)
-        }
-        ManaSymbol::Black => {
-            symbol == ManaSymbol::Black || (allow_any_color && has_colored_requirement)
-        }
-        ManaSymbol::Red => {
-            symbol == ManaSymbol::Red || (allow_any_color && has_colored_requirement)
-        }
-        ManaSymbol::Green => {
-            symbol == ManaSymbol::Green || (allow_any_color && has_colored_requirement)
-        }
-        ManaSymbol::Colorless => symbol == ManaSymbol::Colorless,
+        ManaSymbol::White
+        | ManaSymbol::Blue
+        | ManaSymbol::Black
+        | ManaSymbol::Red
+        | ManaSymbol::Green
+        | ManaSymbol::Colorless => mana_spend_policy.can_pay_symbol(symbol, *candidate),
         ManaSymbol::Life(_) | ManaSymbol::X => false,
     })
 }
@@ -1870,7 +1810,7 @@ pub(super) fn apply_mana_payment_response_mana_ability(
 
     // Get available mana abilities, excluding the one we're paying for
     // and filtered to only those that can help pay the cost
-    let allow_any_color = game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+    let mana_spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
     let mana_abilities: Vec<_> =
         get_available_mana_abilities(game, pending.activator, decision_maker)
             .into_iter()
@@ -1894,7 +1834,7 @@ pub(super) fn apply_mana_payment_response_mana_ability(
                         &pending.mana_cost,
                         game,
                         pending.activator,
-                        allow_any_color,
+                        &mana_spend_policy,
                     )
                 } else {
                     true // If we can't determine, include it
@@ -2210,7 +2150,7 @@ pub(super) fn apply_pip_payment_response_activation(
     let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
     // Rebuild the options to get the action for this choice
-    let allow_any_color = game.can_spend_mana_as_any_color(pending.activator, Some(pending.source));
+    let mana_spend_policy = game.mana_spend_policy(pending.activator, Some(pending.source));
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(
         pending.activator,
         Some(pending.source),
@@ -2221,7 +2161,7 @@ pub(super) fn apply_pip_payment_response_activation(
         pending.activator,
         &pip,
         display_pip,
-        allow_any_color,
+        &mana_spend_policy,
         allow_black_life,
         Some(pending.source),
         &mut *decision_maker,
@@ -2244,7 +2184,7 @@ pub(super) fn apply_pip_payment_response_activation(
         pending.activator,
         Some(pending.source),
         &pip,
-        allow_any_color,
+        &mana_spend_policy,
         action,
         &mut *decision_maker,
         &mut pending.payment_trace,
@@ -2303,7 +2243,7 @@ pub(super) fn apply_pip_payment_response_cast(
     let pip = pending.remaining_mana_pips[0].clone();
     let display_pip = current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
 
-    let allow_any_color = game.can_spend_mana_as_any_color(pending.caster, Some(pending.spell_id));
+    let mana_spend_policy = game.mana_spend_policy(pending.caster, Some(pending.spell_id));
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(
         pending.caster,
         Some(pending.spell_id),
@@ -2319,7 +2259,7 @@ pub(super) fn apply_pip_payment_response_cast(
             pending.caster,
             &pip,
             display_pip,
-            allow_any_color,
+            &mana_spend_policy,
             allow_black_life,
             Some(pending.spell_id),
             &mut *decision_maker,
@@ -2348,7 +2288,7 @@ pub(super) fn apply_pip_payment_response_cast(
         pending.caster,
         Some(pending.spell_id),
         &pip,
-        allow_any_color,
+        &mana_spend_policy,
         action,
         &mut *decision_maker,
         &mut pending.payment_trace,
@@ -2673,13 +2613,17 @@ pub(super) fn apply_sacrifice_target_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::RevealFromHand {
-                    cost, card_type, ..
+                    cost,
+                    card_type,
+                    color_filter,
+                    ..
                 } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.activator,
                         pending.source,
                         card_type,
+                        color_filter,
                     );
                     if !legal_cards.contains(&target_id) {
                         return Err(GameLoopError::InvalidState(
@@ -2994,13 +2938,17 @@ pub(super) fn apply_card_cost_choice_response(
                     drain_pending_trigger_events(game, trigger_queue);
                 }
                 ActivationCardCostChoice::RevealFromHand {
-                    cost, card_type, ..
+                    cost,
+                    card_type,
+                    color_filter,
+                    ..
                 } => {
                     let legal_cards = get_legal_reveal_from_hand_cards(
                         game,
                         pending.caster,
                         pending.spell_id,
                         card_type,
+                        color_filter,
                     );
                     if !legal_cards.contains(&chosen_id) {
                         return Err(GameLoopError::InvalidState(
@@ -4488,7 +4436,14 @@ mod priority_mana_tests {
         let treasure_id = game.create_object_from_definition(&treasure, alice, Zone::Battlefield);
 
         assert!(
-            mana_ability_can_pay_pip(&game, treasure_id, 0, None, &[ManaSymbol::Black], false),
+            mana_ability_can_pay_pip(
+                &game,
+                treasure_id,
+                0,
+                None,
+                &[ManaSymbol::Black],
+                &crate::player::ManaSpendPolicy::default(),
+            ),
             "Treasure should be considered able to pay a colored pip"
         );
     }
@@ -4701,7 +4656,7 @@ mod priority_mana_tests {
                 0,
                 Some(matching_spell_id),
                 &[ManaSymbol::Green],
-                false,
+                &crate::player::ManaSpendPolicy::default(),
             ),
             "restricted mana ability should pay for a creature spell of the chosen type"
         );
@@ -4719,7 +4674,7 @@ mod priority_mana_tests {
                 0,
                 Some(nonmatching_spell_id),
                 &[ManaSymbol::Green],
-                false,
+                &crate::player::ManaSpendPolicy::default(),
             ),
             "restricted mana ability should reject creature spells of the wrong subtype"
         );
@@ -5278,7 +5233,7 @@ mod priority_mana_tests {
             alice,
             None,
             &black_pip,
-            false,
+            &crate::player::ManaSpendPolicy::default(),
             &action,
             &mut dm,
             &mut payment_trace,
@@ -5329,7 +5284,7 @@ mod priority_mana_tests {
             alice,
             &[ManaSymbol::Black],
             Some(&[ManaSymbol::Black]),
-            false,
+            &crate::player::ManaSpendPolicy::default(),
             false,
             Some(yawgmoth_id),
             &mut dm,
@@ -5418,7 +5373,7 @@ mod priority_mana_tests {
             alice,
             &[ManaSymbol::Black],
             Some(&[ManaSymbol::Black]),
-            false,
+            &crate::player::ManaSpendPolicy::default(),
             game.player_can_pay_black_with_life_for_reason(
                 alice,
                 Some(helper_id),
@@ -5447,7 +5402,7 @@ mod priority_mana_tests {
             alice,
             &[ManaSymbol::Black],
             Some(&[ManaSymbol::Black, ManaSymbol::Life(2)]),
-            false,
+            &crate::player::ManaSpendPolicy::default(),
             true,
             None,
             &mut dm,

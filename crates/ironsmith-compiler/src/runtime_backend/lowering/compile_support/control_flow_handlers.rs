@@ -709,7 +709,15 @@ pub(crate) fn compile_repeat_process_body(
     let mut condition: Option<EffectId> = None;
 
     for (idx, effect) in effects.iter().enumerate() {
-        let (mut effect_list, effect_choices) = compile_effect(effect, ctx)?;
+        let (mut effect_list, effect_choices) = if idx == continue_effect_index {
+            if let Some(compiled) = compile_starting_with_controller_pay_life_process(effect, ctx)? {
+                compiled
+            } else {
+                compile_effect(effect, ctx)?
+            }
+        } else {
+            compile_effect(effect, ctx)?
+        };
         if idx == continue_effect_index {
             if effect_list.is_empty() {
                 return Err(CardTextError::ParseError(
@@ -735,6 +743,34 @@ pub(crate) fn compile_repeat_process_body(
         CardTextError::ParseError("repeat process is missing a condition effect".to_string())
     })?;
     Ok((compiled, choices, condition))
+}
+
+fn compile_starting_with_controller_pay_life_process(
+    effect: &EffectAst,
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let EffectAst::ForEachPlayer { effects } = effect else {
+        return Ok(None);
+    };
+    let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+        return Ok(None);
+    };
+    if subject_verb.subject.role != SubjectVerbRoleAst::AffectedPlayer
+        || subject_verb.subject.player != PlayerAst::That
+        || !matches!(subject_verb.action, SubjectVerbActionAst::PayAnyLife { .. })
+    {
+        return Ok(None);
+    }
+
+    let (inner_effects, inner_choices) =
+        compile_effects_in_iterated_player_context(effects, ctx, None)?;
+    Ok(Some((
+        vec![Effect::for_players_starting_with_controller(
+            PlayerFilter::Any,
+            inner_effects,
+        )],
+        inner_choices,
+    )))
 }
 
 pub(crate) fn compile_effects_in_iterated_player_context(

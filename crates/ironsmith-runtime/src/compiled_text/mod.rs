@@ -961,9 +961,11 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
             merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
                 merge_specific_adjacent_surface_lines(merge_lose_all_transform_lines(
                     merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
-                        annotate_color_choice_exclusions(merge_same_true_type_addition_lines(
-                            merge_same_true_keyword_grant_lines(
-                                merge_subject_predicate_surface_lines(previous.clone()),
+                        annotate_color_choice_exclusions(merge_same_true_color_lines(
+                            merge_same_true_type_addition_lines(
+                                merge_same_true_keyword_grant_lines(
+                                    merge_subject_predicate_surface_lines(previous.clone()),
+                                ),
                             ),
                         )),
                     )),
@@ -1433,6 +1435,24 @@ mod tests {
             lines,
             vec![
                 "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn repeated_color_changes_use_same_is_true_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "Nonland permanents you control are white.".to_string(),
+            "Spells you control are white.".to_string(),
+            "Nonland cards in your hand or nonland cards in your library or nonland cards in your graveyard or nonland cards in your exile or nonland cards in your command zone are white."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "Nonland permanents you control are white. The same is true for spells you control and nonland cards you own that aren't on the battlefield."
                     .to_string()
             ]
         );

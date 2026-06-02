@@ -416,6 +416,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_iterative_library_procedure_sequence,
     },
     SequenceRuleDef {
+        name: "each-player-repeat-pay-life-tokens",
+        feature_tag: Some("repeat-process"),
+        priority: 328,
+        consumed_sentences: 3,
+        predicate: first_word_starting,
+        parser: generic_subject_verb_sequences::parse_each_player_repeat_pay_life_tokens_sequence,
+    },
+    SequenceRuleDef {
         name: "target-gains-flashback-until-eot-targets-mana-cost",
         feature_tag: Some("flashback-cost-followup"),
         priority: 236,
