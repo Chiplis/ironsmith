@@ -148,22 +148,6 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const SOURCE_IS_YOUR_RING_BEARER_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "your", "ring", "bearer"],
-            &["this", "creature", "is", "your", "ring", "bearer"],
-        ]
-);
-const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["ring", "has", "tempted", "you"],
-            &["the", "ring", "has", "tempted", "you"],
-        ]
-);
-const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
 const NO_SPELLS_CAST_LAST_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -837,34 +821,71 @@ fn parse_source_exiled_with_counter_predicate(
 }
 
 fn parse_source_is_your_ring_bearer_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if SOURCE_IS_YOUR_RING_BEARER_PATTERN.matches_words(words) {
-        Some(PredicateAst::SourceIsRingBearer {
-            player: PlayerAst::You,
-        })
-    } else {
-        None
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["is"])),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::object("role", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let subject_words = subject.word_refs();
+    if !is_source_reference_words(&subject_words) {
+        return None;
     }
+    let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(copula.word_refs().as_slice(), ["is"]) {
+        return None;
+    }
+    let role = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(role.word_refs().as_slice(), ["your", "ring", "bearer"]) {
+        return None;
+    }
+    Some(PredicateAst::SourceIsRingBearer {
+        player: PlayerAst::You,
+    })
 }
 
 fn parse_ring_has_tempted_you_this_game_predicate(
-    words: &[&str],
+    _words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
-    if !RING_HAS_TEMPTED_YOU_PREFIX_PATTERN.matches_words(words) {
+    let clause = LexedClause::new(tokens);
+    let window_phrases: &[&[&str]] = &[&["times", "this", "game"], &["time", "this", "game"]];
+    let atoms = [
+        LexPattern::subject("ring", LexCaptureKind::UntilPhrase(&["has", "tempted"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(3)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(window_phrases)),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let ring = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(ring.word_refs().as_slice(), ["ring"] | ["the", "ring"]) {
         return None;
     }
-    let count_start = if words.first() == Some(&"the") { 5 } else { 4 };
-    let (count, used) = parse_number(tokens.get(count_start..)?)?;
-    let tail = words.get(count_start + used..)?;
-    if tail.len() == 5 && OR_MORE_PREFIX_PATTERN.matches_words(&tail[..2]) {
-        if TIMES_THIS_GAME_TAIL_PATTERN.matches_words(&tail[2..]) {
-            return Some(PredicateAst::PlayerRingTemptedThisGameOrMore {
-                player: PlayerAst::You,
-                count,
-            });
-        }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["has", "tempted", "you"]) {
+        return None;
     }
-    None
+    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count_words = count_clause.word_refs();
+    let (count, used) = parse_number(count_clause.tokens())?;
+    if used + 2 != count_words.len() || !OR_MORE_PREFIX_PATTERN.matches_words(&count_words[used..])
+    {
+        return None;
+    }
+    let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(
+        window.word_refs().as_slice(),
+        ["times", "this", "game"] | ["time", "this", "game"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::PlayerRingTemptedThisGameOrMore {
+        player: PlayerAst::You,
+        count,
+    })
 }
 
 fn parse_ring_bearer_temptation_predicate(
@@ -4933,6 +4954,31 @@ mod tests {
                 PredicateAst::SourceIsInZone(expected_zone),
                 "{text}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_ring_state_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If this creature is your Ring-bearer",
+                PredicateAst::SourceIsRingBearer {
+                    player: PlayerAst::You,
+                },
+            ),
+            (
+                "If Ring has tempted you one or more time this game",
+                PredicateAst::PlayerRingTemptedThisGameOrMore {
+                    player: PlayerAst::You,
+                    count: 1,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(parsed, expected, "{text}");
         }
         Ok(())
     }
