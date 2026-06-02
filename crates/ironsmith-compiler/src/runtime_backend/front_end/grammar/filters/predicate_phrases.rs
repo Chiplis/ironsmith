@@ -180,10 +180,6 @@ const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
 const NOT_TOKEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["not", "token"]);
 const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "enchantment"]);
-const EQUIPPED_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["equipped", "creature"]);
-const ENCHANTED_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["enchanted", "creature"]);
 const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["your", "graveyard"]);
 const YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
@@ -570,6 +566,37 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
             .targeting_only_object(target_filter)
             .target_count_exact(1),
     ))
+}
+
+fn parse_attached_creature_tagged_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("attachment", LexCaptureKind::WordCount(2)),
+        LexPattern::object("descriptor", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(attachment) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return Ok(None);
+    };
+    let tag = match attachment.word_refs().as_slice() {
+        ["equipped", "creature"] => "equipped",
+        ["enchanted", "creature"] => "enchanted",
+        _ => return Ok(None),
+    };
+
+    let Some(descriptor) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let mut filter = parse_object_filter(descriptor.tokens(), false)?;
+    if filter.card_types.is_empty() {
+        filter.card_types.push(CardType::Creature);
+    }
+    Ok(Some(PredicateAst::TaggedMatches(TagKey::from(tag), filter)))
 }
 
 fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
@@ -4533,23 +4560,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::ItIsSoulbondPaired);
     }
 
-    if filtered.len() >= 2 {
-        let tag = if EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&filtered) {
-            Some("equipped")
-        } else if ENCHANTED_CREATURE_PREFIX_PATTERN.matches_words(&filtered) {
-            Some("enchanted")
-        } else {
-            None
-        };
-        if let Some(tag) = tag {
-            let remainder = filtered[2..].to_vec();
-            let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(remainder);
-            let mut filter = parse_object_filter(&tokens, false)?;
-            if filter.card_types.is_empty() {
-                filter.card_types.push(CardType::Creature);
-            }
-            return Ok(PredicateAst::TaggedMatches(TagKey::from(tag), filter));
-        }
+    if let Some(predicate) = parse_attached_creature_tagged_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     let onto_battlefield_idx = ONTO_BATTLEFIELD_PATTERN.find_exact_window_range(&filtered, 2, 3);
@@ -5357,6 +5369,42 @@ mod tests {
                     card_types: vec![CardType::Creature],
                     ..Default::default()
                 }),
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_attached_creature_tags_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_tag, expected_filter) in [
+            (
+                "if equipped creature is attacking",
+                "equipped",
+                ObjectFilter {
+                    card_types: vec![CardType::Creature],
+                    attacking: true,
+                    ..Default::default()
+                },
+            ),
+            (
+                "if enchanted creature is tapped",
+                "enchanted",
+                ObjectFilter {
+                    card_types: vec![CardType::Creature],
+                    tapped: true,
+                    ..Default::default()
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::TaggedMatches(TagKey::from(expected_tag), expected_filter),
                 "{text}"
             );
         }
