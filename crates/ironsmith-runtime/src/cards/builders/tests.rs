@@ -43168,6 +43168,143 @@ fn doomskar_warrior_combat_damage_trigger(
         .expect("Doomskar Warrior should have a combat damage look trigger")
 }
 
+fn doomskar_warrior_backup_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::BackupEffect>()
+                        .is_some()
+                })
+                .then_some(triggered)
+        })
+        .expect("Doomskar Warrior should have a backup trigger")
+}
+
+fn resolve_doomskar_warrior_backup(
+    game: &mut crate::game_state::GameState,
+    warrior_id: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(warrior_id, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Doomskar Warrior backup trigger should resolve");
+    }
+}
+
+#[test]
+fn doomskar_warrior_backup_puts_counter_and_grants_following_abilities_to_another_creature() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let backup = doomskar_warrior_backup_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ally_def = CardDefinitionBuilder::new(CardId::from_raw(90_540), "Backup Ally")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let ally_id = game.create_object_from_definition(&ally_def, alice, Zone::Battlefield);
+
+    resolve_doomskar_warrior_backup(&mut game, warrior_id, alice, ally_id, backup);
+
+    assert_eq!(
+        game.counter_count(ally_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Doomskar Warrior backup should put one +1/+1 counter on the target creature"
+    );
+    assert!(
+        game.object_has_static_ability_id(ally_id, StaticAbilityId::Trample),
+        "Doomskar Warrior backup should grant trample to another target creature"
+    );
+    assert!(
+        game.current_abilities(ally_id)
+            .expect("backup target should have calculated abilities")
+            .iter()
+            .any(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => triggered
+                    .trigger
+                    .display()
+                    .to_ascii_lowercase()
+                    .contains("deals combat damage"),
+                _ => false,
+            }),
+        "Doomskar Warrior backup should grant the following combat-damage trigger to another creature"
+    );
+    let ally_granted_ability_effect_count = game
+        .effect_store
+        .continuous_effects
+        .effects()
+        .iter()
+        .filter(|effect| {
+            matches!(
+                &effect.applies_to,
+                crate::continuous::EffectTarget::Specific(id) if *id == ally_id
+            ) && matches!(
+                &effect.modification,
+                crate::continuous::Modification::AddAbilityGeneric(_)
+            ) && matches!(effect.duration, crate::effect::Until::EndOfTurn)
+        })
+        .count();
+    assert_eq!(
+        ally_granted_ability_effect_count, 2,
+        "Doomskar Warrior backup should grant exactly trample and the following trigger until end of turn"
+    );
+
+    let mut self_game = crate::tests::test_helpers::setup_two_player_game();
+    let self_id = self_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let before_self_ability_count = self_game
+        .current_abilities(self_id)
+        .expect("Doomskar Warrior should have calculated abilities")
+        .len();
+
+    resolve_doomskar_warrior_backup(&mut self_game, self_id, alice, self_id, backup);
+
+    assert_eq!(
+        self_game.counter_count(self_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Doomskar Warrior backup should still put a +1/+1 counter on itself"
+    );
+    assert_eq!(
+        self_game
+            .current_abilities(self_id)
+            .expect("Doomskar Warrior should still have calculated abilities")
+            .len(),
+        before_self_ability_count,
+        "Doomskar Warrior backup should not grant an extra copy of its following abilities when it targets itself"
+    );
+    let self_granted_ability_effect_count = self_game
+        .effect_store
+        .continuous_effects
+        .effects()
+        .iter()
+        .filter(|effect| {
+            matches!(
+                &effect.applies_to,
+                crate::continuous::EffectTarget::Specific(id) if *id == self_id
+            ) && matches!(
+                &effect.modification,
+                crate::continuous::Modification::AddAbilityGeneric(_)
+            )
+        })
+        .count();
+    assert_eq!(
+        self_granted_ability_effect_count, 0,
+        "Doomskar Warrior backup should not register temporary ability grants when it targets itself"
+    );
+}
+
 fn doomskar_damage_event(
     source: ObjectId,
     target: crate::events::DamageTarget,
