@@ -260,15 +260,6 @@ const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
             &["that", "creature", "wasnt", "blocking"],
         ]
 );
-const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["a", "player", "was", "dealt", "combat", "damage", "by",],
-            &["player", "was", "dealt", "combat", "damage", "by",],
-            &["an", "opponent", "was", "dealt", "combat", "damage", "by",],
-            &["opponent", "was", "dealt", "combat", "damage", "by",],
-        ]
-);
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -638,7 +629,6 @@ const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["
 const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
 const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
-const THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
@@ -2237,6 +2227,62 @@ fn parse_source_dealt_combat_damage_to_player_this_turn(filtered: &[&str]) -> Op
         return None;
     }
     Some(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn)
+}
+
+fn parse_player_was_dealt_combat_damage_by_subtype_this_turn(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilPhrase(&["was", "dealt"])),
+        LexPattern::action("damage", LexCaptureKind::WordCount(5)),
+        LexPattern::object("source", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(player_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+    else {
+        return Ok(None);
+    };
+    let player = match player_clause.word_refs().as_slice() {
+        ["player"] | ["a", "player"] => PlayerAst::Any,
+        ["opponent"] | ["an", "opponent"] => PlayerAst::Opponent,
+        _ => return Ok(None),
+    };
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(
+        action.word_refs().as_slice(),
+        ["was", "dealt", "combat", "damage", "by"]
+    ) {
+        return Ok(None);
+    }
+    let Some(source) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let subtype_words = source.word_refs();
+    if subtype_words.len() != 1 {
+        return Ok(None);
+    }
+    let subtype = parse_subtype_word(subtype_words[0]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported combat-damage source subtype predicate: {}",
+            filtered.join(" ")
+        ))
+    })?;
+    let Some(window) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause) else {
+        return Ok(None);
+    };
+    if !matches!(window.word_refs().as_slice(), ["this", "turn"]) {
+        return Ok(None);
+    }
+    Ok(Some(
+        PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
+    ))
 }
 
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4414,28 +4460,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if THIS_TURN_TAIL_PATTERN.matches_words(
-        filtered
-            .get(filtered.len().saturating_sub(2)..)
-            .unwrap_or_default(),
-    ) && PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN.matches_words(&filtered)
-    {
-        let subtype_idx = filtered.len().saturating_sub(3);
-        let subtype = parse_subtype_word(filtered[subtype_idx]).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported combat-damage source subtype predicate: {}",
-                filtered.join(" ")
-            ))
-        })?;
-        let player =
-            if filtered.first() == Some(&"opponent") || filtered.get(1) == Some(&"opponent") {
-                PlayerAst::Opponent
-            } else {
-                PlayerAst::Any
-            };
-        return Ok(
-            PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
-        );
+    if let Some(predicate) = parse_player_was_dealt_combat_damage_by_subtype_this_turn(&filtered)? {
+        return Ok(predicate);
     }
 
     if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
@@ -4776,6 +4802,44 @@ mod tests {
             assert_eq!(
                 parsed,
                 PredicateAst::SourceDealtCombatDamageToPlayerThisTurn,
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_player_combat_damage_by_subtype_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, player) in [
+            (
+                "if a player was dealt combat damage by Zombie this turn",
+                PlayerAst::Any,
+            ),
+            (
+                "if player was dealt combat damage by Zombie this turn",
+                PlayerAst::Any,
+            ),
+            (
+                "if an opponent was dealt combat damage by Zombie this turn",
+                PlayerAst::Opponent,
+            ),
+            (
+                "if opponent was dealt combat damage by Zombie this turn",
+                PlayerAst::Opponent,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
+                    player,
+                    subtype: crate::types::Subtype::Zombie,
+                },
                 "{text}"
             );
         }
