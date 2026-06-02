@@ -175,10 +175,6 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "put"]; suffix & ["onto", "the", "battlefield", "this", "way"]);
-const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const YOU_CONTROL_NO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2266,6 +2262,120 @@ fn parse_tagged_object_lifecycle_predicate(filtered: &[&str]) -> Option<Predicat
         .or_else(|| parse_tagged_entered_under_your_control_shape(&tokens))
         .or_else(|| parse_you_didnt_put_tagged_object_in_zone_shape(&tokens))
         .or_else(|| parse_tagged_wasnt_blocking_shape(&tokens))
+}
+
+fn parse_tagged_battlefield_this_way_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    if let Some(predicate) = parse_you_put_tagged_battlefield_this_way_shape(&tokens)? {
+        return Ok(Some(predicate));
+    }
+    parse_tagged_is_put_battlefield_this_way_shape(&tokens)
+}
+
+fn parse_you_put_tagged_battlefield_this_way_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let destination_phrases: &[&[&str]] = &[
+        &["onto", "battlefield", "this", "way"],
+        &["onto", "the", "battlefield", "this", "way"],
+    ];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("put", LexCaptureKind::WordCount(1)),
+        LexPattern::object(
+            "object",
+            LexCaptureKind::UntilAnyPhrase(destination_phrases),
+        ),
+        LexPattern::modifier("destination", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(player) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return Ok(None);
+    };
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return Ok(None);
+    }
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(action.word_refs().as_slice(), ["put"]) {
+        return Ok(None);
+    }
+    let Some(destination) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause) else {
+        return Ok(None);
+    };
+    if !matches!(
+        destination.word_refs().as_slice(),
+        ["onto", "battlefield", "this", "way"] | ["onto", "the", "battlefield", "this", "way"]
+    ) {
+        return Ok(None);
+    }
+    let Some(object) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let object_words = object.word_refs();
+    if object_words.is_empty() {
+        return Ok(None);
+    }
+    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
+        tag: TagKey::from(IT_TAG),
+        filter,
+    }))
+}
+
+fn parse_tagged_is_put_battlefield_this_way_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["is", "put", "onto"], &["is", "put", "onto", "the"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::object("object", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("put", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::modifier("destination", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+            continue;
+        };
+        if action.word_refs().as_slice() != *action_phrase {
+            continue;
+        }
+        let Some(destination) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        else {
+            continue;
+        };
+        if !matches!(
+            destination.word_refs().as_slice(),
+            ["battlefield", "this", "way"]
+        ) {
+            continue;
+        }
+        let Some(object) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+            continue;
+        };
+        let object_words = object.word_refs();
+        if object_words.is_empty() {
+            continue;
+        }
+        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+        let filter = parse_object_filter(&filter_tokens, false)?;
+        return Ok(Some(PredicateAst::TaggedMatches(
+            TagKey::from(IT_TAG),
+            filter,
+        )));
+    }
+    Ok(None)
 }
 
 fn parse_you_controlled_tagged_permanent_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4544,23 +4654,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 8 && YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN.matches_words(&filtered) {
-        let filter_words = &filtered[2..filtered.len() - 5];
-        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-            filter,
-        });
-    }
-
-    if filtered.len() >= 7 && IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN.matches_words(&filtered)
-    {
-        let filter_words = &filtered[..filtered.len() - 6];
-        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));
+    if let Some(predicate) = parse_tagged_battlefield_this_way_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
@@ -5187,6 +5282,33 @@ mod tests {
                 filter: ObjectFilter::default().in_zone(Zone::Hand),
             }))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_you_put_object_onto_battlefield_this_way_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        for text in [
+            "If you put an artifact onto the battlefield this way",
+            "If you put an artifact onto battlefield this way",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+            let artifact_filter_tokens = lex_line("an artifact", 0)?;
+            let artifact_filter = parse_object_filter(&artifact_filter_tokens, false)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                    filter: artifact_filter,
+                },
+                "{text}"
+            );
+        }
         Ok(())
     }
 
