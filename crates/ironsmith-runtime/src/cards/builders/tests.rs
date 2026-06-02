@@ -61889,6 +61889,157 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
         "expected play-permission clause in compiled text, got {rendered}"
     );
 }
+
+#[test]
+fn urabrask_heretic_praetor_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Urabrask, Heretic Praetor");
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("RegisterDrawReplacementEffect"),
+        "Urabrask should lower the opponent upkeep ability to a draw replacement registration, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("the next time they would draw a card this turn, instead they exile the top card of their library"),
+        "Urabrask compiled text should preserve the next-draw instead clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("At the beginning of your upkeep, exile the top card of your library"),
+        "Urabrask compiled text should preserve its controller upkeep impulse draw trigger, got {rendered}"
+    );
+}
+
+fn add_named_library_card(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    name: &str,
+) {
+    let card = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_definition(&card, player, Zone::Library);
+}
+
+fn urabrask_triggered_effects<'a>(
+    def: &'a crate::cards::CardDefinition,
+    needle: &str,
+) -> &'a crate::resolution::ResolutionProgram {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:#?}", triggered.effects).contains(needle) =>
+            {
+                Some(&triggered.effects)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing Urabrask triggered ability containing {needle}"))
+}
+
+#[test]
+fn urabrask_controller_upkeep_exiles_top_card_and_grants_play_permission() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, alice, "Alice Urabrask Top Card");
+    let effects = urabrask_triggered_effects(&def, "GrantPlayTaggedEffect");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+
+    for effect in effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Urabrask controller upkeep effect should resolve");
+    }
+
+    let alice_state = game.player(alice).expect("Alice exists");
+    assert_eq!(alice_state.library.len(), 0);
+    assert_eq!(alice_state.hand.len(), 0);
+    assert_eq!(game.exile.len(), 1);
+}
+
+#[test]
+fn urabrask_opponent_draw_before_upkeep_replacement_is_not_replaced() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, bob, "Bob Normal Draw");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+
+    let outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob draw before Urabrask replacement should resolve normally");
+
+    assert_eq!(outcome.count_or_zero(), 1);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 0);
+    assert_eq!(bob_state.hand.len(), 1);
+    assert_eq!(game.exile.len(), 0);
+}
+
+#[test]
+fn urabrask_opponent_upkeep_registers_next_draw_replacement() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, bob, "Bob Urabrask Exiled Card");
+    add_named_library_card(&mut game, bob, "Bob Normal Followup Draw");
+    let effects = urabrask_triggered_effects(&def, "RegisterDrawReplacementEffect");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    ctx.iteration.iterated_player = Some(bob);
+
+    for effect in effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Urabrask opponent upkeep should register a draw replacement");
+    }
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == source
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Instead(_)
+                    )
+            }),
+        "Urabrask should register a one-shot draw replacement from its opponent upkeep trigger"
+    );
+
+    let outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob draw should be replaced by Urabrask");
+
+    assert_eq!(outcome.count_or_zero(), 0);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 1);
+    assert_eq!(bob_state.hand.len(), 0);
+    assert_eq!(game.exile.len(), 1);
+
+    let followup_outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob's next draw after the replaced draw should resolve normally");
+
+    assert_eq!(followup_outcome.count_or_zero(), 1);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 0);
+    assert_eq!(bob_state.hand.len(), 1);
+    assert_eq!(game.exile.len(), 1);
+}
+
 #[test]
 fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
     let def = parse_oracle_card_definition("Trove Tracker");

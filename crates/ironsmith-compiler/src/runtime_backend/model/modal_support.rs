@@ -454,6 +454,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDrawReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }

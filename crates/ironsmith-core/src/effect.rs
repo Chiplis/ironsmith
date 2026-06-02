@@ -3834,6 +3834,13 @@ pub struct RegisterFutureZoneReplacementEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RegisterDrawReplacementEffect<E = ()> {
+    pub player: PlayerFilter,
+    pub replacement_effects: Vec<E>,
+    pub mode: ReplacementApplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegisterDamagedBySourceZoneReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub from_zone: Option<crate::zone::Zone>,
@@ -3881,6 +3888,20 @@ impl RegisterFutureZoneReplacementEffect {
     pub fn requiring_cause_source_match(mut self) -> Self {
         self.require_cause_source_match = true;
         self
+    }
+}
+
+impl<E> RegisterDrawReplacementEffect<E> {
+    pub fn new(
+        player: PlayerFilter,
+        replacement_effects: Vec<E>,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            player,
+            replacement_effects,
+            mode,
+        }
     }
 }
 

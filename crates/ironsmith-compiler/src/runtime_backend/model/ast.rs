@@ -921,6 +921,11 @@ pub(crate) enum SubjectVerbActionAst {
         replacement_zone: Zone,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterDrawReplacement {
+        player: PlayerFilter,
+        replacement_effects: Vec<EffectAst>,
+        duration: ZoneReplacementDurationAst,
+    },
     RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -2055,6 +2060,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from_zone", from_zone)
                 .field("to_zone", to_zone)
                 .field("replacement_zone", replacement_zone)
+                .field("duration", duration)
+                .finish(),
+            Self::RegisterDrawReplacement {
+                player,
+                replacement_effects,
+                duration,
+            } => f
+                .debug_struct("RegisterDrawReplacement")
+                .field("player", player)
+                .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
             Self::RegisterDamagedBySourceZoneReplacement {
@@ -5100,6 +5115,22 @@ impl EffectAst {
                 from_zone,
                 to_zone,
                 replacement_zone,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_draw_replacement(
+        player: PlayerFilter,
+        replacement_effects: Vec<EffectAst>,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterDrawReplacement {
+                player,
+                replacement_effects,
                 duration,
             },
         )

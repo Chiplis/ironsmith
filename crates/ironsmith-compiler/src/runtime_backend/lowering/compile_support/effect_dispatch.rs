@@ -1199,6 +1199,30 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], Vec::new()))
         }
+        SubjectVerbActionAst::RegisterDrawReplacement {
+            player,
+            replacement_effects,
+            duration,
+        } => {
+            let player_filter = player.clone();
+            let mut choices = Vec::new();
+            let (replacement_effects, replacement_choices) =
+                compile_effects(replacement_effects, ctx)?;
+            for choice in replacement_choices {
+                push_choice(&mut choices, choice);
+            }
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::OneShot
+                }
+            };
+            let effect = Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
+                player_filter,
+                replacement_effects,
+                mode,
+            ));
+            Ok((vec![effect], choices))
+        }
         SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
             filter,
             from_zone,
