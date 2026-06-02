@@ -70,8 +70,6 @@ const THERE_ARE_OR_WERE_PREFIX_PATTERN: ClauseShape<'static> =
 const OR_IF_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or", "if"]);
 const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "your", "life", "total"]);
-const COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["color"], &["colors"]]);
 const AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
 const TYPE_OR_TYPES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["type"], &["types"]]);
@@ -3891,24 +3889,38 @@ fn permanents_and_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
 }
 
 fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if words.len() >= 7
-        && THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words)
-        && let Some((count, used)) = predicate_number_prefix(&words[2..])
-        && words
-            .get(2 + used)
-            .is_some_and(|word| COLOR_OR_COLORS_WORD_PATTERN.matches_word(word))
-        && words
-            .get(3 + used)
-            .is_some_and(|word| AMONG_WORD_PATTERN.matches_word(word))
-        && let Some(filter) = permanents_you_control_scope(&words[4 + used..])
-    {
-        return Some(PredicateAst::ValueComparison {
-            left: Value::ColorsAmong(filter),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(count as i32),
-        });
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::amount(
+            "quantity",
+            LexCaptureKind::UntilAnyPhrase(&[&["color"], &["colors"]]),
+        ),
+        LexPattern::object("unit", LexCaptureKind::OneOf(&["color", "colors"])),
+        LexPattern::word("among"),
+        LexPattern::modifier("scope", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(&existential.word_refs()) {
+        return None;
     }
-    None
+
+    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity_words = quantity.word_refs();
+    let (count, used) = predicate_number_prefix(&quantity_words)?;
+    if used != quantity_words.len() {
+        return None;
+    }
+
+    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let filter = permanents_you_control_scope(&scope.word_refs())?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::ColorsAmong(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
 }
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -7024,6 +7036,30 @@ mod tests {
                 PredicateAst::ValueComparison {
                     left: Value::CardsInGraveyard(expected_player),
                     operator: expected_operator,
+                    right: Value::Fixed(expected_count),
+                },
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_colors_among_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_count) in [
+            ("If there are five colors among permanents you control", 5),
+            ("If there were one color among permanent you control", 1),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::ValueComparison {
+                    left: Value::ColorsAmong(ObjectFilter::permanent().you_control()),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
                     right: Value::Fixed(expected_count),
                 },
                 "{text}"
