@@ -9519,6 +9519,29 @@ fn rewrite_lexed_trigger_clause_supports_this_creature_leaves_battlefield() {
 }
 
 #[test]
+fn rewrite_lexed_trigger_clause_preserves_named_source_leaves_surface() {
+    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Emrakul, the World Anew",
+        || {
+            let tokens = lex_line("emrakul leaves the battlefield", 0)
+                .expect("rewrite lexer should classify named leaves-the-battlefield trigger");
+
+            let parsed = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+                &tokens,
+            )
+            .expect("named source leaves-the-battlefield trigger should parse");
+            let debug = format!("{parsed:?}");
+
+            assert!(
+                debug.contains("ThisLeavesBattlefieldWithSurface")
+                    && debug.contains("ShortName(\"Emrakul\")"),
+                "expected named source leaves trigger to preserve surface, got {debug}"
+            );
+        },
+    );
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_land() {
     let tokens = lex_line("When this leaves the battlefield, sacrifice a land.", 0)
         .expect("rewrite lexer should classify leave-battlefield sacrifice line");
@@ -9531,6 +9554,72 @@ fn rewrite_lexed_triggered_line_supports_leave_battlefield_sacrifice_land() {
             Ok(crate::cards::builders::LineAst::Triggered { .. })
         ),
         "{parsed:?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_preserves_named_source_leaves_surface() {
+    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Emrakul, the World Anew",
+        || {
+            let tokens = lex_line(
+                "When emrakul leaves the battlefield, sacrifice all creatures you control.",
+                0,
+            )
+            .expect("rewrite lexer should classify named leave-battlefield sacrifice line");
+
+            let parsed = super::clause_support::parse_triggered_line_lexed(&tokens)
+                .expect("named source leaves trigger line should parse");
+            let debug = format!("{parsed:#?}");
+
+            assert!(
+                debug.contains("ThisLeavesBattlefieldWithSurface")
+                    && debug.contains("ShortName")
+                    && debug.contains("\"Emrakul\""),
+                "expected named source leaves trigger line to preserve surface, got {debug}"
+            );
+        },
+    );
+}
+
+#[test]
+fn compile_named_source_leaves_trigger_preserves_surface() {
+    let (semantic, _) = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Emrakul, the World Anew",
+        || {
+            parse_text_to_semantic_document(
+                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                    .card_types(vec![CardType::Creature]),
+                "When Emrakul leaves the battlefield, sacrifice all creatures you control."
+                    .to_string(),
+                false,
+            )
+        },
+    )
+    .expect("named source leaves trigger should parse semantically");
+    let semantic_debug = format!("{semantic:#?}");
+    assert!(
+        semantic_debug.contains("trigger_text: \"emrakul leaves the battlefield\""),
+        "expected semantic document to keep named source trigger text, got {semantic_debug}"
+    );
+
+    let compiled = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Emrakul, the World Anew",
+        || {
+            super::compile_card_text(
+                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                    .card_types(vec![CardType::Creature]),
+                "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+                false,
+            )
+        },
+    )
+    .expect("named source leaves trigger should compile");
+    let debug = format!("{:#?}", compiled.definition.abilities);
+
+    assert!(
+        debug.contains("this_surface") && debug.contains("\"Emrakul\""),
+        "expected compiled trigger model to preserve named source surface, got {debug}"
     );
 }
 

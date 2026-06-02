@@ -1005,7 +1005,10 @@ fn normalized_line_mentions_source_alias(builder: &CardDefinitionBuilder, text: 
     let subject = named_source_subject_for_builder(builder);
     source_name_aliases_for_builder(builder)
         .iter()
-        .any(|alias| replace_named_source_aliases(lower.as_str(), alias, subject) != lower)
+        .any(|alias| {
+            replace_named_source_aliases_for_trigger_normalization(lower.as_str(), alias, subject)
+                != lower
+        })
 }
 
 fn normalize_named_source_trigger_head_for_builder(
@@ -2142,6 +2145,31 @@ mod tests {
     }
 
     #[test]
+    fn named_source_leaves_trigger_keeps_original_head_for_surface_rendering() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Emrakul, the World Anew",
+            || {
+                let document = preprocess_document(
+                    CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                        .card_types(vec![CardType::Creature]),
+                    "When Emrakul leaves the battlefield, sacrifice all creatures you control.",
+                )
+                .expect("named source leaves line should preprocess");
+                let line = match document.items.first().expect("expected one line") {
+                    PreprocessedItem::Line(line) => line,
+                    other => panic!("expected preprocessed line, got {other:?}"),
+                };
+
+                let parsed = parse_triggered_line_cst(line)
+                    .expect("named source leaves trigger should parse as triggered CST");
+
+                assert_eq!(parsed.trigger_text, "emrakul leaves the battlefield");
+                assert_eq!(render_token_slice(&parsed.trigger_parse_tokens), parsed.trigger_text);
+            },
+        );
+    }
+
+    #[test]
     fn reveal_first_draw_splitter_reuses_token_ranges() {
         let tokens = lex_line(
             "Reveal the first card you draw each turn. Whenever you reveal an instant card this way, draw a card.",
@@ -3230,13 +3258,16 @@ pub(crate) fn parse_document_cst(
                     idx += 1;
                     continue;
                 }
-                if normalized_line_mentions_source_alias(
-                    &preprocessed.builder,
-                    line.info.normalized.normalized.as_str(),
-                ) && let Some(rewritten) = normalize_named_source_sentence_for_builder(
-                    &preprocessed.builder,
-                    line.info.normalized.normalized.as_str(),
-                ) {
+                if !line_starts_with_trigger_intro_tokens(&line.tokens)
+                    && normalized_line_mentions_source_alias(
+                        &preprocessed.builder,
+                        line.info.normalized.normalized.as_str(),
+                    )
+                    && let Some(rewritten) = normalize_named_source_sentence_for_builder(
+                        &preprocessed.builder,
+                        line.info.normalized.normalized.as_str(),
+                    )
+                {
                     let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
                     if let Ok(dispatch) = dispatch_standard_line_cst(
                         preprocessed,

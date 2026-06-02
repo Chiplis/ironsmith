@@ -14,7 +14,7 @@ use crate::card::{Card, LinkedFaceLayout};
 use crate::cards::CardRegistry;
 use crate::continuous::{
     CalculatedCharacteristics, ContinuousEffect, ContinuousEffectId, ContinuousEffectManager,
-    EffectTarget, Modification,
+    EffectSourceType, EffectTarget, Modification,
 };
 use crate::cost::OptionalCostsPaid;
 use crate::decision::KeywordPaymentContribution;
@@ -5470,6 +5470,11 @@ impl GameState {
             .filter(|effect| matches!(effect.modification, Modification::ChangeController(_)))
         {
             if skipped_effect == Some(effect.id) {
+                continue;
+            }
+            if let EffectSourceType::Resolution { locked_targets } = &effect.source_type
+                && !locked_targets.contains(&id)
+            {
                 continue;
             }
             let can_apply = match &effect.applies_to {

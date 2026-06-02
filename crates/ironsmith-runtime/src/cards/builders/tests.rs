@@ -13167,6 +13167,28 @@ fn parse_emrakul_the_world_anew_strict_oracle_text() {
          Madness—Pay six {C}.",
         "Emrakul's strict parser output should preserve every oracle clause"
     );
+
+    let cast_trigger = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .choices
+                .contains(&ChooseSpec::target_player())
+                .then_some(triggered),
+            _ => None,
+        })
+        .expect("Emrakul cast trigger should require a target player choice");
+    assert_eq!(
+        cast_trigger.choices,
+        vec![ChooseSpec::target_player()],
+        "Emrakul's gain-control trigger should target only the player whose creatures are affected"
+    );
+    let effects_debug = format!("{:?}", cast_trigger.effects);
+    assert!(
+        effects_debug.contains("controller: Some(") && effects_debug.contains("Target"),
+        "Emrakul's gain-control effect should filter creatures by the target player's controller, got {effects_debug}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
