@@ -210,30 +210,9 @@ const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
-const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "was", "paid"]);
-const COST_WASNT_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "wasnt", "paid"]);
-const COST_WAS_NOT_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "was", "not", "paid"]);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const DEFINITE_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
-const THIS_POSSESSIVE_PAID_LABEL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this"]; suffix & ["cost", "was", "paid"]);
-const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["spell's"],
-            &["spells"],
-            &["card's"],
-            &["cards"],
-            &["creature's"],
-            &["creatures"],
-            &["permanent's"],
-            &["permanents"],
-        ]
-);
 const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -924,6 +903,30 @@ fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
     }
 
     Some(label)
+}
+
+fn named_paid_cost_label_from_word(word: &str) -> Option<String> {
+    let mut chars = word.chars();
+    let first = chars.next()?;
+    Some(format!(
+        "{}{}",
+        first.to_ascii_uppercase(),
+        chars.as_str().to_ascii_lowercase()
+    ))
+}
+
+fn is_this_spell_possessive_word(word: &str) -> bool {
+    matches!(
+        word,
+        "spell's"
+            | "spells"
+            | "card's"
+            | "cards"
+            | "creature's"
+            | "creatures"
+            | "permanent's"
+            | "permanents"
+    )
 }
 
 fn ordinal_number_word(word: &str) -> Option<u32> {
@@ -2128,6 +2131,44 @@ fn parse_x_value_comparison_predicate(words: &[&str]) -> Option<PredicateAst> {
         operator,
         right: Value::Fixed(amount),
     })
+}
+
+fn parse_paid_cost_label_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let paid_tail_phrases: &[&[&str]] = &[
+        &["cost", "was", "paid"],
+        &["cost", "wasnt", "paid"],
+        &["cost", "was", "not", "paid"],
+    ];
+    let atoms = [
+        LexPattern::object("label", LexCaptureKind::UntilAnyPhrase(paid_tail_phrases)),
+        LexPattern::action("paid_tail", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let label_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let mut label_words = label_clause.word_refs();
+    if label_words.first().copied() == Some("the") {
+        label_words.remove(0);
+    }
+    let paid_tail = matched.capture_clause("paid_tail", clause)?;
+    let negated = match paid_tail.word_refs().as_slice() {
+        ["cost", "was", "paid"] => false,
+        ["cost", "wasnt", "paid"] | ["cost", "was", "not", "paid"] => true,
+        _ => return None,
+    };
+    let label = match label_words.as_slice() {
+        ["this", possessive, label] if is_this_spell_possessive_word(possessive) => {
+            named_paid_cost_label_from_word(label)?
+        }
+        words => mana_cost_label_from_words(words)?,
+    };
+    let predicate = PredicateAst::ThisSpellPaidLabel(label);
+    if negated {
+        Some(PredicateAst::Not(Box::new(predicate)))
+    } else {
+        Some(predicate)
+    }
 }
 
 fn parse_vote_option_result_predicate(words: &[&str], allow_tied: bool) -> Option<PredicateAst> {
@@ -4354,50 +4395,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 4
-        && COST_WAS_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
-            return Ok(PredicateAst::ThisSpellPaidLabel(label));
-        }
-    }
-    if filtered.len() >= 4
-        && COST_WASNT_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
-            return Ok(PredicateAst::Not(Box::new(
-                PredicateAst::ThisSpellPaidLabel(label),
-            )));
-        }
-    }
-    if filtered.len() >= 5
-        && COST_WAS_NOT_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 4..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 4]) {
-            return Ok(PredicateAst::Not(Box::new(
-                PredicateAst::ThisSpellPaidLabel(label),
-            )));
-        }
-    }
-    if filtered.len() == 6
-        && THIS_POSSESSIVE_PAID_LABEL_PATTERN.matches_words(&filtered)
-        && THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN.matches_word(filtered[1])
-    {
-        let mut chars = filtered[2].chars();
-        let Some(first) = chars.next() else {
-            return Err(CardTextError::ParseError(
-                "missing paid-cost label in predicate".to_string(),
-            ));
-        };
-        let label = format!(
-            "{}{}",
-            first.to_ascii_uppercase(),
-            chars.as_str().to_ascii_lowercase()
-        );
-        return Ok(PredicateAst::ThisSpellPaidLabel(label));
+    if let Some(predicate) = parse_paid_cost_label_predicate(&filtered) {
+        return Ok(predicate);
     }
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
@@ -4867,34 +4866,34 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_accepts_unapostrophed_spell_paid_label() -> Result<(), CardTextError> {
-        let tokens = lex_line("If this spells surge cost was paid", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+    fn parse_predicate_paid_cost_labels_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If this spells surge cost was paid",
+                PredicateAst::ThisSpellPaidLabel("Surge".to_string()),
+            ),
+            (
+                "If this creature's spectacle cost was paid instead discard your hand",
+                PredicateAst::ThisSpellPaidLabel("Spectacle".to_string()),
+            ),
+            (
+                "If {U} cost was paid",
+                PredicateAst::ThisSpellPaidLabel("{U}".to_string()),
+            ),
+            (
+                "If {2}{G} cost wasn't paid",
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+                    "{2}{G}".to_string(),
+                ))),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::ThisSpellPaidLabel("Surge".to_string())
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn parse_predicate_accepts_paid_label_with_trailing_instead_effect_tail()
-    -> Result<(), CardTextError> {
-        let tokens = lex_line(
-            "If this creature's spectacle cost was paid instead discard your hand",
-            0,
-        )?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-
-        assert_eq!(
-            parsed,
-            PredicateAst::ThisSpellPaidLabel("Spectacle".to_string())
-        );
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
