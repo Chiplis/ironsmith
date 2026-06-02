@@ -3508,6 +3508,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_exile_target_and_attached_objects(effects) {
+        return Some(compact);
+    }
+
     if effects.len() == 3 {
         let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
@@ -3539,6 +3543,60 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_exile_target_and_attached_objects(effects: &[Effect]) -> Option<String> {
+    let [target_effect, attached_exile_effect, target_exile_effect] = effects else {
+        return None;
+    };
+    let tagged_target = target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged_target
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let target_exile = target_exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if target_exile.zone != Zone::Exile
+        || !matches!(&target_exile.target, ChooseSpec::Tagged(tag) if tag == &tagged_target.tag)
+    {
+        return None;
+    }
+
+    let attached_exile = attached_exile_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(attached_exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    if attached_exile.face_down {
+        return None;
+    }
+    let ChooseSpec::All(attached_filter) = &attached_exile.spec else {
+        return None;
+    };
+    let matching_constraints = attached_filter
+        .tagged_constraints
+        .iter()
+        .filter(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject
+                && constraint.tag == tagged_target.tag
+        })
+        .count();
+    if matching_constraints != 1 {
+        return None;
+    }
+
+    let mut described_filter = attached_filter.clone();
+    described_filter.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == crate::filter::TaggedOpbjectRelation::AttachedToTaggedObject
+            && constraint.tag == tagged_target.tag)
+    });
+    if described_filter == ObjectFilter::default() {
+        return None;
+    }
+
+    let target_text = describe_choose_spec(&target_only.target);
+    let attached_text = described_filter.description();
+    Some(format!(
+        "Exile {target_text} and all {attached_text} attached to it"
+    ))
 }
 
 fn describe_sacrificed_object_conditional_sequence(effects: &[Effect]) -> Option<String> {

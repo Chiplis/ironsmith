@@ -117,6 +117,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 permanent1: target, ..
             }
             | SubjectVerbActionAst::DestroyAllAttachedTo { target, .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
@@ -264,6 +265,7 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
             | SubjectVerbActionAst::Sacrifice { filter, .. }
             | SubjectVerbActionAst::ExchangeControl { filter, .. }
             | SubjectVerbActionAst::DestroyAllAttachedTo { filter, .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { filter, .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { filter, .. }
             | SubjectVerbActionAst::PreventDamageEach { filter, .. }
             | SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. }
@@ -792,6 +794,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ExchangeControl { .. }
         | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
         | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+        | SubjectVerbActionAst::ExileAllAttachedTo { .. }
         | SubjectVerbActionAst::Attach { .. }
         | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
         | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }

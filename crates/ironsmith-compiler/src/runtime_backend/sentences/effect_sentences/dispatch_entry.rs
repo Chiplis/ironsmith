@@ -2612,6 +2612,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ExchangeControl { .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }

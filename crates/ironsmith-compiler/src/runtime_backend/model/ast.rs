@@ -1538,6 +1538,11 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         target: TargetAst,
     },
+    ExileAllAttachedTo {
+        filter: ObjectFilter,
+        target: TargetAst,
+        face_down: bool,
+    },
     Exile {
         target: TargetAst,
         face_down: bool,
@@ -3016,6 +3021,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("DestroyAllAttachedTo")
                 .field("filter", filter)
                 .field("target", target)
+                .finish(),
+            Self::ExileAllAttachedTo {
+                filter,
+                target,
+                face_down,
+            } => f
+                .debug_struct("ExileAllAttachedTo")
+                .field("filter", filter)
+                .field("target", target)
+                .field("face_down", face_down)
                 .finish(),
             Self::Exile { target, face_down } => f
                 .debug_struct("Exile")
@@ -5028,6 +5043,22 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::DestroyAllAttachedTo { filter, target },
+        )
+    }
+
+    pub(crate) fn subject_verb_exile_all_attached_to(
+        filter: ObjectFilter,
+        target: TargetAst,
+        face_down: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ExileAllAttachedTo {
+                filter,
+                target,
+                face_down,
+            },
         )
     }
 
