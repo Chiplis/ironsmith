@@ -148,46 +148,6 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const NO_SPELLS_CAST_LAST_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["no", "spells", "were", "cast", "last", "turn"],
-            &["no", "spell", "was", "cast", "last", "turn"],
-        ]
-);
-const THIS_SPELL_WAS_KICKED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "spell", "was", "kicked"],
-            &["this", "creature", "was", "kicked"],
-            &["this", "permanent", "was", "kicked"],
-        ]
-);
-const THIS_SPELL_WAS_BARGAINED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "spell", "was", "bargained"],
-            &["it", "was", "bargained"],
-        ]
-);
-const GIFT_PROMISED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["gift", "was", "promised"]);
-const GIFT_NOT_PROMISED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["gift", "wasnt", "promised"],
-            &["gift", "was", "not", "promised"],
-        ]
-);
-const TRIBUTE_WAS_PAID_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["tribute", "was", "paid"]);
-const TRIBUTE_WASNT_PAID_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["tribute", "wasnt", "paid"],
-            &["tribute", "was", "not", "paid"],
-        ]
-);
 const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "paid"]);
 const COST_WASNT_PAID_TAIL_PATTERN: ClauseShape<'static> =
@@ -2056,6 +2016,105 @@ fn parse_source_cast_predicate(filtered: &[&str]) -> Option<PredicateAst> {
         .or_else(|| parse_source_cast_from_zone_shape(&tokens))
 }
 
+fn parse_cast_payment_state_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    parse_no_spells_cast_last_turn_shape(&tokens)
+        .or_else(|| parse_source_spell_state_shape(&tokens))
+        .or_else(|| parse_named_payment_state_shape(&tokens))
+}
+
+fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::word("no"),
+        LexPattern::object("spell", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(spell.word_refs().as_slice(), ["spell"] | ["spells"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action.word_refs().as_slice(),
+        ["was", "cast"] | ["were", "cast"]
+    ) {
+        return None;
+    }
+    let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(window.word_refs().as_slice(), ["last", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::NoSpellsWereCastLastTurn)
+}
+
+fn parse_source_spell_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["was"])),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        spell.word_refs().as_slice(),
+        ["this", "spell"] | ["this", "creature"] | ["this", "permanent"] | ["it"]
+    ) {
+        return None;
+    }
+    let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(copula.word_refs().as_slice(), ["was"]) {
+        return None;
+    }
+    let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    match state.word_refs().as_slice() {
+        ["kicked"] if !matches!(spell.word_refs().as_slice(), ["it"]) => {
+            Some(PredicateAst::ThisSpellWasKicked)
+        }
+        ["bargained"] => Some(PredicateAst::ThisSpellPaidLabel("Bargain".to_string())),
+        _ => None,
+    }
+}
+
+fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["was"], &["wasnt"], &["was", "not"]];
+    let atoms = [
+        LexPattern::subject("label", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action(
+            "state",
+            LexCaptureKind::UntilAnyPhrase(&[&["promised"], &["paid"]]),
+        ),
+        LexPattern::object("result", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let label_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let (label, expected_result) = match label_clause.word_refs().as_slice() {
+        ["gift"] => ("Gift", "promised"),
+        ["tribute"] => ("Tribute", "paid"),
+        _ => return None,
+    };
+    let state = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let negative = match state.word_refs().as_slice() {
+        ["was"] => false,
+        ["wasnt"] | ["was", "not"] => true,
+        _ => return None,
+    };
+    let result = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if result.word_refs().as_slice() != [expected_result] {
+        return None;
+    }
+    let predicate = PredicateAst::ThisSpellPaidLabel(label.to_string());
+    if negative {
+        Some(PredicateAst::Not(Box::new(predicate)))
+    } else {
+        Some(predicate)
+    }
+}
+
 fn parse_active_source_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
@@ -3511,14 +3570,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if NO_SPELLS_CAST_LAST_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::NoSpellsWereCastLastTurn);
-    }
-    if THIS_SPELL_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellWasKicked);
-    }
-    if THIS_SPELL_WAS_BARGAINED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()));
+    if let Some(predicate) = parse_cast_payment_state_predicate(&filtered) {
+        return Ok(predicate);
     }
     if filtered.len() == 4
         && ARTICLE_WORD_PATTERN.matches_word(filtered[0])
@@ -3534,22 +3587,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && BEHELD_WORD_PATTERN.matches_word(filtered[2])
     {
         return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
-    }
-    if GIFT_PROMISED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Gift".to_string()));
-    }
-    if GIFT_NOT_PROMISED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
-        )));
-    }
-    if TRIBUTE_WAS_PAID_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Tribute".to_string()));
-    }
-    if TRIBUTE_WASNT_PAID_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
-        )));
     }
     if filtered.len() >= 4
         && COST_WAS_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
@@ -5020,6 +5057,43 @@ mod tests {
             (
                 "If this spell was cast from anywhere other than your hand",
                 PredicateAst::ThisSpellWasCastFromNonHand,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_cast_payment_state_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If no spells were cast last turn",
+                PredicateAst::NoSpellsWereCastLastTurn,
+            ),
+            ("If this spell was kicked", PredicateAst::ThisSpellWasKicked),
+            (
+                "If it was bargained",
+                PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+            ),
+            (
+                "If gift wasnt promised",
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+                    "Gift".to_string(),
+                ))),
+            ),
+            (
+                "If tribute was paid",
+                PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
+            ),
+            (
+                "If tribute was not paid",
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+                    "Tribute".to_string(),
+                ))),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
