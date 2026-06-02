@@ -260,17 +260,6 @@ const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
             &["that", "creature", "wasnt", "blocking"],
         ]
 );
-const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "it", "dealt", "combat", "damage", "to", "player", "this", "turn",
-            ],
-            &[
-                "it", "dealt", "combat", "damage", "to", "a", "player", "this", "turn",
-            ],
-        ]
-);
 const PLAYER_WAS_DEALT_COMBAT_DAMAGE_BY_SUBTYPE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -2213,6 +2202,41 @@ fn first_combat_phase_tail(words: &[&str]) -> bool {
             | ["first", "combat", "phase", "of", "turn"]
             | ["the", "first", "combat", "phase", "of", "turn"]
     )
+}
+
+fn parse_source_dealt_combat_damage_to_player_this_turn(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["dealt"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(4)),
+        LexPattern::object("recipient", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(source.word_refs().as_slice(), ["it"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action.word_refs().as_slice(),
+        ["dealt", "combat", "damage", "to"]
+    ) {
+        return None;
+    }
+    let recipient = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        recipient.word_refs().as_slice(),
+        ["player"] | ["a", "player"]
+    ) {
+        return None;
+    }
+    let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(window.word_refs().as_slice(), ["this", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn)
 }
 
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4386,8 +4410,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn);
+    if let Some(predicate) = parse_source_dealt_combat_damage_to_player_this_turn(&filtered) {
+        return Ok(predicate);
     }
 
     if THIS_TURN_TAIL_PATTERN.matches_words(
@@ -4738,17 +4762,23 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_it_dealt_combat_damage_to_player_this_turn()
+    fn parse_predicate_source_combat_damage_to_player_uses_capture_parser()
     -> Result<(), CardTextError> {
-        let tokens = lex_line("if it dealt combat damage to a player this turn", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        for text in [
+            "if it dealt combat damage to a player this turn",
+            "if it dealt combat damage to player this turn",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::SourceDealtCombatDamageToPlayerThisTurn
-        );
+            assert_eq!(
+                parsed,
+                PredicateAst::SourceDealtCombatDamageToPlayerThisTurn,
+                "{text}"
+            );
+        }
         Ok(())
     }
 
