@@ -45437,6 +45437,235 @@ fn assert_oracle_card_fails_strict(name: &str) {
     );
 }
 
+fn season_of_the_burrow_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Season of the Burrow should compile to one modal choice effect")
+}
+
+fn target_assignments_for_requirements(
+    requirements: &[crate::decision::TargetRequirement],
+    targets: &[crate::game_state::Target],
+) -> Vec<crate::game_state::TargetAssignment> {
+    let requirement_contexts = requirements
+        .iter()
+        .map(|requirement| crate::decisions::context::TargetRequirementContext {
+            description: requirement.description.clone(),
+            legal_targets: requirement.legal_targets.clone(),
+            min_targets: requirement.min_targets,
+            max_targets: requirement.max_targets,
+        })
+        .collect::<Vec<_>>();
+    let ranges = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)
+        .expect("selected targets should satisfy requirements");
+    requirements
+        .iter()
+        .zip(ranges)
+        .map(|(requirement, range)| crate::game_state::TargetAssignment {
+            spec: requirement.spec.clone(),
+            range,
+        })
+        .collect()
+}
+
+#[test]
+fn season_of_the_burrow_strict_parser_and_weighted_modal_text_regression() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def);
+
+    assert_eq!(modal.choose_count, Value::Fixed(5));
+    assert_eq!(modal.min_choose_count, Value::Fixed(0));
+    assert!(modal.allow_repeated_modes);
+    assert_eq!(modal.mode_point_costs, vec![1, 2, 3]);
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Choose up to five {P} worth of modes")
+            && rendered.contains("You may choose the same mode more than once")
+            && rendered.contains("{P}{P} — Exile target nonland permanent")
+            && rendered.contains(
+                "{P}{P}{P} — Return target permanent card with mana value 3 or less"
+            ),
+        "expected Season of the Burrow weighted modal text, got {rendered}"
+    );
+}
+
+#[test]
+fn season_of_the_burrow_rejects_over_budget_modes_and_keeps_target_filters() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let nonland = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_730), "Bob's Bauble")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let land = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_731), "Bob's Burrow")
+            .card_types(vec![CardType::Land])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let small_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_732), "Alice's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let expensive_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_733), "Alice's Monument")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+
+    assert!(crate::game_loop::spell_program_has_legal_targets_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&[2, 1]),
+    ));
+    assert!(!crate::game_loop::spell_program_has_legal_targets_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&[2, 2]),
+    ));
+
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&[1, 2]),
+    );
+    assert_eq!(requirements.len(), 2);
+    assert!(requirements[0]
+        .legal_targets
+        .contains(&crate::game_state::Target::Object(nonland)));
+    assert!(!requirements[0]
+        .legal_targets
+        .contains(&crate::game_state::Target::Object(land)));
+    assert!(requirements[1]
+        .legal_targets
+        .contains(&crate::game_state::Target::Object(small_permanent)));
+    assert!(!requirements[1]
+        .legal_targets
+        .contains(&crate::game_state::Target::Object(expensive_permanent)));
+}
+
+#[test]
+fn season_of_the_burrow_return_and_exile_modes_resolve_in_selected_order() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Season of the Burrow should compile to spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_721), "Alice's Buried Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let battlefield_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_722), "Bob's Exiled Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_723), "Bob's Draw")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Library,
+    );
+
+    let chosen_modes = [2usize, 1usize];
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        &effects,
+        alice,
+        Some(source),
+        Some(&chosen_modes),
+    );
+    let selected_targets = vec![
+        crate::game_state::Target::Object(graveyard_card),
+        crate::game_state::Target::Object(battlefield_card),
+    ];
+    let assignments = target_assignments_for_requirements(&requirements, &selected_targets);
+    assert_eq!(assignments[0].range, 0..1);
+    assert_eq!(assignments[1].range, 1..2);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(chosen_modes.to_vec()))
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(graveyard_card),
+            crate::effects::ResolvedTarget::Object(battlefield_card),
+        ])
+        .with_target_assignments(assignments);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Season of the Burrow return plus exile modes should resolve");
+
+    let returned_id = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Alice's Buried Keepsake")
+        })
+        .expect("returned permanent should be on the battlefield");
+    let returned = game.object(returned_id).expect("returned permanent should exist");
+    assert_eq!(
+        returned
+            .counters
+            .get(&crate::object::CounterType::Indestructible)
+            .copied(),
+        Some(1)
+    );
+    assert!(game.objects_in_zone(Zone::Exile).into_iter().any(|id| game
+        .object(id)
+        .is_some_and(|object| object.name == "Bob's Exiled Relic")));
+    assert_eq!(game.player(bob).expect("Bob should exist").hand.len(), 1);
+}
+
 fn garna_bloodfist_triggered_ability(
     def: &CardDefinition,
 ) -> &crate::ability::TriggeredAbility {

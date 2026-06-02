@@ -4071,6 +4071,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
                         m.description.clone(),
                         m.legal,
                     )
+                    .with_point_cost(m.point_cost)
                     .with_repeatability(
                         modes_ctx.spec.allow_repeated_modes,
                         Some(modes_ctx.spec.max_modes.min(u32::MAX as usize) as u32),

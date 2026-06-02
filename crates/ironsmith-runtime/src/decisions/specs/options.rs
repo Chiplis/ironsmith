@@ -37,6 +37,8 @@ pub struct ModeOption {
     pub description: String,
     /// Whether this mode is currently legal to choose.
     pub legal: bool,
+    /// Point cost for weighted modal choices. Unweighted modes cost 1.
+    pub point_cost: u32,
     /// Optional related objects this mode would affect or otherwise refers to.
     pub related_object_ids: Option<Vec<ObjectId>>,
 }
@@ -48,6 +50,7 @@ impl ModeOption {
             index,
             description: description.into(),
             legal: true,
+            point_cost: 1,
             related_object_ids: None,
         }
     }
@@ -58,8 +61,14 @@ impl ModeOption {
             index,
             description: description.into(),
             legal,
+            point_cost: 1,
             related_object_ids: None,
         }
+    }
+
+    pub fn with_point_cost(mut self, point_cost: u32) -> Self {
+        self.point_cost = point_cost.max(1);
+        self
     }
 
     pub fn with_related_objects(mut self, object_ids: Vec<ObjectId>) -> Self {
@@ -91,7 +100,15 @@ impl ModesSpec {
         min_modes: usize,
         max_modes: usize,
         allow_repeated_modes: bool,
+        mode_point_costs: Vec<u32>,
     ) -> Self {
+        let modes = modes
+            .into_iter()
+            .enumerate()
+            .map(|(idx, mode)| {
+                mode.with_point_cost(mode_point_costs.get(idx).copied().unwrap_or(1))
+            })
+            .collect();
         Self {
             source,
             modes,
@@ -103,13 +120,17 @@ impl ModesSpec {
 
     /// Create a spec for choosing exactly one mode.
     pub fn single(source: ObjectId, modes: Vec<ModeOption>) -> Self {
-        Self::new(source, modes, 1, 1, false)
+        Self::new(source, modes, 1, 1, false, Vec::new())
     }
 
     /// Create a spec for "choose one or more" modes.
     pub fn one_or_more(source: ObjectId, modes: Vec<ModeOption>) -> Self {
         let max = modes.len();
-        Self::new(source, modes, 1, max, false)
+        Self::new(source, modes, 1, max, false, Vec::new())
+    }
+
+    fn is_weighted(&self) -> bool {
+        self.modes.iter().any(|mode| mode.point_cost != 1)
     }
 }
 
@@ -117,6 +138,13 @@ impl DecisionSpec for ModesSpec {
     type Response = Vec<usize>;
 
     fn description(&self) -> String {
+        if self.is_weighted() {
+            if self.min_modes == self.max_modes {
+                return format!("Choose {} mode point(s)", self.min_modes);
+            }
+            return format!("Choose {}-{} mode point(s)", self.min_modes, self.max_modes);
+        }
+
         if self.min_modes == self.max_modes {
             if self.min_modes == 1 {
                 "Choose a mode".to_string()
@@ -142,6 +170,28 @@ impl DecisionSpec for ModesSpec {
             .filter(|m| m.legal)
             .map(|m| m.index)
             .collect();
+        if self.is_weighted() {
+            if self.min_modes == 0 {
+                return Vec::new();
+            }
+
+            let mut selected = Vec::new();
+            let mut total = 0usize;
+            for mode in self.modes.iter().filter(|m| m.legal) {
+                let cost = mode.point_cost.max(1) as usize;
+                if total.saturating_add(cost) > self.max_modes {
+                    continue;
+                }
+                selected.push(mode.index);
+                total += cost;
+                if total >= self.min_modes {
+                    return selected;
+                }
+            }
+
+            return selected;
+        }
+
         if !self.allow_repeated_modes || legal_indices.len() >= self.min_modes {
             return legal_indices.into_iter().take(self.min_modes).collect();
         }
@@ -167,6 +217,7 @@ impl DecisionSpec for ModesSpec {
             .map(|m| {
                 let option =
                     SelectableOption::with_legality(m.index, m.description.clone(), m.legal)
+                        .with_point_cost(m.point_cost)
                         .with_repeatability(
                             self.allow_repeated_modes,
                             Some(self.max_modes.min(u32::MAX as usize) as u32),
@@ -830,12 +881,42 @@ mod tests {
     fn test_modes_spec_default_response_repeats_when_allowed() {
         let source = ObjectId::from_raw(1);
         let modes = vec![ModeOption::new(0, "Gain 3 life")];
-        let spec = ModesSpec::new(source, modes, 2, 2, true);
+        let spec = ModesSpec::new(source, modes, 2, 2, true, Vec::new());
 
         assert_eq!(
             spec.default_response(FallbackStrategy::FirstOption),
             vec![0, 0]
         );
+    }
+
+    #[test]
+    fn test_modes_spec_default_response_uses_weighted_points() {
+        let source = ObjectId::from_raw(1);
+        let modes = vec![
+            ModeOption::new(0, "One point"),
+            ModeOption::new(1, "Two points"),
+            ModeOption::new(2, "Three points"),
+        ];
+        let spec = ModesSpec::new(source, modes, 0, 5, true, vec![1, 2, 3]);
+        let game = GameState::new(vec!["Alice".to_string()], 20);
+        let ctx = match spec.build_context(PlayerId::from_index(0), Some(source), &game) {
+            DecisionContext::SelectOptions(ctx) => ctx,
+            other => panic!("expected SelectOptions context, got {other:?}"),
+        };
+
+        assert_eq!(
+            spec.default_response(FallbackStrategy::FirstOption),
+            Vec::<usize>::new()
+        );
+        assert_eq!(
+            ctx.options
+                .iter()
+                .map(|option| option.point_cost)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert!(ctx.selection_within_limits(&[2, 1]));
+        assert!(!ctx.selection_within_limits(&[2, 2]));
     }
 
     #[test]

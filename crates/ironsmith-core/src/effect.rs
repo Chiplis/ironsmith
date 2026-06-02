@@ -842,6 +842,7 @@ pub struct ChooseModeEffect<E> {
     pub choose_count: Value,
     pub min_choose_count: Value,
     pub allow_repeated_modes: bool,
+    pub mode_point_costs: Vec<u32>,
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
 }
@@ -850,6 +851,7 @@ impl<E> ChooseModeEffect<E> {
     pub fn new(modes: Vec<EffectMode<E>>, min: Value, max: Value, allow_repeat: bool) -> Self {
         let choose_count = max.clone();
         let min_choose_count = min.clone();
+        let mode_point_costs = vec![1; modes.len()];
         Self {
             modes,
             min,
@@ -858,6 +860,7 @@ impl<E> ChooseModeEffect<E> {
             choose_count,
             min_choose_count,
             allow_repeated_modes: allow_repeat,
+            mode_point_costs,
             disallow_previously_chosen_modes: false,
             disallow_previously_chosen_modes_this_turn: false,
         }
@@ -883,6 +886,11 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_repeated_modes(mut self) -> Self {
         self.allow_repeat = true;
         self.allow_repeated_modes = true;
+        self
+    }
+
+    pub fn with_mode_point_costs(mut self, costs: Vec<u32>) -> Self {
+        self.mode_point_costs = costs;
         self
     }
 

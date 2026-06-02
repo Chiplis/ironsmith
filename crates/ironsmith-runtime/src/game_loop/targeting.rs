@@ -624,6 +624,14 @@ fn declare_target(profile: &ExtractedTarget<'_>, declared: &mut Vec<DeclaredTarg
     }
 }
 
+fn append_declared_targets_added_after(
+    base_len: usize,
+    declared: Vec<DeclaredTarget>,
+    added: &mut Vec<DeclaredTarget>,
+) {
+    added.extend(declared.into_iter().skip(base_len));
+}
+
 fn resolved_target_bounds(
     game: &GameState,
     profile: &ExtractedTarget<'_>,
@@ -773,6 +781,9 @@ fn modal_effect_has_legal_targets_internal_with_view(
     if let Some(chosen_modes) = chosen_modes {
         let mut selected_count = 0usize;
         let mut seen_modes = std::collections::HashSet::new();
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_modes = Vec::new();
 
         for mode_idx in chosen_modes {
             let Some(mode) = modal.modes.get(*mode_idx) else {
@@ -783,7 +794,15 @@ fn modal_effect_has_legal_targets_internal_with_view(
                 return false;
             }
 
+            let point_cost = modal
+                .mode_point_costs
+                .get(*mode_idx)
+                .copied()
+                .unwrap_or(1)
+                .max(1) as usize;
+
             let mut mode_consumed_modal_selection = false;
+            let mut mode_declared_targets = base_declared_targets.clone();
             if !mode.effects.iter().all(|effect| {
                 spell_effect_has_legal_targets_internal_with_preview_mode_selection(
                     game,
@@ -792,21 +811,30 @@ fn modal_effect_has_legal_targets_internal_with_view(
                     source_id,
                     None,
                     &mut mode_consumed_modal_selection,
-                    declared_targets,
+                    &mut mode_declared_targets,
                     require_full_selection,
                     view,
                 )
             }) {
                 return false;
             };
-            selected_count += 1;
+            append_declared_targets_added_after(
+                base_declared_len,
+                mode_declared_targets,
+                &mut declared_targets_from_modes,
+            );
+            selected_count += point_cost;
         }
 
-        return if require_full_selection {
+        let valid_selection = if require_full_selection {
             selected_count >= min_modes && selected_count <= max_modes
         } else {
             selected_count <= max_modes
         };
+        if valid_selection {
+            declared_targets.extend(declared_targets_from_modes);
+        }
+        return valid_selection;
     }
 
     let legal_mode_count = modal
@@ -976,8 +1004,12 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             None
         };
         if let Some(chosen_modes) = modes_for_this_modal {
+            let base_declared_targets = declared_targets.clone();
+            let base_declared_len = base_declared_targets.len();
+            let mut declared_targets_from_modes = Vec::new();
             for mode_idx in chosen_modes {
                 if let Some(mode) = modal.modes.get(*mode_idx) {
+                    let mut mode_declared_targets = base_declared_targets.clone();
                     for inner in &mode.effects {
                         extract_target_requirements_from_effect_internal(
                             game,
@@ -986,12 +1018,18 @@ pub(super) fn extract_target_requirements_from_effect_internal(
                             source_id,
                             None,
                             consumed_modal_selection,
-                            declared_targets,
+                            &mut mode_declared_targets,
                             requirements,
                         );
                     }
+                    append_declared_targets_added_after(
+                        base_declared_len,
+                        mode_declared_targets,
+                        &mut declared_targets_from_modes,
+                    );
                 }
             }
+            declared_targets.extend(declared_targets_from_modes);
         }
         return;
     }
@@ -1286,24 +1324,35 @@ fn count_target_selection_slots_from_effect_internal(
             None
         };
 
-        return modes_for_this_modal
-            .into_iter()
-            .flatten()
-            .filter_map(|mode_idx| modal.modes.get(*mode_idx))
-            .map(|mode| {
-                mode.effects
-                    .iter()
-                    .map(|inner| {
-                        count_target_selection_slots_from_effect_internal(
-                            inner,
-                            None,
-                            consumed_modal_selection,
-                            declared_targets,
-                        )
-                    })
-                    .sum::<usize>()
-            })
-            .sum();
+        let base_declared_targets = declared_targets.clone();
+        let base_declared_len = base_declared_targets.len();
+        let mut declared_targets_from_modes = Vec::new();
+        let mut count = 0usize;
+        for mode_idx in modes_for_this_modal.into_iter().flatten() {
+            let Some(mode) = modal.modes.get(*mode_idx) else {
+                continue;
+            };
+            let mut mode_declared_targets = base_declared_targets.clone();
+            count += mode
+                .effects
+                .iter()
+                .map(|inner| {
+                    count_target_selection_slots_from_effect_internal(
+                        inner,
+                        None,
+                        consumed_modal_selection,
+                        &mut mode_declared_targets,
+                    )
+                })
+                .sum::<usize>();
+            append_declared_targets_added_after(
+                base_declared_len,
+                mode_declared_targets,
+                &mut declared_targets_from_modes,
+            );
+        }
+        declared_targets.extend(declared_targets_from_modes);
+        return count;
     }
 
     if let Some((first, second)) = exchange_control_target_specs(effect) {
