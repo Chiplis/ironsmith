@@ -629,11 +629,19 @@ fn lower_rewrite_activated_to_chunk_impl(
     let normalized_cost =
         bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
     let ability_text = rewrite_activated_display_text(line);
-    let additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
+    let presentation_display = line
+        .presentation_label
+        .as_deref()
+        .or(line.chosen_option_label.as_deref())
+        .and_then(activated_presentation_display_label);
+    let mut additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
         vec!["Activate each exhaust ability only once.".to_string()]
     } else {
         Vec::new()
     };
+    if let Some(display) = presentation_display {
+        additional_activation_restrictions.push(format!("__ironsmith_activation_label:{display}"));
+    }
     if contains_token_word_sequence(&effect_parse_tokens, ADD_X_MANA_PHRASE)
         && !tokens_mention_phrase(original_effect_parse_tokens, WHERE_X_IS_PHRASE)
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)
@@ -901,7 +909,7 @@ fn activated_line_has_exhaust_label(line: &RewriteActivatedLine) -> bool {
 }
 
 fn activated_presentation_display_label(label: &str) -> Option<&'static str> {
-    if label.eq_ignore_ascii_case("Throw ...") {
+    if label.eq_ignore_ascii_case("Throw ...") || label.eq_ignore_ascii_case("Throw") {
         return Some("Throw ...");
     }
     let label_tokens = lex_line(label, 0).ok();

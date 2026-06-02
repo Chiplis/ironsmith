@@ -20,10 +20,7 @@ impl EffectExecutor for UnattachObjectsEffect {
         let object_ids = resolve_objects_for_effect(game, ctx, &self.objects)?;
         let mut count = 0;
         for object_id in object_ids {
-            let Some(object) = game.object_mut(object_id) else {
-                continue;
-            };
-            if object.attached_to.take().is_some() {
+            if game.detach_object_from_current_target(object_id) {
                 count += 1;
             }
         }

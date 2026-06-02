@@ -764,8 +764,28 @@ fn split_label_prefix_lexed(
         return None;
     }
     let (label_tokens, body_tokens) = split_em_dash_label_prefix_tokens(tokens)?;
-    let label = render_token_slice(label_tokens).trim().to_string();
+    let label = render_label_prefix_tokens(label_tokens);
     (!label.is_empty()).then_some((label, label_tokens, body_tokens))
+}
+
+fn render_label_prefix_tokens(tokens: &[OwnedLexToken]) -> String {
+    let rendered = render_token_slice(tokens);
+    let trimmed = rendered.trim();
+    if tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        let rest = trimmed.trim_start_matches('.').trim_start();
+        return format!("... {rest}").trim().to_string();
+    }
+    if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
+        let rest = trimmed.trim_end_matches('.').trim_end();
+        return format!("{rest} ...").trim().to_string();
+    }
+    trimmed.to_string()
 }
 
 fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
@@ -778,7 +798,10 @@ fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Opti
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
     split_label_prefix_lexed(&line.tokens)
-        .is_some_and(|(label, _, _)| !preserve_keyword_prefix_for_parse(label.as_str()))
+        .is_some_and(|(label, _, _)| {
+            !preserve_keyword_prefix_for_parse(label.as_str())
+                && !is_named_ability_label(label.as_str())
+        })
 }
 
 fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool {
@@ -2615,6 +2638,7 @@ fn is_named_ability_label(label: &str) -> bool {
             | "bigby's hand"
             | "body-print"
             | "boast"
+            | "catch"
             | "cohort"
             | "devouring monster"
             | "diana"
@@ -2638,6 +2662,7 @@ fn is_named_ability_label(label: &str) -> bool {
             | "stunning strike"
             | "teleport"
             | "trance"
+            | "throw"
             | "throw ..."
             | "valiant"
             | "waterbend"

@@ -14,8 +14,6 @@ const DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN: ClauseShape<'static> = clause_shap
     prefix &["damage", "to", "each", "opponent", "equal", "to"];
     contains_words &["number", "cards", "hand"]
 );
-const DIVIDED_DAMAGE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["divided", "among"]);
 const DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["number", "cards", "hand"]);
 const COMBAT_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["target"]);
@@ -83,6 +81,13 @@ fn combat_words_start_with_shape(words: &[&str], shape: &ClauseShape<'static>) -
 
 fn combat_find_exact_window(words: &[&str], width: usize, shape: ClauseShape<'static>) -> Option<usize> {
     find_window_by(words, width, |window| shape.matches_words(window))
+}
+
+fn is_divided_damage_clause(words: &[&str]) -> bool {
+    let Some(divided_idx) = words.iter().position(|word| *word == "divided") else {
+        return false;
+    };
+    words[divided_idx + 1..].iter().any(|word| *word == "among")
 }
 
 pub(crate) fn parse_attach_object_phrase(
@@ -252,7 +257,7 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             )],
         });
     }
-    if DIVIDED_DAMAGE_PATTERN.matches_words(&clause_words) {
+    if is_divided_damage_clause(&clause_words) {
         if let Some((value, used)) = parse_value(tokens) {
             return parse_divided_damage_with_amount(tokens, value, used);
         }

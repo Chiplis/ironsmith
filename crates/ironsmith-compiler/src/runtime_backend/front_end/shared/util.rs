@@ -2896,6 +2896,7 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "permanents", "mana", "value"],
         &["that", "equipment", "mana", "value"],
         &["that", "equipment's", "mana", "value"],
+        &["that", "equipments", "mana", "value"],
         &["that", "object", "mana", "value"],
         &["that", "object's", "mana", "value"],
         &["that", "objects", "mana", "value"],

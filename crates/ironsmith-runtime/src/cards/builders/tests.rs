@@ -58855,3 +58855,250 @@ fn pardic_firecat_does_not_count_for_non_spell_flame_burst_effect_source() {
         "Pardic Firecat should count only for effects from spells named Flame Burst"
     );
 }
+
+#[test]
+fn captain_america_first_avenger_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Captain America, First Avenger");
+
+    let def = parse_oracle_card_definition("Captain America, First Avenger");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Throw...")
+            && rendered.contains("Unattach an Equipment from this creature")
+            && rendered.contains("that Equipment's mana value")
+            && rendered.contains("divided as you choose among one, two, or three targets")
+            && rendered.contains("... Catch")
+            && rendered.contains("attach up to one target Equipment you control"),
+        "expected Captain America's Throw/Catch labels and distributed-damage text, got {rendered}"
+    );
+    let activated = captain_america_throw_ability(&def);
+    let damage_effect = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find(|effect| captain_america_distributed_damage(effect).is_some())
+        .expect("Throw should have a distributed damage effect");
+    let damage = captain_america_distributed_damage(damage_effect)
+        .expect("Throw should lower through a distributed damage effect");
+    let target_count = damage_effect
+        .0
+        .get_target_count()
+        .expect("distributed damage should expose target count");
+    assert_eq!(target_count.min, 1);
+    assert_eq!(target_count.max, Some(3));
+    assert!(
+        ability_debug.contains("UnattachObjectsEffect")
+            && format!("{:?}", damage.amount).contains("ManaValueOf"),
+        "expected Captain America to lower to unattach cost plus mana-value distributed damage, got {ability_debug}"
+    );
+}
+
+fn captain_america_distributed_damage(
+    effect: &crate::effect::Effect,
+) -> Option<&crate::effects::DealDistributedDamageEffect> {
+    effect
+        .downcast_ref::<crate::effects::DealDistributedDamageEffect>()
+        .or_else(|| {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .and_then(|tagged| {
+                    tagged
+                        .effect
+                        .downcast_ref::<crate::effects::DealDistributedDamageEffect>()
+                })
+        })
+}
+
+fn captain_america_throw_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .any(|effect| captain_america_distributed_damage(effect).is_some()) =>
+            {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Captain America should have its Throw activated ability")
+}
+
+fn create_attached_test_equipment(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    host: ObjectId,
+) -> ObjectId {
+    let equipment = CardDefinitionBuilder::new(CardId::from_raw(72_001), "Vibranium Shield")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let equipment_id =
+        game.create_object_from_definition(&equipment, controller, Zone::Battlefield);
+    game.object_mut(equipment_id)
+        .expect("test Equipment should exist")
+        .attached_to = Some(crate::object::AttachmentTarget::Object(host));
+    game.object_mut(host)
+        .expect("Captain America should exist")
+        .attachments
+        .push(equipment_id);
+    equipment_id
+}
+
+fn pay_captain_america_throw_costs(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+    equipment: Option<ObjectId>,
+) -> Result<
+    std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    crate::cost::CostPaymentError,
+> {
+    game.player_mut(controller)
+        .expect("controller should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut cost_ctx = crate::costs::CostContext::new(source, controller, &mut dm);
+    if let Some(equipment) = equipment {
+        cost_ctx.pre_chosen_cards = vec![equipment];
+    }
+
+    for cost in activated.mana_cost.costs() {
+        cost.pay(game, &mut cost_ctx)?;
+    }
+
+    Ok(cost_ctx.tagged_objects)
+}
+
+#[test]
+fn captain_america_throw_unattaches_equipment_and_deals_its_mana_value_divided_damage() {
+    struct DivideDamageBetweenPlayers {
+        first_player: PlayerId,
+        second_player: PlayerId,
+    }
+
+    impl crate::decision::DecisionMaker for DivideDamageBetweenPlayers {
+        fn decide_distribute(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::DistributeContext,
+        ) -> Vec<(crate::game_state::Target, u32)> {
+            assert_eq!(ctx.total, 4, "damage total should be the Equipment's mana value");
+            assert_eq!(ctx.min_per_target, 1);
+            vec![
+                (crate::game_state::Target::Player(self.first_player), 1),
+                (crate::game_state::Target::Player(self.second_player), 3),
+            ]
+        }
+    }
+
+    let def = parse_oracle_card_definition("Captain America, First Avenger");
+    let activated = captain_america_throw_ability(&def);
+    let damage_effect = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find(|effect| captain_america_distributed_damage(effect).is_some())
+        .expect("Throw should have a distributed damage effect");
+    let target_count = damage_effect
+        .0
+        .get_target_count()
+        .expect("distributed damage should expose target count");
+    assert_eq!(target_count.min, 1);
+    assert_eq!(target_count.max, Some(3));
+
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let captain_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let shield_id = create_attached_test_equipment(&mut game, alice, captain_id);
+
+    let tagged_objects = pay_captain_america_throw_costs(
+        &mut game,
+        captain_id,
+        alice,
+        activated,
+        Some(shield_id),
+    )
+    .expect("Throw costs should be payable with three mana and attached Equipment");
+    assert!(
+        tagged_objects
+            .values()
+            .any(|snapshots| snapshots.iter().any(|snapshot| snapshot.name == "Vibranium Shield")),
+        "paying the unattach cost should remember the Equipment for the damage amount"
+    );
+    assert_eq!(
+        game.object(shield_id)
+            .expect("Equipment should still exist")
+            .attached_to,
+        None,
+        "paying the Throw cost should unattach the Equipment"
+    );
+    assert!(
+        !game
+            .object(captain_id)
+            .expect("Captain America should still exist")
+            .attachments
+            .contains(&shield_id),
+        "paying the Throw cost should remove the Equipment from Captain America's attachments"
+    );
+
+    let mut dm = DivideDamageBetweenPlayers {
+        first_player: bob,
+        second_player: charlie,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(captain_id, alice, &mut dm)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Player(bob),
+            crate::effects::ResolvedTarget::Player(charlie),
+        ])
+        .with_tagged_objects(tagged_objects);
+    crate::effects::execute_effect(&mut game, damage_effect, &mut ctx)
+        .expect("Throw distributed damage should resolve");
+
+    assert_eq!(
+        game.life_total(bob),
+        19,
+        "one damage should be assigned to the first player target"
+    );
+    assert_eq!(
+        game.life_total(charlie),
+        17,
+        "three damage should be assigned to the second player target"
+    );
+
+    let mut game_without_equipment = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let empty_captain =
+        game_without_equipment.create_object_from_definition(&def, alice, Zone::Battlefield);
+    assert!(
+        pay_captain_america_throw_costs(
+            &mut game_without_equipment,
+            empty_captain,
+            alice,
+            activated,
+            None,
+        )
+        .is_err(),
+        "Throw should not be payable without an Equipment attached to Captain America"
+    );
+}
