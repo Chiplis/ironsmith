@@ -348,25 +348,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["basic", "land", "type", "among", "land"],
-            &["basic", "land", "type", "among", "lands"],
-            &["basic", "land", "types", "among", "land"],
-            &["basic", "land", "types", "among", "lands"],
-        ]
-);
-const THAT_PLAYER_CONTROLS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "player", "controls"],
-            &["that", "player", "control"],
-            &["that", "players", "controls"],
-        ]
-);
-const YOU_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you", "control"], &["you", "controls"]]);
 const ON_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["on", "the", "battlefield"], &["on", "battlefield"]]);
 const ON_THE_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -724,6 +705,98 @@ fn parse_there_are_no_counters_on_source_predicate(
     let counter_type =
         parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
     Some(PredicateAst::SourceHasNoCounter(counter_type))
+}
+
+fn parse_basic_land_types_among_lands_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let land_type_phrases: &[&[&str]] = &[
+        &["basic", "land", "type", "among", "land"],
+        &["basic", "land", "type", "among", "lands"],
+        &["basic", "land", "types", "among", "land"],
+        &["basic", "land", "types", "among", "lands"],
+    ];
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(land_type_phrases)),
+        LexPattern::object(
+            "land_types",
+            LexCaptureKind::UntilAnyPhrase(&[
+                &["you", "control"],
+                &["you", "controls"],
+                &["that", "player", "control"],
+                &["that", "player", "controls"],
+                &["that", "players", "controls"],
+            ]),
+        ),
+        LexPattern::modifier("controller", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let existential = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing existential in basic-land-types predicate".to_string(),
+            )
+        })?;
+    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+        return Ok(None);
+    }
+    let count_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing count in basic-land-types predicate".to_string())
+        })?;
+    let count_words = count_clause.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&count_words).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported basic-land-types count (predicate: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    if used != count_words.len() {
+        return Ok(None);
+    }
+    let Some(count) = comparison_to_at_least_threshold(&comparison) else {
+        return Ok(None);
+    };
+    let land_types = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in basic-land-types predicate".to_string())
+        })?;
+    if !land_type_phrases
+        .iter()
+        .any(|phrase| land_types.word_refs().as_slice() == *phrase)
+    {
+        return Ok(None);
+    }
+    let controller = matched
+        .capture_clause("controller", clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing controller in basic-land-types predicate".to_string(),
+            )
+        })?;
+    let player = match controller.word_refs().as_slice() {
+        ["you", "control"] | ["you", "controls"] => PlayerAst::You,
+        ["that", "player", "control"]
+        | ["that", "player", "controls"]
+        | ["that", "players", "controls"] => PlayerAst::That,
+        _ => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported basic-land-types predicate tail (predicate: '{}')",
+                words.join(" ")
+            )));
+        }
+    };
+    Ok(Some(
+        PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count },
+    ))
 }
 
 fn parse_there_are_source_counters_at_least_predicate(
@@ -4170,32 +4243,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 10 && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some((comparison, idx)) = predicate_quantity_prefix(&filtered[2..])
-            .map(|(comparison, used)| (comparison, 2 + used))
-            && let Some(count) = comparison_to_at_least_threshold(&comparison)
-        {
-            let looks_like_basic_land_type_clause =
-                BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN.matches_words(&filtered[idx..]);
-            if looks_like_basic_land_type_clause {
-                let tail = &filtered[idx + 5..];
-                let player = if THAT_PLAYER_CONTROLS_TAIL_PATTERN.matches_words(tail) {
-                    PlayerAst::That
-                } else if YOU_CONTROL_TAIL_PATTERN.matches_words(tail) {
-                    PlayerAst::You
-                } else {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported basic-land-types predicate tail (predicate: '{}')",
-                        filtered.join(" ")
-                    )));
-                };
-
-                return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
-                    player,
-                    count,
-                });
-            }
-        }
+    if let Some(predicate) = parse_basic_land_types_among_lands_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 7
@@ -6398,6 +6447,34 @@ mod tests {
                 PredicateAst::TriggeringObjectHadCounterAtLeast {
                     counter_type: CounterType::PlusOnePlusOne,
                     count: 1,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_basic_land_types_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If there are two or more basic land types among lands you control",
+                PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::You,
+                    count: 2,
+                },
+            ),
+            (
+                "If there are three basic land types among lands that player controls",
+                PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::That,
+                    count: 3,
                 },
             ),
         ] {
