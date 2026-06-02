@@ -348,11 +348,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["there", "are", "no"];
-    contains_words & ["counters", "on"];
-    contains_any_words & [&["this", "it", "them"]]
-);
 const THIS_HAS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "has"]);
 const THIS_TYPED_HAS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
@@ -678,6 +673,38 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         counter_type,
         count: 1,
     })
+}
+
+fn parse_there_are_no_counters_on_source_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
+        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
+        LexPattern::modifier("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+        return None;
+    }
+    let target = matched.capture_clause("target", clause)?;
+    if !is_exact_counter_on_source_tail(&target.word_refs()) {
+        return None;
+    }
+    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_words = counter_clause.word_refs();
+    let counter_idx = find_index(&counter_words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    })?;
+    if counter_idx + 1 != counter_words.len() {
+        return None;
+    }
+    let counter_type =
+        parse_counter_type_from_tokens(counter_clause.tokens().get(..=counter_idx)?)?;
+    Some(PredicateAst::SourceHasNoCounter(counter_type))
 }
 
 fn parse_triggering_object_had_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4060,14 +4087,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN.matches_words(&filtered)
-        && let Some(counters_idx) = find_index(&raw_words, |word| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-        })
-        && counters_idx >= 4
-        && let Some(counter_type) = parse_counter_type_from_tokens(&tokens[..=counters_idx])
-    {
-        return Ok(PredicateAst::SourceHasNoCounter(counter_type));
+    if let Some(predicate) = parse_there_are_no_counters_on_source_predicate(tokens) {
+        return Ok(predicate);
     }
 
     let source_has_counter_prefix_len = if THIS_HAS_PREFIX_PATTERN.matches_words(&raw_words) {
@@ -6386,6 +6407,10 @@ mod tests {
             (
                 "If this has no stun counters on it",
                 PredicateAst::SourceHasNoCounter(CounterType::Stun),
+            ),
+            (
+                "If there are no more scream counters on it",
+                PredicateAst::SourceHasNoCounter(CounterType::Named("scream")),
             ),
             (
                 "If this creature has a +1/+1 counter on it",
