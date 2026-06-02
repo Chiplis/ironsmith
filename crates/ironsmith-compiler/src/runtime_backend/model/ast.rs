@@ -1601,6 +1601,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
+        all_kinds: bool,
     },
     ReturnToHand {
         target: TargetAst,
@@ -3113,9 +3114,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            Self::ForEachCounterKindPutOrRemove { target } => f
+            Self::ForEachCounterKindPutOrRemove { target, all_kinds } => f
                 .debug_struct("ForEachCounterKindPutOrRemove")
                 .field("target", target)
+                .field("all_kinds", all_kinds)
                 .finish(),
             Self::ReturnToHand { target, random } => f
                 .debug_struct("ReturnToHand")
@@ -6250,10 +6252,18 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_for_each_counter_kind_put_or_remove(target: TargetAst) -> Self {
+        Self::subject_verb_counter_kind_put_or_remove(target, true)
+    }
+
+    pub(crate) fn subject_verb_one_counter_kind_put_or_remove(target: TargetAst) -> Self {
+        Self::subject_verb_counter_kind_put_or_remove(target, false)
+    }
+
+    fn subject_verb_counter_kind_put_or_remove(target: TargetAst, all_kinds: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target },
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds },
         )
     }
 

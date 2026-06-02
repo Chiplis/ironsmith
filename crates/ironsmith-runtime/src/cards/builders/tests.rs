@@ -144,6 +144,42 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn clockspinning_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Clockspinning");
+
+    let def = parse_oracle_card_definition("Clockspinning");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(def.name(), "Clockspinning");
+    assert_eq!(def.card.card_types, vec![CardType::Instant]);
+    assert!(
+        def.optional_costs.iter().any(|cost| {
+            cost.label == "Buyback"
+                && cost.returns_to_hand
+                && format!("{:?}", cost.cost).contains("Generic(3)")
+        }),
+        "Clockspinning should preserve buyback {{3}}, got {:?}",
+        def.optional_costs
+    );
+    assert!(
+        spell_debug.contains("ForEachCounterKindPutOrRemoveEffect")
+            && spell_debug.contains("all_kinds: false")
+            && spell_debug.contains("alternative_cast: Some")
+            && spell_debug.contains("Suspend")
+            && spell_debug.contains("with_counter: Some")
+            && spell_debug.contains("Time"),
+        "Clockspinning should compile to a one-counter-kind put/remove effect targeting countered permanents or suspended cards, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it."
+        ),
+        "Clockspinning should render the chosen-counter put/remove clause, got {rendered}"
+    );
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

@@ -25,6 +25,8 @@ use crate::cards::builders::{
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Value};
+use crate::filter::AlternativeCastKind;
+use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
@@ -1223,6 +1225,92 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
     Ok(Some(combined))
 }
 
+fn target_with_any_counter(target: TargetAst) -> TargetAst {
+    match target {
+        TargetAst::Object(filter, target_span, it_span) => {
+            TargetAst::Object(filter.with_any_counter(), target_span, it_span)
+        }
+        TargetAst::WithCount(inner, count) => {
+            TargetAst::WithCount(Box::new(target_with_any_counter(*inner)), count)
+        }
+        TargetAst::WithCountValue(inner, count, value) => {
+            TargetAst::WithCountValue(Box::new(target_with_any_counter(*inner)), count, value)
+        }
+        other => other,
+    }
+}
+
+fn choose_counter_target(
+    first: &[OwnedLexToken],
+    first_words: &[&str],
+) -> Result<TargetAst, CardTextError> {
+    if first_words[4..] == ["target", "permanent", "or", "suspended", "card"] {
+        return Ok(TargetAst::Object(
+            ObjectFilter {
+                any_of: vec![
+                    ObjectFilter::permanent().with_any_counter(),
+                    ObjectFilter::default()
+                        .in_zone(Zone::Exile)
+                        .with_alternative_cast(AlternativeCastKind::Suspend)
+                        .with_counter_type(CounterType::Time),
+                ],
+                ..ObjectFilter::default()
+            },
+            span_from_tokens(first),
+            None,
+        ));
+    }
+
+    let target_token_start = token_index_for_word_index(first, 4).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing target after choose-counter prelude (clause: '{}')",
+            first_words.join(" ")
+        ))
+    })?;
+    let target_tokens = trim_commas(&first[target_token_start..]);
+    Ok(target_with_any_counter(parse_target_phrase(&target_tokens)?))
+}
+
+fn parse_choose_counter_on_target_then_put_or_remove_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_words = parser_token_word_refs(first);
+    if first_words.len() < 5 || !first_words.starts_with(&["choose", "a", "counter", "on"]) {
+        return Ok(None);
+    }
+
+    let second_words = parser_token_word_refs(second);
+    if !matches!(
+        second_words.as_slice(),
+        [
+            "remove",
+            "that",
+            "counter",
+            "from",
+            "that",
+            "permanent",
+            "or",
+            "card",
+            "or",
+            "put",
+            "another",
+            "of",
+            "those",
+            "counters",
+            "on",
+            "it"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    let target = choose_counter_target(first, &first_words)?;
+    Ok(Some(vec![
+        EffectAst::subject_verb_one_counter_kind_put_or_remove(target),
+    ]))
+}
+
 fn split_search_library_slot_filter_items_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<Vec<Vec<OwnedLexToken>>> {
@@ -2173,6 +2261,12 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_choose_objects_then_for_each_of_those_bundle(sentences[0], sentences[1], None)
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_counter_on_target_then_put_or_remove_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }

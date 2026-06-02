@@ -5097,13 +5097,16 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target } => {
+        SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let effect = if *all_kinds {
+                crate::effects::ForEachCounterKindPutOrRemoveEffect::new(spec)
+            } else {
+                crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(spec)
+            };
             Ok((
-                vec![Effect::new(
-                    crate::effects::ForEachCounterKindPutOrRemoveEffect::new(spec),
-                )],
+                vec![Effect::new(effect)],
                 choices,
             ))
         }

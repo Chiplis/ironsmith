@@ -3473,11 +3473,22 @@ impl DealDistributedDamageEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
+    pub all_kinds: bool,
 }
 
 impl ForEachCounterKindPutOrRemoveEffect {
     pub fn new(target: ChooseSpec) -> Self {
-        Self { target }
+        Self {
+            target,
+            all_kinds: true,
+        }
+    }
+
+    pub fn one_kind(target: ChooseSpec) -> Self {
+        Self {
+            target,
+            all_kinds: false,
+        }
     }
 }
 
