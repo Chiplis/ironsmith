@@ -76,7 +76,6 @@ const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
 const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["graveyard"]);
 const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
@@ -3285,6 +3284,51 @@ fn parse_half_starting_life_total_predicate(filtered: &[&str]) -> Option<Predica
     }
 }
 
+fn parse_cards_in_graveyard_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["has"], &["have"]];
+    let card_phrases: &[&[&str]] = &[&["card"], &["cards"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("has", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("quantity", LexCaptureKind::UntilAnyPhrase(card_phrases)),
+        LexPattern::object("cards", LexCaptureKind::WordCount(1)),
+        LexPattern::word("in"),
+        LexPattern::modifier("graveyard", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = comparison_player_subject_from_words(&player_clause.word_refs())?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["has"] | ["have"]) {
+        return None;
+    }
+    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let (comparison, used) = predicate_quantity_prefix(&quantity.word_refs())?;
+    if used != quantity.word_refs().len() {
+        return None;
+    }
+    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
+    let cards = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(cards.word_refs().as_slice(), ["card"] | ["cards"]) {
+        return None;
+    }
+    let graveyard = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let graveyard_words = graveyard.word_refs();
+    if !matches!(graveyard_words.as_slice(), [possessive, "graveyard"] if graveyard_possessive_matches_subject(player, possessive))
+    {
+        return None;
+    }
+    let player_filter = player_filter_for_turn_value(player)?;
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::CardsInGraveyard(player_filter),
+        operator,
+        right: Value::Fixed(count),
+    })
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -3483,6 +3527,23 @@ fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> 
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
         _ => THEIR_WORD_PATTERN.matches_word(possessive),
+    }
+}
+
+fn comparison_player_subject_from_words(words: &[&str]) -> Option<PlayerAst> {
+    match words {
+        ["that", "player"] => Some(PlayerAst::That),
+        ["target", "player"] => Some(PlayerAst::Target),
+        ["target", "opponent"] => Some(PlayerAst::TargetOpponent),
+        ["each", "opponent"] => Some(PlayerAst::Opponent),
+        ["a", "player"] | ["any", "player"] => Some(PlayerAst::Any),
+        ["defending", "player"] => Some(PlayerAst::Defending),
+        ["attacking", "player"] => Some(PlayerAst::Attacking),
+        ["you"] => Some(PlayerAst::You),
+        ["opponent"] => Some(PlayerAst::Opponent),
+        ["player", "who"] => Some(PlayerAst::That),
+        ["player"] => Some(PlayerAst::Any),
+        _ => None,
     }
 }
 
@@ -4420,31 +4481,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_half_starting_life_total_predicate(&filtered) {
         return Ok(predicate);
     }
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[subject_len + 1..])
-        && let Some((operator, count)) = comparison_to_value_comparison_operator(comparison)
-        && filtered
-            .get(subject_len + 1 + used)
-            .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
-        && filtered
-            .get(subject_len + 2 + used)
-            .is_some_and(|word| IN_WORD_PATTERN.matches_word(word))
-        && let Some(possessive) = filtered.get(subject_len + 3 + used).copied()
-        && graveyard_possessive_matches_subject(player, possessive)
-        && filtered
-            .get(subject_len + 4 + used)
-            .is_some_and(|word| GRAVEYARD_WORD_PATTERN.matches_word(word))
-        && filtered.len() == subject_len + 5 + used
-        && let Some(player_filter) = player_filter_for_turn_value(player)
-    {
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::CardsInGraveyard(player_filter),
-            operator,
-            right: Value::Fixed(count),
-        });
+    if let Some(predicate) = parse_cards_in_graveyard_count_predicate(&filtered) {
+        return Ok(predicate);
     }
     if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
         && filtered
@@ -6204,6 +6242,44 @@ mod tests {
                 PredicateAst::PlayerCardsInHandOrMore {
                     player: PlayerAst::Opponent,
                     count: 3,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_cards_in_graveyard_counts_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you have seven or more cards in your graveyard",
+                PredicateAst::ValueComparison {
+                    left: Value::CardsInGraveyard(PlayerFilter::You),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(7),
+                },
+            ),
+            (
+                "If an opponent has eight or more cards in their graveyard",
+                PredicateAst::ValueComparison {
+                    left: Value::CardsInGraveyard(PlayerFilter::Opponent),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(8),
+                },
+            ),
+            (
+                "If target player has fewer than three cards in their graveyard",
+                PredicateAst::ValueComparison {
+                    left: Value::CardsInGraveyard(PlayerFilter::target_player()),
+                    operator: ValueComparisonOperator::LessThan,
+                    right: Value::Fixed(3),
                 },
             ),
         ] {
