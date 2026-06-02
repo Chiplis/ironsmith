@@ -58193,6 +58193,44 @@ fn mindleech_mass_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn geode_golem_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Geode Golem");
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Geode Golem should have a combat-damage trigger");
+    assert_eq!(
+        triggered.trigger.display(),
+        "Whenever this creature deals combat damage to a player"
+    );
+
+    let abilities_debug = format!("{:?}", def.abilities);
+    assert!(
+        abilities_debug.contains("MayCastMatchingSpellWithoutPayingManaCostEffect")
+            && abilities_debug.contains("zone: Command")
+            && abilities_debug.contains("is_commander: true"),
+        "expected Geode Golem to lower to command-zone commander free-cast effect, got {abilities_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("trample")
+            && rendered_lower.contains("whenever this creature deals combat damage to a player")
+            && rendered_lower.contains(
+                "you may cast your commander from the command zone without paying its mana cost"
+            ),
+        "expected Geode Golem compiled text to preserve the command-zone commander free-cast clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn minds_dilation_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Mind's Dilation");
 

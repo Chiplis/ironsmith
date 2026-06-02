@@ -1843,6 +1843,34 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
+        if from_idx + 4 == without_idx
+            && normalized_words
+                .get(from_idx + 1)
+                .is_some_and(|word| word == "the")
+            && normalized_words
+                .get(from_idx + 2)
+                .is_some_and(|word| word == "command")
+            && normalized_words
+                .get(from_idx + 3)
+                .is_some_and(|word| word == "zone")
+            && WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail)
+        {
+            let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+                return Ok(None);
+            };
+            let filter_words = token_word_refs(trim_lexed_commas(&rest_tokens[..filter_end]));
+            if filter_words == ["your", "commander"] {
+                return Ok(Some(
+                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                        lead.player,
+                        ObjectFilter::default()
+                            .commander()
+                            .owned_by(crate::target::PlayerFilter::You),
+                        Zone::Command,
+                    ),
+                ));
+            }
+        }
         if from_idx + 3 == without_idx
             && normalized_words
                 .get(from_idx + 1)
