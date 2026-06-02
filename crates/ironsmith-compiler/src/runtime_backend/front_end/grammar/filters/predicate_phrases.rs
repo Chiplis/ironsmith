@@ -302,25 +302,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["basic", "land", "type", "among", "land"],
-            &["basic", "land", "type", "among", "lands"],
-            &["basic", "land", "types", "among", "land"],
-            &["basic", "land", "types", "among", "lands"],
-        ]
-);
-const THAT_PLAYER_CONTROLS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "player", "controls"],
-            &["that", "player", "control"],
-            &["that", "players", "controls"],
-        ]
-);
-const YOU_CONTROL_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you", "control"], &["you", "controls"]]);
 const ON_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["on", "the", "battlefield"], &["on", "battlefield"]]);
 const ON_THE_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -2941,6 +2922,51 @@ fn source_power_predicate_from_amount(words: &[&str]) -> Option<PredicateAst> {
     Some(PredicateAst::SourcePowerAtLeast(count))
 }
 
+fn parse_basic_land_types_among_lands_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let basic_land_phrases: &[&[&str]] = &[
+        &["basic", "land", "type", "among", "land"],
+        &["basic", "land", "type", "among", "lands"],
+        &["basic", "land", "types", "among", "land"],
+        &["basic", "land", "types", "among", "lands"],
+    ];
+    let atoms = [
+        LexPattern::word("there"),
+        LexPattern::action("are", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(basic_land_phrases)),
+        LexPattern::object("domain", LexCaptureKind::WordCount(5)),
+        LexPattern::subject("player", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["are"]) {
+        return None;
+    }
+    let domain = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !basic_land_phrases
+        .iter()
+        .any(|phrase| domain.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let (comparison, used) = predicate_quantity_prefix(&count_clause.word_refs())?;
+    if used != count_clause.word_refs().len() {
+        return None;
+    }
+    let count = comparison_to_at_least_threshold(&comparison)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = match player_clause.word_refs().as_slice() {
+        ["you", "control"] | ["you", "controls"] => PlayerAst::You,
+        ["that", "player", "control"]
+        | ["that", "player", "controls"]
+        | ["that", "players", "controls"] => PlayerAst::That,
+        _ => return None,
+    };
+    Some(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count })
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -4028,32 +4054,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 10 && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some((comparison, idx)) = predicate_quantity_prefix(&filtered[2..])
-            .map(|(comparison, used)| (comparison, 2 + used))
-            && let Some(count) = comparison_to_at_least_threshold(&comparison)
-        {
-            let looks_like_basic_land_type_clause =
-                BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN.matches_words(&filtered[idx..]);
-            if looks_like_basic_land_type_clause {
-                let tail = &filtered[idx + 5..];
-                let player = if THAT_PLAYER_CONTROLS_TAIL_PATTERN.matches_words(tail) {
-                    PlayerAst::That
-                } else if YOU_CONTROL_TAIL_PATTERN.matches_words(tail) {
-                    PlayerAst::You
-                } else {
-                    return Err(CardTextError::ParseError(format!(
-                        "unsupported basic-land-types predicate tail (predicate: '{}')",
-                        filtered.join(" ")
-                    )));
-                };
-
-                return Ok(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
-                    player,
-                    count,
-                });
-            }
-        }
+    if let Some(predicate) = parse_basic_land_types_among_lands_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 7
@@ -5615,6 +5617,35 @@ mod tests {
             (
                 "if there are no time counters on them",
                 PredicateAst::SourceHasNoCounter(CounterType::Time),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_basic_land_types_among_lands_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if there are three or more basic land types among lands you control",
+                PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::You,
+                    count: 3,
+                },
+            ),
+            (
+                "if there are five basic land type among land that player controls",
+                PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
+                    player: PlayerAst::That,
+                    count: 5,
+                },
             ),
         ] {
             let tokens = lex_line(text, 0)?;
