@@ -108,7 +108,6 @@ const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-const PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
 const YOU_REVEALED_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "revealed"]);
 const BEHOLD_CAST_SUFFIX_PATTERN: ClauseShape<'static> =
@@ -514,8 +513,6 @@ const HAS_OR_HAVE_TOXIC_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has", "toxic"], &["have", "toxic"]]);
 const NEITHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["neither"]);
 const THERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["there"]);
-const ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["onto", "battlefield"], &["onto", "the", "battlefield"]]);
 const MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["most", "common", "color", "among", "all", "permanents"]);
 const SOURCE_TAPPED_PATTERN: ClauseShape<'static> =
@@ -1343,6 +1340,69 @@ fn parse_active_this_way_discard_predicate(
     };
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
         player,
+        tag: TagKey::from(IT_TAG),
+        filter,
+    }))
+}
+
+fn parse_active_this_way_battlefield_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if filtered.len() < 7 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
+        return Ok(None);
+    }
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let destination_phrases: &[&[&str]] =
+        &[&["onto", "battlefield"], &["onto", "the", "battlefield"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["put"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object(
+            "object",
+            LexCaptureKind::UntilAnyPhrase(destination_phrases),
+        ),
+        LexPattern::modifier("destination", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing subject in this-way battlefield predicate".to_string(),
+            )
+        })?;
+    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+        return Ok(None);
+    }
+    let destination_clause = matched
+        .capture_clause("destination", clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing destination in this-way battlefield predicate".to_string(),
+            )
+        })?;
+    if !matches!(
+        destination_clause.word_refs().as_slice(),
+        ["onto", "battlefield", "this", "way"] | ["onto", "the", "battlefield", "this", "way"]
+    ) {
+        return Ok(None);
+    }
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError(
+                "missing object in this-way battlefield predicate".to_string(),
+            )
+        })?;
+    let mut filter = parse_object_filter(filter_clause.tokens(), false)?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
         tag: TagKey::from(IT_TAG),
         filter,
     }))
@@ -2863,6 +2923,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_active_this_way_discard_predicate(&filtered)? {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_active_this_way_battlefield_predicate(&filtered)? {
+        return Ok(predicate);
+    }
 
     if let Some(predicate) = parse_this_ability_resolution_count_predicate(&filtered) {
         return Ok(predicate);
@@ -3973,26 +4036,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let onto_battlefield_idx = ONTO_BATTLEFIELD_PATTERN.find_exact_window_range(&filtered, 2, 3);
-    if filtered.len() >= 7
-        && YOU_WORD_PATTERN.matches_word_at(&filtered, 0)
-        && PUT_WORD_PATTERN.matches_word_at(&filtered, 1)
-        && THIS_WAY_SUFFIX_PATTERN.matches_words(&filtered)
-        && let Some(onto_idx) = onto_battlefield_idx
-    {
-        let filter_words = &filtered[2..onto_idx];
-        let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-        let mut filter = parse_object_filter(&filter_tokens, false)?;
-        if filter.zone.is_none() {
-            filter.zone = Some(Zone::Battlefield);
-        }
-        return Ok(PredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-            filter,
-        });
-    }
-
     let is_it = demonstrative_reference_len == Some(1);
     let has_card = demonstrative_reference_len
         .map(|reference_len| {
@@ -4845,6 +4888,25 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::TaggedMatches(TagKey::from(IT_TAG), aura_filter)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_you_put_filtered_object_onto_battlefield_this_way()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line("If you put an artifact onto the battlefield this way", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let filter_tokens = lex_line("an artifact", 0)?;
+        let mut filter = parse_object_filter(&filter_tokens, false)?;
+        filter.zone = Some(Zone::Battlefield);
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+                filter,
+            }
         );
         Ok(())
     }
