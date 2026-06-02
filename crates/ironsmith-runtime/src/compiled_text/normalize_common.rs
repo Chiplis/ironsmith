@@ -21,6 +21,25 @@ pub(super) fn with_effect_render_depth<F: FnOnce() -> String>(render: F) -> Stri
     })
 }
 
+fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
+    if filter.zone != Some(Zone::Exile)
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+    {
+        return false;
+    }
+
+    let mut base = filter.clone();
+    base.zone = None;
+    base.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    });
+    base == ObjectFilter::default()
+}
+
 pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::You => "you".to_string(),
@@ -12399,6 +12418,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     }
                 };
                 return format!("{subject} drawn {count_text} or more cards this turn");
+            }
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && is_source_exiled_count_filter(filter)
+            {
+                let count_text = small_number_word(*count as u32)
+                    .unwrap_or_else(|| count.to_string());
+                return format!("{count_text} or more cards have been exiled with this permanent");
             }
             if let (
                 Value::Count(filter),

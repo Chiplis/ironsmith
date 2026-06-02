@@ -51965,6 +51965,42 @@ fn debug_surface_keeps_complex_source_text_regressions() {
 }
 
 #[test]
+fn colfenors_urn_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Colfenor's Urn");
+    let rendered = debug_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported"),
+        "Colfenor's Urn should strictly parse without unsupported output, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a creature with toughness 4 or greater is put into your graveyard from the battlefield, you may exile it."
+        ),
+        "expected Colfenor's Urn death trigger text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("if three or more cards have been exiled with this artifact"),
+        "expected source-linked exile count condition, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "sacrifice it. If you do, return those cards to the battlefield under their owners' control"
+        ),
+        "expected source sacrifice and source-linked return text, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ValueComparison")
+            && ability_debug.contains("__source_exiled__")
+            && ability_debug.contains("SacrificeTargetEffect")
+            && ability_debug.contains("target: Source")
+            && ability_debug.contains("ReturnAllToBattlefieldEffect"),
+        "expected Colfenor's Urn to structurally count and return cards exiled with its source, got {ability_debug}"
+    );
+}
+
+#[test]
 fn necromentia_counts_only_cards_exiled_from_hand_this_way() {
     struct NecromentiaDecisionMaker;
 
