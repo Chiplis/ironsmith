@@ -151,20 +151,6 @@ const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
-const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "are",
-            "attacking",
-            "and",
-            "you",
-            "both",
-            "own",
-            "and",
-            "control",
-            "them",
-        ]
-);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const DEFINITE_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
@@ -2115,6 +2101,83 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
         }
     };
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
+fn parse_attacking_you_own_control_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::object(
+            "right",
+            LexCaptureKind::UntilPhrase(&[
+                "are",
+                "attacking",
+                "and",
+                "you",
+                "both",
+                "own",
+                "and",
+                "control",
+                "them",
+            ]),
+        ),
+        LexPattern::phrase(&[
+            "are",
+            "attacking",
+            "and",
+            "you",
+            "both",
+            "own",
+            "and",
+            "control",
+            "them",
+        ]),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let left = matched.capture_clause("left", clause).ok_or_else(|| {
+        CardTextError::ParseError("missing left subject in attacking meld predicate".to_string())
+    })?;
+    let right = matched.capture_clause("right", clause).ok_or_else(|| {
+        CardTextError::ParseError("missing right subject in attacking meld predicate".to_string())
+    })?;
+    if left.word_refs().is_empty() || right.word_refs().is_empty() {
+        return Ok(None);
+    }
+
+    let mut left_filter = parse_meld_subject_filter(&left.word_refs()).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported attacking meld predicate subject (predicate: '{}')",
+            filtered.join(" ")
+        ))
+    })?;
+    left_filter.controller = Some(PlayerFilter::You);
+    left_filter.attacking = true;
+
+    let mut right_filter = parse_meld_subject_filter(&right.word_refs()).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported attacking meld predicate tail (predicate: '{}')",
+            filtered.join(" ")
+        ))
+    })?;
+    right_filter.controller = Some(PlayerFilter::You);
+    right_filter.attacking = true;
+
+    Ok(Some(PredicateAst::And(
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: left_filter,
+        }),
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: right_filter,
+        }),
+    )))
 }
 
 fn parse_you_both_own_and_control_predicate(
@@ -4711,42 +4774,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(attacking_idx) = (0..filtered.len())
-        .find(|idx| MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN.matches_words(&filtered[*idx..]))
-        && let Some(and_idx) = find_meld_subject_split(&filtered[..attacking_idx])
-    {
-        let left_words = &filtered[..and_idx];
-        let right_words = &filtered[and_idx + 1..attacking_idx];
-        if !left_words.is_empty() && !right_words.is_empty() {
-            let mut left_filter = parse_meld_subject_filter(left_words).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported attacking meld predicate subject (predicate: '{}')",
-                    filtered.join(" ")
-                ))
-            })?;
-            left_filter.controller = Some(PlayerFilter::You);
-            left_filter.attacking = true;
-
-            let mut right_filter = parse_meld_subject_filter(right_words).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported attacking meld predicate tail (predicate: '{}')",
-                    filtered.join(" ")
-                ))
-            })?;
-            right_filter.controller = Some(PlayerFilter::You);
-            right_filter.attacking = true;
-
-            return Ok(PredicateAst::And(
-                Box::new(PredicateAst::PlayerControls {
-                    player: PlayerAst::You,
-                    filter: left_filter,
-                }),
-                Box::new(PredicateAst::PlayerControls {
-                    player: PlayerAst::You,
-                    filter: right_filter,
-                }),
-            ));
-        }
+    if let Some(predicate) = parse_attacking_you_own_control_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_you_both_own_and_control_predicate(&filtered)? {
@@ -6313,6 +6342,29 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_attacking_own_control_meld_uses_capture_parser() -> Result<(), CardTextError>
+    {
+        let tokens = lex_line(
+            "If this creature and a creature named Midnight Scavengers are attacking and you both own and control them",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        let PredicateAst::And(left, right) = parsed else {
+            panic!("expected attacking own-control conjoined predicate");
+        };
+        for side in [left, right] {
+            let PredicateAst::PlayerControls { player, filter } = *side else {
+                panic!("expected controls predicate");
+            };
+            assert_eq!(player, PlayerAst::You);
+            assert_eq!(filter.controller, Some(PlayerFilter::You));
+            assert!(filter.attacking);
         }
         Ok(())
     }

@@ -1,10 +1,4 @@
 use super::*;
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
-
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-
 pub(crate) fn parse_object_filter_with_grammar_entrypoint(
     tokens: &[OwnedLexToken],
     other: bool,
@@ -40,33 +34,4 @@ pub(super) fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, 
     let tokens = synth_words_as_tokens(words);
     parse_object_filter(&tokens, false)
         .or_else(|_| Ok(ObjectFilter::default().named(words.join(" "))))
-}
-
-pub(super) fn is_plausible_meld_subject_start(word: &str) -> bool {
-    matches!(
-        word,
-        "a" | "an"
-            | "another"
-            | "this"
-            | "that"
-            | "source"
-            | "artifact"
-            | "battle"
-            | "card"
-            | "creature"
-            | "enchantment"
-            | "land"
-            | "nonland"
-            | "permanent"
-            | "planeswalker"
-    )
-}
-
-pub(super) fn find_meld_subject_split(words: &[&str]) -> Option<usize> {
-    words
-        .windows(2)
-        .position(|window| {
-            AND_WORD_PATTERN.matches_word(window[0]) && is_plausible_meld_subject_start(window[1])
-        })
-        .or_else(|| find_index(words, |word| AND_WORD_PATTERN.matches_word(word)))
 }
