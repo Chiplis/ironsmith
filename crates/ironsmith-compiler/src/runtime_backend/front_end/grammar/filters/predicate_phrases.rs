@@ -439,19 +439,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const SOURCE_DIDNT_ATTACK_OR_ENTER_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "this", "creature", "didnt", "attack", "or", "come", "under", "your", "control",
-                "this", "turn",
-            ],
-            &[
-                "this", "creature", "didnt", "attack", "or", "came", "under", "your", "control",
-                "this", "turn",
-            ],
-        ]
-);
 const THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix & ["there", "are", "no"];
     contains_words & ["counters", "on"];
@@ -1744,6 +1731,7 @@ fn parse_combat_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
         .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(&tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(&tokens))
         .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(&tokens))
+        .or_else(|| parse_source_didnt_attack_or_enter_control_this_turn_shape(&tokens))
 }
 
 fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -1876,6 +1864,55 @@ fn parse_source_attacked_or_blocked_this_turn_shape(
         return None;
     }
     Some(PredicateAst::SourceAttackedOrBlockedThisTurn)
+}
+
+fn parse_source_didnt_attack_or_enter_control_this_turn_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["didnt", "attack", "or"], &["did", "not", "attack", "or"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object(
+                "control_event",
+                LexCaptureKind::UntilPhrase(&["this", "turn"]),
+            ),
+            LexPattern::modifier("window", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(subject_clause.word_refs().as_slice(), ["this", "creature"]) {
+            continue;
+        }
+        let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+        if action_clause.word_refs().as_slice() != *action_phrase {
+            continue;
+        }
+        let control_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        if !matches!(
+            control_clause.word_refs().as_slice(),
+            ["come", "under", "your", "control"] | ["came", "under", "your", "control"]
+        ) {
+            continue;
+        }
+        let window_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+        if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+            continue;
+        }
+        return Some(PredicateAst::And(
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceAttackedThisTurn,
+            ))),
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceCameUnderYourControlThisTurn,
+            ))),
+        ));
+    }
+    None
 }
 
 fn parse_source_status_predicate(filtered: &[&str]) -> Option<PredicateAst> {
@@ -3305,17 +3342,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             apply_filter_keyword_constraint(&mut filter, constraint, false);
             return Ok(PredicateAst::SourceMatches(filter));
         }
-    }
-
-    if SOURCE_DIDNT_ATTACK_OR_ENTER_CONTROL_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::And(
-            Box::new(PredicateAst::Not(Box::new(
-                PredicateAst::SourceAttackedThisTurn,
-            ))),
-            Box::new(PredicateAst::Not(Box::new(
-                PredicateAst::SourceCameUnderYourControlThisTurn,
-            ))),
-        ));
     }
 
     if THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN.matches_words(&filtered)
@@ -4842,6 +4868,32 @@ mod tests {
                 },
                 "{text}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_didnt_attack_or_enter_control_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        let expected = PredicateAst::And(
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceAttackedThisTurn,
+            ))),
+            Box::new(PredicateAst::Not(Box::new(
+                PredicateAst::SourceCameUnderYourControlThisTurn,
+            ))),
+        );
+        for text in [
+            "if this creature didnt attack or come under your control this turn",
+            "if this creature didnt attack or came under your control this turn",
+            "if this creature did not attack or come under your control this turn",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
         }
         Ok(())
     }
