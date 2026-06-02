@@ -4808,6 +4808,39 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
 }
 
 #[test]
+fn rewrite_lexed_parse_surtland_elementalist_trigger_clause_without_mana_value_gate() {
+    let tokens = lex_line(
+        "Cast an instant or sorcery spell from your hand without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify Surtland Elementalist cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("Surtland Elementalist cast clause should parse as a supported effect");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+                ..
+            },
+        ] => (player, filter, zone),
+        _ => panic!("expected one-shot hand free-cast effect, got {effects:#?}"),
+    };
+
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Hand);
+    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
+    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
+    assert_eq!(filter.mana_value, None);
+}
+
+#[test]
 fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_value_gate() {
     let tokens = lex_line(
         "Cast an instant or sorcery spell with mana value equal to the number of charge counters on this artifact from your hand without paying its mana cost",

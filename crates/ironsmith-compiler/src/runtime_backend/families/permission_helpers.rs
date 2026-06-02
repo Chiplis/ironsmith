@@ -697,6 +697,44 @@ fn permanent_spell_filter() -> ObjectFilter {
     }
 }
 
+fn parse_simple_spell_type_list_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let words = token_word_refs(tokens);
+    let mut words = strip_leading_article_word_refs(&words).to_vec();
+    if words
+        .last()
+        .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
+    {
+        words.pop();
+    }
+    if words.is_empty() {
+        return None;
+    }
+
+    let mut card_types = Vec::new();
+    for word in words {
+        let card_type = match word {
+            "or" | "and" => continue,
+            "artifact" => CardType::Artifact,
+            "battle" => CardType::Battle,
+            "creature" => CardType::Creature,
+            "enchantment" => CardType::Enchantment,
+            "instant" => CardType::Instant,
+            "land" => CardType::Land,
+            "planeswalker" => CardType::Planeswalker,
+            "sorcery" => CardType::Sorcery,
+            _ => return None,
+        };
+        crate::slice_primitives::push_unique(&mut card_types, card_type);
+    }
+    if card_types.is_empty() {
+        return None;
+    }
+    Some(ObjectFilter {
+        card_types,
+        ..ObjectFilter::default()
+    })
+}
+
 fn parse_permission_subject_filter_tokens_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
@@ -717,6 +755,9 @@ fn parse_permission_subject_filter_tokens_lexed(
         ["permanent", "spell"] | ["permanent", "spells"]
     ) {
         return Ok(Some(permanent_spell_filter()));
+    }
+    if let Some(filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens) {
+        return Ok(Some(filter));
     }
     for separator in ["and", "or"] {
         let Some(split_idx) = find_token_index(filter_words.as_slice(), |word| *word == separator)
@@ -1468,50 +1509,32 @@ fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
 }
 
 fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
-    SINGULAR_FREE_CAST_FROM_HAND_PATTERN.matches_words(clause_words)
+    if SINGULAR_FREE_CAST_FROM_HAND_PATTERN.matches_words(clause_words) {
+        return true;
+    }
+
+    let Some(cast_idx) = clause_words.iter().position(|word| *word == "cast") else {
+        return false;
+    };
+    let after_cast = &clause_words[cast_idx + 1..];
+    let Some(from_idx) = after_cast.windows(8).position(|window| {
+        matches!(
+            window,
+            ["from", "your", "hand", "without", "paying", "its", "mana", "cost"]
+                | ["from", "your", "hand", "without", "paying", "their", "mana", "cost"]
+                | ["from", "your", "hand", "without", "paying", "their", "mana", "costs"]
+        )
+    }) else {
+        return false;
+    };
+    let subject_words = &after_cast[..from_idx];
+    subject_words.iter().any(|word| *word == "spell")
+        && !subject_words.iter().any(|word| *word == "spells")
 }
 
 fn parse_cast_with_tagged_mana_value_limit_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    fn parse_simple_spell_type_list_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-        let words = token_word_refs(tokens);
-        let mut words = strip_leading_article_word_refs(&words).to_vec();
-        if words
-            .last()
-            .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
-        {
-            words.pop();
-        }
-        if words.is_empty() {
-            return None;
-        }
-
-        let mut card_types = Vec::new();
-        for word in words {
-            let card_type = match word {
-                "or" | "and" => continue,
-                "artifact" => CardType::Artifact,
-                "battle" => CardType::Battle,
-                "creature" => CardType::Creature,
-                "enchantment" => CardType::Enchantment,
-                "instant" => CardType::Instant,
-                "land" => CardType::Land,
-                "planeswalker" => CardType::Planeswalker,
-                "sorcery" => CardType::Sorcery,
-                _ => return None,
-            };
-            crate::slice_primitives::push_unique(&mut card_types, card_type);
-        }
-        if card_types.is_empty() {
-            return None;
-        }
-        Some(ObjectFilter {
-            card_types,
-            ..ObjectFilter::default()
-        })
-    }
-
     fn parse_cast_with_prefixed_mana_value_limit(
         rest_tokens: &[OwnedLexToken],
         normalized_words: &[String],
@@ -1646,12 +1669,54 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
+    if let Some(without_idx) = normalized_words
+        .iter()
+        .position(|word| word.as_str() == "without")
+    {
+        let without_tail = normalized_words[without_idx..]
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        if from_idx + 3 == without_idx
+            && normalized_words
+                .get(from_idx + 1)
+                .is_some_and(|word| word == "your")
+            && normalized_words
+                .get(from_idx + 2)
+                .is_some_and(|word| matches!(word.as_str(), "graveyard" | "hand"))
+            && WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail)
+        {
+            let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+                return Ok(None);
+            };
+            let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
+            let Some(mut filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens)
+                .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
+            else {
+                return Ok(None);
+            };
+            filter.owner = Some(crate::target::PlayerFilter::You);
+            let zone = if normalized_words[from_idx + 2] == "hand" {
+                Zone::Hand
+            } else {
+                Zone::Graveyard
+            };
+            return Ok(Some(
+                EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                    lead.player,
+                    filter,
+                    zone,
+                ),
+            ));
+        }
+    }
+
     if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
         rest_tokens,
         &normalized_words,
         lead.player,
         from_idx,
-        parse_simple_spell_type_list_filter,
+        parse_simple_spell_type_list_filter_tokens,
     )? {
         return Ok(Some(effect));
     }
@@ -1699,7 +1764,7 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     };
     let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
-    let Some(mut filter) = parse_simple_spell_type_list_filter(filter_tokens)
+    let Some(mut filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens)
         .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
     else {
         return Ok(None);
