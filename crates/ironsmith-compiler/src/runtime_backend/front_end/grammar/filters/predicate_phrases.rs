@@ -566,6 +566,34 @@ fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
     })
 }
 
+fn parse_source_keyword_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["has"], &["have"]];
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["has", "have"])),
+        LexPattern::object("keyword", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let subject_words = source.word_refs();
+    if !(is_source_reference_words(&subject_words)
+        || SOURCE_REFERENCE_WORD_PATTERN.matches_words(&subject_words))
+    {
+        return None;
+    }
+    let keyword = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let keyword_words = keyword.word_refs();
+    let (constraint, consumed) = parse_filter_keyword_constraint_words(&keyword_words)?;
+    if consumed != keyword_words.len() {
+        return None;
+    }
+    let mut filter = ObjectFilter::default();
+    apply_filter_keyword_constraint(&mut filter, constraint, false);
+    Some(PredicateAst::SourceMatches(filter))
+}
+
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     parse_source_possessive_power_threshold_shape(&tokens)
@@ -4493,23 +4521,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(has_idx) = find_index(&filtered, |word| {
-        HAS_OR_HAVE_WORD_PATTERN.matches_word(word)
-    }) && has_idx > 0
-        && has_idx + 1 < filtered.len()
-    {
-        let subject_words = &filtered[..has_idx];
-        let is_source_subject = is_source_reference_words(subject_words)
-            || SOURCE_REFERENCE_WORD_PATTERN.matches_words(subject_words);
-        if is_source_subject
-            && let Some((constraint, consumed)) =
-                parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
-            && has_idx + 1 + consumed == filtered.len()
-        {
-            let mut filter = ObjectFilter::default();
-            apply_filter_keyword_constraint(&mut filter, constraint, false);
-            return Ok(PredicateAst::SourceMatches(filter));
-        }
+    if let Some(predicate) = parse_source_keyword_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     let source_state_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filtered);
@@ -7002,16 +7015,29 @@ mod tests {
 
     #[test]
     fn parse_predicate_supports_source_has_keyword() -> Result<(), CardTextError> {
-        let tokens = lex_line("If this creature has defender", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        for (text, ability) in [
+            (
+                "If this creature has defender",
+                crate::static_abilities::StaticAbilityId::Defender,
+            ),
+            (
+                "If this source has flying",
+                crate::static_abilities::StaticAbilityId::Flying,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        let mut expected_filter = ObjectFilter::default();
-        expected_filter
-            .static_abilities
-            .push(crate::static_abilities::StaticAbilityId::Defender);
-        assert_eq!(parsed, PredicateAst::SourceMatches(expected_filter));
+            let mut expected_filter = ObjectFilter::default();
+            expected_filter.static_abilities.push(ability);
+            assert_eq!(
+                parsed,
+                PredicateAst::SourceMatches(expected_filter),
+                "{text}"
+            );
+        }
         Ok(())
     }
 }
