@@ -67,7 +67,6 @@ const PERMANENTS_AND_OR_SPLIT_CONNECTOR_PATTERN: ClauseShape<'static> =
 const THERE_ARE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "are"]);
 const THERE_ARE_OR_WERE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["there", "are"], &["there", "were"]]);
-const OR_IF_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or", "if"]);
 const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "your", "life", "total"]);
 const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1997,20 +1996,36 @@ fn active_discard_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
 fn parse_repeated_if_or_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some(or_idx) = OR_IF_PATTERN.find_exact_window_range(filtered, 2, 2) else {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["or", "if"])),
+        LexPattern::phrase(&["or", "if"]),
+        LexPattern::modifier("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
     };
-    if or_idx == 0 || or_idx + 2 >= filtered.len() {
+
+    let left_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing left side in or-if predicate".to_string())
+        })?;
+    let right_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing right side in or-if predicate".to_string())
+        })?;
+    if left_clause.word_refs().is_empty() || right_clause.word_refs().is_empty() {
         return Ok(None);
     }
 
-    let left_tokens = predicate_tokens_from_words(&filtered[..or_idx]);
-    let right_tokens = predicate_tokens_from_words(&filtered[or_idx + 2..]);
-    let left = match parse_predicate(&left_tokens) {
+    let left = match parse_predicate(left_clause.tokens()) {
         Ok(predicate) => predicate,
         Err(_) => return Ok(None),
     };
-    let right = parse_predicate(&right_tokens)?;
+    let right = parse_predicate(right_clause.tokens())?;
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
 }
 
@@ -5736,6 +5751,25 @@ mod tests {
             assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard), "{text}");
             assert_eq!(graveyard_filter.owner, Some(PlayerFilter::You), "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_repeated_or_if_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you have the initiative or if you're monarch", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Or(
+                Box::new(PredicateAst::PlayerHasInitiative {
+                    player: PlayerAst::You,
+                }),
+                Box::new(PredicateAst::PlayerIsMonarch {
+                    player: PlayerAst::You,
+                }),
+            )
+        );
         Ok(())
     }
 
