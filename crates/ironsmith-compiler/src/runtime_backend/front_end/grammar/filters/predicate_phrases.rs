@@ -2342,6 +2342,57 @@ fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     Some(PredicateAst::TargetWasKicked)
 }
 
+fn parse_mana_spent_capture_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_mana_symbol_spent_to_cast_shape(&tokens)
+        .or_else(|| {
+            parse_same_color_mana_spent_to_cast_predicate(words)
+                .map(|amount| PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(amount))
+        })
+        .or_else(|| {
+            parse_mana_spent_to_cast_predicate(words).map(|(amount, symbol)| {
+                PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol }
+            })
+        })
+}
+
+fn parse_mana_symbol_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let spent_phrases: &[&[&str]] = &[
+        &["was", "spent", "to", "cast", "this", "spell"],
+        &["were", "spent", "to", "cast", "this", "spell"],
+    ];
+    let atoms = [
+        LexPattern::amount("symbols", LexCaptureKind::UntilAnyPhrase(spent_phrases)),
+        LexPattern::action("spent", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spent_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&spent_clause.word_refs()) {
+        return None;
+    }
+    let symbol_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let symbol_words = symbol_clause.word_refs();
+    if symbol_words.is_empty()
+        || !symbol_words
+            .iter()
+            .all(|word| MANA_SYMBOL_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+    let mut predicates = symbol_words
+        .iter()
+        .filter_map(|word| parse_mana_symbol(word).ok())
+        .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
+            amount: 1,
+            symbol: Some(symbol),
+        });
+    let first = predicates.next()?;
+    Some(predicates.fold(first, |left, right| {
+        PredicateAst::And(Box::new(left), Box::new(right))
+    }))
+}
+
 fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
@@ -3885,44 +3936,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
     }
-    if filtered.len() == 7
-        && MANA_SYMBOL_WORD_PATTERN.matches_word(filtered[0])
-        && MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&filtered[1..])
-        && let Ok(symbol) = parse_mana_symbol(filtered[0])
-    {
-        return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast {
-            amount: 1,
-            symbol: Some(symbol),
-        });
-    }
-    if filtered.len() >= 8
-        && MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 6..])
-        && filtered[..filtered.len() - 6]
-            .iter()
-            .all(|word| MANA_SYMBOL_WORD_PATTERN.matches_word(word))
-    {
-        let mut predicates = filtered[..filtered.len() - 6]
-            .iter()
-            .filter_map(|word| parse_mana_symbol(word).ok())
-            .map(|symbol| PredicateAst::ManaSpentToCastThisSpellAtLeast {
-                amount: 1,
-                symbol: Some(symbol),
-            });
-        if let Some(first) = predicates.next() {
-            return Ok(predicates.fold(first, |left, right| {
-                PredicateAst::And(Box::new(left), Box::new(right))
-            }));
-        }
-    }
-
-    if let Some(amount) = parse_same_color_mana_spent_to_cast_predicate(&filtered) {
-        return Ok(PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(
-            amount,
-        ));
-    }
-
-    if let Some((amount, symbol)) = parse_mana_spent_to_cast_predicate(&filtered) {
-        return Ok(PredicateAst::ManaSpentToCastThisSpellAtLeast { amount, symbol });
+    if let Some(predicate) = parse_mana_spent_capture_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 5
@@ -5154,6 +5169,43 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_mana_spent_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If {S} was spent to cast this spell", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert!(
+            matches!(
+                parsed,
+                PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                    amount: 1,
+                    symbol: Some(_),
+                }
+            ),
+            "{parsed:?}"
+        );
+
+        let tokens = lex_line("If {R}{G} was spent to cast this spell", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert!(matches!(parsed, PredicateAst::And(_, _)), "{parsed:?}");
+
+        let tokens = lex_line(
+            "If at least three blue mana was spent to cast this spell",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert!(
+            matches!(
+                parsed,
+                PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                    amount: 3,
+                    symbol: Some(_),
+                }
+            ),
+            "{parsed:?}"
+        );
         Ok(())
     }
 
