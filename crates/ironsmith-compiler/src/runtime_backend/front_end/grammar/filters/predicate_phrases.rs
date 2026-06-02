@@ -2033,6 +2033,40 @@ fn parse_player_turn_event_predicate(words: &[&str]) -> Option<PredicateAst> {
     })
 }
 
+fn parse_turn_timing_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let subject = [LexPattern::subject(
+        "subject",
+        LexCaptureKind::OneOf(&["it"]),
+    )];
+    let copula = [LexPattern::action("copula", LexCaptureKind::OneOf(&["is"]))];
+    let negation = [LexPattern::modifier(
+        "negation",
+        LexCaptureKind::OneOf(&["not"]),
+    )];
+    let atoms = [
+        LexPattern::optional(&subject),
+        LexPattern::optional(&copula),
+        LexPattern::optional(&negation),
+        LexPattern::object("turn", LexCaptureKind::WordCount(2)),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    if matched.capture("copula").is_some() && matched.capture("subject").is_none() {
+        return None;
+    }
+    let turn_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(turn_clause.word_refs().as_slice(), ["your", "turn"]) {
+        return None;
+    }
+    let predicate = PredicateAst::YourTurn;
+    if matched.capture("negation").is_some() {
+        Some(PredicateAst::Not(Box::new(predicate)))
+    } else {
+        Some(predicate)
+    }
+}
+
 fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let condition =
@@ -4202,22 +4236,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if matches!(
-        filtered.as_slice(),
-        ["it", "your", "turn"] | ["its", "your", "turn"] | ["your", "turn"]
-    ) {
-        return Ok(PredicateAst::YourTurn);
-    }
-
-    if matches!(
-        filtered.as_slice(),
-        ["it", "not", "your", "turn"]
-            | ["its", "not", "your", "turn"]
-            | ["it", "is", "not", "your", "turn"]
-            | ["its", "is", "not", "your", "turn"]
-            | ["not", "your", "turn"]
-    ) {
-        return Ok(PredicateAst::Not(Box::new(PredicateAst::YourTurn)));
+    if let Some(predicate) = parse_turn_timing_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_life_change_this_turn_predicate(&filtered) {
@@ -4811,6 +4831,30 @@ mod tests {
                 player: PlayerAst::Opponent,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_turn_timing_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            ("If it's your turn", PredicateAst::YourTurn),
+            ("If your turn", PredicateAst::YourTurn),
+            (
+                "If it's not your turn",
+                PredicateAst::Not(Box::new(PredicateAst::YourTurn)),
+            ),
+            (
+                "If not your turn",
+                PredicateAst::Not(Box::new(PredicateAst::YourTurn)),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
