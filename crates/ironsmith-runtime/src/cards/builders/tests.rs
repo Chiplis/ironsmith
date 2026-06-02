@@ -18491,6 +18491,189 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_da
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_heavy_fog_strict_and_keeps_attacking_creature_prevention_clause() {
+    assert_oracle_card_parses_strict("Heavy Fog");
+    let def = parse_oracle_card_definition("Heavy Fog");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+
+    assert!(
+        rendered.contains(
+            "Prevent all damage that would be dealt to you this turn by attacking creatures"
+        ),
+        "Heavy Fog compiled text should keep the attacking-creature source-filter prevention clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Cast this spell only during the declare attackers step and only if you've been attacked this step"
+        ),
+        "Heavy Fog compiled text should keep its declare-attackers cast restriction, got {rendered}"
+    );
+    assert!(
+        debug.contains("preventalldamageeffect")
+            && debug.contains("target: you")
+            && debug.contains("from_source")
+            && debug.contains("attacking: true")
+            && debug.contains("creature"),
+        "Heavy Fog should lower to a prevent-all shield to you from attacking creature sources, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn heavy_fog_cast_restriction_requires_declare_attackers_after_you_were_attacked() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Heavy Fog")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::new())
+        .parse_text(
+            "Cast this spell only during the declare attackers step and only if you've been attacked this step.\n\
+             Prevent all damage that would be dealt to you this turn by attacking creatures.",
+        )
+        .expect("Heavy Fog text should parse for cast-restriction runtime coverage");
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let attacker = create_winds_test_creature(&mut game, "Heavy Fog Attacker", bob, 3, 3);
+
+    let spell = game.object(spell_id).expect("Heavy Fog should be in hand");
+    assert!(
+        !crate::decision::can_cast_spell(
+            &game,
+            alice,
+            spell,
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Heavy Fog should not be castable outside the declare attackers step"
+    );
+
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        ..crate::combat_state::CombatState::default()
+    });
+
+    let spell = game.object(spell_id).expect("Heavy Fog should be in hand");
+    assert!(
+        !crate::decision::can_cast_spell(
+            &game,
+            alice,
+            spell,
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Heavy Fog should not be castable if Alice was not attacked this step"
+    );
+
+    game.combat
+        .as_mut()
+        .expect("combat should be present")
+        .attackers[0]
+        .target = crate::combat_state::AttackTarget::Player(alice);
+
+    let spell = game.object(spell_id).expect("Heavy Fog should be in hand");
+    assert!(
+        crate::decision::can_cast_spell(
+            &game,
+            alice,
+            spell,
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Heavy Fog should be castable during declare attackers after Alice was attacked"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_heavy_fog(game: &mut crate::game_state::GameState, controller: PlayerId) {
+    let heavy_fog = parse_oracle_card_definition("Heavy Fog");
+    let spell_id = game.create_object_from_definition(&heavy_fog, controller, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, controller));
+    crate::game_loop::resolve_stack_entry_with(
+        game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Heavy Fog should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn heavy_fog_prevents_only_damage_to_you_from_attacking_creatures() {
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let bob_attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 3, 3);
+    let bob_nonattacker = create_winds_test_creature(&mut game, "Bob Nonattacker", bob, 3, 3);
+
+    resolve_heavy_fog(&mut game, alice);
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(shields.len(), 1, "Heavy Fog should create one prevention shield");
+    assert!(
+        matches!(shields[0].protected, crate::prevention::PreventionTarget::You)
+            && shields[0].damage_filter.from_source.is_some(),
+        "Heavy Fog should protect you from a source-filtered damage set, got {:?}",
+        shields[0]
+    );
+
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: bob_attacker,
+            target: crate::combat_state::AttackTarget::Player(alice),
+        }],
+        blockers: std::iter::once((bob_attacker, Vec::new())).collect(),
+        ..crate::combat_state::CombatState::default()
+    });
+
+    let (attacking_damage_to_you, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        bob_attacker,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        attacking_damage_to_you, 0,
+        "Heavy Fog should prevent noncombat damage to you from an attacking creature"
+    );
+
+    let (nonattacking_damage_to_you, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        bob_nonattacker,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        nonattacking_damage_to_you, 3,
+        "Heavy Fog should not prevent damage from a nonattacking creature"
+    );
+
+    let (attacking_damage_to_other_player, _) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            bob_attacker,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        attacking_damage_to_other_player, 3,
+        "Heavy Fog should not prevent damage to players other than you"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_prevent_next_damage_to_any_target_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Amulet of Kroog Variant")
         .parse_text(

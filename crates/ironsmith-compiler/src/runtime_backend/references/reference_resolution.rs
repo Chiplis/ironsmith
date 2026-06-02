@@ -2064,6 +2064,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
@@ -2876,6 +2877,14 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             }
             SubjectVerbActionAst::PreventAllDamageToTarget { target, .. } => {
                 bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+                target,
+                source_filter,
+                ..
+            } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+                    + bind_unresolved_it_in_filter(source_filter, seed_tag)
             }
             SubjectVerbActionAst::PreventAllDamageFromSourceFilter { source_filter, .. } => {
                 bind_unresolved_it_in_filter(source_filter, seed_tag)
