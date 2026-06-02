@@ -307,19 +307,6 @@ const BE_VERB_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"]]);
 const MANA_SYMBOL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["w"], &["u"], &["b"], &["r"], &["g"], &["c"], &["s"]]);
-const SOURCE_FILTER_STATE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["is"],
-            &["are"],
-            &["isnt"],
-            &["isn't"],
-            &["arent"],
-            &["aren't"],
-        ]
-);
-const NEGATED_STATE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["isnt"], &["isn't"], &["arent"], &["aren't"]]);
 const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
 const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["attached"], &["tapped"], &["untapped"], &["saddled"]]);
@@ -504,6 +491,79 @@ fn parse_source_attachment_count_predicate(
         comparison,
         display: words.join(" "),
     }))
+}
+
+fn object_filter_has_identity(filter: &ObjectFilter) -> bool {
+    !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+        || filter.colors.is_some()
+        || filter.token
+        || filter.nontoken
+        || !filter.excluded_card_types.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+}
+
+fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let state_phrases: &[&[&str]] = &[
+        &["is"],
+        &["are"],
+        &["isnt"],
+        &["isn't"],
+        &["arent"],
+        &["aren't"],
+    ];
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilAnyPhrase(state_phrases)),
+        LexPattern::action(
+            "state",
+            LexCaptureKind::OneOf(&["is", "are", "isnt", "isn't", "arent", "aren't"]),
+        ),
+        LexPattern::object("descriptor", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_reference_words(&source.word_refs()) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let mut negative = matches!(
+        action.word_refs().as_slice(),
+        ["isnt"] | ["isn't"] | ["arent"] | ["aren't"]
+    );
+    let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let descriptor_words = descriptor.word_refs();
+    let mut descriptor_tokens = descriptor.tokens();
+    if descriptor_words
+        .first()
+        .is_some_and(|word| NOT_WORD_PATTERN.matches_word(word))
+    {
+        negative = true;
+        descriptor_tokens = descriptor_tokens.get(1..).unwrap_or_default();
+    }
+    if descriptor_tokens.is_empty() {
+        return None;
+    }
+    let descriptor_words = crate::runtime_backend::token_word_refs(descriptor_tokens);
+    if descriptor_words
+        .iter()
+        .any(|word| SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+    let filter = parse_object_filter(descriptor_tokens, false).ok()?;
+    if !object_filter_has_identity(&filter) {
+        return None;
+    }
+    let predicate = PredicateAst::SourceMatches(filter);
+    Some(if negative {
+        PredicateAst::Not(Box::new(predicate))
+    } else {
+        predicate
+    })
 }
 
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -4429,59 +4489,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let source_filter_predicate = {
-        let predicate_idx = find_index(&filtered, |word| {
-            SOURCE_FILTER_STATE_WORD_PATTERN.matches_word(word)
-        });
-        predicate_idx.and_then(|idx| {
-            let subject_words = &filtered[..idx];
-            let is_source_subject = is_source_reference_words(subject_words);
-            if !is_source_subject {
-                return None;
-            }
-
-            let mut negative = NEGATED_STATE_WORD_PATTERN.matches_word(filtered[idx]);
-            let mut tail_start = idx + 1;
-            if filtered
-                .get(tail_start)
-                .is_some_and(|word| NOT_WORD_PATTERN.matches_word(word))
-            {
-                negative = true;
-                tail_start += 1;
-            }
-            let descriptor_words = &filtered[tail_start..];
-            if descriptor_words.is_empty()
-                || descriptor_words
-                    .iter()
-                    .any(|word| SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN.matches_word(word))
-            {
-                return None;
-            }
-
-            let descriptor_tokens =
-                crate::runtime_backend::lexer::synthetic_word_tokens(descriptor_words);
-            let Ok(filter) = parse_object_filter(&descriptor_tokens, false) else {
-                return None;
-            };
-            let has_identity = !filter.card_types.is_empty()
-                || !filter.all_card_types.is_empty()
-                || !filter.subtypes.is_empty()
-                || !filter.supertypes.is_empty()
-                || filter.colors.is_some()
-                || filter.token
-                || filter.nontoken
-                || !filter.excluded_card_types.is_empty()
-                || !filter.excluded_subtypes.is_empty();
-            has_identity.then_some((filter, negative))
-        })
-    };
-    if let Some((filter, negative)) = source_filter_predicate {
-        let predicate = PredicateAst::SourceMatches(filter);
-        return Ok(if negative {
-            PredicateAst::Not(Box::new(predicate))
-        } else {
-            predicate
-        });
+    if let Some(predicate) = parse_source_identity_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(has_idx) = find_index(&filtered, |word| {
@@ -5204,6 +5213,37 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, PredicateAst::SecretChoicesMatch, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_identity_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If this enchantment isn't a creature", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::Not(Box::new(PredicateAst::SourceMatches(
+                ObjectFilter::creature()
+            )))
+        );
+
+        let tokens = lex_line("If this source is not an artifact", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::Not(Box::new(PredicateAst::SourceMatches(
+                ObjectFilter::artifact()
+            )))
+        );
+
+        let tokens = lex_line("If this permanent is red", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        match parsed {
+            PredicateAst::SourceMatches(filter) => {
+                assert!(filter.colors.is_some(), "{filter:?}");
+            }
+            other => panic!("expected source identity predicate, got {other:?}"),
         }
         Ok(())
     }
