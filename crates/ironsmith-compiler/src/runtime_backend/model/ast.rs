@@ -1731,6 +1731,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Regenerate {
         target: TargetAst,
+        follow_up_effects: Vec<EffectAst>,
     },
     RegenerateAll {
         filter: ObjectFilter,
@@ -3256,7 +3257,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
             Self::Flip { target } => f.debug_tuple("Flip").field(target).finish(),
-            Self::Regenerate { target } => f.debug_tuple("Regenerate").field(target).finish(),
+            Self::Regenerate {
+                target,
+                follow_up_effects,
+            } => f
+                .debug_struct("Regenerate")
+                .field("target", target)
+                .field("follow_up_effects", follow_up_effects)
+                .finish(),
             Self::RegenerateAll { filter } => f.debug_tuple("RegenerateAll").field(filter).finish(),
             Self::Sacrifice {
                 filter,
@@ -6641,7 +6649,24 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Regenerate { target },
+            SubjectVerbActionAst::Regenerate {
+                target,
+                follow_up_effects: Vec::new(),
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_regenerate_with_follow_up_effects(
+        target: TargetAst,
+        follow_up_effects: Vec<EffectAst>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Regenerate {
+                target,
+                follow_up_effects,
+            },
         )
     }
 

@@ -4418,6 +4418,197 @@ fn regeneration_count_tracks_used_shields_until_cleanup() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn debt_of_loyalty_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_542), "Debt of Loyalty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Regenerate target creature. You gain control of that creature if it regenerates this way.",
+        )
+        .expect("Debt of Loyalty should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_debt_of_loyalty_on_target(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+) {
+    let debt = debt_of_loyalty_definition();
+    let [effect] = debt
+        .spell_effect
+        .as_ref()
+        .expect("Debt of Loyalty should have a spell effect")
+        .flattened_default_effects()
+    else {
+        panic!("Debt of Loyalty should lower to one regenerate effect");
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::target(crate::target::ChooseSpec::creature()),
+            range: 0..1,
+        }]);
+    crate::effects::execute_effect(game, effect, &mut ctx)
+        .expect("Debt of Loyalty should create a regeneration shield");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_gains_control_when_target_regenerates_this_way() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_card = CardBuilder::new(CardId::from_raw(74_543), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    resolve_debt_of_loyalty_on_target(&mut game, source, alice, creature);
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(bob),
+        "Debt of Loyalty should not change control before the shield is used"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    let outcome = crate::events::processing::process_destroy(
+        &mut game,
+        creature,
+        Some(source),
+        &mut dm,
+    );
+
+    assert!(
+        matches!(outcome, crate::events::processing::EventOutcome::Replaced),
+        "the destroy event should be replaced by the regeneration shield, got {outcome:?}"
+    );
+    assert!(
+        game.battlefield.contains(&creature),
+        "the regenerated creature should remain on the battlefield"
+    );
+    assert!(
+        game.is_tapped(creature),
+        "the regenerated creature should be tapped by regeneration"
+    );
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(alice),
+        "Debt of Loyalty should gain control only after the target regenerates this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_does_not_gain_control_if_regeneration_shield_is_unused() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_card = CardBuilder::new(CardId::from_raw(74_544), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    resolve_debt_of_loyalty_on_target(&mut game, source, alice, creature);
+
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(bob),
+        "Debt of Loyalty's control change is conditional on the target actually regenerating"
+    );
+    assert!(
+        game.battlefield.contains(&creature),
+        "the target should remain on the battlefield while the shield is unused"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_shield_is_not_deduplicated_with_plain_regeneration() {
+    struct ChooseLastReplacementDecisionMaker {
+        replacement_choices: usize,
+    }
+
+    impl DecisionMaker for ChooseLastReplacementDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description == "Choose which replacement effect to apply" {
+                self.replacement_choices += 1;
+                return ctx
+                    .options
+                    .iter()
+                    .rev()
+                    .find(|option| option.legal)
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default();
+            }
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let plain_source_card = CardBuilder::new(CardId::from_raw(74_545), "Plain Regeneration")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let plain_source = game.create_object_from_card(&plain_source_card, alice, Zone::Stack);
+    let debt_source_card = CardBuilder::new(CardId::from_raw(74_546), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let debt_source = game.create_object_from_card(&debt_source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    let plain_regeneration = Effect::regenerate(
+        crate::target::ChooseSpec::SpecificObject(creature),
+        Until::EndOfTurn,
+    );
+    let mut plain_ctx = crate::effects::ExecutionContext::new_default(plain_source, alice);
+    crate::effects::execute_effect(&mut game, &plain_regeneration, &mut plain_ctx)
+        .expect("plain regeneration should create the first shield");
+    resolve_debt_of_loyalty_on_target(&mut game, debt_source, alice, creature);
+
+    let mut dm = ChooseLastReplacementDecisionMaker {
+        replacement_choices: 0,
+    };
+    let outcome = crate::events::processing::process_destroy(
+        &mut game,
+        creature,
+        Some(plain_source),
+        &mut dm,
+    );
+
+    assert!(
+        matches!(outcome, crate::events::processing::EventOutcome::Replaced),
+        "the destroy event should be replaced by a regeneration shield, got {outcome:?}"
+    );
+    assert_eq!(
+        dm.replacement_choices, 1,
+        "non-equivalent regeneration shields must be offered as a replacement choice"
+    );
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(alice),
+        "choosing the Debt of Loyalty shield should run its control-change follow-up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn sublime_archangel_grants_real_exalted_triggers_to_other_creatures() {
     let mut game = setup_game();

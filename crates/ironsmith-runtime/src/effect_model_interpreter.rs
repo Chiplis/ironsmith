@@ -530,8 +530,12 @@ where
         };
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegenerateEffect>(&effect) {
-        return Ok(converted);
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::RegenerateEffect<M::Effect>>(&effect) {
+        let follow_up_effects = convert_effects(payload.follow_up_effects.clone(), hooks)?;
+        return Ok(Effect::new(
+            crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone())
+                .with_follow_up_effects(follow_up_effects),
+        ));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::AddManaFromCommanderColorIdentityEffect>(&effect)

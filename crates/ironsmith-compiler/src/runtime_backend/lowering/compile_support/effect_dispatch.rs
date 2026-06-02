@@ -5745,11 +5745,30 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::Flip { target } => {
             compile_tagged_effect_for_target(target, ctx, "flipped", Effect::flip)
         }
-        SubjectVerbActionAst::Regenerate { target } => {
-            let (spec, choices) =
+        SubjectVerbActionAst::Regenerate {
+            target,
+            follow_up_effects,
+        } => {
+            let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut follow_ups = Vec::new();
+            if !follow_up_effects.is_empty() {
+                let saved_last_object_tag = ctx.last_object_tag.clone();
+                ctx.last_object_tag = Some(IT_TAG.to_string());
+                let (compiled_follow_ups, follow_up_choices) = compile_effects(follow_up_effects, ctx)?;
+                follow_ups = compiled_follow_ups;
+                for choice in follow_up_choices {
+                    push_choice(&mut choices, choice);
+                }
+                ctx.last_object_tag = saved_last_object_tag;
+            }
+            let regenerate = crate::effects::RegenerateEffect::new(
+                spec.clone(),
+                crate::effect::Until::EndOfTurn,
+            )
+            .with_follow_up_effects(follow_ups);
             let effect = tag_object_target_effect(
-                Effect::regenerate(spec.clone(), crate::effect::Until::EndOfTurn),
+                Effect::new(regenerate),
                 &spec,
                 ctx,
                 "regenerated",

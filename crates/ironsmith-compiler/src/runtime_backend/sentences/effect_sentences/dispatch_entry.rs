@@ -2129,7 +2129,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target }
+            | SubjectVerbActionAst::Regenerate { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
             | SubjectVerbActionAst::PhaseOut { target }
             | SubjectVerbActionAst::PhaseIn { target }
@@ -2887,6 +2887,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Regenerate {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::TapOrUntap {
                 target: effect_target,

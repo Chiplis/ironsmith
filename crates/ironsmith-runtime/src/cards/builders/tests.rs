@@ -13115,6 +13115,37 @@ fn test_parse_one_word_verb_card_name_does_not_break_clause_parsing() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_debt_of_loyalty_regenerate_control_followup() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Debt of Loyalty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Regenerate target creature. You gain control of that creature if it regenerates this way.",
+        )
+        .expect("Debt of Loyalty should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("regenerate target creature"),
+        "expected Debt of Loyalty to render the regenerate clause, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("you gain control of that creature if it regenerates this way"),
+        "expected Debt of Loyalty to render the regenerate-this-way control clause, got {rendered}"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported parser line fallback"),
+        "Debt of Loyalty should not rely on unsupported fallback marker: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_render_enters_with_single_counter_uses_singular_wording() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Single Counter Probe")
         .card_types(vec![CardType::Creature])
