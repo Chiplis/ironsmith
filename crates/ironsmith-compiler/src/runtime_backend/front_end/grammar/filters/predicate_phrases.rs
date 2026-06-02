@@ -299,7 +299,6 @@ const POWER_OR_TOUGHNESS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["power"], &["toughness"]]);
 const HAS_OR_HAVE_TOXIC_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has", "toxic"], &["have", "toxic"]]);
-const THERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["there"]);
 const MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["most", "common", "color", "among", "all", "permanents"]);
 const IS_OR_ARE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["is"], &["are"]]);
@@ -1403,6 +1402,66 @@ fn parse_player_does_not_control_predicate(
             filter,
         }
     });
+    Some(result)
+}
+
+fn parse_you_control_or_graveyard_predicate(
+    filtered: &[&str],
+) -> Option<Result<PredicateAst, CardTextError>> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("controller", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controls"])),
+        LexPattern::object("control_object", LexCaptureKind::UntilPhrase(&["or"])),
+        LexPattern::word("or"),
+        LexPattern::modifier("graveyard_object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(controller_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+
+    let control_object = matched.capture_clause("control_object", clause)?;
+    if control_object.word_refs().is_empty() {
+        return None;
+    }
+
+    let graveyard_object = matched.capture_clause("graveyard_object", clause)?;
+    let graveyard_tokens = graveyard_object.tokens();
+    let mut graveyard_words = graveyard_object.word_refs();
+    let existential_prefix_len = match graveyard_words.as_slice() {
+        ["there", "is" | "are", ..] => 2,
+        ["there", ..] => 1,
+        _ => 0,
+    };
+    if existential_prefix_len > 0 {
+        graveyard_words.drain(0..existential_prefix_len);
+    }
+    let graveyard_tokens = &graveyard_tokens[existential_prefix_len..];
+    if graveyard_tokens.is_empty() || !YOUR_GRAVEYARD_WORDS_PATTERN.matches_words(&graveyard_words)
+    {
+        return None;
+    }
+
+    let result =
+        parse_object_filter(control_object.tokens(), false).and_then(|mut control_filter| {
+            parse_object_filter(graveyard_tokens, false).map(|mut graveyard_filter| {
+                control_filter.controller = Some(PlayerFilter::You);
+                if graveyard_filter.zone.is_none() {
+                    graveyard_filter.zone = Some(Zone::Graveyard);
+                }
+                if graveyard_filter.owner.is_none() {
+                    graveyard_filter.owner = Some(PlayerFilter::You);
+                }
+                PredicateAst::PlayerControlsOrHasCardInGraveyard {
+                    player: PlayerAst::You,
+                    control_filter,
+                    graveyard_filter,
+                }
+            })
+        });
     Some(result)
 }
 
@@ -4991,40 +5050,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 7
-        && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some(or_idx) = find_index(&filtered, |word| OR_WORD_PATTERN.matches_word(word))
-        && or_idx > 2
-    {
-        let left_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[2..or_idx]);
-        let mut right_words = filtered[or_idx + 1..].to_vec();
-        if right_words
-            .first()
-            .is_some_and(|word| THERE_WORD_PATTERN.matches_word(word))
-        {
-            right_words = right_words[1..].to_vec();
-        }
-        if YOUR_GRAVEYARD_WORDS_PATTERN.matches_words(&right_words) {
-            let right_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(right_words);
-            if let (Ok(mut control_filter), Ok(mut graveyard_filter)) = (
-                parse_object_filter(&left_tokens, false),
-                parse_object_filter(&right_tokens, false),
-            ) {
-                control_filter.controller = Some(PlayerFilter::You);
-                if graveyard_filter.zone.is_none() {
-                    graveyard_filter.zone = Some(Zone::Graveyard);
-                }
-                if graveyard_filter.owner.is_none() {
-                    graveyard_filter.owner = Some(PlayerFilter::You);
-                }
-                return Ok(PredicateAst::PlayerControlsOrHasCardInGraveyard {
-                    player: PlayerAst::You,
-                    control_filter,
-                    graveyard_filter,
-                });
-            }
-        }
+    if let Some(predicate) = parse_you_control_or_graveyard_predicate(&filtered).transpose()? {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 3 && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered) {
@@ -5605,6 +5632,33 @@ mod tests {
                 },
                 "{text}"
             );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_control_or_graveyard_uses_capture_parser() -> Result<(), CardTextError> {
+        for text in [
+            "If you control a creature or there is a creature card in your graveyard",
+            "If you control an artifact or artifact card in your graveyard",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            let PredicateAst::PlayerControlsOrHasCardInGraveyard {
+                player,
+                control_filter,
+                graveyard_filter,
+            } = parsed
+            else {
+                panic!("expected control-or-graveyard predicate for {text}");
+            };
+            assert_eq!(player, PlayerAst::You, "{text}");
+            assert_eq!(control_filter.controller, Some(PlayerFilter::You), "{text}");
+            assert_eq!(graveyard_filter.zone, Some(Zone::Graveyard), "{text}");
+            assert_eq!(graveyard_filter.owner, Some(PlayerFilter::You), "{text}");
         }
         Ok(())
     }
