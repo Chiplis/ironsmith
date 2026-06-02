@@ -70,13 +70,6 @@ const THERE_ARE_OR_WERE_PREFIX_PATTERN: ClauseShape<'static> =
 const OR_IF_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or", "if"]);
 const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "your", "life", "total"]);
-const AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
-const TYPE_OR_TYPES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["type"], &["types"]]);
-const SACRIFICED_OR_SACRIFICED_TAG_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["sacrificed"], &["sacrificed_0"]]);
-const PERMANENT_OR_PERMANENTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["permanent"], &["permanents"]]);
 const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -3924,54 +3917,52 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 }
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if words.len() >= 9
-        && THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words)
-        && let Some((count, rest_start)) = predicate_at_least_quantity_prefix(&words[2..])
-        && words
-            .get(2 + rest_start)
-            .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
-        && words
-            .get(3 + rest_start)
-            .is_some_and(|word| TYPE_OR_TYPES_WORD_PATTERN.matches_word(word))
-        && words
-            .get(4 + rest_start)
-            .is_some_and(|word| AMONG_WORD_PATTERN.matches_word(word))
-        && words
-            .get(5 + rest_start)
-            .is_some_and(|word| SACRIFICED_OR_SACRIFICED_TAG_WORD_PATTERN.matches_word(word))
-        && (words
-            .get(6 + rest_start)
-            .is_some_and(|word| PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(word))
-            || words.len() == 6 + rest_start)
-    {
-        return Some(PredicateAst::ValueComparison {
-            left: Value::CardTypesAmong(ObjectFilter::tagged("sacrificed_0")),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(count as i32),
-        });
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let card_type_phrases: &[&[&str]] = &[
+        &["card", "type"],
+        &["card", "types"],
+        &["cards", "type"],
+        &["cards", "types"],
+    ];
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::amount(
+            "quantity",
+            LexCaptureKind::UntilAnyPhrase(card_type_phrases),
+        ),
+        LexPattern::any_phrase(card_type_phrases),
+        LexPattern::word("among"),
+        LexPattern::modifier("scope", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(&existential.word_refs()) {
+        return None;
     }
 
-    if words.len() >= 13
-        && THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words)
-        && let Some((count, rest_start)) = predicate_at_least_quantity_prefix(&words[2..])
-        && words
-            .get(2 + rest_start)
-            .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
-        && words
-            .get(3 + rest_start)
-            .is_some_and(|word| TYPE_OR_TYPES_WORD_PATTERN.matches_word(word))
-        && words
-            .get(4 + rest_start)
-            .is_some_and(|word| AMONG_WORD_PATTERN.matches_word(word))
-        && let Some(filter) = permanents_and_your_graveyard_scope(&words[5 + rest_start..])
-    {
-        return Some(PredicateAst::ValueComparison {
-            left: Value::CardTypesAmong(filter),
-            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-            right: Value::Fixed(count as i32),
-        });
+    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity_words = quantity.word_refs();
+    let (count, used) = predicate_at_least_quantity_prefix(&quantity_words)?;
+    if used != quantity_words.len() {
+        return None;
     }
-    None
+
+    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let scope_words = scope.word_refs();
+    let filter = match scope_words.as_slice() {
+        ["sacrificed" | "sacrificed_0"]
+        | ["sacrificed" | "sacrificed_0", "permanent" | "permanents"] => {
+            ObjectFilter::tagged("sacrificed_0")
+        }
+        _ => permanents_and_your_graveyard_scope(&scope_words)?,
+    };
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::CardTypesAmong(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
 }
 
 fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -7065,6 +7056,47 @@ mod tests {
                 "{text}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_card_types_among_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If there are six or more card types among permanents you control and/or cards in your graveyard",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        let PredicateAst::ValueComparison {
+            left: Value::CardTypesAmong(filter),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(6),
+        } = parsed
+        else {
+            panic!("expected card-types-among value comparison");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(
+            filter
+                .any_of
+                .contains(&ObjectFilter::permanent().you_control())
+        );
+        assert!(filter.any_of.iter().any(|filter| {
+            filter.zone == Some(Zone::Graveyard) && filter.owner == Some(PlayerFilter::You)
+        }));
+
+        let tokens = lex_line(
+            "If there are two or more card types among sacrificed permanents",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::ValueComparison {
+                left: Value::CardTypesAmong(ObjectFilter::tagged("sacrificed_0")),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(2),
+            }
+        );
         Ok(())
     }
 
