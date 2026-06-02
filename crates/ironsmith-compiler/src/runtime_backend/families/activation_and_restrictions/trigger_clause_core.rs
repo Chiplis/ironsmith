@@ -3898,7 +3898,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_for_word_index(block_word_idx)
                 .unwrap_or(tokens.len());
             let subject_tokens = &tokens[..block_token_idx];
+            let one_or_more = has_leading_one_or_more(subject_tokens);
             Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
+                Some(filter) if one_or_more => TriggerSpec::BlocksOneOrMore(filter),
                 Some(filter) => TriggerSpec::Blocks(filter),
                 None => TriggerSpec::ThisBlocks,
             })

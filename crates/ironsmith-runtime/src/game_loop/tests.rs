@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness, PtValue};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::emrakul_the_promised_end;
-use crate::combat_state::AttackTarget;
+use crate::combat_state::{AttackTarget, CombatState};
 use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionMaker};
 use crate::effect::RestrictionExt as _;
 use crate::effect::{Effect, EventValueSpec, Until, Value};
@@ -36,6 +36,188 @@ fn setup_three_player_game() -> GameState {
         ],
         20,
     )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn tide_of_war_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever one or more creatures block, flip a coin. If you win the flip, each blocking creature is sacrificed by its controller. If you lose the flip, each blocked creature is sacrificed by its controller.",
+        )
+        .expect("Tide of War should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_tide_of_war_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_tide_of_war_combat_state(
+    game: &mut GameState,
+    attacker: ObjectId,
+    blocker: ObjectId,
+    defending_player: PlayerId,
+) {
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(defending_player),
+    });
+    combat.blockers.insert(attacker, vec![blocker]);
+    game.combat = Some(combat);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_tide_of_war_trigger(
+    game: &mut GameState,
+    tide_id: ObjectId,
+    controller: PlayerId,
+    attacker: ObjectId,
+    blocker: ObjectId,
+) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let tide = tide_of_war_definition();
+    let triggered = tide
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Tide of War should have one triggered ability");
+    let blocker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(blocker).expect("blocking creature should exist"),
+        game,
+    );
+    let attacker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(attacker).expect("blocked creature should exist"),
+        game,
+    );
+    let trigger_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureBlockedEvent::with_snapshots(
+            blocker,
+            attacker,
+            blocker_snapshot,
+            attacker_snapshot,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx =
+        ExecutionContext::new_default(tide_id, controller).with_triggering_event(trigger_event);
+    for effect in triggered.effects.flattened_default_effects() {
+        execute_effect(game, effect, &mut ctx).expect("Tide of War trigger effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_queues_once_when_multiple_creatures_block() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let _ = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker_one = create_tide_of_war_creature(&mut game, "Blocked Attacker One", bob);
+    let attacker_two = create_tide_of_war_creature(&mut game, "Blocked Attacker Two", bob);
+    let blocker_one = create_tide_of_war_creature(&mut game, "Blocking Creature One", alice);
+    let blocker_two = create_tide_of_war_creature(&mut game, "Blocking Creature Two", alice);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_one,
+        target: AttackTarget::Player(alice),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_two,
+        target: AttackTarget::Player(alice),
+    });
+    let mut trigger_queue = TriggerQueue::new();
+
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            BlockerDeclaration {
+                blocker: blocker_one,
+                blocking: attacker_one,
+            },
+            BlockerDeclaration {
+                blocker: blocker_two,
+                blocking: attacker_two,
+            },
+        ],
+        alice,
+    )
+    .expect("Tide of War blockers should be legal");
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Tide of War should trigger once for one or more creatures blocking"
+    );
+    assert_eq!(
+        trigger_queue.entries[0].ability.trigger.display(),
+        "Whenever one or more creatures block"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_win_flip_sacrifices_blocking_creatures_only() {
+    let mut game = setup_game();
+    game.set_random_seed(2);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let tide_id = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker = create_tide_of_war_creature(&mut game, "Blocked Attacker", bob);
+    let blocker = create_tide_of_war_creature(&mut game, "Blocking Creature", alice);
+    let noncombat = create_tide_of_war_creature(&mut game, "Noncombat Creature", alice);
+    put_tide_of_war_combat_state(&mut game, attacker, blocker, alice);
+
+    resolve_tide_of_war_trigger(&mut game, tide_id, alice, attacker, blocker);
+
+    assert!(game.battlefield.contains(&attacker));
+    assert!(!game.battlefield.contains(&blocker));
+    assert!(game.battlefield.contains(&noncombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_lose_flip_sacrifices_blocked_creatures_only() {
+    let mut game = setup_game();
+    game.set_random_seed(7);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let tide_id = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker = create_tide_of_war_creature(&mut game, "Blocked Attacker", bob);
+    let blocker = create_tide_of_war_creature(&mut game, "Blocking Creature", alice);
+    let noncombat = create_tide_of_war_creature(&mut game, "Noncombat Creature", bob);
+    put_tide_of_war_combat_state(&mut game, attacker, blocker, alice);
+
+    resolve_tide_of_war_trigger(&mut game, tide_id, alice, attacker, blocker);
+
+    assert!(!game.battlefield.contains(&attacker));
+    assert!(game.battlefield.contains(&blocker));
+    assert!(game.battlefield.contains(&noncombat));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

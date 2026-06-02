@@ -149,6 +149,7 @@ pub enum DelayedTriggerSpec {
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     Blocks(ObjectFilter),
+    BlocksOneOrMore(ObjectFilter),
     LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DealsCombatDamageToPlayer {

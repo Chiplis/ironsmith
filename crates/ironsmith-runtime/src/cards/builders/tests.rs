@@ -32433,6 +32433,31 @@ fn parse_goblin_kites_strictly_and_renders_delayed_coin_flip_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn tide_of_war_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Tide of War");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        "Whenever one or more creatures block, flip a coin. If you win the flip, each blocking creature is sacrificed by its controller. If you lose the flip, each blocked creature is sacrificed by its controller."
+    );
+    assert!(
+        debug.contains("BlocksTrigger")
+            && debug.contains("one_or_more: true")
+            && debug.contains("FlipCoinEffect")
+            && debug.contains("Happened")
+            && debug.contains("DidNotHappen")
+            && debug.contains("ForEachObject")
+            && debug.contains("blocking: true")
+            && debug.contains("blocked: true")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected Tide of War to structurally model its one-or-more block trigger and both coin-flip sacrifice branches, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_object_filter_with_entered_since_last_turn_ended_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Premature Burial Variant")
         .card_types(vec![CardType::Sorcery])

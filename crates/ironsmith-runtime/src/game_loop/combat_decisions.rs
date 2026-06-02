@@ -587,6 +587,9 @@ pub fn apply_blocker_declarations(
         return Err(ResponseError::InvalidBlockers(err.to_string()).into());
     }
 
+    // Block triggers can depend on the complete set of blockers declared together.
+    game.combat = Some(combat.clone());
+
     // Emit block triggers (per declaration).
     for (blocker, attacker) in &pairs {
         let event_provenance = game
