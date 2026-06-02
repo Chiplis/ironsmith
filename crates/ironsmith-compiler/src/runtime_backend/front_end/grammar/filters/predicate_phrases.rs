@@ -260,48 +260,6 @@ const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
             &["that", "creature", "wasnt", "blocking"],
         ]
 );
-const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
-const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "you",
-                "or",
-                "player",
-                "youre",
-                "attacking",
-                "has",
-                "initiative",
-            ],
-            &[
-                "you",
-                "or",
-                "a",
-                "player",
-                "youre",
-                "attacking",
-                "has",
-                "the",
-                "initiative",
-            ],
-        ]
-);
-const IT_IS_NIGHT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["its", "night"], &["it", "is", "night"], &["it", "night"]]);
-const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "its", "the", "first", "combat", "phase", "of", "the", "turn",
-            ],
-            &[
-                "it", "is", "the", "first", "combat", "phase", "of", "the", "turn",
-            ],
-            &["it", "first", "combat", "phase", "of", "turn"],
-            &["it", "the", "first", "combat", "phase", "of", "the", "turn"],
-        ]
-);
 const SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2096,6 +2054,165 @@ fn parse_target_spell_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
         return None;
     }
     Some(PredicateAst::TargetWasKicked)
+}
+
+fn parse_global_state_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    parse_no_creatures_on_battlefield_shape(&tokens)
+        .or_else(|| parse_you_or_defending_initiative_shape(&tokens))
+        .or_else(|| parse_it_is_night_shape(&tokens))
+        .or_else(|| parse_first_combat_phase_shape(&tokens))
+}
+
+fn parse_no_creatures_on_battlefield_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::word("no"),
+        LexPattern::object("object", LexCaptureKind::WordCount(1)),
+        LexPattern::action("location", LexCaptureKind::WordCount(2)),
+        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(object.word_refs().as_slice(), ["creature"] | ["creatures"]) {
+        return None;
+    }
+    let location = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        location.word_refs().as_slice(),
+        ["are", "on"] | ["is", "on"]
+    ) {
+        return None;
+    }
+    let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(zone.word_refs().as_slice(), ["battlefield"]) {
+        return None;
+    }
+    Some(PredicateAst::PlayerControlsNo {
+        player: PlayerAst::Any,
+        filter: ObjectFilter::creature(),
+    })
+}
+
+fn parse_you_or_defending_initiative_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("left", LexCaptureKind::WordCount(1)),
+        LexPattern::word("or"),
+        LexPattern::subject("right", LexCaptureKind::UntilPhrase(&["has"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object("status", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let left = matched.capture_clause("left", clause)?;
+    if !matches!(left.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let right = matched.capture_clause("right", clause)?;
+    if !matches!(
+        right.word_refs().as_slice(),
+        ["player", "youre", "attacking"] | ["a", "player", "youre", "attacking"]
+    ) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["has"]) {
+        return None;
+    }
+    let status = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        status.word_refs().as_slice(),
+        ["initiative"] | ["the", "initiative"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::Or(
+        Box::new(PredicateAst::PlayerHasInitiative {
+            player: PlayerAst::You,
+        }),
+        Box::new(PredicateAst::PlayerHasInitiative {
+            player: PlayerAst::Defending,
+        }),
+    ))
+}
+
+fn parse_it_is_night_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let copula_atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["is"])),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    if let Some(matched) = LexPattern::new(&copula_atoms).match_clause(clause) {
+        let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+        let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        if matches!(subject.word_refs().as_slice(), ["it"])
+            && matches!(copula.word_refs().as_slice(), ["is"])
+            && matches!(state.word_refs().as_slice(), ["night"])
+        {
+            return Some(PredicateAst::ItIsNight);
+        }
+    }
+
+    let compact_atoms = [
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&compact_atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if matches!(subject.word_refs().as_slice(), ["it"])
+        && matches!(state.word_refs().as_slice(), ["night"])
+    {
+        Some(PredicateAst::ItIsNight)
+    } else {
+        None
+    }
+}
+
+fn parse_first_combat_phase_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let copula_atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["is"])),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    if let Some(matched) = LexPattern::new(&copula_atoms).match_clause(clause) {
+        let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+        let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        if matches!(subject.word_refs().as_slice(), ["it"])
+            && matches!(copula.word_refs().as_slice(), ["is"])
+            && first_combat_phase_tail(&state.word_refs())
+        {
+            return Some(PredicateAst::FirstCombatPhaseOfTurn);
+        }
+    }
+
+    let compact_atoms = [
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&compact_atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if matches!(subject.word_refs().as_slice(), ["it"])
+        && first_combat_phase_tail(&state.word_refs())
+    {
+        Some(PredicateAst::FirstCombatPhaseOfTurn)
+    } else {
+        None
+    }
+}
+
+fn first_combat_phase_tail(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["the", "first", "combat", "phase", "of", "the", "turn"]
+            | ["first", "combat", "phase", "of", "turn"]
+            | ["the", "first", "combat", "phase", "of", "turn"]
+    )
 }
 
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4253,13 +4370,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
-    if NO_CREATURES_ON_BATTLEFIELD_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerControlsNo {
-            player: PlayerAst::Any,
-            filter: ObjectFilter::creature(),
-        });
-    }
-
     if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -4272,23 +4382,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Or(
-            Box::new(PredicateAst::PlayerHasInitiative {
-                player: PlayerAst::You,
-            }),
-            Box::new(PredicateAst::PlayerHasInitiative {
-                player: PlayerAst::Defending,
-            }),
-        ));
-    }
-
-    if IT_IS_NIGHT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ItIsNight);
-    }
-
-    if FIRST_COMBAT_PHASE_OF_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::FirstCombatPhaseOfTurn);
+    if let Some(predicate) = parse_global_state_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if SOURCE_DEALT_COMBAT_DAMAGE_TO_PLAYER_THIS_TURN_PATTERN.matches_words(&filtered) {
@@ -4468,6 +4563,30 @@ mod tests {
             let predicate_tokens = predicate_tokens_after_if(&tokens);
 
             let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_global_states_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If no creatures are on the battlefield",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::Any,
+                    filter: ObjectFilter::creature(),
+                },
+            ),
+            ("If it's night", PredicateAst::ItIsNight),
+            (
+                "If it is the first combat phase of the turn",
+                PredicateAst::FirstCombatPhaseOfTurn,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
 
             assert_eq!(parsed, expected, "{text}");
         }
