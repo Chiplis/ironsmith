@@ -821,6 +821,7 @@ fn compile_subject_verb_effect(
                 .push(resolved_tag.as_str().to_string());
             Ok((effects, choices))
         }
+        SubjectVerbActionAst::NoteLifeTotal => Ok((vec![Effect::note_life_total()], Vec::new())),
         SubjectVerbActionAst::ChooseSpellCastHistory {
             cast_by,
             filter,

@@ -3153,6 +3153,173 @@ fn happily_ever_after_keeps_life_draw_and_win_gate() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sigardas_splendor_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Sigarda's Splendor");
+
+    let def = parse_oracle_card_definition("Sigarda's Splendor");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+
+    assert!(
+        rendered.contains("As this enchantment enters, note your life total."),
+        "expected as-enters note text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "if your life total is greater than or equal to the last noted life total for this enchantment"
+        ) && rendered.contains("Note your life total."),
+        "expected conditional upkeep draw plus note update, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you cast a white spell, you gain 1 life."),
+        "expected white spell life-gain trigger text, got {rendered}"
+    );
+    assert!(
+        debug.contains("NoteLifeTotalAsEnters")
+            && debug.contains("NoteLifeTotalEffect")
+            && debug.contains("LastNotedLifeTotal")
+            && debug.contains("ConditionalEffect"),
+        "expected Sigarda's Splendor to model note, compare, conditional draw, and note update, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sigardas_splendor_notes_life_and_draws_conditionally_at_runtime() {
+    fn sigarda_upkeep_trigger(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered)
+                    if triggered.trigger.display().to_ascii_lowercase().contains("upkeep") =>
+                {
+                    Some(triggered)
+                }
+                _ => None,
+            })
+            .expect("Sigarda's Splendor should have an upkeep trigger")
+    }
+
+    fn add_library_card(game: &mut crate::game_state::GameState, player: PlayerId, name: &str) {
+        let filler = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_definition(&filler, player, Zone::Library);
+    }
+
+    fn resolve_upkeep_trigger(
+        game: &mut crate::game_state::GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        triggered: &crate::ability::TriggeredAbility,
+    ) {
+        let mut ctx = crate::effects::ExecutionContext::new_default(source, controller);
+        for effect in triggered.effects.flattened_default_effects() {
+            crate::effects::execute_effect(game, effect, &mut ctx)
+                .expect("Sigarda's Splendor upkeep trigger should resolve");
+        }
+    }
+
+    let def = parse_oracle_card_definition("Sigarda's Splendor");
+    let upkeep = sigarda_upkeep_trigger(&def);
+    let alice = PlayerId::from_index(0);
+
+    let mut equal_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let equal_sigarda = equal_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_library_card(&mut equal_game, alice, "Sigarda Equal Branch Draw");
+    assert_eq!(
+        equal_game.noted_life_total_for_source(equal_sigarda),
+        Some(20),
+        "as-enters ability should note the controller's current life total"
+    );
+
+    resolve_upkeep_trigger(&mut equal_game, equal_sigarda, alice, upkeep);
+    assert_eq!(
+        equal_game.player(alice).expect("alice exists").hand.len(),
+        1,
+        "upkeep trigger should draw when life is at least the noted life total"
+    );
+    assert_eq!(
+        equal_game.noted_life_total_for_source(equal_sigarda),
+        Some(20),
+        "upkeep trigger should note the current life total after resolving"
+    );
+
+    let mut lower_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let lower_sigarda = lower_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_library_card(&mut lower_game, alice, "Sigarda Lower Branch Draw");
+    lower_game.lose_life(alice, 1);
+
+    resolve_upkeep_trigger(&mut lower_game, lower_sigarda, alice, upkeep);
+    assert_eq!(
+        lower_game.player(alice).expect("alice exists").hand.len(),
+        0,
+        "upkeep trigger should not draw when life is below the noted life total"
+    );
+    assert_eq!(
+        lower_game.noted_life_total_for_source(lower_sigarda),
+        Some(19),
+        "upkeep trigger should still update the noted life total when the draw branch is false"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sigardas_splendor_gains_life_when_controller_casts_white_spell() {
+    fn spell_cast_event(spell: ObjectId, caster: PlayerId) -> crate::triggers::TriggerEvent {
+        crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new(spell, caster, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        )
+    }
+
+    let def = parse_oracle_card_definition("Sigarda's Splendor");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let sigarda_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let blue_spell = CardDefinitionBuilder::new(CardId::new(), "Blue Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let blue_spell_id = game.create_object_from_definition(&blue_spell, alice, Zone::Stack);
+    let blue_event = spell_cast_event(blue_spell_id, alice);
+    assert!(
+        crate::triggers::check_triggers(&game, &blue_event)
+            .into_iter()
+            .all(|entry| entry.source != sigarda_id),
+        "Sigarda's Splendor should not trigger for nonwhite spells"
+    );
+
+    let white_spell = CardDefinitionBuilder::new(CardId::new(), "White Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let white_spell_id = game.create_object_from_definition(&white_spell, alice, Zone::Stack);
+    let white_event = spell_cast_event(white_spell_id, alice);
+    let triggered = crate::triggers::check_triggers(&game, &white_event);
+    let entry = triggered
+        .iter()
+        .find(|entry| entry.source == sigarda_id)
+        .expect("Sigarda's Splendor should trigger when its controller casts a white spell");
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(sigarda_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Sigarda's Splendor white-spell trigger should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        21,
+        "controller should gain 1 life from Sigarda's Splendor's white-spell trigger"
+    );
+}
+
 #[test]
 fn test_creature_with_etb() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "ETB Creature")

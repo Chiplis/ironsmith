@@ -1335,6 +1335,10 @@ impl Effect {
         Self::new(crate::effects::GainLifeEffect::new(amount.into(), target))
     }
 
+    pub fn note_life_total() -> Self {
+        Self::new(crate::effects::NoteLifeTotalEffect)
+    }
+
     pub fn lose_the_game() -> Self {
         Self::new(crate::effects::LoseTheGameEffect::you())
     }

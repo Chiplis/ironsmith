@@ -1970,6 +1970,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseCreatureType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
+            | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddMana { .. }
             | SubjectVerbActionAst::ExchangeLifeTotals { .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
@@ -2474,6 +2475,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ChooseCardType { .. }
             | SubjectVerbActionAst::ChooseNamedOption { .. }
             | SubjectVerbActionAst::ChooseCreatureType { .. }
+            | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool

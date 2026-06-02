@@ -630,6 +630,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ChooseCreatureType { .. }
         | SubjectVerbActionAst::ChooseCardName { .. }
         | SubjectVerbActionAst::ChoosePlayer { .. }
+        | SubjectVerbActionAst::NoteLifeTotal
         | SubjectVerbActionAst::AddMana { .. }
         | SubjectVerbActionAst::ExchangeLifeTotals { .. }
         | SubjectVerbActionAst::ExchangeTextBoxes { .. }

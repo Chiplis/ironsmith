@@ -827,6 +827,7 @@ pub(crate) enum SubjectVerbActionAst {
         random: bool,
         exclude_previous_choices: usize,
     },
+    NoteLifeTotal,
     ChooseSpellCastHistory {
         cast_by: PlayerAst,
         filter: ObjectFilter,
@@ -1899,6 +1900,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("random", random)
                 .field("exclude_previous_choices", exclude_previous_choices)
                 .finish(),
+            Self::NoteLifeTotal => f.write_str("NoteLifeTotal"),
             Self::ChooseSpellCastHistory {
                 cast_by,
                 filter,

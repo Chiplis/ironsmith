@@ -385,6 +385,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
+    NoteLifeTotalAsEnters(String),
     ChooseCardNameAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
@@ -1191,6 +1192,9 @@ where
             },
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
+            }
+            StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
+                StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
             StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbilityPayload::ChooseCardNameAsEnters(display)
@@ -3216,6 +3220,14 @@ impl<
             id: Some(StaticAbilityId::ChoosePlayerAsEnters),
             label: display.clone(),
             payload: StaticAbilityPayload::ChoosePlayerAsEnters(display),
+        }
+    }
+    pub fn note_life_total_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::NoteLifeTotalAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::NoteLifeTotalAsEnters(display),
         }
     }
     pub fn choose_card_name_as_enters(display: impl Into<String>) -> Self {

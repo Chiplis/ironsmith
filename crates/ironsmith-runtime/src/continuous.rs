@@ -4392,6 +4392,7 @@ fn resolve_value_with_context(
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::LifeTotalDifference(_)
+        | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)

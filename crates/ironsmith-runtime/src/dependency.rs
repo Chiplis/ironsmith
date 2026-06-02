@@ -1360,6 +1360,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::LifeTotalDifference(_)
+        | Value::LastNotedLifeTotal
         | Value::Speed(_)
         | Value::StartingLifeTotal(_)
         | Value::HalfLifeTotalRoundedUp(_)

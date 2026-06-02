@@ -548,6 +548,9 @@ impl DrawCardsEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NoteLifeTotalEffect;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetOnlyEffect {
     pub target: ChooseSpec,

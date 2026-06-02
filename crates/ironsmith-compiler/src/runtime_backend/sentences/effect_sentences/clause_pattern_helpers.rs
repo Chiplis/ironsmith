@@ -929,6 +929,7 @@ pub(crate) fn parse_verb_first_clause(
         "detain" => Verb::Detain,
         "goad" => Verb::Goad,
         "suspect" => Verb::Suspect,
+        "note" => Verb::Note,
         "look" => Verb::Look,
         "end" => Verb::End,
         _ => return Ok(None),

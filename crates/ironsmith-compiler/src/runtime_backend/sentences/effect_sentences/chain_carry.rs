@@ -1662,6 +1662,13 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
             | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
+        || matches!(
+            predicate,
+            PredicateAst::ValueComparison {
+                right: Value::LastNotedLifeTotal,
+                ..
+            }
+        )
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {
@@ -2360,6 +2367,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::ChooseCreatureType { .. }
                 | SubjectVerbActionAst::ChooseCardName { .. }
                 | SubjectVerbActionAst::ChoosePlayer { .. }
+                | SubjectVerbActionAst::NoteLifeTotal
                 | SubjectVerbActionAst::AddMana { .. }
                 | SubjectVerbActionAst::AddManaScaled { .. }
                 | SubjectVerbActionAst::AddManaAnyColor { .. }
@@ -2435,6 +2443,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::ChooseCreatureType { .. }
                 | SubjectVerbActionAst::ChooseCardName { .. }
                 | SubjectVerbActionAst::ChoosePlayer { .. }
+                | SubjectVerbActionAst::NoteLifeTotal
                 | SubjectVerbActionAst::AddMana { .. }
                 | SubjectVerbActionAst::AddManaScaled { .. }
                 | SubjectVerbActionAst::AddManaAnyColor { .. }
@@ -2914,5 +2923,6 @@ pub(crate) enum Verb {
     Detain,
     Goad,
     Suspect,
+    Note,
     End,
 }
