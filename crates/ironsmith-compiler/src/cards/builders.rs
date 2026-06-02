@@ -300,6 +300,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Riot => self.riot(),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
+            KeywordAction::Recover(cost) => self.recover(cost),
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
             KeywordAction::Unearth(cost) => self.unearth(cost),
@@ -1209,6 +1210,60 @@ impl CardDefinitionBuilder {
                 presentation_label: None,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
+        })
+    }
+
+    pub fn recover(self, cost: ManaCost) -> Self {
+        let payment_id = crate::effect::EffectId(0);
+        let cost_text = cost.to_oracle();
+        let trigger = crate::triggers::Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .to(crate::zone::Zone::Graveyard)
+                .filter(
+                    crate::target::ObjectFilter::creature()
+                        .owned_by(crate::target::PlayerFilter::You),
+                ),
+        );
+
+        self.with_ability(crate::ability::Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger,
+                effects: crate::resolution::ResolutionProgram::from_effects(vec![
+                    crate::effect::Effect::conditional_only(
+                        crate::effect::Condition::SourceIsInZone(crate::zone::Zone::Graveyard),
+                        vec![
+                            crate::effect::Effect::with_id(
+                                payment_id.0,
+                                crate::effect::Effect::may(vec![crate::effect::Effect::new(
+                                    crate::effects::PayManaEffect::new(
+                                        cost,
+                                        crate::target::ChooseSpec::SourceController,
+                                    ),
+                                )]),
+                            ),
+                            crate::effect::Effect::if_then(
+                                payment_id,
+                                crate::effect::EffectPredicate::Happened,
+                                vec![crate::effect::Effect::return_from_graveyard_to_hand(
+                                    crate::target::ChooseSpec::Source,
+                                )],
+                            ),
+                            crate::effect::Effect::if_then(
+                                payment_id,
+                                crate::effect::EffectPredicate::DidNotHappen,
+                                vec![crate::effect::Effect::exile(
+                                    crate::target::ChooseSpec::Source,
+                                )],
+                            ),
+                        ],
+                    ),
+                ]),
+                choices: vec![],
+                intervening_if: None,
+                presentation_label: Some(format!("keyword:recover {cost_text}")),
+            }),
+            functional_zones: vec![crate::zone::Zone::Graveyard],
         })
     }
 

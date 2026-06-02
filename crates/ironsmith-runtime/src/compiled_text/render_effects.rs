@@ -17323,6 +17323,9 @@ fn apply_triggered_presentation_label(
     if label.is_empty() || label.starts_with("__ironsmith_") || line.starts_with(label) {
         return line;
     }
+    if let Some(cost) = label.strip_prefix("keyword:recover ") {
+        return format!("Recover {cost}");
+    }
     let label = if label.eq_ignore_ascii_case("catch") {
         "... Catch"
     } else {
@@ -39894,6 +39897,14 @@ fn describe_annihilator_keyword(triggered: &crate::ability::TriggeredAbility) ->
     Some(format!("Annihilator {amount}"))
 }
 
+fn describe_recover_keyword(triggered: &crate::ability::TriggeredAbility) -> Option<String> {
+    let cost = triggered
+        .presentation_label
+        .as_deref()?
+        .strip_prefix("keyword:recover ")?;
+    Some(format!("Recover {cost}"))
+}
+
 fn describe_backup_keyword(triggered: &crate::ability::TriggeredAbility) -> Option<String> {
     if triggered.intervening_if.is_some()
         || !triggered.choices.is_empty()
@@ -40040,6 +40051,9 @@ pub(super) fn describe_ability(
             )]
         }
         AbilityKind::Triggered(triggered) => {
+            if let Some(rendered) = describe_recover_keyword(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_backup_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }

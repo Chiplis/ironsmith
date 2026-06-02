@@ -11840,6 +11840,192 @@ fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn resize_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(46_512), "Resize")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +3/+3 until end of turn.\nRecover {1}{G}")
+        .expect("Resize should parse with recover")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_paid_returns_resize_from_graveyard_to_hand() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Resize Recover Victim", alice, 1, 1);
+    {
+        let player = game.player_mut(alice).expect("alice exists");
+        player.mana_pool.add(ManaSymbol::Colorless, 1);
+        player.mana_pool.add(ManaSymbol::Green, 1);
+    }
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(trigger_queue.entries[0].source, resize_id);
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "paying recover should return Resize to hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "recover payment should spend {{1}}{{G}}"
+    );
+    assert!(
+        game.exile
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "paid recover should not exile Resize"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_declined_exiles_resize_from_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Resize Decline Victim", alice, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(trigger_queue.entries[0].source, resize_id);
+
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert!(
+        game.exile
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "declining recover should exile Resize"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "declined recover should not return Resize to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_does_not_exile_resize_if_it_left_graveyard_before_resolution() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let resize_stable_id = game.object(resize_id).expect("Resize exists").stable_id;
+    let victim_id = create_creature(&mut game, "Resize Moved Victim", alice, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    let moved_resize_id = game
+        .move_object_by_effect(resize_id, Zone::Hand)
+        .expect("Resize should move to hand before recover resolves");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert_eq!(
+        game.find_object_by_stable_id(resize_stable_id),
+        Some(moved_resize_id),
+        "Resize should still be the moved object after the trigger resolves"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|&id| id == moved_resize_id),
+        "recover should not exile Resize from hand after it left the graveyard"
+    );
+    assert!(
+        game.exile
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "recover should not exile Resize from another zone"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_does_not_trigger_for_opponents_creature() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Opponent Resize Victim", bob, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "opponent creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Resize recover should not trigger for an opponent-owned creature dying"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| id == resize_id && game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "Resize should remain in the graveyard when recover does not trigger"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn skeleton_crew_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(640_045), "Skeleton Crew")
         .mana_cost(ManaCost::from_pips(vec![
