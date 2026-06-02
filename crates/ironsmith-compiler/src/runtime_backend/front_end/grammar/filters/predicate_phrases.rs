@@ -121,12 +121,6 @@ const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
-const GETS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["gets"]);
-const MORE_VOTES_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more", "votes"]);
-const MORE_VOTES_OR_TIED_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["more", "votes", "or", "vote", "is", "tied"]);
-const NO_WORDS_GOT_VOTES_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["no"]; suffix & ["got", "votes"]);
 const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
         & [
@@ -2589,6 +2583,94 @@ fn parse_source_exploited_triggering_object_predicate(filtered: &[&str]) -> Opti
     ))
 }
 
+fn parse_vote_option_gets_more_votes_or_tied_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("option", LexCaptureKind::UntilPhrase(&["gets"])),
+        LexPattern::action("gets", LexCaptureKind::WordCount(1)),
+        LexPattern::modifier("result", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let option = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let option_words = option.word_refs();
+    if option_words.is_empty() {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["gets"]) {
+        return None;
+    }
+    let result = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(
+        result.word_refs().as_slice(),
+        ["more", "votes", "or", "vote", "is", "tied"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::VoteOptionGetsMoreVotesOrTied {
+        option: option_words.join(" "),
+    })
+}
+
+fn parse_vote_option_gets_more_votes_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("option", LexCaptureKind::UntilPhrase(&["gets"])),
+        LexPattern::action("gets", LexCaptureKind::WordCount(1)),
+        LexPattern::modifier("result", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let option = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let option_words = option.word_refs();
+    if option_words.is_empty() {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["gets"]) {
+        return None;
+    }
+    let result = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(result.word_refs().as_slice(), ["more", "votes"]) {
+        return None;
+    }
+    Some(PredicateAst::VoteOptionGetsMoreVotes {
+        option: option_words.join(" "),
+    })
+}
+
+fn parse_no_vote_objects_matched_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::word("no"),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["got", "votes"])),
+        LexPattern::action("got_votes", LexCaptureKind::WordCount(2)),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(object) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let object_words = object.word_refs();
+    if object_words.is_empty() {
+        return Ok(None);
+    }
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(action.word_refs().as_slice(), ["got", "votes"]) {
+        return Ok(None);
+    }
+    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+    let filter = parse_object_filter(&filter_tokens, false)?;
+    Ok(Some(PredicateAst::NoVoteObjectsMatched { filter }))
+}
+
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["was"], &["wasnt"], &["was", "not"]];
@@ -3130,13 +3212,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     ) {
         return Ok(PredicateAst::SecretChoicesMatch);
     }
-    if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
-        && gets_idx > 0
-        && MORE_VOTES_OR_TIED_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
-    {
-        return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
-            option: filtered[..gets_idx].join(" "),
-        });
+    if let Some(predicate) = parse_vote_option_gets_more_votes_or_tied_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
@@ -3345,20 +3422,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
-        && gets_idx > 0
-        && MORE_VOTES_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
-    {
-        return Ok(PredicateAst::VoteOptionGetsMoreVotes {
-            option: filtered[..gets_idx].join(" "),
-        });
+    if let Some(predicate) = parse_vote_option_gets_more_votes_predicate(&filtered) {
+        return Ok(predicate);
     }
 
-    if filtered.len() >= 4 && NO_WORDS_GOT_VOTES_PATTERN.matches_words(&filtered) {
-        let filter_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[1..filtered.len() - 2]);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::NoVoteObjectsMatched { filter });
+    if let Some(predicate) = parse_no_vote_objects_matched_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(attacking_idx) = (0..filtered.len())
@@ -5164,6 +5233,42 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_vote_results_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if return gets more votes",
+                PredicateAst::VoteOptionGetsMoreVotes {
+                    option: "return".to_string(),
+                },
+            ),
+            (
+                "if embark gets more votes or vote is tied",
+                PredicateAst::VoteOptionGetsMoreVotesOrTied {
+                    option: "embark".to_string(),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+
+        let tokens = lex_line("if no creatures got votes", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        let parsed = parse_predicate(&predicate_tokens)?;
+        assert_eq!(
+            parsed,
+            PredicateAst::NoVoteObjectsMatched {
+                filter: ObjectFilter::creature(),
+            }
+        );
         Ok(())
     }
 
