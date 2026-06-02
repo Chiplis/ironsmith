@@ -426,10 +426,36 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 "for each player who doesn't must follow a player clause".to_string(),
             ));
         }
+        EffectAst::ForEachOpponentDid {
+            effects,
+            predicate: Some(predicate),
+        } => {
+            let followup = EffectAst::ForEachOpponent {
+                effects: vec![EffectAst::Conditional {
+                    predicate: predicate.clone(),
+                    if_true: effects.clone(),
+                    if_false: Vec::new(),
+                }],
+            };
+            return Ok(Some(compile_effect(&followup, ctx)?));
+        }
         EffectAst::ForEachOpponentDid { .. } => {
             return Err(CardTextError::ParseError(
                 "for each opponent who ... this way must follow an opponent clause".to_string(),
             ));
+        }
+        EffectAst::ForEachPlayerDid {
+            effects,
+            predicate: Some(predicate),
+        } => {
+            let followup = EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::Conditional {
+                    predicate: predicate.clone(),
+                    if_true: effects.clone(),
+                    if_false: Vec::new(),
+                }],
+            };
+            return Ok(Some(compile_effect(&followup, ctx)?));
         }
         EffectAst::ForEachPlayerDid { .. } => {
             return Err(CardTextError::ParseError(

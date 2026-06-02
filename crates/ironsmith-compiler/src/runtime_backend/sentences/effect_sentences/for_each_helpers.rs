@@ -113,8 +113,15 @@ const FOR_EACH_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact &
 const FOR_EACH_PLAYER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["player"], &["players"]]);
 const FOR_EACH_EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each"]);
-const FOR_EACH_TAGGED_ACTION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["sacrificed"], &["destroyed"], &["exiled"], &["discarded"]]);
+const FOR_EACH_TAGGED_ACTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any & [
+        &["sacrificed"],
+        &["destroyed"],
+        &["exiled"],
+        &["discarded"],
+        &["returned"],
+    ]
+);
 const FOR_EACH_DISCARD_OR_DISCARDED_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["discard"], &["discarded"]]);
 
@@ -1248,6 +1255,43 @@ pub(crate) fn parse_who_did_this_way_predicate(
         return Ok(None);
     };
     let verb = inner_words.get(1).copied().unwrap_or("");
+    if matches!(verb, "control" | "controlled" | "controls")
+        && this_way_idx > 3
+        && inner_words
+            .get(this_way_idx - 1)
+            .is_some_and(|word| FOR_EACH_TAGGED_ACTION_WORD_PATTERN.matches_word(word))
+    {
+        let filter_start = inner_clause
+            .token_index_for_word_or_end(2)
+            .unwrap_or(inner_clause.len());
+        let filter_end = inner_clause
+            .token_index_for_word_or_end(this_way_idx - 1)
+            .unwrap_or(inner_clause.len());
+        if filter_start < filter_end {
+            let filter_tokens = LexedClause::new(&inner_tokens[filter_start..filter_end]).trim();
+            if !filter_tokens.is_empty() {
+                let filter = parse_object_filter(&filter_tokens, false).or_else(|err| {
+                    if filter_tokens
+                        .first()
+                        .and_then(|token| token.as_word())
+                        .is_some_and(|word| matches!(word, "a" | "an"))
+                    {
+                        parse_object_filter(&filter_tokens[1..], false)
+                    } else {
+                        Err(err)
+                    }
+                });
+                if let Ok(mut filter) = filter {
+                    filter.zone = None;
+                    return Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+                        player: PlayerAst::That,
+                        tag: TagKey::from(IT_TAG),
+                        filter,
+                    }));
+                }
+            }
+        }
+    }
     let supports_tag = FOR_EACH_TAGGED_ACTION_WORD_PATTERN.matches_word(verb);
     if !supports_tag || this_way_idx <= 2 {
         return Ok(None);

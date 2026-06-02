@@ -3673,7 +3673,6 @@ fn evaluate_condition(
                     {
                         return Ok(true);
                     }
-                    continue;
                 }
                 if snapshot.controller != player_id {
                     continue;
