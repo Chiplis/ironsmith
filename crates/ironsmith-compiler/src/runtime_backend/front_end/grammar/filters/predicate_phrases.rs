@@ -3466,6 +3466,78 @@ fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
     })
 }
 
+fn parse_player_object_keyword_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["has"], &["have"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["has", "have"])),
+        LexPattern::object("keyword", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let subject = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing subject in keyword predicate".to_string())
+        })?;
+    let keyword = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing keyword in keyword predicate".to_string())
+        })?;
+    let keyword_words = keyword.word_refs();
+    let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&keyword_words) else {
+        return Ok(None);
+    };
+    if consumed != keyword_words.len() {
+        return Ok(None);
+    }
+
+    let subject_words = subject.word_refs();
+    let subject_has_control = subject_words
+        .iter()
+        .any(|word| CONTROL_WORD_PATTERN.matches_word(word));
+    let subject_has_zone = subject_words
+        .iter()
+        .any(|word| ZONE_WORD_PATTERN.matches_word(word));
+    let mut filter = if subject_has_control {
+        let object_words = subject_words
+            .iter()
+            .copied()
+            .filter(|word| {
+                !YOU_WORD_PATTERN.matches_word(word)
+                    && !CONTROL_OR_CONTROLS_WORD_PATTERN.matches_word(word)
+            })
+            .collect::<Vec<_>>();
+        if object_words.is_empty() {
+            return Ok(None);
+        }
+        let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+        let mut filter = parse_object_filter(&object_tokens, false)?;
+        filter.controller = Some(PlayerFilter::You);
+        filter
+    } else if subject_has_zone {
+        let mut filter = parse_object_filter(subject.tokens(), false)?;
+        if filter.owner.is_none() {
+            filter.owner = Some(PlayerFilter::You);
+        }
+        filter
+    } else {
+        return Ok(None);
+    };
+
+    apply_filter_keyword_constraint(&mut filter, constraint, false);
+    Ok(Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    }))
+}
+
 fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
     if PERMANENTS_YOU_CONTROL_SCOPE_PATTERN.matches_words(words) {
         return Some(ObjectFilter::permanent().you_control());
@@ -4152,54 +4224,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(has_idx) = find_index(&filtered, |word| {
-        HAS_OR_HAVE_WORD_PATTERN.matches_word(word)
-    }) && has_idx > 0
-        && has_idx + 1 < filtered.len()
-        && filtered[..has_idx]
-            .iter()
-            .any(|word| CONTROL_WORD_PATTERN.matches_word(word))
-        && let Some((constraint, consumed)) =
-            parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
-        && has_idx + 1 + consumed == filtered.len()
-    {
-        let mut subject_words = filtered[..has_idx].to_vec();
-        subject_words.retain(|word| {
-            !YOU_WORD_PATTERN.matches_word(word)
-                && !CONTROL_OR_CONTROLS_WORD_PATTERN.matches_word(word)
-        });
-        let subject_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(subject_words);
-        let mut filter = parse_object_filter(&subject_tokens, false)?;
-        apply_filter_keyword_constraint(&mut filter, constraint, false);
-        filter.controller = Some(PlayerFilter::You);
-        return Ok(PredicateAst::PlayerControls {
-            player: PlayerAst::You,
-            filter,
-        });
-    }
-
-    if let Some(has_idx) = find_index(&filtered, |word| {
-        HAS_OR_HAVE_WORD_PATTERN.matches_word(word)
-    }) && has_idx > 0
-        && has_idx + 1 < filtered.len()
-        && filtered[..has_idx]
-            .iter()
-            .any(|word| ZONE_WORD_PATTERN.matches_word(word))
-        && let Some((constraint, consumed)) =
-            parse_filter_keyword_constraint_words(&filtered[has_idx + 1..])
-        && has_idx + 1 + consumed == filtered.len()
-    {
-        let subject_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[..has_idx]);
-        let mut filter = parse_object_filter(&subject_tokens, false)?;
-        apply_filter_keyword_constraint(&mut filter, constraint, false);
-        if filter.owner.is_none() {
-            filter.owner = Some(PlayerFilter::You);
-        }
-        return Ok(PredicateAst::PlayerControls {
-            player: PlayerAst::You,
-            filter,
-        });
+    if let Some(predicate) = parse_player_object_keyword_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_opponent_controls_tagged_object_predicate(&filtered) {
@@ -5146,6 +5172,46 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, PredicateAst::SecretChoicesMatch, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_player_object_keywords_use_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If creatures you control have flying", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        match parsed {
+            PredicateAst::PlayerControls { player, filter } => {
+                assert_eq!(player, PlayerAst::You);
+                assert_eq!(filter.controller, Some(PlayerFilter::You));
+                assert!(
+                    filter.card_types.contains(&CardType::Creature),
+                    "{filter:?}"
+                );
+                assert!(
+                    filter
+                        .static_abilities
+                        .contains(&crate::static_abilities::StaticAbilityId::Flying),
+                    "{filter:?}"
+                );
+            }
+            other => panic!("expected player-controls keyword predicate, got {other:?}"),
+        }
+
+        let tokens = lex_line("If nonland cards in your graveyard have escape", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        match parsed {
+            PredicateAst::PlayerControls { player, filter } => {
+                assert_eq!(player, PlayerAst::You);
+                assert_eq!(filter.zone, Some(Zone::Graveyard));
+                assert_eq!(filter.owner, Some(PlayerFilter::You));
+                assert_eq!(
+                    filter.alternative_cast,
+                    Some(crate::filter::AlternativeCastKind::Escape),
+                    "{filter:?}"
+                );
+            }
+            other => panic!("expected graveyard keyword predicate, got {other:?}"),
         }
         Ok(())
     }
