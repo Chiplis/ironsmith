@@ -455,6 +455,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         source_filter: ObjectFilter,
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
+        factor: u32,
         display: String,
     },
     DoubleCountersReplacement {
@@ -1362,11 +1363,13 @@ where
                 source_filter,
                 target_player_filter,
                 target_object_filter,
+                factor,
                 display,
             } => StaticAbilityPayload::DoubleDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
                 target_object_filter,
+                factor,
                 display,
             },
             StaticAbilityPayload::DoubleCountersReplacement {
@@ -3775,6 +3778,22 @@ impl<
         target_object_filter: Option<ObjectFilter>,
         display: impl Into<String>,
     ) -> Self {
+        Self::multiply_damage_amount_replacement(
+            source_filter,
+            target_player_filter,
+            target_object_filter,
+            2,
+            display,
+        )
+    }
+
+    pub fn multiply_damage_amount_replacement(
+        source_filter: ObjectFilter,
+        target_player_filter: Option<PlayerFilter>,
+        target_object_filter: Option<ObjectFilter>,
+        factor: u32,
+        display: impl Into<String>,
+    ) -> Self {
         let display = display.into();
         Self {
             id: Some(StaticAbilityId::ModifyDamageAmountReplacement),
@@ -3783,6 +3802,7 @@ impl<
                 source_filter,
                 target_player_filter,
                 target_object_filter,
+                factor,
                 display,
             },
         }
