@@ -43305,6 +43305,75 @@ fn doomskar_warrior_backup_puts_counter_and_grants_following_abilities_to_anothe
     );
 }
 
+#[test]
+fn doomskar_warrior_backup_granted_trigger_uses_backup_target_damage_amount() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let backup = doomskar_warrior_backup_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ally_def = CardDefinitionBuilder::new(CardId::from_raw(90_541), "Backup Trigger Ally")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let ally_id = game.create_object_from_definition(&ally_def, alice, Zone::Battlefield);
+    let instant = CardBuilder::new(CardId::from_raw(90_542), "Granted Trigger Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let creature = CardBuilder::new(CardId::from_raw(90_543), "Granted Trigger Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let instant_id = game.create_object_from_card(&instant, alice, Zone::Library);
+    let creature_id = game.create_object_from_card(&creature, alice, Zone::Library);
+    let looked_stables = [instant_id, creature_id]
+        .map(|id| game.object(id).expect("library card exists").stable_id);
+
+    resolve_doomskar_warrior_backup(&mut game, warrior_id, alice, ally_id, backup);
+    let granted_abilities = game
+        .current_abilities(ally_id)
+        .expect("backup target should have calculated abilities");
+    let granted_trigger = granted_abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .trigger
+                .display()
+                .to_ascii_lowercase()
+                .contains("deals combat damage")
+                .then_some(triggered),
+            _ => None,
+        })
+        .expect("backup target should receive Doomskar Warrior's following trigger");
+
+    resolve_doomskar_warrior_trigger(
+        &mut game,
+        ally_id,
+        alice,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        granted_trigger,
+    );
+
+    assert_eq!(
+        looked_stables
+            .iter()
+            .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Hand))
+            .count(),
+        1,
+        "a creature that received Doomskar Warrior's following trigger should use its combat damage amount to look and put one matching card into hand"
+    );
+    assert_eq!(
+        looked_stables
+            .iter()
+            .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Library))
+            .count(),
+        1,
+        "the unchosen looked-at card from the granted trigger should remain in the library"
+    );
+}
+
 fn doomskar_damage_event(
     source: ObjectId,
     target: crate::events::DamageTarget,
