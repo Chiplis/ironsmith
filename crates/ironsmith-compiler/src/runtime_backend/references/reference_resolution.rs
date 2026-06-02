@@ -1169,6 +1169,8 @@ fn advance_reference_frame_for_effect(
         | EffectAst::ForEachPlayerDid { .. }
         | EffectAst::DirectionalAdjacentPlayerControl { .. }
         | EffectAst::VoteStart { .. }
+        | EffectAst::SecretChoiceStart { .. }
+        | EffectAst::SecretChoiceReveal
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. } => {}

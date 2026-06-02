@@ -11153,6 +11153,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::VoteOptionGetsMoreVotes(option) => {
             format!("{} gets more votes", option.to_ascii_lowercase())
         }
+        Condition::SecretChoicesMatch => "the choices match".to_string(),
         Condition::VoteOptionGetsMoreVotesOrTied(option) => format!(
             "{} gets more votes or the vote is tied",
             option.to_ascii_lowercase()

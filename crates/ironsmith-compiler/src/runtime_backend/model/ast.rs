@@ -525,6 +525,7 @@ pub(crate) enum PredicateAst {
     VoteOptionGetsMoreVotes {
         option: String,
     },
+    SecretChoicesMatch,
     VoteOptionGetsMoreVotesOrTied {
         option: String,
     },
@@ -3452,6 +3453,11 @@ pub(crate) enum EffectAst {
         options: Vec<String>,
         secret: bool,
     },
+    SecretChoiceStart {
+        options: Vec<String>,
+        participants: Vec<PlayerFilter>,
+    },
+    SecretChoiceReveal,
     VoteStartObjects {
         filter: ObjectFilter,
         count: ChoiceCount,

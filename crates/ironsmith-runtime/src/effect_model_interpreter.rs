@@ -1369,6 +1369,12 @@ where
             payload.options.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SecretChoiceEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SecretChoiceEffect::new(
+            payload.options.clone(),
+            payload.participants.clone(),
+        )));
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::DirectionalAdjacentPlayerControlEffect>(&effect)
     {

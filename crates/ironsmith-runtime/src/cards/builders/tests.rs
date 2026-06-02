@@ -44079,6 +44079,194 @@ fn path_of_the_pyromancer_runtime_chaos_more_votes_branch() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expert_level_safe_strict_parse_and_render_secret_choice_match() {
+    assert_oracle_card_parses_strict("Expert-Level Safe");
+    let def = parse_oracle_card_definition("Expert-Level Safe");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "You and target opponent each secretly choose 1, 2, or 3. Then those choices are revealed. If they match, sacrifice this artifact and put all cards exiled with it into their owners' hands. Otherwise, exile the top card of your library face down"
+        ),
+        "expected Expert-Level Safe to render the scoped secret-choice branch, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("SecretChoiceEffect")
+            && debug.contains("participants")
+            && debug.contains("SecretChoicesMatch")
+            && debug.contains("__source_exiled__"),
+        "expected Expert-Level Safe to keep scoped secret choice, match condition, and source-exiled return structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ExpertLevelSafeDecisionMaker {
+    votes: Vec<usize>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for ExpertLevelSafeDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn expert_level_safe_filler(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_expert_level_safe_with_votes(
+    votes: Vec<usize>,
+) -> (crate::game_state::GameState, ObjectId) {
+    let def = parse_oracle_card_definition("Expert-Level Safe");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Expert-Level Safe should have an enters trigger");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Expert-Level Safe should have an activated ability");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for idx in 0..3 {
+        let filler = expert_level_safe_filler(91_600 + idx, &format!("Safe Filler {idx}"));
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+
+    let mut dm = ExpertLevelSafeDecisionMaker { votes: Vec::new() };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Expert-Level Safe enters trigger should resolve");
+    assert_eq!(
+        game.get_exiled_with_source_links(source).len(),
+        2,
+        "enters trigger should exile and link the top two library cards"
+    );
+    for &exiled in game.get_exiled_with_source_links(source) {
+        assert!(game.is_face_down(exiled), "linked exiled cards should be face down");
+    }
+
+    let mut dm = ExpertLevelSafeDecisionMaker { votes };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &activated.effects,
+        None,
+        &[],
+    )
+    .expect("Expert-Level Safe activated ability should resolve");
+    (game, source)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expert_level_safe_runtime_matching_choices_sacrifice_and_return_exiled_cards() {
+    let (game, source) = resolve_expert_level_safe_with_votes(vec![0, 0]);
+    let alice = PlayerId::from_index(0);
+
+    assert!(
+        game.get_exiled_with_source_links(source).is_empty(),
+        "matching choices should return every card exiled with Expert-Level Safe"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        2,
+        "matching choices should put the two linked exiled cards into their owner's hand"
+    );
+    assert!(
+        game.objects_in_zone(Zone::Graveyard).into_iter().any(|id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Expert-Level Safe")
+        }),
+        "matching choices should sacrifice Expert-Level Safe"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn expert_level_safe_runtime_nonmatching_choices_exile_another_card() {
+    let (game, source) = resolve_expert_level_safe_with_votes(vec![0, 1]);
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        game.get_exiled_with_source_links(source).len(),
+        3,
+        "nonmatching choices should keep the two original cards and exile one more linked card"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").hand.len(),
+        0,
+        "nonmatching choices should not return the linked exiled cards"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").library.len(),
+        0,
+        "nonmatching choices should exile the last library card"
+    );
+    assert!(
+        game.objects_in_zone(Zone::Battlefield).into_iter().any(|id| id == source),
+        "nonmatching choices should leave Expert-Level Safe on the battlefield"
+    );
+}
+
 fn vanilla_creature_for_when_we_were_young(id: u32, name: &str) -> CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(id), name)
         .card_types(vec![CardType::Creature])

@@ -1831,6 +1831,22 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
     let rest = &tokens[verb_idx + 1..];
+    if matches!(verb, Verb::Put)
+        && subject_words
+            .first()
+            .is_some_and(|word| matches!(*word, "all" | "each"))
+        && subject_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"))
+        && subject_words.iter().any(|word| *word == "exiled")
+        && ClauseDispatchCompatWords::new(rest)
+            .to_word_refs()
+            .iter()
+            .any(|word| matches!(*word, "hand" | "hands"))
+    {
+        let filter = parse_object_filter(subject_tokens, false)?;
+        return Ok(EffectAst::subject_verb_return_all_to_hand(filter));
+    }
     let mut effect = if matches!(verb, Verb::Become) {
         parse_become_clause(subject_tokens, rest)?
     } else {

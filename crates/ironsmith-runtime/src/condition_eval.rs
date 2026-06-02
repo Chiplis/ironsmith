@@ -1165,6 +1165,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxActivationsPerTurn(..) => {}
         Condition::SourceIsEquipped => {}
         Condition::SourceIsEnchanted => {}
+        Condition::SecretChoicesMatch => {}
         Condition::VoteOptionGetsMoreVotes(..) => {}
         Condition::VoteOptionGetsMoreVotesOrTied(..) => {}
         Condition::EnchantedPermanentIsCreature => {}
@@ -1884,6 +1885,7 @@ pub fn evaluate_condition_external(
         Condition::SourceChosenOption(expected) => game
             .chosen_named_option(ctx.source)
             .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected)),
+        Condition::SecretChoicesMatch => false,
         Condition::CountComparison {
             count, comparison, ..
         } => comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
@@ -2684,6 +2686,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsAttacking
         | Condition::SourceIsBlocking
         | Condition::SourceIsSoulbondPaired
+        | Condition::SecretChoicesMatch
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
@@ -3790,6 +3793,10 @@ fn evaluate_condition(
         Condition::SourceChosenOption(expected) => Ok(game
             .chosen_named_option(ctx.source)
             .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected))),
+        Condition::SecretChoicesMatch => Ok(ctx
+            .secret_choice_results
+            .get(&ctx.source)
+            .is_some_and(|result| result.choices_match())),
         Condition::VoteOptionGetsMoreVotes(option) => Ok(ctx
             .vote_results
             .get(&ctx.source)

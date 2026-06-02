@@ -459,6 +459,79 @@ fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<Strin
     Some(text)
 }
 
+fn is_you_and_target_opponent_participants(choice: &crate::effects::SecretChoiceEffect) -> bool {
+    matches!(
+        choice.participants.as_slice(),
+        [PlayerFilter::You, PlayerFilter::Target(inner)] if **inner == PlayerFilter::Opponent
+    )
+}
+
+fn describe_secret_choice_match_sequence(effects: &[Effect]) -> Option<String> {
+    let [choice_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let choice = choice_effect.downcast_ref::<crate::effects::SecretChoiceEffect>()?;
+    if !is_you_and_target_opponent_participants(choice) {
+        return None;
+    }
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !matches!(conditional.condition, Condition::SecretChoicesMatch)
+        || conditional.if_true.is_empty()
+        || conditional.if_false.is_empty()
+    {
+        return None;
+    }
+
+    let option_names = choice.options.clone();
+    let if_true = describe_sacrifice_then_put_source_exiled_into_hands(&conditional.if_true)
+        .or_else(|| describe_effect_clause_list(&conditional.if_true))
+        .unwrap_or_else(|| describe_effect_list(&conditional.if_true))
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    let if_false = describe_effect_clause_list(&conditional.if_false)
+        .unwrap_or_else(|| describe_effect_list(&conditional.if_false))
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if if_true.is_empty() || if_false.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "You and target opponent each secretly choose {}. Then those choices are revealed. If they match, {}. Otherwise, {}",
+        join_with_or(&option_names),
+        lowercase_first(&if_true),
+        lowercase_first(&if_false)
+    ))
+}
+
+fn describe_sacrifice_then_put_source_exiled_into_hands(effects: &[Effect]) -> Option<String> {
+    let [sacrifice_effect, move_effect] = effects else {
+        return None;
+    };
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let ChooseSpec::All(filter) = move_to_zone.target.base() else {
+        return None;
+    };
+    if move_to_zone.zone != Zone::Hand
+        || filter.zone != Some(Zone::Exile)
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
+        })
+    {
+        return None;
+    }
+    Some(
+        "Sacrifice this artifact and put all cards exiled with it into their owners' hands"
+            .to_string(),
+    )
+}
+
 fn library_position_from_top_text(position: &Value, one_as_on_top: bool) -> String {
     if let Value::Fixed(value) = position
         && let Ok(value) = u32::try_from(*value)
@@ -3203,6 +3276,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_secret_choice_match_sequence(effects) {
         return Some(compact);
     }
 

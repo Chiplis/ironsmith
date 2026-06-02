@@ -869,6 +869,7 @@ pub enum Condition {
     EquippedCreatureUntapped,
     EquippedCreatureAttacking,
     SourceChosenOption(String),
+    SecretChoicesMatch,
     VoteOptionGetsMoreVotes(String),
     VoteOptionGetsMoreVotesOrTied(String),
     CountComparison {

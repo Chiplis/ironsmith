@@ -2239,6 +2239,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
     }
+    if matches!(filtered.as_slice(), ["they", "match"] | ["those", "choices", "match"]) {
+        return Ok(PredicateAst::SecretChoicesMatch);
+    }
     if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
         && gets_idx > 0
         && MORE_VOTES_OR_TIED_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
