@@ -45114,12 +45114,21 @@ fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {
     let high_source_id =
         game.create_object_from_definition(&high_mana_value_spell, bob, Zone::Stack);
     assert!(
-        crate::targeting::computation::has_protection_from_source(
+        crate::targeting::has_protection_from_source(
             &game,
             skulk_id,
             high_source_id,
         ),
         "Mistmeadow Skulk should be protected from a source with mana value 3"
+    );
+    assert!(
+        matches!(
+            crate::targeting::can_target_object(&game, skulk_id, high_source_id, bob),
+            crate::targeting::TargetingResult::Invalid(
+                crate::targeting::TargetingInvalidReason::HasProtection
+            )
+        ),
+        "Mistmeadow Skulk should be an illegal target for a source with mana value 3"
     );
 
     let low_mana_value_spell = CardDefinitionBuilder::new(CardId::new(), "Mana Value Two Bolt")
@@ -45128,8 +45137,12 @@ fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {
         .build();
     let low_source_id = game.create_object_from_definition(&low_mana_value_spell, bob, Zone::Stack);
     assert!(
-        !crate::targeting::computation::has_protection_from_source(&game, skulk_id, low_source_id),
+        !crate::targeting::has_protection_from_source(&game, skulk_id, low_source_id),
         "Mistmeadow Skulk should not be protected from a source with mana value 2"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, skulk_id, low_source_id, bob).is_legal(),
+        "Mistmeadow Skulk should remain targetable by a source with mana value 2"
     );
 }
 
