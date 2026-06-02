@@ -4008,30 +4008,45 @@ fn parse_life_total_at_least_last_noted_predicate(words: &[&str]) -> Option<Pred
 }
 
 fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if words.len() < 7 {
-        return None;
-    }
-    let (comparison, used) = predicate_quantity_prefix(words)?;
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let have_phrases: &[&[&str]] = &[&["has"], &["have"]];
+    let atoms = [
+        LexPattern::object(
+            "counted_object",
+            LexCaptureKind::UntilAnyPhrase(have_phrases),
+        ),
+        LexPattern::action("have", LexCaptureKind::OneOf(&["has", "have"])),
+        LexPattern::modifier("counter", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+
+    let counted_object = matched.capture_clause("counted_object", clause)?;
+    let counted_words = counted_object.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&counted_words)?;
     let count = comparison_to_strict_at_least_threshold(&comparison)?;
-    let have_idx = find_index(words, |word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
-    if have_idx <= used {
+    if used >= counted_words.len() {
         return None;
     }
-    let object_words = &words[used..have_idx];
-    let counter_words = &words[have_idx + 1..];
-    if object_words.is_empty() || counter_words.is_empty() {
+
+    let object_tokens = &counted_object.tokens()[used..];
+    if object_tokens.is_empty() {
         return None;
     }
-    let (counter_constraint, consumed) = parse_filter_counter_constraint_words(counter_words)?;
+    let counter = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let counter_words = counter.word_refs();
+    if counter_words.is_empty() {
+        return None;
+    }
+    let (counter_constraint, consumed) = parse_filter_counter_constraint_words(&counter_words)?;
     if consumed != counter_words.len() {
         return None;
     }
 
-    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
     let other = object_tokens
         .first()
         .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
-    let mut filter = parse_object_filter(&object_tokens, other).ok()?;
+    let mut filter = parse_object_filter(object_tokens, other).ok()?;
     filter.with_counter = Some(counter_constraint);
     if filter.zone.is_none()
         && filter.card_types.iter().any(|card_type| {
@@ -7056,6 +7071,26 @@ mod tests {
                 "{text}"
             );
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_counted_objects_with_counters_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line("If two or more creatures have +1/+1 counters", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        let PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(2),
+        } = parsed
+        else {
+            panic!("expected counted object-with-counter predicate");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.with_counter.is_some());
         Ok(())
     }
 
