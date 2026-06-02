@@ -43240,16 +43240,11 @@ fn resolve_doomskar_warrior_trigger(
     game: &mut crate::game_state::GameState,
     warrior_id: ObjectId,
     controller: PlayerId,
-    battle_id: ObjectId,
+    target: crate::events::DamageTarget,
     damage_amount: i32,
     triggered: &crate::ability::TriggeredAbility,
 ) {
-    let event = doomskar_damage_event(
-        warrior_id,
-        crate::events::DamageTarget::Object(battle_id),
-        damage_amount as u32,
-        true,
-    );
+    let event = doomskar_damage_event(warrior_id, target, damage_amount as u32, true);
     let mut ctx = crate::effects::ExecutionContext::new_default(warrior_id, controller)
         .with_triggering_event(event)
         .with_event_value_amount(damage_amount);
@@ -43294,7 +43289,14 @@ fn doomskar_warrior_reveals_one_matching_looked_card_and_bottoms_the_rest() {
     let looked_stables = [instant_id, land_id, creature_id]
         .map(|id| game.object(id).expect("library card exists").stable_id);
 
-    resolve_doomskar_warrior_trigger(&mut game, warrior_id, alice, battle_id, 3, triggered);
+    resolve_doomskar_warrior_trigger(
+        &mut game,
+        warrior_id,
+        alice,
+        crate::events::DamageTarget::Object(battle_id),
+        3,
+        triggered,
+    );
 
     let hand_count = looked_stables
         .iter()
@@ -43337,13 +43339,66 @@ fn doomskar_warrior_no_matching_looked_card_puts_none_into_hand() {
     let looked_stables = [first_id, second_id]
         .map(|id| game.object(id).expect("library card exists").stable_id);
 
-    resolve_doomskar_warrior_trigger(&mut game, warrior_id, alice, battle_id, 2, triggered);
+    resolve_doomskar_warrior_trigger(
+        &mut game,
+        warrior_id,
+        alice,
+        crate::events::DamageTarget::Object(battle_id),
+        2,
+        triggered,
+    );
 
     assert!(
         looked_stables
             .iter()
             .all(|&stable_id| stable_zone(&game, stable_id) == Some(Zone::Library)),
         "with no creature or land among the looked-at cards, none should move to hand"
+    );
+}
+
+#[test]
+fn doomskar_warrior_player_damage_uses_damage_amount_for_look_count() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let triggered = doomskar_warrior_combat_damage_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let instant = CardBuilder::new(CardId::from_raw(90_531), "Player Branch Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let land = CardBuilder::new(CardId::from_raw(90_532), "Player Branch Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let instant_id = game.create_object_from_card(&instant, alice, Zone::Library);
+    let land_id = game.create_object_from_card(&land, alice, Zone::Library);
+    let looked_stables = [instant_id, land_id]
+        .map(|id| game.object(id).expect("library card exists").stable_id);
+
+    resolve_doomskar_warrior_trigger(
+        &mut game,
+        warrior_id,
+        alice,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        triggered,
+    );
+
+    assert_eq!(
+        looked_stables
+            .iter()
+            .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Hand))
+            .count(),
+        1,
+        "player combat damage should look at that many cards and move one creature or land to hand"
+    );
+    assert_eq!(
+        looked_stables
+            .iter()
+            .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Library))
+            .count(),
+        1,
+        "the unchosen card from the player-damage look should remain in the library"
     );
 }
 
