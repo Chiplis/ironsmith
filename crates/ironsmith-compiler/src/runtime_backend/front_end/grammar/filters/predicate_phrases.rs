@@ -202,19 +202,6 @@ const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
-const YOU_CAST_SOURCE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you", "cast", "it"], &["you", "cast", "this", "spell"]]);
-const TAGGED_WAS_CAST_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "was", "cast"],
-            &["that", "creature", "was", "cast"],
-            &["that", "permanent", "was", "cast"],
-            &["that", "object", "was", "cast"],
-        ]
-);
-const THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this", "spell", "was", "cast", "from"]);
 const NO_SPELLS_CAST_LAST_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2062,6 +2049,94 @@ fn source_status_predicate_from_state(words: &[&str], negative: bool) -> Option<
     }
 }
 
+fn parse_source_cast_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    parse_active_source_cast_shape(&tokens)
+        .or_else(|| parse_tagged_passive_cast_shape(&tokens))
+        .or_else(|| parse_source_cast_from_zone_shape(&tokens))
+}
+
+fn parse_active_source_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("caster", LexCaptureKind::UntilPhrase(&["cast"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object("spell", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let caster = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(caster.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["cast"]) {
+        return None;
+    }
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(spell.word_refs().as_slice(), ["it"] | ["this", "spell"]) {
+        return None;
+    }
+    Some(PredicateAst::SourceWasCast)
+}
+
+fn parse_tagged_passive_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["was", "cast"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        spell.word_refs().as_slice(),
+        ["it"] | ["that", "creature"] | ["that", "permanent"] | ["that", "object"]
+    ) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["was", "cast"]) {
+        return None;
+    }
+    Some(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)))
+}
+
+fn parse_source_cast_from_zone_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject(
+            "spell",
+            LexCaptureKind::UntilPhrase(&["was", "cast", "from"]),
+        ),
+        LexPattern::action("action", LexCaptureKind::WordCount(3)),
+        LexPattern::modifier("origin", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(spell.word_refs().as_slice(), ["this", "spell"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["was", "cast", "from"]) {
+        return None;
+    }
+    let origin = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let zone_words = origin.word_refs();
+    if zone_words == ["anywhere", "other", "than", "your", "hand"] {
+        return Some(PredicateAst::ThisSpellWasCastFromNonHand);
+    }
+    let zone = if zone_words.len() == 1 {
+        parse_zone_word(zone_words[0])
+    } else if zone_words.len() == 2
+        && (is_article(zone_words[0]) || DEFINITE_ARTICLE_WORD_PATTERN.matches_word(zone_words[0]))
+    {
+        parse_zone_word(zone_words[1])
+    } else {
+        None
+    }?;
+
+    Some(PredicateAst::ThisSpellWasCastFromZone(zone))
+}
+
 fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
@@ -3432,32 +3507,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if YOU_CAST_SOURCE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceWasCast);
-    }
-    if TAGGED_WAS_CAST_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)));
-    }
-
-    if filtered.len() >= 6 && THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN.matches_words(&filtered) {
-        let zone_words = &filtered[5..];
-        if zone_words == ["anywhere", "other", "than", "your", "hand"] {
-            return Ok(PredicateAst::ThisSpellWasCastFromNonHand);
-        }
-        let zone = if zone_words.len() == 1 {
-            parse_zone_word(zone_words[0])
-        } else if zone_words.len() == 2 && is_article(zone_words[0]) {
-            parse_zone_word(zone_words[1])
-        } else if zone_words.len() == 2 && DEFINITE_ARTICLE_WORD_PATTERN.matches_word(zone_words[0])
-        {
-            parse_zone_word(zone_words[1])
-        } else {
-            None
-        };
-
-        if let Some(zone) = zone {
-            return Ok(PredicateAst::ThisSpellWasCastFromZone(zone));
-        }
+    if let Some(predicate) = parse_source_cast_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if NO_SPELLS_CAST_LAST_TURN_PATTERN.matches_words(&filtered) {
@@ -4899,6 +4950,31 @@ mod tests {
             (
                 "If this permanent isnt saddled",
                 PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_cast_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            ("If you cast it", PredicateAst::SourceWasCast),
+            (
+                "If that creature was cast",
+                PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)),
+            ),
+            (
+                "If this spell was cast from the graveyard",
+                PredicateAst::ThisSpellWasCastFromZone(Zone::Graveyard),
+            ),
+            (
+                "If this spell was cast from anywhere other than your hand",
+                PredicateAst::ThisSpellWasCastFromNonHand,
             ),
         ] {
             let tokens = lex_line(text, 0)?;
