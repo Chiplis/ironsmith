@@ -67,7 +67,6 @@ const PERMANENTS_AND_OR_SPLIT_CONNECTOR_PATTERN: ClauseShape<'static> =
 const THERE_ARE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "are"]);
 const THERE_ARE_OR_WERE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["there", "are"], &["there", "were"]]);
-const THERE_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "is"]);
 const OR_IF_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or", "if"]);
 const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "your", "life", "total"]);
@@ -90,7 +89,6 @@ const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!
 const OR_MORE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["or", "more"]);
 const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
-const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
@@ -4153,20 +4151,30 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
 }
 
 fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if words.len() < 6 || !THERE_IS_PREFIX_PATTERN.matches_words(words) {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::object("descriptor", LexCaptureKind::UntilPhrase(&["in"])),
+        LexPattern::action("preposition", LexCaptureKind::OneOf(&["in"])),
+        LexPattern::modifier("location", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(existential.word_refs().as_slice(), ["there", "is"]) {
         return None;
     }
 
-    let in_idx = IN_WORD_PATTERN.find_word(&words[2..]).map(|idx| idx + 2)?;
-    if in_idx <= 2 {
-        return None;
-    }
-    if !IN_YOUR_GRAVEYARD_TAIL_PATTERN.matches_words(&words[in_idx..]) {
+    let location = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !IN_YOUR_GRAVEYARD_TAIL_PATTERN.matches_words(&location.word_refs()) {
         return None;
     }
 
-    let descriptor_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&words[2..in_idx]);
-    let mut filter = parse_object_filter(&descriptor_tokens, false).ok()?;
+    let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if descriptor.word_refs().is_empty() {
+        return None;
+    }
+    let mut filter = parse_object_filter(descriptor.tokens(), false).ok()?;
     filter.zone = Some(Zone::Graveyard);
     filter.owner = Some(PlayerFilter::You);
 
@@ -6878,7 +6886,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_card_in_your_graveyard_existence() -> Result<(), CardTextError> {
+    fn parse_predicate_card_in_your_graveyard_uses_capture_parser() -> Result<(), CardTextError> {
         let tokens = lex_line("If there is an Elf card in your graveyard", 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);
 
