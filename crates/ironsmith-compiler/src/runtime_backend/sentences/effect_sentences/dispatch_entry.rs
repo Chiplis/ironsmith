@@ -1389,16 +1389,7 @@ fn apply_mana_usage_restriction_to_previous_effect(
         )));
     }
 
-    let wrapped = apply_mana_usage_restriction_to_mana_effect(previous, restriction);
-    effects.push(wrapped);
-    Ok(())
-}
-
-fn apply_mana_usage_restriction_to_mana_effect(
-    effect: EffectAst,
-    restriction: crate::ability::ManaUsageRestriction,
-) -> EffectAst {
-    match effect {
+    let wrapped = match previous {
         EffectAst::ManaRestricted {
             effects,
             mut restrictions,
@@ -1409,49 +1400,13 @@ fn apply_mana_usage_restriction_to_mana_effect(
                 restrictions,
             }
         }
-        EffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false,
-        } => EffectAst::Conditional {
-            predicate,
-            if_true: apply_mana_usage_restriction_to_mana_effects(if_true, restriction.clone()),
-            if_false: apply_mana_usage_restriction_to_mana_effects(if_false, restriction),
-        },
-        EffectAst::SelfReplacement {
-            predicate,
-            if_true,
-            if_false,
-        } => EffectAst::SelfReplacement {
-            predicate,
-            if_true: apply_mana_usage_restriction_to_mana_effects(if_true, restriction.clone()),
-            if_false: apply_mana_usage_restriction_to_mana_effects(if_false, restriction),
-        },
-        EffectAst::Sequence { effects } => EffectAst::Sequence {
-            effects: apply_mana_usage_restriction_to_mana_effects(effects, restriction),
-        },
-        EffectAst::May { effects } => EffectAst::May {
-            effects: apply_mana_usage_restriction_to_mana_effects(effects, restriction),
-        },
-        EffectAst::MayByPlayer { player, effects } => EffectAst::MayByPlayer {
-            player,
-            effects: apply_mana_usage_restriction_to_mana_effects(effects, restriction),
-        },
-        effect => EffectAst::ManaRestricted {
-            effects: vec![effect],
+        previous => EffectAst::ManaRestricted {
+            effects: vec![previous],
             restrictions: vec![restriction],
         },
-    }
-}
-
-fn apply_mana_usage_restriction_to_mana_effects(
-    effects: Vec<EffectAst>,
-    restriction: crate::ability::ManaUsageRestriction,
-) -> Vec<EffectAst> {
-    effects
-        .into_iter()
-        .map(|effect| apply_mana_usage_restriction_to_mana_effect(effect, restriction.clone()))
-        .collect()
+    };
+    effects.push(wrapped);
+    Ok(())
 }
 
 fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
@@ -1478,11 +1433,6 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 || (!if_false.is_empty() && if_false.iter().all(effect_ast_can_produce_mana))
         }
         EffectAst::ManaRestricted { effects, .. } => {
-            !effects.is_empty() && effects.iter().all(effect_ast_can_produce_mana)
-        }
-        EffectAst::Sequence { effects }
-        | EffectAst::May { effects }
-        | EffectAst::MayByPlayer { effects, .. } => {
             !effects.is_empty() && effects.iter().all(effect_ast_can_produce_mana)
         }
         _ => false,

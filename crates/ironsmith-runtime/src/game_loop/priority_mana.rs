@@ -686,7 +686,6 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
             ..
         } => *restrict_to_matching_spell,
         crate::ability::ManaUsageRestriction::ActivateAbility => true,
-        crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts => true,
     }
 }
 
@@ -735,7 +734,6 @@ fn restriction_bonus_applies_to_payment_source(
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => false,
-        crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts => false,
     }
 }
 
@@ -801,7 +799,6 @@ pub(super) fn payment_source_matches_restriction(
             cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
-        crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts => false,
     }
 }
 
@@ -940,8 +937,7 @@ pub(super) fn apply_spent_mana_bonuses(
                 enters_with_counters,
                 granted_abilities,
             ),
-            crate::ability::ManaUsageRestriction::ActivateAbility
-            | crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts => continue,
+            crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 
         if grant_uncounterable || !enters_with_counters.is_empty() {

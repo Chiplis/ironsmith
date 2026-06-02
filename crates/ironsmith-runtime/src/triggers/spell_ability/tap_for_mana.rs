@@ -69,16 +69,9 @@ impl TriggerMatcher for TapForManaTrigger {
         let object_phrase = if starts_with_determiner(&object) {
             object
         } else {
-            format!("{} {object}", indefinite_article(&object))
+            format!("a {object}")
         };
         format!("Whenever {player} {verb} {object_phrase} for mana")
-    }
-}
-
-fn indefinite_article(text: &str) -> &'static str {
-    match text.chars().next().map(|ch| ch.to_ascii_lowercase()) {
-        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
-        _ => "a",
     }
 }
 

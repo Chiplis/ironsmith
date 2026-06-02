@@ -126,23 +126,6 @@ const SPEND_MANA_ACTIVATE_ABILITY_PATTERN: ClauseShape<'static> = clause_shape!(
             ],
         ]
 );
-const SPEND_MANA_PAY_CUMULATIVE_UPKEEP_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "spend", "this", "mana", "only", "to", "pay", "cumulative", "upkeep", "costs",
-            ],
-            &[
-                "spend", "this", "mana", "only", "to", "pay", "cumulative", "upkeep", "cost",
-            ],
-            &[
-                "spend", "that", "mana", "only", "to", "pay", "cumulative", "upkeep", "costs",
-            ],
-            &[
-                "spend", "that", "mana", "only", "to", "pay", "cumulative", "upkeep", "cost",
-            ],
-        ]
-);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const OF_THE_CHOSEN_TYPE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["of", "the", "chosen", "type"]);
@@ -843,20 +826,8 @@ pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
 ) -> Option<ManaUsageRestriction> {
     parse_legacy_mana_usage_restriction_sentence_lexed(tokens)
         .or_else(|| parse_activate_ability_mana_usage_restriction_sentence_lexed(tokens))
-        .or_else(|| parse_pay_cumulative_upkeep_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_cant_be_spent_to_cast_sentence_lexed(tokens))
         .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
-}
-
-fn parse_pay_cumulative_upkeep_mana_usage_restriction_sentence_lexed(
-    tokens: &[OwnedLexToken],
-) -> Option<ManaUsageRestriction> {
-    let words = TokenWordView::new(tokens).to_word_refs();
-    if SPEND_MANA_PAY_CUMULATIVE_UPKEEP_PATTERN.matches_words(&words) {
-        Some(ManaUsageRestriction::PayCumulativeUpkeepCosts)
-    } else {
-        None
-    }
 }
 
 fn parse_cant_be_spent_to_cast_sentence_lexed(

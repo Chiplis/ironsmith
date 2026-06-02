@@ -8450,43 +8450,6 @@ fn test_parse_trigger_tap_creature_for_mana() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-const SNOWFALL_ORACLE_TEXT: &str = "Cumulative upkeep {U}\nWhenever an Island is tapped for mana, its controller may add an additional {U}. If that Island is snow, its controller may add an additional {U}{U} instead. Spend this mana only to pay cumulative upkeep costs.";
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-fn snowfall_strict_parser_and_compiled_text_regression() {
-    let def = CardDefinitionBuilder::new(CardId::from_raw(2537), "Snowfall")
-        .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Generic(2)],
-            vec![ManaSymbol::Blue],
-        ]))
-        .card_types(vec![CardType::Enchantment])
-        .parse_text(SNOWFALL_ORACLE_TEXT)
-        .expect("Snowfall should parse strictly");
-
-    let debug = format!("{def:#?}");
-    assert!(
-        debug.contains("CumulativeUpkeepEffect")
-            && debug.contains("TapForManaTrigger")
-            && debug.contains("PayCumulativeUpkeepCosts")
-            && debug.contains("Snow"),
-        "expected Snowfall to model cumulative upkeep, tap-for-mana, snow branch, and restricted mana, got {debug}"
-    );
-    assert!(
-        !crate::cards::generated_definition_has_unimplemented_content(&def),
-        "Snowfall should not contain unsupported markers: {debug}"
-    );
-
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
-    assert!(
-        rendered.contains("If that Island is snow")
-            && rendered.contains("{U}{U} instead")
-            && rendered.contains("Spend this mana only to pay cumulative upkeep costs"),
-        "expected Snowfall compiled text to preserve snow instead branch and spend restriction, got {rendered}"
-    );
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_trigger_one_or_more_plus_one_counters_put_on_this_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counter Trigger One-Or-More Probe")

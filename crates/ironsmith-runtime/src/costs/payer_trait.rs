@@ -25,8 +25,6 @@ pub enum PaymentReason {
     TurnFaceUp,
     /// Paying a cost during effect or triggered-ability resolution.
     Effect,
-    /// Paying cumulative upkeep costs during cumulative-upkeep resolution.
-    CumulativeUpkeep,
     /// Paying another special-action or generic engine cost.
     #[default]
     Other,
