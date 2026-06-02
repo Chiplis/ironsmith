@@ -402,12 +402,25 @@ impl CostPayer for CostEffect {
         let crate::effect::Value::Fixed(count) = effect.count else {
             return None;
         };
+        let card_type = match &effect.card_filter {
+            None => None,
+            Some(filter) => {
+                let card_type = match filter.card_types.as_slice() {
+                    [] => None,
+                    [card_type] => Some(*card_type),
+                    _ => return None,
+                };
+                let mut non_type_filter = filter.clone();
+                non_type_filter.card_types.clear();
+                if non_type_filter != crate::filter::ObjectFilter::default() {
+                    return None;
+                }
+                card_type
+            }
+        };
         Some((
             count.max(0) as u32,
-            effect
-                .card_filter
-                .as_ref()
-                .and_then(|filter| filter.card_types.first().copied()),
+            card_type,
         ))
     }
 

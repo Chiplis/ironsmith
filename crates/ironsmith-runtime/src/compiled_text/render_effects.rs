@@ -3307,6 +3307,13 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     {
         return describe_structural_multisentence_effect_list(rest);
     }
+    if let [first, rest @ ..] = effects
+        && first
+            .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+            .is_some()
+    {
+        return describe_structural_multisentence_effect_list(rest);
+    }
 
     if let Some(compact) = describe_untap_attacking_then_additional_combat(effects) {
         return Some(compact);
@@ -6891,9 +6898,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         .iter()
         .copied()
         .filter(|effect| {
-            !effect
+            let implicit_triggering_object = effect
                 .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
-                .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
+                .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()));
+            let implicit_triggering_source = effect
+                .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+                .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()));
+            !implicit_triggering_object && !implicit_triggering_source
         })
         .collect::<Vec<_>>();
 
@@ -10503,6 +10514,13 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     let mut parts = Vec::new();
     let mut idx = 0usize;
     while idx < filtered.len() {
+        if filtered[idx]
+            .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+            .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
+        {
+            idx += 1;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(compact) = describe_look_at_hand_top_and_face_down_creatures(&[
                 filtered[idx],
@@ -19511,6 +19529,16 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
                 filter.other,
             )
         }
+        Some(filter) if !filter.any_of.is_empty() => {
+            if let Some(filter_text) = describe_discard_any_of_filter(filter) {
+                return Some(if count == 1 {
+                    format!("Discard {filter_text}")
+                } else {
+                    format!("Discard {count} {filter_text}s")
+                });
+            }
+            return None;
+        }
         Some(filter) if filter.card_types.is_empty() => {
             let expected = ObjectFilter {
                 zone: Some(Zone::Hand),
@@ -19554,6 +19582,72 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
     } else {
         format!("Discard {count} {type_text}")
     })
+}
+
+fn describe_discard_any_of_filter(filter: &ObjectFilter) -> Option<String> {
+    let expected = ObjectFilter {
+        zone: Some(Zone::Hand),
+        any_of: filter.any_of.clone(),
+        ..Default::default()
+    };
+    if filter != &expected {
+        return None;
+    }
+
+    let parts = filter
+        .any_of
+        .iter()
+        .map(describe_simple_hand_card_filter)
+        .collect::<Option<Vec<_>>>()?;
+    Some(parts.join(" or "))
+}
+
+fn describe_simple_hand_card_filter(filter: &ObjectFilter) -> Option<String> {
+    let mut expected = ObjectFilter {
+        zone: filter.zone,
+        card_types: filter.card_types.clone(),
+        subtypes: filter.subtypes.clone(),
+        colors: filter.colors,
+        name: filter.name.clone(),
+        ..Default::default()
+    };
+    if !matches!(expected.zone, None | Some(Zone::Hand)) {
+        return None;
+    }
+    if filter != &expected {
+        return None;
+    }
+    expected.zone = None;
+
+    if let Some(name) = filter.name.as_deref() {
+        return Some(format!(
+            "a card named {}",
+            normalize_card_name_for_surface(name)
+        ));
+    }
+    if filter.card_types.len() == 1 && filter.subtypes.is_empty() && filter.colors.is_none() {
+        return Some(with_indefinite_article(&format!(
+            "{} card",
+            describe_card_type_word_local(filter.card_types[0])
+        )));
+    }
+    if filter.subtypes.len() == 1 && filter.card_types.is_empty() && filter.colors.is_none() {
+        return Some(with_indefinite_article(&format!(
+            "{} card",
+            filter.subtypes[0].display_name()
+        )));
+    }
+    if let Some(colors) = filter.colors
+        && colors.count() == 1
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+    {
+        let color = crate::color::Color::ALL
+            .into_iter()
+            .find(|color| colors.contains(*color))?;
+        return Some(with_indefinite_article(&format!("{} card", color.name())));
+    }
+    None
 }
 
 fn is_grandeur_activation_cost(activated: &crate::ability::ActivatedAbility) -> bool {
@@ -29417,6 +29511,12 @@ fn describe_remove_counter_phrase(
 }
 
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
+    if effect
+        .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
+        .is_some_and(|tag| is_implicit_reference_tag(tag.tag.as_str()))
+    {
+        return String::new();
+    }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
         if let Some(compact) = describe_reveal_until_sequence(sequence) {
             return compact;
@@ -34046,6 +34146,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if matches!(copy_spell.count, Value::Fixed(1)) {
             if matches!(copy_spell.target, ChooseSpec::Iterated) {
                 let mut text = "Copy that spell".to_string();
+                if copy_spell
+                    .removed_supertypes
+                    .contains(&crate::types::Supertype::Legendary)
+                {
+                    text.push_str(", except the copy isn't legendary");
+                }
+                return text;
+            }
+            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering_source") {
+                let mut text = "Copy that ability".to_string();
                 if copy_spell
                     .removed_supertypes
                     .contains(&crate::types::Supertype::Legendary)

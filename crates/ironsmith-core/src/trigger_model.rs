@@ -170,6 +170,7 @@ pub enum TriggerKind {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -706,6 +707,7 @@ impl Trigger {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     ) -> Self {
         Self::typed(
             "ability_activated_qualified",
@@ -713,6 +715,7 @@ impl Trigger {
                 activator,
                 filter,
                 non_mana_only,
+                loyalty_only,
             },
         )
     }

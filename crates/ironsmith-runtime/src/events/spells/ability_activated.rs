@@ -16,6 +16,8 @@ pub struct AbilityActivatedEvent {
     pub activator: PlayerId,
     /// Whether this was a mana ability.
     pub is_mana_ability: bool,
+    /// Whether this was a loyalty ability.
+    pub is_loyalty_ability: bool,
     /// Last-known snapshot of the source at activation time.
     pub snapshot: Option<ObjectSnapshot>,
 }
@@ -27,8 +29,15 @@ impl AbilityActivatedEvent {
             source,
             activator,
             is_mana_ability,
+            is_loyalty_ability: false,
             snapshot: None,
         }
+    }
+
+    /// Mark whether the activated ability was a loyalty ability.
+    pub fn with_loyalty_ability(mut self, is_loyalty_ability: bool) -> Self {
+        self.is_loyalty_ability = is_loyalty_ability;
+        self
     }
 
     /// Attach a snapshot captured when the ability was activated.
@@ -73,6 +82,10 @@ impl GameEventType for AbilityActivatedEvent {
 
     fn controller(&self) -> Option<PlayerId> {
         Some(self.activator)
+    }
+
+    fn source_object(&self) -> Option<ObjectId> {
+        Some(self.source)
     }
 
     fn snapshot(&self) -> Option<&ObjectSnapshot> {
