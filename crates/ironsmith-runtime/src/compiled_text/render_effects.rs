@@ -25532,7 +25532,7 @@ pub(super) fn describe_look_at_top_then_put_into_hand_rest_graveyard(
     {
         if n == 1 && look_at_top.count == Value::Fixed(2) {
             return Some(format!(
-                "{opener} the top {count_text} {noun} of {owner} library. Put one of them into {hand} hand and the other into {owner} graveyard"
+                "{opener} the top {count_text} {noun} of {owner} library. Put one of those cards into {hand} hand and the other into {owner} graveyard"
             ));
         }
         let chosen = match n {

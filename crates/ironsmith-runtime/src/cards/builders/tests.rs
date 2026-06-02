@@ -207,6 +207,53 @@ fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn nymris_oonas_trickster_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Nymris, Oona's Trickster");
+
+    let def = parse_oracle_card_definition("Nymris, Oona's Trickster");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Flash, flying"),
+        "Nymris should preserve its keywords, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever you cast your first spell during each opponent's turn, look at the top two cards of your library. Put one of those cards into your hand and the other into your graveyard."
+        ),
+        "Nymris should render its first-spell loot trigger, got {rendered}"
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Nymris should have a triggered ability");
+    assert_eq!(
+        triggered.trigger.display(),
+        "Whenever you cast your first spell during each opponent's turn"
+    );
+    let effects_debug = format!("{:#?}", triggered.effects.flattened_default_effects());
+    assert!(
+        ability_debug.contains("SpellCastTrigger")
+            && ability_debug.contains("during_turn: Some(")
+            && ability_debug.contains("Opponent"),
+        "expected Nymris to lower to a spell-cast trigger during opponents' turns, got {ability_debug}"
+    );
+    assert!(
+        effects_debug.contains("LookAtTopCardsEffect")
+            && effects_debug.contains("ChooseObjectsEffect")
+            && effects_debug.contains("MoveToZoneEffect")
+            && effects_debug.contains("Hand,")
+            && effects_debug.contains("Graveyard,"),
+        "expected Nymris to look at two cards, choose one for hand, and move the other to graveyard, got {effects_debug}"
+    );
+}
+
+#[test]
 fn archon_of_coronation_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Archon of Coronation");
     let ability_debug = format!("{:#?}", def.abilities);

@@ -165,16 +165,45 @@ impl TriggerMatcher for SpellCastTrigger {
             .map(describe_spell_filter)
             .unwrap_or_else(|| "a spell".to_string());
         let mut suffix = String::new();
-        let suppress_turn_suffix = false;
+        let mut suppress_turn_suffix = false;
         if let Some(exact_spells) = self.exact_spells_this_turn {
             let ordinal =
                 ironsmith_core::ordinal_word(exact_spells).unwrap_or_else(|| "nth".to_string());
+            let exact_spell_turn_suffix = match self.during_turn {
+                Some(PlayerFilter::You) => Some("during each of your turns"),
+                Some(PlayerFilter::Opponent) => Some("during each opponent's turn"),
+                _ => None,
+            };
             if spell_text == "a spell" || spell_text == "spell" {
                 spell_text = match &self.caster {
-                    PlayerFilter::You => format!("your {ordinal} spell each turn"),
-                    PlayerFilter::Any => format!("their {ordinal} spell each turn"),
-                    PlayerFilter::Active => format!("their {ordinal} spell each turn"),
-                    PlayerFilter::Opponent => format!("their {ordinal} spell each turn"),
+                    PlayerFilter::You => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("your {ordinal} spell {turn_suffix}")
+                        }
+                        None => format!("your {ordinal} spell each turn"),
+                    },
+                    PlayerFilter::Any => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("their {ordinal} spell {turn_suffix}")
+                        }
+                        None => format!("their {ordinal} spell each turn"),
+                    },
+                    PlayerFilter::Active => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("their {ordinal} spell {turn_suffix}")
+                        }
+                        None => format!("their {ordinal} spell each turn"),
+                    },
+                    PlayerFilter::Opponent => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("their {ordinal} spell {turn_suffix}")
+                        }
+                        None => format!("their {ordinal} spell each turn"),
+                    },
                     PlayerFilter::Specific(_) => {
                         format!("that player's {ordinal} spell each turn")
                     }
@@ -183,12 +212,30 @@ impl TriggerMatcher for SpellCastTrigger {
             } else {
                 let base_spell_text = strip_leading_spell_article(&spell_text);
                 spell_text = match &self.caster {
-                    PlayerFilter::You => format!("your {ordinal} {base_spell_text} each turn"),
+                    PlayerFilter::You => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("your {ordinal} {base_spell_text} {turn_suffix}")
+                        }
+                        None => format!("your {ordinal} {base_spell_text} each turn"),
+                    },
                     PlayerFilter::Any | PlayerFilter::Active => {
-                        format!("their {ordinal} {base_spell_text} each turn")
+                        match exact_spell_turn_suffix {
+                            Some(turn_suffix) => {
+                                suppress_turn_suffix = true;
+                                format!("their {ordinal} {base_spell_text} {turn_suffix}")
+                            }
+                            None => format!("their {ordinal} {base_spell_text} each turn"),
+                        }
                     }
                     PlayerFilter::Opponent => {
-                        format!("their {ordinal} {base_spell_text} each turn")
+                        match exact_spell_turn_suffix {
+                            Some(turn_suffix) => {
+                                suppress_turn_suffix = true;
+                                format!("their {ordinal} {base_spell_text} {turn_suffix}")
+                            }
+                            None => format!("their {ordinal} {base_spell_text} each turn"),
+                        }
                     }
                     PlayerFilter::Specific(_) => {
                         format!("that player's {ordinal} {base_spell_text} each turn")
