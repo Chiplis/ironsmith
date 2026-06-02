@@ -21982,6 +21982,11 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
             return None;
         }
         let subject = capitalize_first(&describe_choose_spec(&target_only.target));
+        if let Some(allowed) = describe_except_by_subtype_blockers(blockers) {
+            return Some(format!(
+                "{subject} can't be blocked this turn except by {allowed}"
+            ));
+        }
         let blockers = pluralize_noun_phrase(strip_leading_article(&blockers.description()));
         return Some(format!(
             "{subject} can't be blocked by {blockers} this turn"
@@ -22026,6 +22031,27 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
 
     let subject = capitalize_first(&describe_choose_spec(&target_only.target));
     Some(format!("{subject} {restriction_text}"))
+}
+
+fn describe_except_by_subtype_blockers(blockers: &ObjectFilter) -> Option<String> {
+    if blockers.excluded_subtypes.is_empty() {
+        return None;
+    }
+
+    let mut expected = ObjectFilter::creature();
+    for subtype in &blockers.excluded_subtypes {
+        expected = expected.without_subtype(*subtype);
+    }
+    if *blockers != expected {
+        return None;
+    }
+
+    let allowed = blockers
+        .excluded_subtypes
+        .iter()
+        .map(|subtype| pluralize_noun_phrase(&subtype.to_string()))
+        .collect::<Vec<_>>();
+    Some(join_with_and(&allowed))
 }
 
 pub(super) fn describe_damage_then_self_skip_next_untap(

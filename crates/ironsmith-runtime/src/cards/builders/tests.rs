@@ -44932,6 +44932,256 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+#[test]
+fn departed_deckhand_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Departed Deckhand");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("This creature can't be blocked except by spirits"),
+        "expected static Spirit-only blocking restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "{3}{U}: Another target creature you control can't be blocked this turn except by Spirits"
+        ),
+        "expected activated Spirit-only blocking restriction, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("BecomesTargetedBySpellTrigger")
+            && ability_debug.contains("SacrificeTargetEffect"),
+        "expected spell-targeted sacrifice trigger, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("RuleRestriction")
+            && ability_debug.contains("BlockSpecificAttacker")
+            && ability_debug.contains("excluded_subtypes: [Spirit]"),
+        "expected static Spirit exception to lower structurally, got {ability_debug}"
+    );
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Departed Deckhand should have an activated ability");
+    let cost_debug = format!("{:#?}", activated.mana_cost);
+    assert!(
+        cost_debug.contains("Generic") && cost_debug.contains("3,") && cost_debug.contains("Blue"),
+        "expected {{3}}{{U}} activation cost, got {cost_debug}"
+    );
+
+    let effects = activated.effects.flattened_default_effects();
+    let target_only = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| tagged.effect.downcast_ref::<TargetOnlyEffect>())
+                .or_else(|| effect.downcast_ref::<TargetOnlyEffect>())
+        })
+        .expect("Departed Deckhand activation should establish a target");
+    let ChooseSpec::Object(target_filter) = target_only.target.base() else {
+        panic!("expected object target filter, got {:?}", target_only.target);
+    };
+    assert!(target_filter.other, "target should be another creature");
+    assert_eq!(target_filter.controller, Some(PlayerFilter::You));
+    assert!(target_filter.card_types.contains(&CardType::Creature));
+
+    let cant = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>())
+        .expect("Departed Deckhand activation should create a cant-block restriction");
+    assert_eq!(cant.duration, crate::effect::Until::EndOfTurn);
+    match &cant.restriction {
+        crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
+            assert!(blockers.excluded_subtypes.contains(&Subtype::Spirit));
+            assert!(attacker.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            }));
+        }
+        other => panic!("expected Spirit-only block-specific restriction, got {other:?}"),
+    }
+}
+
+#[test]
+fn departed_deckhand_runtime_targets_another_creature_and_allows_only_spirit_blockers() {
+    fn creature_def(name: &str, subtype: Subtype) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![subtype])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    let deckhand = parse_oracle_card_definition("Departed Deckhand");
+    let activated = deckhand
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Departed Deckhand should have an activated ability");
+    let effects = activated.effects.flattened_default_effects();
+    let target_only = effects
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| tagged.effect.downcast_ref::<TargetOnlyEffect>())
+                .or_else(|| effect.downcast_ref::<TargetOnlyEffect>())
+        })
+        .expect("Departed Deckhand activation should establish a target");
+    let ChooseSpec::Object(target_filter) = target_only.target.base() else {
+        panic!("expected object target filter, got {:?}", target_only.target);
+    };
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let deckhand_id = game.create_object_from_definition(&deckhand, alice, Zone::Battlefield);
+    let target_id = game.create_object_from_definition(
+        &creature_def("Alice's Target", Subtype::Merfolk),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature_id = game.create_object_from_definition(
+        &creature_def("Bob's Creature", Subtype::Merfolk),
+        bob,
+        Zone::Battlefield,
+    );
+    let non_spirit_blocker_id = game.create_object_from_definition(
+        &creature_def("Non-Spirit Blocker", Subtype::Pirate),
+        bob,
+        Zone::Battlefield,
+    );
+    let spirit_blocker_id = game.create_object_from_definition(
+        &creature_def("Spirit Blocker", Subtype::Spirit),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let filter_ctx = crate::filter::FilterContext::new(alice)
+        .with_source(deckhand_id)
+        .with_opponents(vec![bob]);
+    assert!(
+        target_filter.matches(
+            game.object(target_id).expect("target exists"),
+            &filter_ctx,
+            &game,
+        ),
+        "another creature Alice controls should be a legal activation target"
+    );
+    assert!(
+        !target_filter.matches(
+            game.object(deckhand_id).expect("deckhand exists"),
+            &filter_ctx,
+            &game,
+        ),
+        "Departed Deckhand should not target itself because the text says another"
+    );
+    assert!(
+        !target_filter.matches(
+            game.object(bob_creature_id).expect("Bob creature exists"),
+            &filter_ctx,
+            &game,
+        ),
+        "Departed Deckhand should not target creatures controlled by another player"
+    );
+
+    game.refresh_continuous_state();
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(deckhand_id).expect("deckhand exists"),
+            game.object(non_spirit_blocker_id)
+                .expect("non-Spirit blocker exists"),
+            &game,
+        ),
+        "Departed Deckhand's static restriction should stop non-Spirit blockers"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(deckhand_id).expect("deckhand exists"),
+            game.object(spirit_blocker_id).expect("Spirit blocker exists"),
+            &game,
+        ),
+        "Departed Deckhand's static restriction should still allow Spirit blockers"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(target_id).expect("target exists"),
+            game.object(non_spirit_blocker_id)
+                .expect("non-Spirit blocker exists"),
+            &game,
+        ),
+        "the chosen creature should be normally blockable before the activation resolves"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(deckhand_id, alice).with_targets(
+        vec![crate::effects::ResolvedTarget::Object(target_id)],
+    );
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Departed Deckhand activation effect should resolve");
+    }
+
+    assert!(
+        !crate::rules::combat::can_block(
+            game.object(target_id).expect("target exists"),
+            game.object(non_spirit_blocker_id)
+                .expect("non-Spirit blocker exists"),
+            &game,
+        ),
+        "the activated effect should stop non-Spirit creatures from blocking the target"
+    );
+    assert!(
+        crate::rules::combat::can_block(
+            game.object(target_id).expect("target exists"),
+            game.object(spirit_blocker_id).expect("Spirit blocker exists"),
+            &game,
+        ),
+        "the activated effect should still allow Spirit creatures to block the target"
+    );
+
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Targeting Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, bob, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(spell_id, bob));
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::spells::BecomesTargetedEvent::new(deckhand_id, spell_id, bob, false),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == deckhand_id)
+    {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Departed Deckhand should trigger once when targeted by a spell"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Departed Deckhand sacrifice trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Departed Deckhand sacrifice trigger should resolve");
+    assert!(
+        game.objects_in_zone(Zone::Graveyard).into_iter().any(|id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Departed Deckhand")
+        }),
+        "Departed Deckhand should be sacrificed after its targeting trigger resolves"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn cheering_fanatic_strict_parser_renders_chosen_name_cost_reduction() {
