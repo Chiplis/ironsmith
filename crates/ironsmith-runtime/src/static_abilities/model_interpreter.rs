@@ -1643,6 +1643,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .unwrap_or(true)
     }
 
+    fn skips_upkeep_for_player(
+        &self,
+        game: &GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        player: PlayerId,
+    ) -> bool {
+        self.leaf_static_ability().is_some_and(|ability| {
+            ability.skips_upkeep_for_player(game, source, controller, player)
+        })
+    }
+
     fn is_keyword(&self) -> bool {
         Self::is_simple_keyword_id(self.id())
     }

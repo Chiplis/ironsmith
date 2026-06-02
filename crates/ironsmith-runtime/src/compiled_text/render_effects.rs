@@ -2241,6 +2241,32 @@ fn describe_each_player_gain_life_and_draw_pair(effects: &[&Effect]) -> Option<S
     ))
 }
 
+fn describe_player_loses_life_and_discards_pair(effects: &[&Effect]) -> Option<String> {
+    let [lose_effect, discard_effect] = effects else {
+        return None;
+    };
+    let lose = lose_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    let ChooseSpec::Player(lose_player) = lose.player.base() else {
+        return None;
+    };
+    if lose_player != &discard.player || discard.any_number {
+        return None;
+    }
+
+    let player = describe_choose_spec(&lose.player);
+    let random_suffix = if discard.random { " at random" } else { "" };
+    Some(format!(
+        "{} {} {} and {} {}{}",
+        player,
+        player_verb(&player, "lose", "loses"),
+        describe_life_amount_phrase(&lose.amount),
+        player_verb(&player, "discard", "discards"),
+        describe_discard_count(&discard.count, discard.card_filter.as_ref()),
+        random_suffix
+    ))
+}
+
 fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'static str> {
     match filter {
         PlayerFilter::Any => Some("Each player"),
@@ -6763,6 +6789,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_each_player_gain_life_and_draw_pair(&visible_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_player_loses_life_and_discards_pair(&visible_effects) {
         return compact;
     }
     if let Some(compact) = describe_sacrifice_source_then_return_with_counters(&visible_effects) {

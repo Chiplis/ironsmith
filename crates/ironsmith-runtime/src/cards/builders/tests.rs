@@ -20948,7 +20948,13 @@ fn gibbering_descent_parses_hellbent_skip_upkeep_static_line() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Skip your upkeep step if you have no cards in hand"),
+        rendered.contains(
+            "At the beginning of each player's upkeep, that player loses 1 life and discards a card"
+        ),
+        "expected compact lose-life-and-discard trigger text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Hellbent — Skip your upkeep step if you have no cards in hand"),
         "expected hellbent skip-upkeep clause in compiled text, got {rendered}"
     );
     assert!(

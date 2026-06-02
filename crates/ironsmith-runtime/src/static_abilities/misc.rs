@@ -2890,7 +2890,7 @@ impl StaticAbilityKind for PlayersSkipUpkeep {
                     count: 0,
                 } = condition
             {
-                return "Skip your upkeep step if you have no cards in hand".to_string();
+                return "Hellbent — Skip your upkeep step if you have no cards in hand".to_string();
             }
             let condition = super::describe_static_condition(condition);
             format!("{base} {condition}")
