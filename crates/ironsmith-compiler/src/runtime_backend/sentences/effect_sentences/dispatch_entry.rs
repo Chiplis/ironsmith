@@ -18,10 +18,13 @@ use super::super::effect_ast_traversal::{
 };
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::structure::{
+    LeadingResultPrefixKind, split_leading_result_prefix_lexed,
+};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
-    split_lexed_sentences, token_slice_at_is,
+    split_lexed_sentences, token_slice_at_is, trim_lexed_commas,
 };
 use super::super::object_filters::{
     is_comparison_or_delimiter, parse_object_filter, parse_object_filter_lexed,
@@ -1095,6 +1098,17 @@ pub(super) fn parse_if_you_dont_sentence(
 fn parse_effect_sentences_from_sentence_inputs(
     sentences: Vec<SentenceInput>,
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    fn starts_with_numeric_result_prefix(tokens: &[OwnedLexToken]) -> bool {
+        let tokens = trim_lexed_commas(tokens);
+        matches!(tokens.first().map(|token| token.kind), Some(TokenKind::Number))
+            && matches!(
+                tokens.get(1).map(|token| token.kind),
+                Some(TokenKind::Dash | TokenKind::EmDash)
+            )
+            && matches!(tokens.get(2).map(|token| token.kind), Some(TokenKind::Number))
+            && tokens.iter().any(|token| token.kind == TokenKind::Pipe)
+    }
+
     fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
         let word_view = TokenWordView::new(tokens);
         let words = word_view.word_refs();
@@ -1127,6 +1141,36 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
         let sentence_text = crate::runtime_backend::token_word_refs(sentence).join(" ");
         let _sentence_scope = parse_trace::scope(format!("effect sentence: \"{}\"", sentence_text));
+
+        if let Some(prefix) = split_leading_result_prefix_lexed(sentence) {
+            let mut row_sentences = vec![SentenceInput::from_lexed(prefix.trailing_tokens)];
+            let mut consumed_sentences = 1usize;
+            if starts_with_numeric_result_prefix(sentence) {
+                while sentence_idx + consumed_sentences < sentences.len() {
+                    let next = sentences[sentence_idx + consumed_sentences].lowered();
+                    if split_leading_result_prefix_lexed(next).is_some() {
+                        break;
+                    }
+                    row_sentences.push(SentenceInput::from_lexed(next));
+                    consumed_sentences += 1;
+                }
+            }
+
+            let row_effects = parse_effect_sentences_from_sentence_inputs(row_sentences)?;
+            effects.push(match prefix.kind {
+                LeadingResultPrefixKind::If => EffectAst::IfResult {
+                    predicate: prefix.predicate,
+                    effects: row_effects,
+                },
+                LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                    predicate: prefix.predicate,
+                    effects: row_effects,
+                },
+            });
+            carried_context = None;
+            sentence_idx += consumed_sentences;
+            continue;
+        }
 
         if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
             let stage = if let Some(feature_tag) = matched.feature_tag {

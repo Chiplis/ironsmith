@@ -3216,6 +3216,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     describe_roll_choose_destroy_create_structural(effects)
+        .or_else(|| describe_d20_exile_return_table(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
@@ -3231,6 +3232,147 @@ fn unwrap_with_id(effect: &Effect) -> (&Effect, Option<crate::effect::EffectId>)
         return (&with_id.effect, Some(with_id.id));
     }
     (effect, None)
+}
+
+fn describe_d20_exile_return_table(effects: &[Effect]) -> Option<String> {
+    let [exile_effect, roll_effect, low_branch_effect, high_branch_effect] = effects else {
+        return None;
+    };
+
+    let tagged_exile = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = tagged_exile
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    if exile.face_down {
+        return None;
+    }
+
+    let (roll_unwrapped, roll_id) = unwrap_with_id(roll_effect);
+    let roll = roll_unwrapped.downcast_ref::<crate::effects::RollDieEffect>()?;
+    let roll_id = roll_id?;
+    if roll.sides != 20 || roll.player != PlayerFilter::You {
+        return None;
+    }
+
+    let low_branch = result_range_if_effect(low_branch_effect, roll_id, 1, 9)?;
+    let high_branch = result_range_if_effect(high_branch_effect, roll_id, 10, 20)?;
+    let [low_delayed_return] = low_branch.then.as_slice() else {
+        return None;
+    };
+    if !is_delayed_owner_battlefield_return_for_tag(low_delayed_return, &tagged_exile.tag) {
+        return None;
+    }
+
+    let [high_return, high_exile, high_delayed_return] = high_branch.then.as_slice() else {
+        return None;
+    };
+    if !is_owner_battlefield_return_for_tag(high_return, &tagged_exile.tag)
+        || !is_exile_move_for_tag(high_exile, &tagged_exile.tag)
+        || !is_delayed_owner_battlefield_return_for_tag_or_source_exiled(
+            high_delayed_return,
+            &tagged_exile.tag,
+        )
+    {
+        return None;
+    }
+
+    let exile_text = describe_effect(exile_effect);
+    let roll_text = lowercase_first(&describe_effect(roll_effect));
+    Some(format!(
+        "{exile_text}, then {roll_text}.\n1—9 | Return those cards to the battlefield under their owner's control at the beginning of the next end step.\n10—20 | Return those cards to the battlefield under their owner's control, then exile them again. Return those cards to the battlefield under their owner's control at the beginning of the next end step"
+    ))
+}
+
+fn result_range_if_effect(
+    effect: &Effect,
+    condition: crate::effect::EffectId,
+    min: i32,
+    max: i32,
+) -> Option<&crate::effects::IfEffect> {
+    let (effect, _) = unwrap_with_id(effect);
+    let if_effect = effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if if_effect.condition != condition || !if_effect.else_.is_empty() {
+        return None;
+    }
+    match &if_effect.predicate {
+        EffectPredicate::Value(Comparison::BetweenInclusive(found_min, found_max))
+            if *found_min == min && *found_max == max =>
+        {
+            Some(if_effect)
+        }
+        _ => None,
+    }
+}
+
+fn is_owner_battlefield_return_for_tag(effect: &Effect, tag: &crate::TagKey) -> bool {
+    let Some(move_to_zone) = unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return false;
+    };
+    move_to_zone.zone == Zone::Battlefield
+        && move_to_zone.battlefield_controller == crate::effects::BattlefieldController::Owner
+        && !move_to_zone.enters_tapped
+        && !move_to_zone.enters_attacking
+        && !move_to_zone.enters_face_down
+        && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found == tag)
+}
+
+fn is_exile_move_for_tag(effect: &Effect, tag: &crate::TagKey) -> bool {
+    if let Some(exile) = unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::ExileEffect>()
+    {
+        return !exile.face_down
+            && matches!(exile.spec.base(), ChooseSpec::Tagged(found) if found == tag);
+    }
+    unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_to_zone| {
+            move_to_zone.zone == Zone::Exile
+                && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found == tag)
+        })
+}
+
+fn is_delayed_owner_battlefield_return_for_tag(effect: &Effect, tag: &crate::TagKey) -> bool {
+    delayed_owner_battlefield_return_tag(effect)
+        .is_some_and(|found| found.as_str() == tag.as_str())
+}
+
+fn is_delayed_owner_battlefield_return_for_tag_or_source_exiled(
+    effect: &Effect,
+    tag: &crate::TagKey,
+) -> bool {
+    delayed_owner_battlefield_return_tag(effect).is_some_and(|found| {
+        found.as_str() == tag.as_str() || found.as_str() == crate::tag::SOURCE_EXILED_TAG
+    })
+}
+
+fn delayed_owner_battlefield_return_tag(effect: &Effect) -> Option<&crate::TagKey> {
+    let schedule = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    if !schedule.one_shot || schedule.start_next_turn || schedule.until_end_of_turn {
+        return None;
+    }
+    let trigger_text = schedule.trigger.display().to_ascii_lowercase();
+    if !trigger_text.contains("end step") {
+        return None;
+    }
+    let [move_effect] = schedule.effects.as_ref() else {
+        return None;
+    };
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Owner
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+    {
+        return None;
+    }
+    match move_to_zone.target.base() {
+        ChooseSpec::Tagged(tag) => Some(tag),
+        _ => None,
+    }
 }
 
 fn describe_each_player_repeat_pay_life_tokens_sequence(effects: &[Effect]) -> Option<String> {

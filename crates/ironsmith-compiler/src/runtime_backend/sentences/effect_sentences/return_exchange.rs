@@ -230,6 +230,37 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         tokens
     };
 
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(then_idx) = words
+        .windows(2)
+        .position(|window| window == ["then", "exile"])
+        && let Some(then_token_idx) = token_index_for_word_index(tokens, then_idx)
+    {
+        let return_tokens = trim_commas(&tokens[..then_token_idx]);
+        let exile_tokens = trim_commas(&tokens[then_token_idx + 1..]);
+        if !return_tokens.is_empty()
+            && exile_tokens
+                .first()
+                .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("exile"))
+        {
+            let mut target_tokens = trim_commas(&exile_tokens[1..]);
+            if target_tokens
+                .last()
+                .is_some_and(|token| token.parser_text().eq_ignore_ascii_case("again"))
+            {
+                target_tokens = trim_commas(&target_tokens[..target_tokens.len() - 1]);
+            }
+            if !target_tokens.is_empty() {
+                return Ok(EffectAst::Sequence {
+                    effects: vec![
+                        parse_return(&return_tokens)?,
+                        EffectAst::subject_verb_exile(parse_target_phrase(&target_tokens)?, false),
+                    ],
+                });
+            }
+        }
+    }
+
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::contains_word(tokens, "unless") {
         return Err(CardTextError::ParseError(format!(

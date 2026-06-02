@@ -1492,9 +1492,14 @@ pub(super) fn run_statement_probe_line_family(
         && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
+        let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+            &ctx.preprocessed.items,
+            ctx.idx,
+            statement_line,
+        );
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Statement(statement_line),
-            ctx.idx + 1,
+            next_idx,
         )));
     }
     Ok(None)
@@ -1536,7 +1541,12 @@ pub(super) fn run_statement_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     Ok(parse_statement_line_cst(ctx.line)?.map(|statement_line| {
-        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), ctx.idx + 1)
+        let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+            &ctx.preprocessed.items,
+            ctx.idx,
+            statement_line,
+        );
+        LineDispatchResult::single(RewriteLineCst::Statement(statement_line), next_idx)
     }))
 }
 

@@ -167,6 +167,16 @@ fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
     structure::split_leading_result_prefix_lexed(&line.tokens).is_some()
 }
 
+fn is_numeric_result_followup_line(line: &PreprocessedLine) -> bool {
+    matches!(line.tokens.first().map(|token| token.kind), Some(TokenKind::Number))
+        && matches!(
+            line.tokens.get(1).map(|token| token.kind),
+            Some(TokenKind::Dash | TokenKind::EmDash)
+        )
+        && matches!(line.tokens.get(2).map(|token| token.kind), Some(TokenKind::Number))
+        && line.tokens.iter().any(|token| token.kind == TokenKind::Pipe)
+}
+
 fn append_joined_line_tokens(target: &mut Vec<OwnedLexToken>, extra: &[OwnedLexToken]) {
     if extra.is_empty() {
         return;
@@ -208,6 +218,35 @@ pub(super) fn extend_triggered_line_with_result_followups(
     }
 
     (triggered, next_idx)
+}
+
+pub(super) fn extend_statement_line_with_result_followups(
+    items: &[PreprocessedItem],
+    idx: usize,
+    mut statement: StatementLineCst,
+) -> (StatementLineCst, usize) {
+    let mut next_idx = idx + 1;
+
+    while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if !is_numeric_result_followup_line(line) {
+            break;
+        }
+
+        let followup_text = render_token_slice(&line.tokens).trim().to_string();
+        if !statement.text.is_empty() {
+            statement.text.push('\n');
+        }
+        statement.text.push_str(followup_text.as_str());
+        append_joined_line_tokens(&mut statement.parse_tokens, &line.tokens);
+
+        next_idx += 1;
+    }
+
+    if next_idx != idx + 1 {
+        statement.parse_groups = normalize_statement_parse_groups_lexed(&statement.parse_tokens);
+    }
+
+    (statement, next_idx)
 }
 
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {

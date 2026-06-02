@@ -159,9 +159,9 @@ use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 #[cfg(test)]
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
-    extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
-    normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
-    parse_statement_line_cst,
+    extend_statement_line_with_result_followups, extend_triggered_line_with_result_followups,
+    looks_like_statement_line_lexed, normalize_statement_parse_groups_lexed,
+    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
 };
 use unsupported::diagnose_known_unsupported_rewrite_line;
 

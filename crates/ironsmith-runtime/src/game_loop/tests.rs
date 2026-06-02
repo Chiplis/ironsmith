@@ -14,7 +14,7 @@ use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::Phase;
-use crate::ids::{CardId, ObjectId};
+use crate::ids::{CardId, ObjectId, StableId};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::ObjectKind;
 use crate::static_abilities::StaticAbility;
@@ -17339,6 +17339,180 @@ fn valiant_endeavor_first_result_choice_uses_second_result_for_tokens() {
         knight_count, 2,
         "choosing the first die result should create tokens equal to the second result"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn lae_zels_acrobatics_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(274_432), "Lae'zel's Acrobatics")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile all nontoken creatures you control, then roll a d20.\n1—9 | Return those cards to the battlefield under their owner's control at the beginning of the next end step.\n10—20 | Return those cards to the battlefield under their owner's control, then exile them again. Return those cards to the battlefield under their owner's control at the beginning of the next end step.",
+        )
+        .expect("Lae'zel's Acrobatics should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn lae_zels_blink_probe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(274_433), "Lae'zel Blink Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text("When this creature enters, you gain 1 life.")
+        .expect("Lae'zel Blink Probe should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_lae_zels_token_creature(game: &mut GameState, owner: PlayerId) -> StableId {
+    let id = game.new_object_id();
+    let token = crate::object::Object::new_token(
+        id,
+        owner,
+        "Lae'zel Token Probe".to_string(),
+        vec![CardType::Creature],
+        Vec::new(),
+        Some(1),
+        Some(1),
+        crate::color::ColorSet::WHITE,
+    );
+    let stable = token.stable_id;
+    game.add_object(token);
+    stable
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn zone_for_stable(game: &GameState, stable: StableId) -> Zone {
+    let id = game
+        .find_object_by_stable_id(stable)
+        .expect("object should be tracked by stable id");
+    game.object(id).expect("object should exist").zone
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn object_id_for_stable(game: &GameState, stable: StableId) -> ObjectId {
+    game.find_object_by_stable_id(stable)
+        .expect("object should be tracked by stable id")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_lae_zels_acrobatics_roll(roll: u32) -> (GameState, StableId, StableId, PlayerId) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let spell = lae_zels_acrobatics_definition();
+    let probe = lae_zels_blink_probe_definition();
+    let spell_source = game.create_object_from_definition(&spell, alice, Zone::Stack);
+    let probe_id = game.create_object_from_definition(&probe, alice, Zone::Battlefield);
+    let probe_stable = game
+        .object(probe_id)
+        .expect("probe creature should exist")
+        .stable_id;
+    let token_stable = create_lae_zels_token_creature(&mut game, alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("setup triggers should resolve cleanly");
+    }
+
+    game.force_next_die_roll(roll);
+    let mut decisions = AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new(spell_source, alice, &mut decisions);
+    execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        spell
+            .spell_effect
+            .as_ref()
+            .expect("Lae'zel's Acrobatics should have a spell effect"),
+        None,
+        &[],
+    )
+    .expect("Lae'zel's Acrobatics spell effect should resolve");
+
+    (game, probe_stable, token_stable, alice)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_lae_zels_next_end_step(game: &mut GameState) {
+    let mut trigger_queue = TriggerQueue::new();
+    let end_step_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(game, &end_step_event) {
+        trigger_queue.add(trigger);
+    }
+    put_triggers_on_stack(game, &mut trigger_queue).expect("put delayed Lae'zel return on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(game).expect("resolve delayed Lae'zel return");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lae_zels_acrobatics_low_roll_returns_nontokens_only_at_next_end_step() {
+    let (mut game, probe_stable, token_stable, alice) = resolve_lae_zels_acrobatics_roll(5);
+
+    assert_eq!(
+        zone_for_stable(&game, probe_stable),
+        Zone::Exile,
+        "Lae'zel's Acrobatics low roll should leave the nontoken creature exiled"
+    );
+    assert_eq!(
+        zone_for_stable(&game, token_stable),
+        Zone::Battlefield,
+        "Lae'zel's Acrobatics should not exile token creatures"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").life, 20);
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("low roll should not put a pre-end-step ETB trigger on stack");
+    assert!(
+        game.stack_is_empty(),
+        "low roll should not return the creature before the next end step"
+    );
+
+    resolve_lae_zels_next_end_step(&mut game);
+    assert_eq!(
+        zone_for_stable(&game, probe_stable),
+        Zone::Battlefield,
+        "Lae'zel's Acrobatics low roll should return the nontoken creature at the next end step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn lae_zels_acrobatics_high_roll_returns_then_reexiles_before_next_end_step() {
+    let (mut game, probe_stable, token_stable, alice) = resolve_lae_zels_acrobatics_roll(17);
+
+    let current_probe_id = object_id_for_stable(&game, probe_stable);
+    assert!(
+        current_probe_id.0 >= probe_stable.0.0 + 4,
+        "Lae'zel's Acrobatics high roll should return and re-exile the creature before the delayed return"
+    );
+    assert_eq!(
+        zone_for_stable(&game, probe_stable),
+        Zone::Exile,
+        "Lae'zel's Acrobatics high roll should re-exile the returned nontoken creature"
+    );
+    assert_eq!(
+        zone_for_stable(&game, token_stable),
+        Zone::Battlefield,
+        "Lae'zel's Acrobatics high roll should still ignore token creatures"
+    );
+
+    resolve_lae_zels_next_end_step(&mut game);
+    assert_eq!(
+        zone_for_stable(&game, probe_stable),
+        Zone::Battlefield,
+        "Lae'zel's Acrobatics high roll should return the re-exiled creature at the next end step"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").life, 20);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

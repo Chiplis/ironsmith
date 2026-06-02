@@ -6786,6 +6786,48 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn test_parse_lae_zels_acrobatics_roll_table_and_return_sequence() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lae'zel's Acrobatics")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile all nontoken creatures you control, then roll a d20.\n1—9 | Return those cards to the battlefield under their owner's control at the beginning of the next end step.\n10—20 | Return those cards to the battlefield under their owner's control, then exile them again. Return those cards to the battlefield under their owner's control at the beginning of the next end step.",
+        )
+        .expect("Lae'zel's Acrobatics should parse strictly");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(debug.contains("RollDieEffect"), "{debug}");
+    assert!(
+        debug.contains("BetweenInclusive(1, 9)")
+            && debug.contains("BetweenInclusive(10, 20)"),
+        "expected both d20 result branches, got {debug}"
+    );
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Exile"),
+        "expected delayed returns plus 10-20 re-exile sequence, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Lae'zel's Acrobatics") || def.card.name == "Lae'zel's Acrobatics",
+        "card-specific regression should name Lae'zel's Acrobatics"
+    );
+    assert!(
+        rendered.contains("Exile all nontoken creatures you control, then roll a d20")
+            && rendered.contains("1—9 | Return those cards")
+            && rendered.contains("10—20 | Return those cards")
+            && rendered.contains("then exile them again"),
+        "expected d20 table and re-exile wording in compiled text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_arden_angel_rolls_four_sided_die_and_returns_itself_from_graveyard() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Arden Angel")
         .card_types(vec![CardType::Creature])
