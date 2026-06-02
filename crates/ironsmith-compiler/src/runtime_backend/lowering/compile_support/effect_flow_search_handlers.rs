@@ -490,6 +490,7 @@ pub(super) fn try_compile_search_and_reorder_effect(
                 repeat_choices,
             )
         }
+        EffectAst::SecretChoiceReveal => (Vec::new(), Vec::new()),
         EffectAst::VoteStart { .. }
         | EffectAst::VoteStartObjects { .. }
         | EffectAst::VoteExtra { .. } => {

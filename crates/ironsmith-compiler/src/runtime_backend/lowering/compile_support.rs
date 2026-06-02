@@ -251,6 +251,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::VoteOptionGetsMoreVotes { option } => {
             Condition::VoteOptionGetsMoreVotes(option.clone())
         }
+        PredicateAst::SecretChoicesMatch => Condition::SecretChoicesMatch,
         PredicateAst::VoteOptionGetsMoreVotesOrTied { option } => {
             Condition::VoteOptionGetsMoreVotesOrTied(option.clone())
         }

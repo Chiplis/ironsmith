@@ -199,6 +199,22 @@ fn compile_effect_inner(
             choices,
         ));
     }
+    if let EffectAst::SecretChoiceStart {
+        options,
+        participants,
+    } = effect
+    {
+        return Ok((
+            vec![Effect::new(crate::effects::SecretChoiceEffect::new(
+                options.clone(),
+                participants.clone(),
+            ))],
+            Vec::new(),
+        ));
+    }
+    if let EffectAst::SecretChoiceReveal = effect {
+        return Ok((Vec::new(), Vec::new()));
+    }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
         zone_owner,
@@ -2534,6 +2550,15 @@ fn compile_subject_verb_effect(
                     )],
                     choices,
                 ));
+            }
+            if *zone == Zone::Hand
+                && let ChooseSpec::Object(filter) = spec.base()
+                && filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                })
+            {
+                spec = ChooseSpec::All(filter.clone());
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {

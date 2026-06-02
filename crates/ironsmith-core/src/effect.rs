@@ -3115,6 +3115,30 @@ impl<E> VoteEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SecretChoiceEffect {
+    pub options: Vec<String>,
+    pub participants: Vec<PlayerFilter>,
+    pub participant_target: Option<ChooseSpec>,
+}
+
+impl SecretChoiceEffect {
+    pub fn new(options: Vec<String>, participants: Vec<PlayerFilter>) -> Self {
+        let participant_target = participants.iter().find_map(|participant| {
+            if let PlayerFilter::Target(inner) = participant {
+                Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())))
+            } else {
+                None
+            }
+        });
+        Self {
+            options,
+            participants,
+            participant_target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
