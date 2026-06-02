@@ -2107,6 +2107,29 @@ fn parse_vote_result_predicate(
     parse_no_vote_objects_matched_predicate(words)
 }
 
+fn parse_x_value_comparison_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::amount("subject", LexCaptureKind::OneOf(&["x"])),
+        LexPattern::action("copula", LexCaptureKind::OneOf(&["is"])),
+        LexPattern::modifier("comparison", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let comparison_clause = matched.capture_clause("comparison", clause)?;
+    let comparison_words = comparison_clause.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&comparison_words)?;
+    if used != comparison_words.len() {
+        return None;
+    }
+    let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
+    Some(PredicateAst::ValueComparison {
+        left: Value::X,
+        operator,
+        right: Value::Fixed(amount),
+    })
+}
+
 fn parse_vote_option_result_predicate(words: &[&str], allow_tied: bool) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let clause = LexedClause::new(&tokens);
@@ -4812,18 +4835,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 4
-        && filtered.first() == Some(&"x")
-        && filtered.get(1) == Some(&"is")
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[2..])
-        && used + 2 == filtered.len()
-        && let Some((operator, amount)) = comparison_to_value_comparison_operator(comparison)
-    {
-        return Ok(PredicateAst::ValueComparison {
-            left: Value::X,
-            operator,
-            right: Value::Fixed(amount),
-        });
+    if let Some(predicate) = parse_x_value_comparison_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_or_predicate(&filtered)? {
@@ -4898,6 +4911,34 @@ mod tests {
                 player: PlayerAst::Opponent,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_x_value_comparison_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, operator, amount) in [
+            ("If X is 3", ValueComparisonOperator::Equal, 3),
+            (
+                "If X is less than or equal to two",
+                ValueComparisonOperator::LessThanOrEqual,
+                2,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::ValueComparison {
+                    left: Value::X,
+                    operator,
+                    right: Value::Fixed(amount),
+                },
+                "{text}"
+            );
+        }
         Ok(())
     }
 
