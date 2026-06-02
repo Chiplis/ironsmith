@@ -11861,89 +11861,95 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 }
                 let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
                     "that object"
-	                } else {
-	                    "it"
-	                };
-	                let card_context = is_generated_internal_tag(tag.as_str())
-	                    || tag.as_str().starts_with("exiled_")
-	                    || tag.as_str().starts_with("revealed_");
-	                let is_clause = |noun_phrase: &str| {
-	                    let phrase = with_indefinite_article(noun_phrase);
-	                    if subject == "it" {
-	                        format!("it's {phrase}")
-	                    } else {
-	                        format!("{subject} is {phrase}")
-	                    }
-	                };
+                } else {
+                    "it"
+                };
+                let card_context = is_generated_internal_tag(tag.as_str())
+                    || tag.as_str().starts_with("exiled_")
+                    || tag.as_str().starts_with("revealed_");
+                let is_clause = |noun_phrase: &str| {
+                    let phrase = with_indefinite_article(noun_phrase);
+                    if subject == "it" {
+                        format!("it's {phrase}")
+                    } else {
+                        format!("{subject} is {phrase}")
+                    }
+                };
 
-	                if card_context
-	                    && !filter.card_types.is_empty()
-	                    && filter.zone.is_none()
-	                    && filter.controller.is_none()
-	                    && filter.owner.is_none()
-	                    && !filter.single_graveyard
-	                    && filter.targets_player.is_none()
-	                    && filter.targets_object.is_none()
-	                    && !filter.targets_any_of
-	                    && filter.all_card_types.is_empty()
-	                    && filter.excluded_card_types.is_empty()
-	                    && filter.subtypes.is_empty()
-	                    && !filter.type_or_subtype_union
-	                    && filter.excluded_subtypes.is_empty()
-	                    && filter.supertypes.is_empty()
-	                    && filter.excluded_supertypes.is_empty()
-	                    && filter.colors.is_none()
-	                    && filter.excluded_colors.is_empty()
-	                    && !filter.colorless
-	                    && !filter.multicolored
-	                    && !filter.monocolored
-	                    && filter.all_colors.is_none()
-	                    && filter.exactly_two_colors.is_none()
-	                    && !filter.historic
-	                    && !filter.nonhistoric
-	                    && !filter.token
-	                    && !filter.nontoken
-	                    && filter.face_down.is_none()
-	                    && !filter.other
-	                    && !filter.tapped
-	                    && !filter.untapped
-	                    && !filter.attacking
-	                    && !filter.nonattacking
-	                    && !filter.blocking
-	                    && !filter.nonblocking
-	                    && !filter.blocked
-	                    && !filter.unblocked
-	                    && !filter.entered_since_your_last_turn_ended
-	                    && filter.power.is_none()
-	                    && filter.toughness.is_none()
-	                    && filter.mana_value.is_none()
-	                    && filter.mana_value_eq_counters_on_source.is_none()
-	                    && !filter.has_mana_cost
-	                    && !filter.has_tap_activated_ability
-	                    && !filter.no_abilities
-	                    && !filter.no_x_in_cost
-	                    && !filter.has_x_in_cost
-	                    && filter.with_counter.is_none()
-	                    && filter.without_counter.is_none()
-	                    && filter.name.is_none()
-	                    && filter.excluded_name.is_none()
-	                    && filter.alternative_cast.is_none()
-	                    && filter.static_abilities.is_empty()
-	                    && filter.excluded_static_abilities.is_empty()
-	                    && filter.ability_markers.is_empty()
-	                    && filter.excluded_ability_markers.is_empty()
-	                    && !filter.is_commander
-	                    && !filter.noncommander
-	                    && filter.tagged_constraints.is_empty()
-	                    && filter.specific.is_none()
-	                    && filter.any_of.is_empty()
-	                    && !filter.source
-	                {
-	                    let words = filter
-	                        .card_types
-	                        .iter()
-	                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
-	                        .collect::<Vec<_>>();
+                if let Some(state_clause) =
+                    describe_implicit_tagged_object_state_condition(subject, filter)
+                {
+                    return state_clause;
+                }
+
+                if card_context
+                    && !filter.card_types.is_empty()
+                    && filter.zone.is_none()
+                    && filter.controller.is_none()
+                    && filter.owner.is_none()
+                    && !filter.single_graveyard
+                    && filter.targets_player.is_none()
+                    && filter.targets_object.is_none()
+                    && !filter.targets_any_of
+                    && filter.all_card_types.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.subtypes.is_empty()
+                    && !filter.type_or_subtype_union
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.supertypes.is_empty()
+                    && filter.excluded_supertypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.excluded_colors.is_empty()
+                    && !filter.colorless
+                    && !filter.multicolored
+                    && !filter.monocolored
+                    && filter.all_colors.is_none()
+                    && filter.exactly_two_colors.is_none()
+                    && !filter.historic
+                    && !filter.nonhistoric
+                    && !filter.token
+                    && !filter.nontoken
+                    && filter.face_down.is_none()
+                    && !filter.other
+                    && !filter.tapped
+                    && !filter.untapped
+                    && !filter.attacking
+                    && !filter.nonattacking
+                    && !filter.blocking
+                    && !filter.nonblocking
+                    && !filter.blocked
+                    && !filter.unblocked
+                    && !filter.entered_since_your_last_turn_ended
+                    && filter.power.is_none()
+                    && filter.toughness.is_none()
+                    && filter.mana_value.is_none()
+                    && filter.mana_value_eq_counters_on_source.is_none()
+                    && !filter.has_mana_cost
+                    && !filter.has_tap_activated_ability
+                    && !filter.no_abilities
+                    && !filter.no_x_in_cost
+                    && !filter.has_x_in_cost
+                    && filter.with_counter.is_none()
+                    && filter.without_counter.is_none()
+                    && filter.name.is_none()
+                    && filter.excluded_name.is_none()
+                    && filter.alternative_cast.is_none()
+                    && filter.static_abilities.is_empty()
+                    && filter.excluded_static_abilities.is_empty()
+                    && filter.ability_markers.is_empty()
+                    && filter.excluded_ability_markers.is_empty()
+                    && !filter.is_commander
+                    && !filter.noncommander
+                    && filter.tagged_constraints.is_empty()
+                    && filter.specific.is_none()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    let words = filter
+                        .card_types
+                        .iter()
+                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+                        .collect::<Vec<_>>();
                     let noun_phrase = format!("{} card", join_with_or(&words));
                     return is_clause(&noun_phrase);
                 }
@@ -12664,6 +12670,34 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_implicit_tagged_object_state_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let mut base = filter.clone();
+    base.attacking = false;
+    base.nonattacking = false;
+    if base != ObjectFilter::default()
+        && base != ObjectFilter::permanent()
+        && base != ObjectFilter::creature()
+    {
+        return None;
+    }
+
+    if filter.attacking {
+        return Some("it was attacking".to_string());
+    }
+    if filter.nonattacking {
+        return Some(if subject == "it" {
+            "it wasn't attacking".to_string()
+        } else {
+            "that object wasn't attacking".to_string()
+        });
+    }
+
+    None
 }
 
 fn describe_you_or_attacked_player_initiative_condition(

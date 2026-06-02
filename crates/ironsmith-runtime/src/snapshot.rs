@@ -102,6 +102,8 @@ pub struct ObjectSnapshot {
     pub is_token: bool,
     /// Whether the object was tapped.
     pub tapped: bool,
+    /// Whether the object was attacking.
+    pub attacking: bool,
     /// Whether the object was flipped.
     pub flipped: bool,
     /// Whether the object was face-down.
@@ -165,6 +167,10 @@ impl ObjectSnapshot {
             counters: obj.counters.clone(),
             is_token: obj.kind == ObjectKind::Token,
             tapped: game.is_tapped(obj.id),
+            attacking: game
+                .combat
+                .as_ref()
+                .is_some_and(|combat| crate::combat_state::is_attacking(combat, obj.id)),
             flipped: game.is_flipped(obj.id),
             face_down: game.is_face_down(obj.id),
             transform_count: game.transform_count(obj.id),
@@ -452,6 +458,7 @@ impl ObjectSnapshot {
             counters: HashMap::new(),
             is_token: false,
             tapped: false,
+            attacking: false,
             flipped: false,
             face_down: false,
             transform_count: 0,

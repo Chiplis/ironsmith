@@ -190,6 +190,7 @@ mod tests {
                 counters: std::collections::HashMap::new(),
                 is_token: false,
                 tapped: false,
+                attacking: false,
                 flipped: false,
                 face_down: false,
                 transform_count: 0,
