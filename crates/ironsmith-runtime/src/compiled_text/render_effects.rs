@@ -33464,6 +33464,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Some(&choose_mode.min_choose_count),
             Some(choose_mode.modes.len()),
         );
+        let has_weighted_modes = choose_mode
+            .mode_point_costs
+            .iter()
+            .any(|cost| *cost != 1);
+        if has_weighted_modes {
+            if let crate::effect::Value::Fixed(max) = &choose_mode.choose_count {
+                if choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {
+                    let max_word = number_word(*max).unwrap_or_else(|| max.to_string());
+                    header = format!("Choose up to {max_word} {{P}} worth of modes —");
+                }
+            }
+        }
         if choose_mode.disallow_previously_chosen_modes {
             header = if choose_mode.disallow_previously_chosen_modes_this_turn {
                 "Choose one that hasn't been chosen this turn —".to_string()
@@ -33474,14 +33486,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         let modes = choose_mode
             .modes
             .iter()
-            .map(|mode| {
+            .enumerate()
+            .map(|(mode_idx, mode)| {
                 let description_raw = mode.description.trim();
+                let point_label = if has_weighted_modes {
+                    let cost = choose_mode
+                        .mode_point_costs
+                        .get(mode_idx)
+                        .copied()
+                        .unwrap_or(1)
+                        .max(1);
+                    Some(format!("{} — ", "{P}".repeat(cost as usize)))
+                } else {
+                    None
+                };
                 let description = ensure_trailing_period(description_raw);
                 let mode_effects = describe_effect_list(&mode.effects);
                 if !description.trim().is_empty() {
                     let mode_effects_trimmed = mode_effects.trim();
                     if mode_effects_trimmed.is_empty() {
-                        return description;
+                        return format!("{}{}", point_label.as_deref().unwrap_or(""), description);
                     }
 
                     let effects_lower = mode_effects_trimmed.to_ascii_lowercase();
@@ -33495,7 +33519,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         && !description_lower.contains("choose one");
 
                     if !has_followup {
-                        return description;
+                        return format!("{}{}", point_label.as_deref().unwrap_or(""), description);
                     }
 
                     let mut followup = mode_effects_trimmed.to_string();
@@ -33514,16 +33538,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         }
                     }
                     if followup.is_empty() {
-                        description
+                        format!("{}{}", point_label.as_deref().unwrap_or(""), description)
                     } else {
                         format!(
-                            "{} {}",
+                            "{}{} {}",
+                            point_label.as_deref().unwrap_or(""),
                             description_head,
                             ensure_trailing_period(followup.trim())
                         )
                     }
                 } else {
-                    ensure_trailing_period(mode_effects.trim())
+                    format!(
+                        "{}{}",
+                        point_label.as_deref().unwrap_or(""),
+                        ensure_trailing_period(mode_effects.trim())
+                    )
                 }
             })
             .collect::<Vec<_>>()

@@ -28,6 +28,8 @@ pub struct ModalSpec {
     pub min_modes: Value,
     /// Whether the same mode can be chosen more than once.
     pub allow_repeated_modes: bool,
+    /// Point costs for weighted modal choices. Unweighted modes use one point each.
+    pub mode_point_costs: Vec<u32>,
 }
 
 /// The supported runtime extension categories for effects.
@@ -74,6 +76,7 @@ pub struct ModalEffectSpec<'a> {
     pub max_modes: &'a Value,
     pub min_modes: &'a Value,
     pub allow_repeated_modes: bool,
+    pub mode_point_costs: &'a [u32],
     pub disallow_previously_chosen_modes: bool,
     pub disallow_previously_chosen_modes_this_turn: bool,
 }

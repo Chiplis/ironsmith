@@ -1573,6 +1573,18 @@ fn rewrite_modal_header_parser_supports_activated_choose_header_directly() {
 }
 
 #[test]
+fn rewrite_modal_header_parser_accepts_pawprint_worth_clause() {
+    let text = "Choose up to five {P} worth of modes. You may choose the same mode more than once.";
+    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+        .expect("Season of the Burrow modal header should parse")
+        .expect("Season of the Burrow modal header should be recognized");
+
+    assert_eq!(header.min, crate::effect::Value::Fixed(0));
+    assert_eq!(header.max, Some(crate::effect::Value::Fixed(5)));
+    assert!(header.same_mode_more_than_once, "{header:?}");
+}
+
+#[test]
 fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_both_is_present() {
     let text = "Choose one. If you control a commander as you cast this spell, you may choose both instead.";
     let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))

@@ -267,6 +267,7 @@ fn make_decision_from_context<R: FromPrimitiveResponse>(
                         m.description.clone(),
                         m.legal,
                     )
+                    .with_point_cost(m.point_cost)
                     .with_repeatability(
                         ctx.spec.allow_repeated_modes,
                         Some(ctx.spec.max_modes.min(u32::MAX as usize) as u32),
