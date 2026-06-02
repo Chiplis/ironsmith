@@ -1075,10 +1075,21 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                static_ability_id,
                 display,
             } => StaticAbility::suppress_matching_triggered_abilities(
                 source_filter.clone(),
                 event_matcher.clone(),
+                *static_ability_id,
+                display.clone(),
+            ),
+            ironsmith_core::StaticAbilityPayload::HexproofTargetingException {
+                target_filter,
+                source_controller,
+                display,
+            } => StaticAbility::hexproof_targeting_exception(
+                target_filter.clone(),
+                source_controller.clone(),
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::ExertAttack {

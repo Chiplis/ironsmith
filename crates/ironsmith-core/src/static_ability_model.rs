@@ -309,6 +309,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     SuppressMatchingTriggeredAbilities {
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<T>,
+        static_ability_id: Option<StaticAbilityId>,
+        display: String,
+    },
+    HexproofTargetingException {
+        target_filter: ObjectFilter,
+        source_controller: Option<PlayerFilter>,
         display: String,
     },
     ExertAttack {
@@ -1046,10 +1052,21 @@ where
             StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                static_ability_id,
                 display,
             } => StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher: event_matcher.map(|matcher| map_trigger(matcher)).transpose()?,
+                static_ability_id,
+                display,
+            },
+            StaticAbilityPayload::HexproofTargetingException {
+                target_filter,
+                source_controller,
+                display,
+            } => StaticAbilityPayload::HexproofTargetingException {
+                target_filter,
+                source_controller,
                 display,
             },
             StaticAbilityPayload::ExertAttack {
@@ -3145,6 +3162,7 @@ impl<
     pub fn suppress_matching_triggered_abilities(
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<T>,
+        static_ability_id: Option<StaticAbilityId>,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -3154,6 +3172,24 @@ impl<
             payload: StaticAbilityPayload::SuppressMatchingTriggeredAbilities {
                 source_filter,
                 event_matcher,
+                static_ability_id,
+                display,
+            },
+        }
+    }
+
+    pub fn hexproof_targeting_exception(
+        target_filter: ObjectFilter,
+        source_controller: Option<PlayerFilter>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::HexproofTargetingException),
+            label: display.clone(),
+            payload: StaticAbilityPayload::HexproofTargetingException {
+                target_filter,
+                source_controller,
                 display,
             },
         }

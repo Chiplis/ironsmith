@@ -44404,6 +44404,134 @@ fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     );
 }
 
+#[test]
+fn nowhere_to_run_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Nowhere to Run");
+    let def = parse_oracle_card_definition("Nowhere to Run");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        static_ids.contains(&StaticAbilityId::Flash),
+        "Nowhere to Run should retain flash, got {static_ids:?}"
+    );
+    assert!(
+        static_ids.contains(&StaticAbilityId::HexproofTargetingException),
+        "Nowhere to Run should structurally model the hexproof-targeting exception, got {static_ids:?}"
+    );
+    assert!(
+        static_ids.contains(&StaticAbilityId::SuppressMatchingTriggeredAbilities),
+        "Nowhere to Run should structurally model ward-trigger suppression, got {static_ids:?}"
+    );
+    assert!(
+        rendered_lower.contains("as though they didnt have hexproof")
+            && rendered_lower.contains("ward abilities of those creatures dont trigger"),
+        "Nowhere to Run compiled text should include the hexproof and ward clauses, got {rendered}"
+    );
+}
+
+fn nowhere_to_run_runtime_source(name: &str, card_type: CardType) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .build()
+}
+
+fn nowhere_to_run_hexproof_permanent(name: &str, card_types: Vec<CardType>) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::hexproof(),
+        ))
+        .build()
+}
+
+#[test]
+fn nowhere_to_run_runtime_allows_targeting_opponents_hexproof_creatures_only() {
+    let nowhere = parse_oracle_card_definition("Nowhere to Run");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    game.create_object_from_definition(&nowhere, alice, Zone::Battlefield);
+    let bob_hexproof_creature = nowhere_to_run_hexproof_permanent(
+        "Bob Hexproof Creature",
+        vec![CardType::Creature],
+    );
+    let bob_creature_id =
+        game.create_object_from_definition(&bob_hexproof_creature, bob, Zone::Battlefield);
+    let alice_hexproof_creature = nowhere_to_run_hexproof_permanent(
+        "Alice Hexproof Creature",
+        vec![CardType::Creature],
+    );
+    let alice_creature_id =
+        game.create_object_from_definition(&alice_hexproof_creature, alice, Zone::Battlefield);
+    let bob_hexproof_noncreature = nowhere_to_run_hexproof_permanent(
+        "Bob Hexproof Enchantment",
+        vec![CardType::Enchantment],
+    );
+    let bob_noncreature_id =
+        game.create_object_from_definition(&bob_hexproof_noncreature, bob, Zone::Battlefield);
+
+    let alice_source = nowhere_to_run_runtime_source("Alice Targeting Spell", CardType::Instant);
+    let alice_source_id = game.create_object_from_definition(&alice_source, alice, Zone::Stack);
+    let bob_source = nowhere_to_run_runtime_source("Bob Targeting Spell", CardType::Instant);
+    let bob_source_id = game.create_object_from_definition(&bob_source, bob, Zone::Stack);
+
+    assert!(
+        crate::targeting::can_target_object(&game, bob_creature_id, alice_source_id, alice)
+            .is_legal(),
+        "Nowhere to Run should let Alice target Bob's hexproof creature"
+    );
+    assert!(
+        !crate::targeting::can_target_object(&game, alice_creature_id, bob_source_id, bob)
+            .is_legal(),
+        "Nowhere to Run should not remove hexproof from Alice's own creatures"
+    );
+    assert!(
+        !crate::targeting::can_target_object(&game, bob_noncreature_id, alice_source_id, alice)
+            .is_legal(),
+        "Nowhere to Run should not remove hexproof from noncreature permanents"
+    );
+}
+
+#[test]
+fn nowhere_to_run_runtime_suppresses_ward_only_for_opponents_creatures() {
+    let nowhere = parse_oracle_card_definition("Nowhere to Run");
+    let ward_creature = parse_oracle_card_definition("Waterfall Aerialist");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+
+    game.create_object_from_definition(&nowhere, alice, Zone::Battlefield);
+    let bob_ward_creature = game.create_object_from_definition(&ward_creature, bob, Zone::Battlefield);
+    let alice_ward_creature =
+        game.create_object_from_definition(&ward_creature, alice, Zone::Battlefield);
+    let alice_source = nowhere_to_run_runtime_source("Alice Targeting Spell", CardType::Instant);
+    let bob_source = nowhere_to_run_runtime_source("Bob Targeting Spell", CardType::Instant);
+    game.create_object_from_definition(&alice_source, alice, Zone::Stack);
+    game.create_object_from_definition(&bob_source, bob, Zone::Stack);
+
+    assert!(
+        crate::targeting::collect_ward_costs(&game, &[bob_ward_creature], alice).is_empty(),
+        "Nowhere to Run should suppress ward abilities of creatures Alice's opponents control"
+    );
+    assert!(
+        !crate::targeting::collect_ward_costs(&game, &[alice_ward_creature], bob).is_empty(),
+        "Nowhere to Run should not suppress ward abilities of Alice's own creatures"
+    );
+}
+
 fn rebbec_runtime_test_card(
     name: &str,
     card_types: Vec<CardType>,

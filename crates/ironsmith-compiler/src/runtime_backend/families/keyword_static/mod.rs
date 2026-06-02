@@ -137,7 +137,7 @@ use crate::object::CounterType;
 #[allow(unused_imports)]
 use crate::static_abilities::{
     Anthem, AnthemCountExpression, AnthemValue, GrantAbility, PowerToughnessChoiceOption,
-    StaticAbility,
+    StaticAbility, StaticAbilityId,
 };
 #[allow(unused_imports)]
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter};
@@ -2673,6 +2673,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             id: stringify!(parse_soulbond_shared_line),
             rule: StaticAbilityLineRuleAst::Multi(parse_soulbond_shared_line),
         },
+        single_static_ability_ast_rule!(parse_hexproof_targeting_exception_line),
+        single_static_ability_ast_rule!(parse_ward_trigger_suppression_line),
         single_static_ability_ast_rule!(parse_ward_static_ability_line),
         single_static_ability_ast_rule!(parse_skulk_rules_text_line),
         single_static_ability_ast_rule!(
@@ -3752,6 +3754,113 @@ pub(crate) fn parse_ward_static_ability_line(
     )))
 }
 
+pub(crate) fn parse_hexproof_targeting_exception_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    let Some((can_idx, tail_idx)) = find_token_word_sequence_span(
+        &tokens,
+        &[
+            "can",
+            "be",
+            "the",
+            "targets",
+            "of",
+            "spells",
+            "and",
+            "abilities",
+        ],
+    ) else {
+        return Ok(None);
+    };
+
+    let mut subject_end = can_idx;
+    if subject_end >= 2
+        && token_slice_at_is(&tokens, subject_end - 2, "with")
+        && token_slice_at_is(&tokens, subject_end - 1, "hexproof")
+    {
+        subject_end -= 2;
+    }
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut source_controller = None;
+    let mut as_though_idx = tail_idx;
+    if token_slice_at_is(&tokens, as_though_idx, "you")
+        && token_slice_at_is(&tokens, as_though_idx + 1, "control")
+    {
+        source_controller = Some(PlayerFilter::You);
+        as_though_idx += 2;
+    }
+
+    let tail = &tokens[as_though_idx..];
+    if find_token_word_sequence_span(
+        tail,
+        &["as", "though", "they", "didn't", "have", "hexproof"],
+    ) != Some((0, 6))
+        && find_token_word_sequence_span(
+            tail,
+            &["as", "though", "they", "didnt", "have", "hexproof"],
+        ) != Some((0, 6))
+    {
+        return Ok(None);
+    }
+
+    let target_filter = parse_object_filter_lexed(&subject_tokens, false)?;
+    let display = parser_token_word_refs(&tokens).join(" ");
+    Ok(Some(StaticAbility::hexproof_targeting_exception(
+        target_filter,
+        source_controller,
+        display,
+    )))
+}
+
+pub(crate) fn parse_ward_trigger_suppression_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let tokens = trim_edge_punctuation(tokens);
+    if !token_slice_at_is(&tokens, 0, "ward")
+        || !token_slice_at_is(&tokens, 1, "abilities")
+        || !token_slice_at_is(&tokens, 2, "of")
+    {
+        return Ok(None);
+    }
+    let Some((dont_idx, trigger_tail_end)) = find_token_word_sequence_span(
+        &tokens,
+        &["don't", "trigger"],
+    )
+    .or_else(|| find_token_word_sequence_span(&tokens, &["dont", "trigger"]))
+    else {
+        return Ok(None);
+    };
+    if trigger_tail_end != tokens.len() {
+        return Ok(None);
+    }
+
+    let source_tokens = trim_commas(&tokens[3..dont_idx]);
+    if source_tokens.is_empty() {
+        return Ok(None);
+    }
+    let source_filter = if source_tokens.len() == 2
+        && token_slice_at_is(&source_tokens, 0, "those")
+        && token_slice_at_is(&source_tokens, 1, "creatures")
+    {
+        ObjectFilter::creature().controlled_by(PlayerFilter::Opponent)
+    } else {
+        parse_object_filter_lexed(&source_tokens, false)?
+    };
+    let display = parser_token_word_refs(&tokens).join(" ");
+
+    Ok(Some(StaticAbility::suppress_matching_triggered_abilities(
+        Some(source_filter),
+        None,
+        Some(StaticAbilityId::Ward),
+        display,
+    )))
+}
+
 pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Option<TotalCost> {
     let cost_words = crate::runtime_backend::token_word_refs(tokens);
     if !DISCARD_WORD_PATTERN.matches_first_word(&cost_words) {
@@ -4770,6 +4879,7 @@ pub(crate) fn parse_trigger_suppression_line_ast(
         StaticAbility::suppress_matching_triggered_abilities(
             source_filter,
             Some(event_matcher),
+            None,
             display,
         ),
     )))

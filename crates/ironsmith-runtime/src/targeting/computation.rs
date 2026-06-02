@@ -93,7 +93,10 @@ pub(crate) fn can_target_object_with_view_and_source_snapshot(
     }
 
     // Check for hexproof (only blocks opponents)
-    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
+    if target_abilities.iter().any(|a| a.has_hexproof())
+        && game.controller_of(target) != caster
+        && !has_hexproof_targeting_exception(game, target_id, caster, view)
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
@@ -145,7 +148,10 @@ fn can_target_object_from_source_snapshot_with_view(
         return TargetingResult::Invalid(TargetingInvalidReason::HasShroud);
     }
 
-    if target_abilities.iter().any(|a| a.has_hexproof()) && game.controller_of(target) != caster {
+    if target_abilities.iter().any(|a| a.has_hexproof())
+        && game.controller_of(target) != caster
+        && !has_hexproof_targeting_exception(game, target_id, caster, view)
+    {
         return TargetingResult::Invalid(TargetingInvalidReason::HasHexproof);
     }
 
@@ -195,6 +201,44 @@ fn source_snapshot_matches_hexproof_from(
 ) -> bool {
     let filter_ctx = game.filter_context_for(caster, Some(source_snapshot.object_id));
     filter.matches_snapshot(source_snapshot, &filter_ctx, game)
+}
+
+fn has_hexproof_targeting_exception(
+    game: &GameState,
+    target_id: ObjectId,
+    caster: PlayerId,
+    view: &crate::derived_view::DerivedGameView<'_>,
+) -> bool {
+    let Some(target) = game.object(target_id) else {
+        return false;
+    };
+
+    for &source_id in &game.battlefield {
+        let Some(source) = game.object(source_id) else {
+            continue;
+        };
+        let Some(static_abilities) = view.static_abilities_rc(source_id) else {
+            continue;
+        };
+        let controller = game.controller_of(source);
+        let filter_ctx = game.filter_context_for(controller, Some(source_id));
+
+        for ability in static_abilities.iter() {
+            let Some(spec) = ability.hexproof_targeting_exception_spec() else {
+                continue;
+            };
+            if let Some(source_controller) = spec.source_controller
+                && !player_filter_matches_game(&source_controller, caster, game, &filter_ctx)
+            {
+                continue;
+            }
+            if spec.target_filter.matches(target, &filter_ctx, game) {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Check if a permanent has protection from a source.

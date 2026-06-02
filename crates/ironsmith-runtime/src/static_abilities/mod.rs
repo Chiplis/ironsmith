@@ -918,6 +918,10 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    fn hexproof_targeting_exception_spec(&self) -> Option<HexproofTargetingExceptionSpec> {
+        None
+    }
+
     /// Return a "Cast this spell only ..." restriction descriptor, if any.
     fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
         None
@@ -1051,6 +1055,15 @@ pub struct TriggerDuplicationSpec {
 pub struct TriggerSuppressionSpec {
     pub source_filter: Option<crate::target::ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+    pub static_ability_id: Option<StaticAbilityId>,
+}
+
+/// Spec for static abilities that let matching objects be targeted as though
+/// they did not have hexproof.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HexproofTargetingExceptionSpec {
+    pub target_filter: crate::target::ObjectFilter,
+    pub source_controller: Option<crate::target::PlayerFilter>,
 }
 
 /// Spec for static abilities that reveal a card as part of a draw.
@@ -1166,6 +1179,10 @@ impl StaticAbility {
 
     pub fn trigger_suppression_spec(&self) -> Option<TriggerSuppressionSpec> {
         self.0.trigger_suppression_spec()
+    }
+
+    pub fn hexproof_targeting_exception_spec(&self) -> Option<HexproofTargetingExceptionSpec> {
+        self.0.hexproof_targeting_exception_spec()
     }
 
     pub fn this_spell_cast_restriction_kind(&self) -> Option<ThisSpellCastRestrictionKind> {
@@ -2784,11 +2801,25 @@ impl StaticAbility {
     pub fn suppress_matching_triggered_abilities(
         source_filter: Option<crate::target::ObjectFilter>,
         event_matcher: Option<crate::triggers::Trigger>,
+        static_ability_id: Option<StaticAbilityId>,
         display: String,
     ) -> Self {
         Self::new(SuppressMatchingTriggeredAbilities::new(
             source_filter,
             event_matcher,
+            static_ability_id,
+            display,
+        ))
+    }
+
+    pub fn hexproof_targeting_exception(
+        target_filter: crate::target::ObjectFilter,
+        source_controller: Option<crate::target::PlayerFilter>,
+        display: String,
+    ) -> Self {
+        Self::new(HexproofTargetingException::new(
+            target_filter,
+            source_controller,
             display,
         ))
     }

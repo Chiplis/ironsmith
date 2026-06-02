@@ -8,9 +8,9 @@ use super::{
     ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
-    GraveyardCountMetric, PowerToughnessChoiceOption, StaticAbility, StaticAbilityId,
-    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    GraveyardCountMetric, HexproofTargetingExceptionSpec, PowerToughnessChoiceOption,
+    StaticAbility, StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind,
+    TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -2892,6 +2892,7 @@ impl StaticAbilityKind for CreaturesEnteringDontCauseAbilitiesToTrigger {
                 ObjectFilter::creature(),
                 None,
             )),
+            static_ability_id: None,
         })
     }
 }
@@ -2945,6 +2946,7 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
 pub struct SuppressMatchingTriggeredAbilities {
     pub source_filter: Option<ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+    pub static_ability_id: Option<StaticAbilityId>,
     pub display: String,
 }
 
@@ -2952,11 +2954,13 @@ impl SuppressMatchingTriggeredAbilities {
     pub fn new(
         source_filter: Option<ObjectFilter>,
         event_matcher: Option<crate::triggers::Trigger>,
+        static_ability_id: Option<StaticAbilityId>,
         display: String,
     ) -> Self {
         Self {
             source_filter,
             event_matcher,
+            static_ability_id,
             display,
         }
     }
@@ -2975,6 +2979,46 @@ impl StaticAbilityKind for SuppressMatchingTriggeredAbilities {
         Some(TriggerSuppressionSpec {
             source_filter: self.source_filter.clone(),
             event_matcher: self.event_matcher.clone(),
+            static_ability_id: self.static_ability_id,
+        })
+    }
+}
+
+/// Matching objects can be targeted as though they did not have hexproof.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HexproofTargetingException {
+    pub target_filter: ObjectFilter,
+    pub source_controller: Option<PlayerFilter>,
+    pub display: String,
+}
+
+impl HexproofTargetingException {
+    pub fn new(
+        target_filter: ObjectFilter,
+        source_controller: Option<PlayerFilter>,
+        display: String,
+    ) -> Self {
+        Self {
+            target_filter,
+            source_controller,
+            display,
+        }
+    }
+}
+
+impl StaticAbilityKind for HexproofTargetingException {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::HexproofTargetingException
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn hexproof_targeting_exception_spec(&self) -> Option<HexproofTargetingExceptionSpec> {
+        Some(HexproofTargetingExceptionSpec {
+            target_filter: self.target_filter.clone(),
+            source_controller: self.source_controller.clone(),
         })
     }
 }

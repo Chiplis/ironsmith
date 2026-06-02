@@ -402,6 +402,9 @@ fn trigger_is_suppressed(
             let Some(spec) = static_ability.trigger_suppression_spec() else {
                 continue;
             };
+            if spec.static_ability_id.is_some() {
+                continue;
+            }
             if trigger_entry_matches_specs(
                 game,
                 view,

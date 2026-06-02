@@ -14,10 +14,11 @@ use crate::ability::AbilityKind;
 use crate::cost::TotalCost;
 use crate::decision::DecisionMaker;
 use crate::decisions::{WardSpec, make_decision};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::special_actions::pay_total_cost_with_choice;
-use crate::static_abilities::StaticAbility;
+use crate::static_abilities::{StaticAbility, StaticAbilityId};
 
 use super::types::{PendingWardCost, WardPaymentResult};
 
@@ -36,6 +37,10 @@ pub fn get_ward_cost(
 
     // Ward only triggers when an opponent targets
     if game.controller_of(target) == caster {
+        return None;
+    }
+
+    if ward_trigger_is_suppressed(game, target_id) {
         return None;
     }
 
@@ -68,6 +73,41 @@ pub fn get_ward_cost(
     }
 
     None
+}
+
+fn ward_trigger_is_suppressed(game: &GameState, target_id: ObjectId) -> bool {
+    let Some(target) = game.object(target_id) else {
+        return false;
+    };
+    let view = crate::derived_view::DerivedGameView::new(game);
+
+    for &source_id in &game.battlefield {
+        let Some(source) = game.object(source_id) else {
+            continue;
+        };
+        let Some(static_abilities) = view.static_abilities_rc(source_id) else {
+            continue;
+        };
+        let controller = game.controller_of(source);
+        let filter_ctx = game.filter_context_for(controller, Some(source_id));
+
+        for ability in static_abilities.iter() {
+            let Some(spec) = ability.trigger_suppression_spec() else {
+                continue;
+            };
+            if spec.static_ability_id != Some(StaticAbilityId::Ward) {
+                continue;
+            }
+            if let Some(filter) = spec.source_filter.as_ref()
+                && !filter.matches(target, &filter_ctx, game)
+            {
+                continue;
+            }
+            return true;
+        }
+    }
+
+    false
 }
 
 /// Collect all ward costs for a set of targets.

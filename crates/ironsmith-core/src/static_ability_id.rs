@@ -25,6 +25,7 @@ pub enum StaticAbilityId {
     Trample,
     Vigilance,
     Ward,
+    HexproofTargetingException,
     Fear,
     Skulk,
     Prowess,
@@ -286,6 +287,7 @@ impl StaticAbilityId {
             | Trample
             | Vigilance
             | Ward
+            | HexproofTargetingException
             | Fear
             | Skulk
             | Prowess
