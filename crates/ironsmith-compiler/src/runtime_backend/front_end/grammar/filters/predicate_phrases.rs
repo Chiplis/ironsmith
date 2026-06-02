@@ -123,33 +123,12 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "was", "paid"]);
-const COST_WASNT_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "wasnt", "paid"]);
-const COST_WAS_NOT_PAID_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["cost", "was", "not", "paid"]);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const DEFINITE_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
 const WAS_OR_WERE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["was"], &["were"]]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
 const BEHELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["beheld"]);
-const THIS_POSSESSIVE_PAID_LABEL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this"]; suffix & ["cost", "was", "paid"]);
-const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["spell's"],
-            &["spells"],
-            &["card's"],
-            &["cards"],
-            &["creature's"],
-            &["creatures"],
-            &["permanent's"],
-            &["permanents"],
-        ]
-);
 const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1990,6 +1969,8 @@ fn parse_cast_payment_state_predicate(filtered: &[&str]) -> Option<PredicateAst>
         .or_else(|| parse_target_spell_state_shape(&tokens))
         .or_else(|| parse_cast_this_spell_during_your_main_phase_shape(&tokens))
         .or_else(|| parse_named_payment_state_shape(&tokens))
+        .or_else(|| parse_cost_paid_label_shape(&tokens))
+        .or_else(|| parse_this_possessive_cost_paid_label_shape(&tokens))
 }
 
 fn parse_cast_this_spell_during_your_main_phase_shape(
@@ -3460,6 +3441,78 @@ fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<Predicate
     }
 }
 
+fn parse_cost_paid_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("label", LexCaptureKind::UntilPhrase(&["cost"])),
+        LexPattern::word("cost"),
+        LexPattern::action("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let label_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let label_words = label_clause.word_refs();
+    let label_words = if label_words
+        .first()
+        .is_some_and(|word| DEFINITE_ARTICLE_WORD_PATTERN.matches_word(word))
+    {
+        &label_words[1..]
+    } else {
+        label_words.as_slice()
+    };
+    let label = mana_cost_label_from_words(label_words)?;
+    let state = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let negative = match state.word_refs().as_slice() {
+        ["was", "paid"] => false,
+        ["wasnt", "paid"] | ["was", "not", "paid"] => true,
+        _ => return None,
+    };
+    let predicate = PredicateAst::ThisSpellPaidLabel(label);
+    if negative {
+        Some(PredicateAst::Not(Box::new(predicate)))
+    } else {
+        Some(predicate)
+    }
+}
+
+fn parse_this_possessive_cost_paid_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::word("this"),
+        LexPattern::subject("source", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("label", LexCaptureKind::WordCount(1)),
+        LexPattern::word("cost"),
+        LexPattern::action("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        source.word_refs().as_slice(),
+        ["spell's"]
+            | ["spells"]
+            | ["card's"]
+            | ["cards"]
+            | ["creature's"]
+            | ["creatures"]
+            | ["permanent's"]
+            | ["permanents"]
+    ) {
+        return None;
+    }
+    let state = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(state.word_refs().as_slice(), ["was", "paid"]) {
+        return None;
+    }
+    let label_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let label_word = label_clause.word_refs().first().copied()?;
+    let mut chars = label_word.chars();
+    let first = chars.next()?;
+    Some(PredicateAst::ThisSpellPaidLabel(format!(
+        "{}{}",
+        first.to_ascii_uppercase(),
+        chars.as_str().to_ascii_lowercase()
+    )))
+}
+
 fn parse_active_source_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
@@ -4556,51 +4609,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         && BEHELD_WORD_PATTERN.matches_word(filtered[2])
     {
         return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
-    }
-    if filtered.len() >= 4
-        && COST_WAS_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
-            return Ok(PredicateAst::ThisSpellPaidLabel(label));
-        }
-    }
-    if filtered.len() >= 4
-        && COST_WASNT_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 3]) {
-            return Ok(PredicateAst::Not(Box::new(
-                PredicateAst::ThisSpellPaidLabel(label),
-            )));
-        }
-    }
-    if filtered.len() >= 5
-        && COST_WAS_NOT_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 4..])
-    {
-        let start = usize::from(DEFINITE_ARTICLE_WORD_PATTERN.matches_word_at(&filtered, 0));
-        if let Some(label) = mana_cost_label_from_words(&filtered[start..filtered.len() - 4]) {
-            return Ok(PredicateAst::Not(Box::new(
-                PredicateAst::ThisSpellPaidLabel(label),
-            )));
-        }
-    }
-    if filtered.len() == 6
-        && THIS_POSSESSIVE_PAID_LABEL_PATTERN.matches_words(&filtered)
-        && THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN.matches_word(filtered[1])
-    {
-        let mut chars = filtered[2].chars();
-        let Some(first) = chars.next() else {
-            return Err(CardTextError::ParseError(
-                "missing paid-cost label in predicate".to_string(),
-            ));
-        };
-        let label = format!(
-            "{}{}",
-            first.to_ascii_uppercase(),
-            chars.as_str().to_ascii_lowercase()
-        );
-        return Ok(PredicateAst::ThisSpellPaidLabel(label));
     }
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
@@ -6543,6 +6551,16 @@ mod tests {
                 PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
                     "Tribute".to_string(),
                 ))),
+            ),
+            (
+                "If the evoke cost wasnt paid",
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+                    "Evoke".to_string(),
+                ))),
+            ),
+            (
+                "If this spells surge cost was paid",
+                PredicateAst::ThisSpellPaidLabel("Surge".to_string()),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
