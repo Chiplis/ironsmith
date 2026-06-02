@@ -92,7 +92,6 @@ const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
 const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
@@ -418,9 +417,6 @@ const HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN: ClauseShape<'static> = clause_shape
 const LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["less", "than", "or", "equal", "to"]);
 const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "than"]);
-const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
-const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     if SOURCE_IN_HAND_PATTERN.matches_words(words) {
@@ -3395,6 +3391,43 @@ fn parse_player_cards_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option
     })
 }
 
+fn parse_player_controls_more_than_you_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let control_phrases: &[&[&str]] = &[&["control"], &["controls"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilAnyPhrase(control_phrases)),
+        LexPattern::capture("control", LexCaptureKind::OneOf(&["control", "controls"])),
+        LexPattern::amount("comparison", LexCaptureKind::OneOf(&["more"])),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["than"])),
+        LexPattern::capture("than", LexCaptureKind::OneOf(&["than"])),
+        LexPattern::modifier("comparison_player", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let (player, consumed) = comparison_player_subject(&subject.word_refs())?;
+    if consumed != subject.word_refs().len() {
+        return None;
+    }
+    let tail = matched.capture_clause("comparison_player", clause)?;
+    if !matches!(tail.word_refs().as_slice(), ["you"] | ["you", "do"]) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if object.tokens().is_empty() {
+        return None;
+    }
+    let other = object
+        .tokens()
+        .first()
+        .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
+    let filter = parse_object_filter(object.tokens(), other).ok()?;
+    if filter == ObjectFilter::default() {
+        return None;
+    }
+
+    Some(PredicateAst::PlayerControlsMoreThanYou { player, filter })
+}
+
 fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
     if PERMANENTS_YOU_CONTROL_SCOPE_PATTERN.matches_words(words) {
         return Some(ObjectFilter::permanent().you_control());
@@ -4488,34 +4521,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_player_cards_in_graveyard_predicate(tokens) {
         return Ok(predicate);
     }
-    if let Some((player, subject_len)) = comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| CONTROL_OR_CONTROLS_WORD_PATTERN.matches_word(word))
-        && filtered
-            .get(subject_len + 1)
-            .is_some_and(|word| MORE_WORD_PATTERN.matches_word(word))
-        && let Some(than_offset) = find_index(&filtered[subject_len + 2..], |word| {
-            THAN_WORD_PATTERN.matches_word(word)
-        })
-    {
-        let than_idx = subject_len + 2 + than_offset;
-        let tail = &filtered[than_idx..];
-        if THAN_YOU_TAIL_PATTERN.matches_words(tail) {
-            let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
-                &filtered[subject_len + 2..than_idx],
-            );
-            if !filter_tokens.is_empty() {
-                let other = filter_tokens
-                    .first()
-                    .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
-                if let Ok(filter) = parse_object_filter(&filter_tokens, other)
-                    && filter != ObjectFilter::default()
-                {
-                    return Ok(PredicateAst::PlayerControlsMoreThanYou { player, filter });
-                }
-            }
-        }
+    if let Some(predicate) = parse_player_controls_more_than_you_predicate(tokens) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_life_relation_predicate(&filtered) {
@@ -6596,6 +6603,37 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_controls_more_than_you_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_player, expected_filter) in [
+            (
+                "If an opponent controls more creatures than you",
+                PlayerAst::Opponent,
+                ObjectFilter::creature(),
+            ),
+            (
+                "If target opponent controls more artifacts than you do",
+                PlayerAst::TargetOpponent,
+                ObjectFilter::artifact(),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerControlsMoreThanYou {
+                    player: expected_player,
+                    filter: expected_filter,
+                },
+                "{text}"
+            );
         }
         Ok(())
     }
