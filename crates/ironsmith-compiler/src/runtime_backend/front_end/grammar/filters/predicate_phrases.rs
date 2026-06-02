@@ -94,12 +94,6 @@ const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
-const YOU_REVEALED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "revealed"]);
-const BEHOLD_CAST_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["as", "you", "cast", "this", "spell"]);
-const CONTROL_OR_CONTROLLED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["control"], &["controlled"]]);
 const CARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["card"]);
 const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
@@ -4120,32 +4114,42 @@ fn parse_happily_style_conjoined_predicate(words: &[&str]) -> Option<PredicateAs
 }
 
 fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let suffix_len = usize::from(BEHOLD_CAST_SUFFIX_PATTERN.matches_words(words)) * 5;
-    let core_words = if suffix_len > 0 {
-        &words[..words.len().saturating_sub(suffix_len)]
-    } else {
-        words
-    };
-
-    if core_words.len() != 7
-        || !core_words
-            .get(0..2)
-            .is_some_and(|prefix| YOU_REVEALED_PREFIX_PATTERN.matches_words(prefix))
-        || parse_subtype_word(core_words[2]).is_none()
-        || !CARD_WORD_PATTERN.matches_word(core_words[3])
-        || !OR_WORD_PATTERN.matches_word(core_words[4])
-        || !CONTROL_OR_CONTROLLED_WORD_PATTERN.matches_word(core_words[5])
-        || parse_subtype_word(core_words[6]).is_none()
-        || core_words[2] != core_words[6]
-    {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let suffix_atoms = [LexPattern::phrase(&["as", "you", "cast", "this", "spell"])];
+    let atoms = [
+        LexPattern::subject("revealer", LexCaptureKind::WordCount(1)),
+        LexPattern::action("reveal_action", LexCaptureKind::OneOf(&["revealed"])),
+        LexPattern::object("revealed_subtype", LexCaptureKind::WordCount(1)),
+        LexPattern::word("card"),
+        LexPattern::word("or"),
+        LexPattern::action(
+            "control_action",
+            LexCaptureKind::OneOf(&["control", "controlled", "controls"]),
+        ),
+        LexPattern::object("controlled_subtype", LexCaptureKind::WordCount(1)),
+        LexPattern::optional(&suffix_atoms),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let revealer = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(revealer.word_refs().as_slice(), ["you"]) {
         return None;
     }
+
+    let revealed_subtype = matched.capture_clause("revealed_subtype", clause)?;
+    let controlled_subtype = matched.capture_clause("controlled_subtype", clause)?;
+    let revealed_words = revealed_subtype.word_refs();
+    let controlled_words = controlled_subtype.word_refs();
+    if revealed_words != controlled_words {
+        return None;
+    }
+    let subtype = parse_subtype_word(revealed_words.first().copied()?)?;
 
     Some(PredicateAst::Or(
         Box::new(PredicateAst::ThisSpellPaidLabel("Behold".to_string())),
         Box::new(PredicateAst::PlayerControls {
             player: PlayerAst::You,
-            filter: ObjectFilter::default().with_subtype(parse_subtype_word(core_words[2])?),
+            filter: ObjectFilter::default().with_subtype(subtype),
         }),
     ))
 }
@@ -6907,8 +6911,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_behold_or_controlled_subtype_as_cast() -> Result<(), CardTextError>
-    {
+    fn parse_predicate_behold_or_controlled_subtype_uses_capture_parser()
+    -> Result<(), CardTextError> {
         let tokens = lex_line(
             "If you revealed a Dragon card or controlled a Dragon as you cast this spell",
             0,
