@@ -182,84 +182,10 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const YOU_CONTROLLED_TAGGED_PERMANENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "controlled", "that", "permanent"],
-            &["you", "control", "that", "permanent"],
-        ]
-);
-const TAGGED_ENTERED_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "entered", "under", "your", "control"],
-            &["that", "card", "entered", "under", "your", "control"],
-            &["that", "permanent", "entered", "under", "your", "control"],
-        ]
-);
 const YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "put"]; suffix & ["onto", "the", "battlefield", "this", "way"]);
 const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
-const YOU_DIDNT_PUT_TAGGED_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "dont", "put", "the", "card", "into", "your", "hand"],
-            &["you", "didnt", "put", "the", "card", "into", "your", "hand"],
-            &[
-                "you", "did", "not", "put", "the", "card", "into", "your", "hand",
-            ],
-            &["you", "dont", "put", "card", "into", "your", "hand"],
-            &["you", "didnt", "put", "card", "into", "your", "hand"],
-            &["you", "did", "not", "put", "card", "into", "your", "hand"],
-            &["you", "dont", "put", "it", "into", "your", "hand"],
-            &["you", "didnt", "put", "it", "into", "your", "hand"],
-            &["you", "did", "not", "put", "it", "into", "your", "hand"],
-        ]
-);
-const YOU_DIDNT_PUT_TAGGED_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "dont", "put", "the", "card", "onto", "battlefield"],
-            &["you", "didnt", "put", "the", "card", "onto", "battlefield"],
-            &[
-                "you",
-                "did",
-                "not",
-                "put",
-                "the",
-                "card",
-                "onto",
-                "battlefield"
-            ],
-            &["you", "dont", "put", "card", "onto", "battlefield"],
-            &["you", "didnt", "put", "card", "onto", "battlefield"],
-            &["you", "did", "not", "put", "card", "onto", "battlefield"],
-            &["you", "dont", "put", "that", "card", "onto", "battlefield"],
-            &["you", "didnt", "put", "that", "card", "onto", "battlefield",],
-            &[
-                "you",
-                "did",
-                "not",
-                "put",
-                "that",
-                "card",
-                "onto",
-                "battlefield",
-            ],
-            &["you", "dont", "put", "it", "onto", "battlefield"],
-            &["you", "didnt", "put", "it", "onto", "battlefield"],
-            &["you", "did", "not", "put", "it", "onto", "battlefield"],
-        ]
-);
-const TAGGED_WASNT_BLOCKING_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "wasnt", "blocking"],
-            &["it", "was", "not", "blocking"],
-            &["that", "creature", "wasnt", "blocking"],
-        ]
-);
 const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -2320,6 +2246,156 @@ fn parse_player_was_dealt_combat_damage_by_subtype_this_turn(
     Ok(Some(
         PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype },
     ))
+}
+
+fn parse_tagged_object_lifecycle_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    parse_you_controlled_tagged_permanent_shape(&tokens)
+        .or_else(|| parse_tagged_entered_under_your_control_shape(&tokens))
+        .or_else(|| parse_you_didnt_put_tagged_object_in_zone_shape(&tokens))
+        .or_else(|| parse_tagged_wasnt_blocking_shape(&tokens))
+}
+
+fn parse_you_controlled_tagged_permanent_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controlled"]) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(object.word_refs().as_slice(), ["that", "permanent"]) {
+        return None;
+    }
+    Some(PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
+        tag: TagKey::from(IT_TAG),
+        filter: ObjectFilter::default(),
+    })
+}
+
+fn parse_tagged_entered_under_your_control_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("object", LexCaptureKind::UntilPhrase(&["entered"])),
+        LexPattern::action("entered", LexCaptureKind::WordCount(4)),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let object = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        object.word_refs().as_slice(),
+        ["it"] | ["that", "card"] | ["that", "permanent"]
+    ) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action.word_refs().as_slice(),
+        ["entered", "under", "your", "control"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+        player: PlayerAst::You,
+        tag: TagKey::from(IT_TAG),
+    })
+}
+
+fn parse_you_didnt_put_tagged_object_in_zone_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    parse_you_didnt_put_tagged_object_in_zone_with_action(tokens, &["dont", "put"])
+        .or_else(|| {
+            parse_you_didnt_put_tagged_object_in_zone_with_action(tokens, &["didnt", "put"])
+        })
+        .or_else(|| {
+            parse_you_didnt_put_tagged_object_in_zone_with_action(tokens, &["did", "not", "put"])
+        })
+}
+
+fn parse_you_didnt_put_tagged_object_in_zone_with_action(
+    tokens: &[OwnedLexToken],
+    action_phrase: &[&str],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let destination_phrases: &[&[&str]] = &[&["into", "your", "hand"], &["onto", "battlefield"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action("put", LexCaptureKind::WordCount(action_phrase.len())),
+        LexPattern::object(
+            "object",
+            LexCaptureKind::UntilAnyPhrase(destination_phrases),
+        ),
+        LexPattern::modifier("destination", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if action.word_refs().as_slice() != action_phrase {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        object.word_refs().as_slice(),
+        ["it"] | ["card"] | ["the", "card"] | ["that", "card"]
+    ) {
+        return None;
+    }
+    let destination = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let zone = match destination.word_refs().as_slice() {
+        ["into", "your", "hand"] => Zone::Hand,
+        ["onto", "battlefield"] => Zone::Battlefield,
+        _ => return None,
+    };
+    Some(PredicateAst::Not(Box::new(
+        PredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+            filter: ObjectFilter::default().in_zone(zone),
+        },
+    )))
+}
+
+fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["wasnt", "blocking"], &["was", "not", "blocking"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("object", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("blocking", LexCaptureKind::WordCount(action_phrase.len())),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let object = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(object.word_refs().as_slice(), ["it"] | ["that", "creature"]) {
+            continue;
+        }
+        let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+        if action.word_refs().as_slice() != *action_phrase {
+            continue;
+        }
+        return Some(PredicateAst::TaggedMatches(
+            TagKey::from(IT_TAG),
+            ObjectFilter {
+                nonblocking: true,
+                ..Default::default()
+            },
+        ));
+    }
+    None
 }
 
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4402,19 +4478,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if YOU_CONTROLLED_TAGGED_PERMANENT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerTaggedObjectMatches {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-            filter: ObjectFilter::default(),
-        });
-    }
-
-    if TAGGED_ENTERED_UNDER_YOUR_CONTROL_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
-            player: PlayerAst::You,
-            tag: TagKey::from(IT_TAG),
-        });
+    if let Some(predicate) = parse_tagged_object_lifecycle_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 8 && YOU_PUT_ONTO_BATTLEFIELD_THIS_WAY_PATTERN.matches_words(&filtered) {
@@ -4434,36 +4499,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
         let filter = parse_object_filter(&filter_tokens, false)?;
         return Ok(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter));
-    }
-
-    if YOU_DIDNT_PUT_TAGGED_INTO_HAND_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::PlayerTaggedObjectMatches {
-                player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
-                filter: ObjectFilter::default().in_zone(Zone::Hand),
-            },
-        )));
-    }
-
-    if YOU_DIDNT_PUT_TAGGED_ONTO_BATTLEFIELD_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::PlayerTaggedObjectMatches {
-                player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
-                filter: ObjectFilter::default().in_zone(Zone::Battlefield),
-            },
-        )));
-    }
-
-    if TAGGED_WASNT_BLOCKING_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TaggedMatches(
-            TagKey::from(IT_TAG),
-            ObjectFilter {
-                nonblocking: true,
-                ..Default::default()
-            },
-        ));
     }
 
     if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
@@ -4797,19 +4832,114 @@ mod tests {
 
     #[test]
     fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), CardTextError> {
-        let tokens = lex_line("If you don't put the card into your hand", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+        for text in [
+            "If you don't put the card into your hand",
+            "If you didnt put card into your hand",
+            "If you did not put it into your hand",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
-                player: PlayerAst::You,
-                tag: TagKey::from(IT_TAG),
-                filter: ObjectFilter::default().in_zone(Zone::Hand),
-            }))
-        );
+            assert_eq!(
+                parsed,
+                PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                    filter: ObjectFilter::default().in_zone(Zone::Hand),
+                })),
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_tagged_lifecycle_uses_capture_parser() -> Result<(), CardTextError> {
+        for text in [
+            "if you controlled that permanent",
+            "if you control that permanent",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                    filter: ObjectFilter::default(),
+                },
+                "{text}"
+            );
+        }
+
+        for text in [
+            "if it entered under your control",
+            "if that card entered under your control",
+            "if that permanent entered under your control",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                },
+                "{text}"
+            );
+        }
+
+        for text in [
+            "if you dont put that card onto battlefield",
+            "if you didnt put it onto battlefield",
+            "if you did not put the card onto battlefield",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::Not(Box::new(PredicateAst::PlayerTaggedObjectMatches {
+                    player: PlayerAst::You,
+                    tag: TagKey::from(IT_TAG),
+                    filter: ObjectFilter::default().in_zone(Zone::Battlefield),
+                })),
+                "{text}"
+            );
+        }
+
+        for text in [
+            "if it wasnt blocking",
+            "if it was not blocking",
+            "if that creature wasnt blocking",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::TaggedMatches(
+                    TagKey::from(IT_TAG),
+                    ObjectFilter {
+                        nonblocking: true,
+                        ..Default::default()
+                    }
+                ),
+                "{text}"
+            );
+        }
         Ok(())
     }
 
