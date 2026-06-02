@@ -1,6 +1,7 @@
 //! "At the beginning of [player]'s upkeep" trigger.
 
 use crate::events::EventKind;
+use crate::filter::PlayerFilterExt;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -90,6 +91,16 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
                     .is_some_and(|obj| ctx.game.controller_of(obj) == player),
                 crate::object::AttachmentTarget::Player(id) => id == player,
             }
+        }
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+        | PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(_))
+        | PlayerFilter::OwnerOf(crate::target::ObjectRef::Target)
+        | PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(_))
+        | PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Target)
+        | PlayerFilter::AliasedControllerOf(crate::target::ObjectRef::Tagged(_))
+        | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Target)
+        | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Tagged(_)) => {
+            filter.matches_player(player, &ctx.filter_ctx)
         }
         _ => true, // Default to true for complex filters evaluated at runtime
     }

@@ -19731,6 +19731,38 @@ fn create_delayed_reanimator(game: &mut GameState, owner: PlayerId, name: &str) 
     id
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn phytotitan_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(383_344), "Phytotitan")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Plant, Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(7, 2))
+        .parse_text(
+            "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
+        )
+        .expect("Phytotitan should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_beginning_of_upkeep_delayed_triggers(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    player: PlayerId,
+) {
+    let upkeep_event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_delayed_triggers(game, &upkeep_event) {
+        trigger_queue.add(trigger);
+    }
+}
+
 fn undying_effects() -> Vec<Effect> {
     let trigger_tag = "undying_trigger";
     let return_tag = "undying_return";
@@ -23485,6 +23517,115 @@ fn test_delayed_tagged_graveyard_return_does_not_follow_zone_hops() {
                 .is_some_and(|obj| obj.name == "Delayed Reanimator")
         }),
         "delayed return should not follow a different graveyard instance"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phytotitan_returns_tapped_under_owner_control_at_owners_next_upkeep() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = phytotitan_definition();
+    let phytotitan_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let stable_id = game.object(phytotitan_id).expect("Phytotitan exists").stable_id;
+
+    game.set_current_controller(phytotitan_id, bob);
+    assert_eq!(
+        game.controller_of_id(phytotitan_id),
+        Some(bob),
+        "setup should make Bob control Alice's Phytotitan before it dies"
+    );
+
+    let graveyard_id = game
+        .move_object_by_effect(phytotitan_id, Zone::Graveyard)
+        .expect("Phytotitan should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("put Phytotitan dies trigger on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Phytotitan dies trigger");
+    }
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+    assert!(
+        game.players[0].graveyard.contains(&graveyard_id),
+        "Phytotitan should stay in its owner's graveyard until the delayed trigger resolves"
+    );
+
+    game.turn.turn_number += 1;
+    queue_beginning_of_upkeep_delayed_triggers(&mut game, &mut trigger_queue, bob);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Phytotitan should not return at a non-owner's upkeep"
+    );
+
+    queue_beginning_of_upkeep_delayed_triggers(&mut game, &mut trigger_queue, alice);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Phytotitan owner-upkeep delayed trigger on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Phytotitan delayed return");
+    }
+
+    let returned_id = game
+        .find_object_by_stable_id(stable_id)
+        .expect("Phytotitan should still be tracked after returning");
+    assert!(
+        game.battlefield.contains(&returned_id),
+        "Phytotitan should return to the battlefield"
+    );
+    assert!(
+        game.is_tapped(returned_id),
+        "Phytotitan should return tapped"
+    );
+    assert_eq!(
+        game.controller_of_id(returned_id),
+        Some(alice),
+        "Phytotitan should return under its owner's control, not its former controller's"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn phytotitan_delayed_return_does_not_follow_a_new_graveyard_instance() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let def = phytotitan_definition();
+    let phytotitan_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let first_graveyard_id = game
+        .move_object_by_effect(phytotitan_id, Zone::Graveyard)
+        .expect("Phytotitan should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("put Phytotitan dies trigger on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Phytotitan dies trigger");
+    }
+    assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+    let exile_id = game
+        .move_object_by_effect(first_graveyard_id, Zone::Exile)
+        .expect("Phytotitan should move to exile");
+    let second_graveyard_id = game
+        .move_object_by_effect(exile_id, Zone::Graveyard)
+        .expect("Phytotitan should move back to graveyard");
+    assert_ne!(second_graveyard_id, first_graveyard_id);
+
+    game.turn.turn_number += 1;
+    queue_beginning_of_upkeep_delayed_triggers(&mut game, &mut trigger_queue, alice);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("put Phytotitan owner-upkeep delayed trigger on stack");
+    while !game.stack_is_empty() {
+        resolve_stack_entry(&mut game).expect("resolve Phytotitan delayed return");
+    }
+
+    assert!(
+        game.players[0].graveyard.contains(&second_graveyard_id),
+        "Phytotitan should remain in the graveyard after a zone hop"
+    );
+    assert!(
+        !game.battlefield.contains(&second_graveyard_id),
+        "Phytotitan delayed return should not follow a different graveyard instance"
     );
 }
 

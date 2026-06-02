@@ -35258,6 +35258,43 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "if any of those cards remain exiled, return them to their owners' graveyards",
             );
         }
+        if schedule.one_shot
+            && schedule.start_next_turn
+            && let Some(upkeep) = schedule
+                .trigger
+                .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            && let [effect] = schedule.effects.flattened_default_effects()
+            && let PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(owner_tag)) =
+                &upkeep.player
+        {
+            let delayed_return_matches_owner = effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|move_to_zone| {
+                    move_to_zone.zone == Zone::Battlefield
+                        && move_to_zone.battlefield_controller
+                            == crate::effects::BattlefieldController::Owner
+                        && choose_spec_references_exact_tag(&move_to_zone.target, owner_tag)
+                })
+                || effect
+                    .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                    .is_some_and(|return_to_battlefield| {
+                        choose_spec_references_exact_tag(&return_to_battlefield.target, owner_tag)
+                    });
+            if delayed_return_matches_owner {
+                let mut delayed_text = delayed_text.replace(" from graveyard", "");
+                if effect
+                    .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                    .is_some()
+                    && !delayed_text.contains("under ")
+                {
+                    delayed_text.push_str(" under its owner's control");
+                }
+                return format!(
+                    "{} at the beginning of their next upkeep",
+                    capitalize_first(&delayed_text)
+                );
+            }
+        }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature is dealt damage")
                 || trigger_lower.contains("whenever this creature is dealt damage"))

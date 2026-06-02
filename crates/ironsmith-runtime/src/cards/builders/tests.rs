@@ -25663,17 +25663,35 @@ fn parse_return_converted_clause_uses_shared_return_and_convert() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
-            .parse_text(
-                "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
-            )
-            .expect_err("unsupported delayed return timing should fail parse");
-    let message = format!("{err:?}");
+fn parse_phytotitan_strictly_compiles_delayed_owner_upkeep_return() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Phytotitan")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Plant, Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(7, 2))
+        .parse_text(
+            "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
+        )
+        .expect("Phytotitan delayed owner-upkeep return should parse strictly");
+
+    let ability_debug = format!("{:#?}", def.abilities);
     assert!(
-        message.contains("unsupported delayed return timing clause")
-            || message.contains("unsupported triggered line"),
-        "expected strict delayed-return parse error, got {message}"
+        ability_debug.contains("ScheduleDelayedTriggerEffect")
+            && ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("OwnerOf")
+            && ability_debug.contains("Tagged")
+            && ability_debug.contains("tapped: true"),
+        "expected Phytotitan to schedule a tapped return on its owner's next upkeep, got {ability_debug}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep."
     );
 }
 
