@@ -171,33 +171,6 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
 );
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
-const YOU_CONTROL_NO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "control", "no"],
-            &["you", "controls", "no"],
-            &["you", "control", "neither"],
-            &["you", "controls", "neither"],
-        ]
-);
-const PLAYER_CONTROLS_NO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["player", "control", "no"], &["player", "controls", "no"]]);
-const YOU_DONT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "dont", "control"],
-            &["you", "dont", "controls"],
-            &["you", "don't", "control"],
-            &["you", "don't", "controls"],
-        ]
-);
-const YOU_DO_NOT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "do", "not", "control"],
-            &["you", "do", "not", "controls"]
-        ]
-);
 const THAT_PLAYER_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -290,7 +263,6 @@ const POWER_OR_TOUGHNESS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["power"], &["toughness"]]);
 const HAS_OR_HAVE_TOXIC_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has", "toxic"], &["have", "toxic"]]);
-const NEITHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["neither"]);
 const THERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["there"]);
 const ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["onto", "battlefield"], &["onto", "the", "battlefield"]]);
@@ -880,6 +852,129 @@ fn parse_player_controls_predicate(
         }));
     }
     Ok(Some(PredicateAst::PlayerControls { player, filter }))
+}
+
+fn parse_negative_player_controls_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    if let Some(predicate) = parse_player_controls_no_shape(&tokens) {
+        return predicate.map(Some);
+    }
+    if let Some(predicate) = parse_you_dont_control_shape(&tokens) {
+        return predicate.map(Some);
+    }
+    Ok(None)
+}
+
+fn parse_player_controls_no_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<PredicateAst, CardTextError>> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject(
+            "player",
+            LexCaptureKind::UntilAnyPhrase(&[&["control"], &["controls"]]),
+        ),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("negator", LexCaptureKind::WordCount(1)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = match player_clause.word_refs().as_slice() {
+        ["you"] => PlayerAst::You,
+        ["player"] => PlayerAst::Any,
+        _ => return None,
+    };
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controls"]) {
+        return None;
+    }
+    let negator = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let tagged_relation = match negator.word_refs().as_slice() {
+        ["no"] => false,
+        ["neither"] if player == PlayerAst::You => true,
+        _ => return None,
+    };
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let object_words = object.word_refs();
+    if object_words.is_empty() {
+        return None;
+    }
+    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+    Some(
+        parse_object_filter(&object_tokens, false).map(|mut filter| {
+            filter.controller = Some(match player {
+                PlayerAst::You => PlayerFilter::You,
+                PlayerAst::Any => PlayerFilter::Any,
+                _ => PlayerFilter::Any,
+            });
+            if tagged_relation {
+                filter = filter
+                    .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+            }
+            PredicateAst::PlayerControlsNo { player, filter }
+        }),
+    )
+}
+
+fn parse_you_dont_control_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<Result<PredicateAst, CardTextError>> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[
+        &["dont", "control"],
+        &["dont", "controls"],
+        &["don't", "control"],
+        &["don't", "controls"],
+        &["do", "not", "control"],
+        &["do", "not", "controls"],
+    ];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("player", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("control", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("object", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let Some(player_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+        else {
+            continue;
+        };
+        if !matches!(player_clause.word_refs().as_slice(), ["you"]) {
+            continue;
+        }
+        let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+            continue;
+        };
+        if action.word_refs().as_slice() != *action_phrase {
+            continue;
+        }
+        let Some(object) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+            continue;
+        };
+        let object_words = object.word_refs();
+        if object_words.is_empty() {
+            continue;
+        }
+        let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&object_words);
+        let other = control_tokens
+            .first()
+            .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
+        return Some(
+            parse_object_filter(&control_tokens, other).map(|mut filter| {
+                filter.controller = Some(PlayerFilter::You);
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::You,
+                    filter,
+                }
+            }),
+        );
+    }
+    None
 }
 
 fn predicate_from_control_condition(
@@ -4583,54 +4678,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.len() >= 3 && YOU_CONTROL_NO_PREFIX_PATTERN.matches_words(&filtered) {
-        let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[3..]);
-        if let Ok(mut filter) = parse_object_filter(&control_tokens, false) {
-            filter.controller = Some(PlayerFilter::You);
-            if NEITHER_WORD_PATTERN.matches_word(filtered[2]) {
-                filter = filter
-                    .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
-            }
-            return Ok(PredicateAst::PlayerControlsNo {
-                player: PlayerAst::You,
-                filter,
-            });
-        }
-    }
-
-    if filtered.len() >= 4 && PLAYER_CONTROLS_NO_PREFIX_PATTERN.matches_words(&filtered) {
-        let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[3..]);
-        if let Ok(mut filter) = parse_object_filter(&control_tokens, false) {
-            filter.controller = Some(PlayerFilter::Any);
-            return Ok(PredicateAst::PlayerControlsNo {
-                player: PlayerAst::Any,
-                filter,
-            });
-        }
-    }
-
-    let you_dont_control_filter_start = if filtered.len() >= 4
-        && YOU_DONT_CONTROL_PREFIX_PATTERN.matches_words(&filtered)
-    {
-        Some(3usize)
-    } else if filtered.len() >= 5 && YOU_DO_NOT_CONTROL_PREFIX_PATTERN.matches_words(&filtered) {
-        Some(4usize)
-    } else {
-        None
-    };
-    if let Some(filter_start) = you_dont_control_filter_start {
-        let control_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[filter_start..]);
-        let other = control_tokens
-            .first()
-            .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
-        if let Ok(mut filter) = parse_object_filter(&control_tokens, other) {
-            filter.controller = Some(PlayerFilter::You);
-            return Ok(PredicateAst::PlayerControlsNo {
-                player: PlayerAst::You,
-                filter,
-            });
-        }
+    if let Some(predicate) = parse_negative_player_controls_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 7
@@ -5269,6 +5318,75 @@ mod tests {
                 filter: ObjectFilter::creature(),
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_negative_control_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if you control no creatures",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter {
+                        controller: Some(PlayerFilter::You),
+                        ..ObjectFilter::creature()
+                    },
+                },
+            ),
+            (
+                "if player controls no artifacts",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::Any,
+                    filter: ObjectFilter {
+                        controller: Some(PlayerFilter::Any),
+                        card_types: vec![CardType::Artifact],
+                        ..Default::default()
+                    },
+                },
+            ),
+            (
+                "if you don't control another creature",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter {
+                        controller: Some(PlayerFilter::You),
+                        ..ObjectFilter::creature()
+                    },
+                },
+            ),
+            (
+                "if you do not control artifacts",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter {
+                        controller: Some(PlayerFilter::You),
+                        card_types: vec![CardType::Artifact],
+                        ..Default::default()
+                    },
+                },
+            ),
+            (
+                "if you control neither creature",
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::You,
+                    filter: ObjectFilter {
+                        controller: Some(PlayerFilter::You),
+                        ..ObjectFilter::creature().match_tagged(
+                            TagKey::from(IT_TAG),
+                            TaggedOpbjectRelation::IsTaggedObject,
+                        )
+                    },
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
