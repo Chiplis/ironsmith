@@ -109,44 +109,6 @@ const IT_EXPLOITED_TRIGGERING_PATTERN: ClauseShape<'static> = clause_shape!(
             &["it", "exploited", "that", "object"],
         ]
 );
-const SOURCE_IN_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "in", "your", "hand"],
-            &["this", "card", "is", "in", "your", "hand"],
-        ]
-);
-const SOURCE_IN_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "in", "your", "graveyard"],
-            &["this", "card", "is", "in", "your", "graveyard"],
-            &["this", "creature", "is", "in", "your", "graveyard"],
-            &["this", "permanent", "is", "in", "your", "graveyard"],
-            &["this", "object", "is", "in", "your", "graveyard"],
-        ]
-);
-const SOURCE_IN_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "in", "your", "library"],
-            &["this", "card", "is", "in", "your", "library"],
-        ]
-);
-const SOURCE_IN_EXILE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "in", "exile"],
-            &["this", "card", "is", "in", "exile"],
-        ]
-);
-const SOURCE_IN_COMMAND_ZONE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "is", "in", "the", "command", "zone"],
-            &["this", "card", "is", "in", "the", "command", "zone"],
-        ]
-);
 const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
@@ -348,18 +310,49 @@ const LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
 const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "than"]);
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
-    if SOURCE_IN_HAND_PATTERN.matches_words(words) {
-        Some(Zone::Hand)
-    } else if SOURCE_IN_GRAVEYARD_PATTERN.matches_words(words) {
-        Some(Zone::Graveyard)
-    } else if SOURCE_IN_LIBRARY_PATTERN.matches_words(words) {
-        Some(Zone::Library)
-    } else if SOURCE_IN_EXILE_PATTERN.matches_words(words) {
-        Some(Zone::Exile)
-    } else if SOURCE_IN_COMMAND_ZONE_PATTERN.matches_words(words) {
-        Some(Zone::Command)
-    } else {
-        None
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["is", "in"])),
+        LexPattern::phrase(&["is", "in"]),
+        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let allowed_source = matches!(
+        source.word_refs().as_slice(),
+        ["this"]
+            | ["this", "card"]
+            | ["this", "creature"]
+            | ["this", "permanent"]
+            | ["this", "object"]
+    );
+    if !allowed_source {
+        return None;
+    }
+
+    let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    match zone.word_refs().as_slice() {
+        ["your", "hand"]
+            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
+        {
+            Some(Zone::Hand)
+        }
+        ["your", "graveyard"] => Some(Zone::Graveyard),
+        ["your", "library"]
+            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
+        {
+            Some(Zone::Library)
+        }
+        ["exile"] if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) => {
+            Some(Zone::Exile)
+        }
+        ["the", "command", "zone"]
+            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
+        {
+            Some(Zone::Command)
+        }
+        _ => None,
     }
 }
 
@@ -7164,6 +7157,26 @@ mod tests {
                 filter: expected_filter,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_zone_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_zone) in [
+            ("If this card is in your hand", Zone::Hand),
+            ("If this creature is in your graveyard", Zone::Graveyard),
+            ("If this is in exile", Zone::Exile),
+            ("If this card is in the command zone", Zone::Command),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::SourceIsInZone(expected_zone),
+                "{text}"
+            );
+        }
         Ok(())
     }
 
