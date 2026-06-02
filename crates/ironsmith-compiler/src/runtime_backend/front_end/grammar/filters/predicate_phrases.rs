@@ -198,8 +198,6 @@ const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "enchantment"]);
 const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["your", "graveyard"]);
-const YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "both", "own", "and"]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
 const PASSIVE_THIS_WAY_COPULA_WORD_PATTERN: ClauseShape<'static> =
@@ -2117,6 +2115,66 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
         }
     };
     Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+}
+
+fn parse_you_both_own_and_control_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("owner", LexCaptureKind::WordCount(4)),
+        LexPattern::action("control", LexCaptureKind::OneOf(&["control", "controls"])),
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::object("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let owner = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing owner in own/control predicate".to_string())
+        })?;
+    if !matches!(owner.word_refs().as_slice(), ["you", "both", "own", "and"]) {
+        return Ok(None);
+    }
+    let left = matched.capture_clause("left", clause).ok_or_else(|| {
+        CardTextError::ParseError("missing left subject in own/control predicate".to_string())
+    })?;
+    let right = matched.capture_clause("right", clause).ok_or_else(|| {
+        CardTextError::ParseError("missing right subject in own/control predicate".to_string())
+    })?;
+    if left.word_refs().is_empty() || right.word_refs().is_empty() {
+        return Ok(None);
+    }
+
+    let mut left_filter = parse_meld_subject_filter(&left.word_refs()).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported own-and-control predicate subject (predicate: '{}')",
+            filtered.join(" ")
+        ))
+    })?;
+    left_filter.controller = Some(PlayerFilter::You);
+    let mut right_filter = parse_meld_subject_filter(&right.word_refs()).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported own-and-control predicate tail (predicate: '{}')",
+            filtered.join(" ")
+        ))
+    })?;
+    right_filter.controller = Some(PlayerFilter::You);
+
+    Ok(Some(PredicateAst::And(
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: left_filter,
+        }),
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: right_filter,
+        }),
+    )))
 }
 
 fn parse_implicit_subject_and_predicate(
@@ -4691,42 +4749,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.len() >= 8
-        && YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN.matches_words(&filtered)
-        && filtered
-            .get(4)
-            .is_some_and(|word| CONTROL_OR_CONTROLS_WORD_PATTERN.matches_word(word))
-        && let Some(and_idx) = find_meld_subject_split(&filtered[5..])
-    {
-        let and_idx = 5 + and_idx;
-        if and_idx > 5 && and_idx + 1 < filtered.len() {
-            let mut left_filter =
-                parse_meld_subject_filter(&filtered[5..and_idx]).map_err(|_| {
-                    CardTextError::ParseError(format!(
-                        "unsupported own-and-control predicate subject (predicate: '{}')",
-                        filtered.join(" ")
-                    ))
-                })?;
-            left_filter.controller = Some(PlayerFilter::You);
-            let mut right_filter =
-                parse_meld_subject_filter(&filtered[and_idx + 1..]).map_err(|_| {
-                    CardTextError::ParseError(format!(
-                        "unsupported own-and-control predicate tail (predicate: '{}')",
-                        filtered.join(" ")
-                    ))
-                })?;
-            right_filter.controller = Some(PlayerFilter::You);
-            return Ok(PredicateAst::And(
-                Box::new(PredicateAst::PlayerControls {
-                    player: PlayerAst::You,
-                    filter: left_filter,
-                }),
-                Box::new(PredicateAst::PlayerControls {
-                    player: PlayerAst::You,
-                    filter: right_filter,
-                }),
-            ));
-        }
+    if let Some(predicate) = parse_you_both_own_and_control_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_implicit_subject_and_predicate(&filtered)? {
@@ -6290,6 +6314,38 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_you_both_own_and_control_uses_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If you both own and control this creature and a creature named Midnight Scavengers",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        let PredicateAst::And(left, right) = parsed else {
+            panic!("expected own-and-control conjoined predicate");
+        };
+        let PredicateAst::PlayerControls {
+            player: left_player,
+            filter: left_filter,
+        } = *left
+        else {
+            panic!("expected left controls predicate");
+        };
+        let PredicateAst::PlayerControls {
+            player: right_player,
+            filter: right_filter,
+        } = *right
+        else {
+            panic!("expected right controls predicate");
+        };
+        assert_eq!(left_player, PlayerAst::You);
+        assert_eq!(right_player, PlayerAst::You);
+        assert_eq!(left_filter.controller, Some(PlayerFilter::You));
+        assert_eq!(right_filter.controller, Some(PlayerFilter::You));
         Ok(())
     }
 
