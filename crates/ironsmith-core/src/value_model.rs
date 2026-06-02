@@ -163,6 +163,7 @@ pub enum Value {
     DraftNotedHighestNumber {
         card_name: String,
     },
+    LastNotedLifeTotal,
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,
@@ -869,6 +870,7 @@ pub enum Condition {
     EquippedCreatureUntapped,
     EquippedCreatureAttacking,
     SourceChosenOption(String),
+    SecretChoicesMatch,
     VoteOptionGetsMoreVotes(String),
     VoteOptionGetsMoreVotesOrTied(String),
     CountComparison {

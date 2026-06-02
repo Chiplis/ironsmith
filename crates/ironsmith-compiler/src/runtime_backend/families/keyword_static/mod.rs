@@ -2690,6 +2690,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
+        single_static_ability_ast_rule!(parse_note_life_total_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_color_as_becomes_attached_line),
         single_static_ability_ast_rule!(parse_enchanted_land_is_chosen_type_line),
         single_static_ability_ast_rule!(parse_source_is_chosen_type_in_addition_line),
@@ -4332,6 +4333,24 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
 
     Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
         "As {display_subject} enters, choose a card name."
+    ))))
+}
+
+pub(crate) fn parse_note_life_total_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if words.get(idx..) != Some(&["note", "your", "life", "total"][..]) {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::note_life_total_as_enters(format!(
+        "As {display_subject} enters, note your life total."
     ))))
 }
 
@@ -6919,6 +6938,7 @@ pub(crate) fn parse_spells_cost_modifier_line(
 
     let amount_tokens = &tokens[cost_token_idx + 1..];
     let (parsed_amount, mut parsed_mana_cost) = parse_cost_modifier_components(amount_tokens);
+    let mut parsed_mana_cost_repetitions = None;
     let (mut amount_value, used) = parsed_amount
         .clone()
         .map(|(value, used)| (value, used))
@@ -6936,20 +6956,21 @@ pub(crate) fn parse_spells_cost_modifier_line(
     };
 
     if let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)? {
-        // Wording like "{G} less for each green creature you control" is still a dynamic
-        // reduction even though the printed amount is a colored symbol. Model as a generic
-        // dynamic reduction so the clause remains playable.
-        let multiplier = parsed_amount
-            .as_ref()
-            .and_then(|(value, _)| match value {
-                Value::Fixed(value) => Some(*value),
-                _ => None,
-            })
-            .unwrap_or(1);
-        if parsed_mana_cost.is_some() {
-            parsed_mana_cost = None;
+        if parsed_mana_cost.is_some() && is_this_spell {
+            parsed_mana_cost_repetitions = Some(dynamic_value);
+        } else {
+            if parsed_mana_cost.is_some() {
+                parsed_mana_cost = None;
+            }
+            let multiplier = parsed_amount
+                .as_ref()
+                .and_then(|(value, _)| match value {
+                    Value::Fixed(value) => Some(*value),
+                    _ => None,
+                })
+                .unwrap_or(1);
+            amount_value = scale_dynamic_cost_modifier_value(dynamic_value, multiplier);
         }
-        amount_value = scale_dynamic_cost_modifier_value(dynamic_value, multiplier);
     } else if parsed_amount.is_none() && parsed_mana_cost.is_none() {
         return Err(CardTextError::ParseError(
             "missing cost modifier amount".to_string(),
@@ -7044,12 +7065,14 @@ pub(crate) fn parse_spells_cost_modifier_line(
             )));
         }
         if is_this_spell && let Some((cost, _)) = parsed_mana_cost.clone() {
-            return Ok(Some(StaticAbility::new(
-                crate::static_abilities::ThisSpellCostReductionManaCost::new(
-                    cost,
-                    this_spell_condition,
-                ),
-            )));
+            let mut ability = crate::static_abilities::ThisSpellCostReductionManaCost::new(
+                cost,
+                this_spell_condition,
+            );
+            if let Some(repetitions) = parsed_mana_cost_repetitions {
+                ability = ability.with_repetitions(repetitions);
+            }
+            return Ok(Some(StaticAbility::new(ability)));
         }
         if let Some((cost, _)) = parsed_mana_cost {
             let mut ability = crate::static_abilities::CostReductionManaCost::new(filter, cost);

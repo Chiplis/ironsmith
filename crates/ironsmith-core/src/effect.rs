@@ -105,6 +105,7 @@ pub enum ReplacementApplyMode {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageSource {
     Choice,
+    Target(ChooseSpec),
     Filter(crate::filter_model::ObjectFilter),
 }
 
@@ -126,6 +127,7 @@ pub enum RedirectNextTimeDamageDestination {
     SourceObject,
     Controller,
     SourceController,
+    TargetObject,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -147,6 +149,7 @@ pub enum DelayedTriggerSpec {
     AttacksAndIsntBlocked(ObjectFilter),
     AttacksOneOrMore(ObjectFilter),
     Blocks(ObjectFilter),
+    BlocksOneOrMore(ObjectFilter),
     LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DealsCombatDamageToPlayer {
@@ -547,6 +550,9 @@ impl DrawCardsEffect {
         Self::new(count, PlayerFilter::You)
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NoteLifeTotalEffect;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TargetOnlyEffect {
@@ -3115,6 +3121,30 @@ impl<E> VoteEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SecretChoiceEffect {
+    pub options: Vec<String>,
+    pub participants: Vec<PlayerFilter>,
+    pub participant_target: Option<ChooseSpec>,
+}
+
+impl SecretChoiceEffect {
+    pub fn new(options: Vec<String>, participants: Vec<PlayerFilter>) -> Self {
+        let participant_target = participants.iter().find_map(|participant| {
+            if let PlayerFilter::Target(inner) = participant {
+                Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())))
+            } else {
+                None
+            }
+        });
+        Self {
+            options,
+            participants,
+            participant_target,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
@@ -3632,6 +3662,7 @@ pub struct RedirectNextTimeDamageToSourceEffect {
     pub source: RedirectNextTimeDamageSource,
     pub target: Option<ChooseSpec>,
     pub destination: RedirectNextTimeDamageDestination,
+    pub destination_target: Option<ChooseSpec>,
     pub all_this_turn: bool,
 }
 
@@ -3641,6 +3672,7 @@ impl RedirectNextTimeDamageToSourceEffect {
             source,
             target: Some(target),
             destination: RedirectNextTimeDamageDestination::SourceObject,
+            destination_target: None,
             all_this_turn: false,
         }
     }
@@ -3650,17 +3682,26 @@ impl RedirectNextTimeDamageToSourceEffect {
             source: RedirectNextTimeDamageSource::Target(source),
             target: None,
             destination: RedirectNextTimeDamageDestination::SourceController,
+            destination_target: None,
             all_this_turn: false,
         }
     }
 
     pub fn to_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::Controller;
+        self.destination_target = None;
         self
     }
 
     pub fn to_source_controller(mut self) -> Self {
         self.destination = RedirectNextTimeDamageDestination::SourceController;
+        self.destination_target = None;
+        self
+    }
+
+    pub fn to_target(mut self, target: ChooseSpec) -> Self {
+        self.destination = RedirectNextTimeDamageDestination::TargetObject;
+        self.destination_target = Some(target);
         self
     }
 
@@ -3981,14 +4022,19 @@ impl NinjutsuEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RegenerateEffect {
+pub struct RegenerateEffect<E = ()> {
     pub target: ChooseSpec,
     pub duration: Until,
+    pub follow_up_effects: Vec<E>,
 }
 
-impl RegenerateEffect {
+impl<E> RegenerateEffect<E> {
     pub fn new(target: ChooseSpec, duration: Until) -> Self {
-        Self { target, duration }
+        Self {
+            target,
+            duration,
+            follow_up_effects: Vec::new(),
+        }
     }
 
     pub fn source(duration: Until) -> Self {
@@ -3997,6 +4043,11 @@ impl RegenerateEffect {
 
     pub fn target_creature(duration: Until) -> Self {
         Self::new(ChooseSpec::creature(), duration)
+    }
+
+    pub fn with_follow_up_effects(mut self, effects: Vec<E>) -> Self {
+        self.follow_up_effects = effects;
+        self
     }
 }
 
@@ -5530,6 +5581,17 @@ pub struct AttachObjectsEffect {
 impl AttachObjectsEffect {
     pub fn new(objects: ChooseSpec, target: ChooseSpec) -> Self {
         Self { objects, target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnattachObjectsEffect {
+    pub objects: ChooseSpec,
+}
+
+impl UnattachObjectsEffect {
+    pub fn new(objects: ChooseSpec) -> Self {
+        Self { objects }
     }
 }
 

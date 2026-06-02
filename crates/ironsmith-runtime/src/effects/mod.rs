@@ -113,7 +113,8 @@ pub use composition::{
     LocalRewriteEffect, ManaRestrictedEffect, ManifestCardFromHandEffect, ManifestDreadEffect,
     ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
     ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
-    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
+    SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
+    TagAttachedToSourceEffect,
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
     UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption,
@@ -144,7 +145,7 @@ pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
     ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
-pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, SetLifeTotalEffect};
+pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect, SetLifeTotalEffect};
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
@@ -160,7 +161,7 @@ pub use permanents::{
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
     ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
     SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect,
-    UntapEffect,
+    UnattachObjectsEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,

@@ -591,6 +591,20 @@ fn evaluate_value_comparison(
     right: &Value,
 ) -> bool {
     let mut ctx = ExecutionContext::new_default(source, controller);
+    let source_exiled = game
+        .get_exiled_with_source_links(source)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id).map(|obj| {
+                crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+                    obj, game,
+                )
+            })
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.set_tagged_objects(crate::tag::SOURCE_EXILED_TAG, source_exiled);
+    }
     let Ok(left_value) = resolve_value(game, left, &mut ctx) else {
         return false;
     };
@@ -1165,6 +1179,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::MaxActivationsPerTurn(..) => {}
         Condition::SourceIsEquipped => {}
         Condition::SourceIsEnchanted => {}
+        Condition::SecretChoicesMatch => {}
         Condition::VoteOptionGetsMoreVotes(..) => {}
         Condition::VoteOptionGetsMoreVotesOrTied(..) => {}
         Condition::EnchantedPermanentIsCreature => {}
@@ -1884,6 +1899,7 @@ pub fn evaluate_condition_external(
         Condition::SourceChosenOption(expected) => game
             .chosen_named_option(ctx.source)
             .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected)),
+        Condition::SecretChoicesMatch => false,
         Condition::CountComparison {
             count, comparison, ..
         } => comparison.evaluate(crate::static_abilities::resolve_anthem_count_expression(
@@ -2684,6 +2700,7 @@ fn evaluate_condition_simple(
         | Condition::SourceIsAttacking
         | Condition::SourceIsBlocking
         | Condition::SourceIsSoulbondPaired
+        | Condition::SecretChoicesMatch
         | Condition::VoteOptionGetsMoreVotes(_)
         | Condition::VoteOptionGetsMoreVotesOrTied(_)
         | Condition::XValueAtLeast(_) => false,
@@ -3541,6 +3558,7 @@ fn evaluate_condition(
             let filter_ctx = ctx.filter_context(game);
             if let Some(tagged) = ctx.get_tagged_all(tag.as_str()) {
                 return Ok(tagged.iter().any(|snapshot| {
+                    let snapshot_matches = filter.matches_snapshot(snapshot, &filter_ctx, game);
                     let current_id = game
                         .object(snapshot.object_id)
                         .map(|object| object.id)
@@ -3548,9 +3566,9 @@ fn evaluate_condition(
                     if let Some(current_id) = current_id
                         && let Some(object) = game.object(current_id)
                     {
-                        return filter.matches(object, &filter_ctx, game);
+                        return filter.matches(object, &filter_ctx, game) || snapshot_matches;
                     }
-                    filter.matches_snapshot(snapshot, &filter_ctx, game)
+                    snapshot_matches
                 }));
             }
 
@@ -3790,6 +3808,10 @@ fn evaluate_condition(
         Condition::SourceChosenOption(expected) => Ok(game
             .chosen_named_option(ctx.source)
             .is_some_and(|chosen| chosen.eq_ignore_ascii_case(expected))),
+        Condition::SecretChoicesMatch => Ok(ctx
+            .secret_choice_results
+            .get(&ctx.source)
+            .is_some_and(|result| result.choices_match())),
         Condition::VoteOptionGetsMoreVotes(option) => Ok(ctx
             .vote_results
             .get(&ctx.source)

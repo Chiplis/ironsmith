@@ -50,6 +50,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
         TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
+        TriggerSpec::BlocksOneOrMore(filter) => Trigger::blocks_one_or_more(filter),
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Trigger::this_becomes_blocked_by_object(filter)
@@ -136,7 +137,8 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             activator,
             filter,
             non_mana_only,
-        } => Trigger::ability_activated_qualified(activator, filter, non_mana_only),
+            loyalty_only,
+        } => Trigger::ability_activated_qualified(activator, filter, non_mana_only, loyalty_only),
         TriggerSpec::ThisIsDealtDamage => Trigger::is_dealt_damage(ChooseSpec::Source),
         TriggerSpec::ThisIsDealtCombatDamage => Trigger::is_dealt_combat_damage(ChooseSpec::Source),
         TriggerSpec::IsDealtDamage(filter) => Trigger::is_dealt_damage(ChooseSpec::Object(filter)),

@@ -1116,6 +1116,10 @@ impl Effect {
         Self::new(crate::effects::AttachObjectsEffect::new(objects, target))
     }
 
+    pub fn unattach_objects(objects: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::UnattachObjectsEffect::new(objects))
+    }
+
     pub fn transform(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::TransformEffect::new(target))
     }
@@ -1329,6 +1333,10 @@ impl Effect {
 
     pub fn gain_life_player(amount: impl Into<Value>, target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::GainLifeEffect::new(amount.into(), target))
+    }
+
+    pub fn note_life_total() -> Self {
+        Self::new(crate::effects::NoteLifeTotalEffect)
     }
 
     pub fn lose_the_game() -> Self {

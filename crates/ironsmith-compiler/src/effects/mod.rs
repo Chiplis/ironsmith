@@ -45,7 +45,7 @@ pub use ironsmith_core::{
     MillEffect, ModifyPowerToughnessEffect, ModifyPowerToughnessForEachEffect, MonstrosityEffect,
     MoveAllCountersEffect, MoveCountersEffect, MoveOneCounterEffect, MoveToLibraryNthFromTopEffect,
     MoveToLibraryTopOrBottomChoiceEffect, MoveToZoneEffect, NewTargetRestriction,
-    NinjutsuCostEffect, NinjutsuEffect, OpenAttractionEffect, PayAnyEnergyEffect,
+    NinjutsuCostEffect, NinjutsuEffect, NoteLifeTotalEffect, OpenAttractionEffect, PayAnyEnergyEffect,
     PayAnyLifeEffect, PayEnergyEffect, PayManaEffect, PhaseInEffect, PhaseOutEffect,
     PoisonCountersEffect, PopulateEffect,
     PreventAllCombatDamageEffect, PreventAllDamageEffect,
@@ -57,7 +57,7 @@ pub use ironsmith_core::{
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
     RedirectNextTimeDamageToSourceEffect, ReflexiveTriggerEffect as CoreReflexiveTriggerEffect,
-    RegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
+    RegenerateEffect as CoreRegenerateEffect, RegisterDamagedBySourceZoneReplacementEffect,
     RegisterEnterUnderControlReplacementEffect, RegisterFutureZoneReplacementEffect,
     RegisterZoneReplacementEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
     RemoveCountersEffect, RemoveFromCombatEffect, RemoveUpToAnyCountersEffect,
@@ -71,8 +71,9 @@ pub use ironsmith_core::{
     SacrificeTargetEffect,
     ScheduleEffectsWhenTaggedLeavesEffect as CoreScheduleEffectsWhenTaggedLeavesEffect, ScryEffect,
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
-    SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SequenceEffect as CoreSequenceEffect,
-    SetBasePowerToughnessEffect, SetLifeTotalEffect, SharedTypeConstraint,
+    SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SecretChoiceEffect,
+    SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect,
+    SharedTypeConstraint,
     ShuffleGraveyardIntoLibraryEffect, ShuffleHandAndGraveyardIntoLibraryEffect,
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
@@ -81,7 +82,7 @@ pub use ironsmith_core::{
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect as CoreTaggedEffect, TaggedLeavesAbilitySource,
     TakeInitiativeEffect, TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect,
-    UnearthEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
+    UnearthEffect, UnattachObjectsEffect, UnlessActionEffect, UnlessPaysEffect, UntapEffect,
     VariableCasualtyPlaneswalkerCopyEffect, VentureIntoDungeonEffect, WinTheGameEffect,
     WithIdEffect as CoreWithIdEffect,
 };
@@ -99,6 +100,7 @@ pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
 pub type ManaRestrictedEffect = CoreManaRestrictedEffect<Effect>;
 pub type PreventDamageEffect = CorePreventDamageEffect<Effect>;
 pub type PreventAllDamageToTargetEffect = CorePreventAllDamageToTargetEffect<Effect>;
+pub type RegenerateEffect = CoreRegenerateEffect<Effect>;
 pub type ScheduleEffectsWhenTaggedLeavesEffect = CoreScheduleEffectsWhenTaggedLeavesEffect<Effect>;
 pub type SequenceEffect = CoreSequenceEffect<Effect>;
 pub type WithIdEffect = CoreWithIdEffect<Effect>;

@@ -116,6 +116,13 @@ const CONTROL_OR_CONTROLLED_WORD_PATTERN: ClauseShape<'static> =
 const CARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["card"]);
 const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["been", "exiled", "with", "this"],
+            &["exiled", "with", "this"],
+        ]
+);
 const IN_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -293,6 +300,15 @@ const GIFT_NOT_PROMISED_PATTERN: ClauseShape<'static> = clause_shape!(
         & [
             &["gift", "wasnt", "promised"],
             &["gift", "was", "not", "promised"],
+        ]
+);
+const TRIBUTE_WAS_PAID_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["tribute", "was", "paid"]);
+const TRIBUTE_WASNT_PAID_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["tribute", "wasnt", "paid"],
+            &["tribute", "was", "not", "paid"],
         ]
 );
 const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
@@ -1407,6 +1423,45 @@ fn parse_passive_this_way_tagged_object_predicate(
     )))
 }
 
+fn parse_active_this_way_discard_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if filtered.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
+        return Ok(None);
+    }
+
+    let Some((player, subject_len)) = active_discard_player_subject(filtered) else {
+        return Ok(None);
+    };
+    let Some(verb) = filtered.get(subject_len) else {
+        return Ok(None);
+    };
+    if !matches!(*verb, "discard" | "discards" | "discarded") {
+        return Ok(None);
+    }
+
+    let filter_words = &filtered[subject_len + 1..filtered.len() - 2];
+    let Some(filter) = parse_this_way_object_filter_words(filter_words) else {
+        return Ok(None);
+    };
+    Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
+        player,
+        tag: TagKey::from(IT_TAG),
+        filter,
+    }))
+}
+
+fn active_discard_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
+    match words {
+        ["you", ..] => Some((PlayerAst::You, 1)),
+        ["that", "player" | "players", ..] => Some((PlayerAst::That, 2)),
+        ["target", "player", ..] => Some((PlayerAst::Target, 2)),
+        ["target", "opponent", ..] => Some((PlayerAst::TargetOpponent, 2)),
+        ["opponent" | "opponents", ..] => Some((PlayerAst::Opponent, 1)),
+        _ => None,
+    }
+}
+
 fn parse_repeated_if_or_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -2023,6 +2078,37 @@ fn parse_life_total_at_least_starting_predicate(words: &[&str]) -> Option<Predic
     None
 }
 
+fn parse_life_total_at_least_last_noted_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if !matches!(
+        words,
+        [
+            "your",
+            "life",
+            "total",
+            "is",
+            "greater",
+            "than",
+            "or",
+            "equal",
+            "to",
+            "last",
+            "noted",
+            "life",
+            "total",
+            "for",
+            "this",
+            "permanent" | "enchantment" | "artifact" | "creature" | "land",
+        ]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::LifeTotal(PlayerFilter::You),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::LastNotedLifeTotal,
+    })
+}
+
 fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<PredicateAst> {
     if words.len() < 7 {
         return None;
@@ -2069,6 +2155,45 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
         left: Value::Count(filter),
         operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
         right: Value::Fixed(count as i32),
+    })
+}
+
+fn parse_counted_source_exiled_objects_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if words.len() < 7 {
+        return None;
+    }
+    let (comparison, used) = predicate_quantity_prefix(words)?;
+    let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
+    let have_idx = find_index(words, |word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
+    if have_idx <= used {
+        return None;
+    }
+    let object_words = &words[used..have_idx];
+    let tail_words = &words[have_idx + 1..];
+    if object_words.is_empty() || !BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN.matches_words(tail_words)
+    {
+        return None;
+    }
+
+    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
+    let mut filter = if object_words
+        .iter()
+        .all(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
+        ObjectFilter::default()
+    } else {
+        parse_object_filter(&object_tokens, false).ok()?
+    };
+    filter.zone = Some(Zone::Exile);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator,
+        right: Value::Fixed(count),
     })
 }
 
@@ -2239,6 +2364,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
     }
+    if matches!(filtered.as_slice(), ["they", "match"] | ["those", "choices", "match"]) {
+        return Ok(PredicateAst::SecretChoicesMatch);
+    }
     if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
         && gets_idx > 0
         && MORE_VOTES_OR_TIED_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
@@ -2249,6 +2377,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_active_this_way_discard_predicate(&filtered)? {
         return Ok(predicate);
     }
 
@@ -2312,12 +2443,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_life_total_at_least_starting_predicate(&filtered) {
         return Ok(predicate);
     }
+    if let Some(predicate) = parse_life_total_at_least_last_noted_predicate(&filtered) {
+        return Ok(predicate);
+    }
 
     if let Some(predicate) = parse_player_status_predicate(&filtered) {
         return Ok(predicate);
     }
 
     if let Some(predicate) = parse_counted_objects_have_counter_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_counted_source_exiled_objects_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -3277,6 +3415,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
         )));
     }
+    if TRIBUTE_WAS_PAID_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::ThisSpellPaidLabel("Tribute".to_string()));
+    }
+    if TRIBUTE_WASNT_PAID_PATTERN.matches_words(&filtered) {
+        return Ok(PredicateAst::Not(Box::new(
+            PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
+        )));
+    }
     if filtered.len() >= 4
         && COST_WAS_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
     {
@@ -3398,11 +3544,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
-    if filtered.len() >= 4
-        && SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 0)
-        && WAS_WORD_PATTERN.matches_word_at(&filtered, 2)
+    let sacrificed_idx = if SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 0) {
+        Some(0usize)
+    } else if filtered.len() >= 2
+        && matches!(filtered[0], "the" | "a" | "an")
+        && SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 1)
     {
-        let sacrificed_head = filtered[1];
+        Some(1usize)
+    } else {
+        None
+    };
+    if let Some(sacrificed_idx) = sacrificed_idx
+        && filtered.len() >= sacrificed_idx + 4
+        && WAS_WORD_PATTERN.matches_word_at(&filtered, sacrificed_idx + 2)
+    {
+        let sacrificed_head = filtered[sacrificed_idx + 1];
         let subject_card_type =
             parse_card_type(sacrificed_head).filter(|card_type| is_permanent_type(*card_type));
         let subject_is_permanent =
@@ -3410,8 +3566,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
         if subject_is_permanent {
             let descriptor_tokens =
-                crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[3..]);
-            let mut filter = parse_object_filter(&descriptor_tokens, false)?;
+                crate::runtime_backend::lexer::synthetic_word_tokens(
+                    &filtered[sacrificed_idx + 3..],
+                );
+            let mut filter = match parse_object_filter(&descriptor_tokens, false) {
+                Ok(filter) => filter,
+                Err(err) => parse_color_only_object_filter_words(&filtered[sacrificed_idx + 3..])
+                    .ok_or(err)?,
+            };
             if filter.card_types.is_empty() {
                 if let Some(card_type) = subject_card_type {
                     filter.card_types.push(card_type);
@@ -4319,6 +4481,27 @@ mod tests {
         assert_eq!(
             parsed,
             PredicateAst::TaggedMatches(TagKey::from(IT_TAG), aura_filter)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_that_player_discards_filtered_card_this_way() -> Result<(), CardTextError> {
+        let tokens = lex_line("If that player discards an artifact card this way", 0)?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+        let artifact_filter_tokens = lex_line("an artifact card", 0)?;
+        let mut artifact_filter = parse_object_filter(&artifact_filter_tokens, false)?;
+        artifact_filter.zone = None;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerTaggedObjectMatches {
+                player: PlayerAst::That,
+                tag: TagKey::from(IT_TAG),
+                filter: artifact_filter,
+            }
         );
         Ok(())
     }

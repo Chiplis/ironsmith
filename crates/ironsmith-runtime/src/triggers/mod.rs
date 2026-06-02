@@ -554,6 +554,11 @@ impl Trigger {
         Self::new(BlocksTrigger::new(filter))
     }
 
+    /// Create a "when one or more [filter] block" trigger.
+    pub fn blocks_one_or_more(filter: ObjectFilter) -> Self {
+        Self::new(BlocksTrigger::one_or_more(filter))
+    }
+
     /// Create a "when this creature becomes blocked" trigger.
     pub fn this_becomes_blocked() -> Self {
         Self::new(ThisBecomesBlockedTrigger)
@@ -750,12 +755,12 @@ impl Trigger {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     ) -> Self {
-        Self::new(AbilityActivatedTrigger::new(
-            activator,
-            filter,
-            non_mana_only,
-        ))
+        Self::new(
+            AbilityActivatedTrigger::new(activator, filter, non_mana_only)
+                .loyalty_only(loyalty_only),
+        )
     }
 
     /// Create a "whenever [player] plays [land filter]" trigger.

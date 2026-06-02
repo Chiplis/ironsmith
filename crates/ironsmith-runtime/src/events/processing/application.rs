@@ -107,6 +107,31 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::Tribute { count, .. } => {
+            let opponents = super::tribute_opponents(game, effect.controller);
+            if opponents.is_empty() {
+                return TraitApplyResult::Unchanged(event);
+            };
+            let decision_ctx = if opponents.len() == 1 {
+                super::tribute_boolean_context(game, effect.source, opponents[0], *count)
+            } else {
+                super::tribute_opponent_choice_context(
+                    game,
+                    effect.source,
+                    effect.controller,
+                    &opponents,
+                )
+            };
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx,
+                redirect_zone: Zone::Battlefield,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: None,
+                destinations: None,
+            }
+        }
+
         ReplacementAction::Redirect { target, which } => {
             let modified = apply_trait_redirect(game, &event, target, which, effect.controller);
             match modified {
@@ -717,7 +742,7 @@ fn apply_trait_enter_untapped(event: &Event) -> Option<Event> {
     }
 }
 
-fn apply_trait_enter_with_counters(
+pub(super) fn apply_trait_enter_with_counters(
     event: &Event,
     counter_type: CounterType,
     count: u32,

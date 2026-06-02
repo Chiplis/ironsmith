@@ -68,6 +68,9 @@ pub enum TriggerKind {
     Blocks {
         filter: ObjectFilter,
     },
+    BlocksOneOrMore {
+        filter: ObjectFilter,
+    },
     ThisBecomesBlocked,
     ThisBecomesBlockedByObject {
         filter: ObjectFilter,
@@ -170,6 +173,7 @@ pub enum TriggerKind {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     },
     IsDealtDamage {
         target: ChooseSpec,
@@ -488,6 +492,9 @@ impl Trigger {
     pub fn blocks(filter: ObjectFilter) -> Self {
         Self::typed("blocks", TriggerKind::Blocks { filter })
     }
+    pub fn blocks_one_or_more(filter: ObjectFilter) -> Self {
+        Self::typed("blocks_one_or_more", TriggerKind::BlocksOneOrMore { filter })
+    }
     pub fn this_becomes_blocked() -> Self {
         Self::typed("this_becomes_blocked", TriggerKind::ThisBecomesBlocked)
     }
@@ -706,6 +713,7 @@ impl Trigger {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     ) -> Self {
         Self::typed(
             "ability_activated_qualified",
@@ -713,6 +721,7 @@ impl Trigger {
                 activator,
                 filter,
                 non_mana_only,
+                loyalty_only,
             },
         )
     }

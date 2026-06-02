@@ -313,6 +313,7 @@ impl StaticAbilityModelInterpreter {
                 | StaticAbilityId::ReadAhead
                 | StaticAbilityId::Unleash
                 | StaticAbilityId::Bloodthirst
+                | StaticAbilityId::Tribute
                 | StaticAbilityId::Protection
                 | StaticAbilityId::Ward
                 | StaticAbilityId::Landwalk
@@ -725,10 +726,13 @@ impl StaticAbilityModelInterpreter {
     ) -> Option<super::ThisSpellCostReductionManaCost> {
         match &model.payload {
             ironsmith_core::StaticAbilityPayload::ThisSpellCostReductionManaCost(reduction) => {
-                Some(super::ThisSpellCostReductionManaCost::new(
-                    reduction.cost.clone(),
-                    reduction.condition.clone(),
-                ))
+                Some(
+                    super::ThisSpellCostReductionManaCost::new(
+                        reduction.cost.clone(),
+                        reduction.condition.clone(),
+                    )
+                    .with_repetitions(reduction.repetitions.clone()),
+                )
             }
             ironsmith_core::StaticAbilityPayload::ThisSpellCastRestriction { .. } => None,
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
@@ -1179,6 +1183,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbility::choose_player_as_enters(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
+                StaticAbility::note_life_total_as_enters(display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbility::choose_card_name_as_enters(display.clone())
             }
@@ -1415,6 +1422,7 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbility::bloodthirst(*amount)
             }
+            ironsmith_core::StaticAbilityPayload::Tribute(amount) => StaticAbility::tribute(*amount),
             ironsmith_core::StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
@@ -1572,6 +1580,12 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             return increase.display();
         }
         self.model.label.clone()
+    }
+
+    fn life_total_note_as_enters(
+        &self,
+    ) -> Option<crate::static_abilities::NoteLifeTotalAsEntersSpec> {
+        self.leaf_static_ability()?.life_total_note_as_enters()
     }
 
     fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {

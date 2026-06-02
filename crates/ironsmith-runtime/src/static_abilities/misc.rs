@@ -5,7 +5,7 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, NoteLifeTotalAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, PowerToughnessChoiceOption, StaticAbility, StaticAbilityId,
@@ -1101,6 +1101,49 @@ impl ReplacementMatcher for ThisWouldEnterWithBloodthirstMatcher {
     }
 }
 
+/// Tribute N.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Tribute {
+    pub amount: u32,
+}
+
+impl Tribute {
+    pub const fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+impl StaticAbilityKind for Tribute {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::Tribute
+    }
+
+    fn display(&self) -> String {
+        format!("Tribute {}", self.amount)
+    }
+
+    fn is_keyword(&self) -> bool {
+        true
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::Tribute {
+                counter_type: CounterType::PlusOnePlusOne,
+                count: self.amount,
+                paid_label: "Tribute".to_string(),
+            },
+        ))
+    }
+}
+
 /// Enters the battlefield with counters.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntersWithCounters {
@@ -1553,6 +1596,32 @@ impl StaticAbilityKind for ChoosePlayerAsEnters {
 
     fn player_choice_as_enters(&self) -> Option<ChoosePlayerAsEntersSpec> {
         Some(ChoosePlayerAsEntersSpec)
+    }
+}
+
+/// "As this enters, note your life total."
+#[derive(Debug, Clone, PartialEq)]
+pub struct NoteLifeTotalAsEnters {
+    pub display: String,
+}
+
+impl NoteLifeTotalAsEnters {
+    pub fn new(display: String) -> Self {
+        Self { display }
+    }
+}
+
+impl StaticAbilityKind for NoteLifeTotalAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::NoteLifeTotalAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
+        Some(NoteLifeTotalAsEntersSpec)
     }
 }
 

@@ -34,6 +34,7 @@ pub enum StaticAbilityId {
     CantBeBlockedAsLongAsDefendingPlayerControlsCardType,
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes,
     Bloodthirst,
+    Tribute,
     Daybound,
     Nightbound,
     DayNightStartsDayAsEnters,
@@ -157,6 +158,7 @@ pub enum StaticAbilityId {
     ChooseColorAsEnters,
     ChooseColorAsBecomesAttached,
     ChoosePlayerAsEnters,
+    NoteLifeTotalAsEnters,
     ChooseCardNameAsEnters,
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
@@ -295,6 +297,7 @@ impl StaticAbilityId {
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
             | Bloodthirst
+            | Tribute
             | Daybound
             | Nightbound
             | DayNightStartsDayAsEnters
@@ -418,6 +421,7 @@ impl StaticAbilityId {
             | ChooseColorAsEnters
             | ChooseColorAsBecomesAttached
             | ChoosePlayerAsEnters
+            | NoteLifeTotalAsEnters
             | ChooseCardNameAsEnters
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters
@@ -555,6 +559,7 @@ impl StaticAbilityId {
                 | Flanking
                 | Landwalk
                 | Bloodthirst
+                | Tribute
                 | Morph
                 | Disguise
                 | Megamorph

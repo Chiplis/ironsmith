@@ -1529,6 +1529,11 @@ impl Effect {
         Self::new(DrawCardsEffect::you(count))
     }
 
+    pub fn note_life_total() -> Self {
+        use crate::effects::NoteLifeTotalEffect;
+        Self::new(NoteLifeTotalEffect)
+    }
+
     /// Create a "target player draws N cards" effect.
     pub fn target_draws(count: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::DrawCardsEffect;
@@ -2658,18 +2663,8 @@ impl Effect {
     }
 
     /// Create an "exile cards from your graveyard" cost effect.
-    pub fn exile_from_graveyard_as_cost(
-        count: u32,
-        card_type: Option<crate::types::CardType>,
-    ) -> Self {
+    pub fn exile_from_graveyard_as_cost(count: u32, filter: ObjectFilter) -> Self {
         use crate::effects::ExileEffect;
-
-        let mut filter = ObjectFilter::default()
-            .in_zone(Zone::Graveyard)
-            .owned_by(PlayerFilter::You);
-        if let Some(card_type) = card_type {
-            filter = filter.with_type(card_type);
-        }
 
         Self::new(ExileEffect::with_spec(
             ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
@@ -2836,6 +2831,12 @@ impl Effect {
     pub fn attach_objects(objects: ChooseSpec, target: ChooseSpec) -> Self {
         use crate::effects::AttachObjectsEffect;
         Self::new(AttachObjectsEffect::new(objects, target))
+    }
+
+    /// Create an effect that unattaches one or more attached objects.
+    pub fn unattach_objects(objects: ChooseSpec) -> Self {
+        use crate::effects::UnattachObjectsEffect;
+        Self::new(UnattachObjectsEffect::new(objects))
     }
 
     /// Create a "mill N cards" effect.

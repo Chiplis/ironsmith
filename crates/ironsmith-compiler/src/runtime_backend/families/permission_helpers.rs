@@ -928,6 +928,74 @@ fn parse_sacrificing_additional_cost_tokens(
     Ok(Some(crate::costs::Cost::sacrifice(filter.you_control())))
 }
 
+fn parse_card_type_word(word: &str) -> Option<CardType> {
+    match word {
+        "artifact" | "artifacts" => Some(CardType::Artifact),
+        "creature" | "creatures" => Some(CardType::Creature),
+        "enchantment" | "enchantments" => Some(CardType::Enchantment),
+        "instant" | "instants" => Some(CardType::Instant),
+        "land" | "lands" => Some(CardType::Land),
+        "planeswalker" | "planeswalkers" => Some(CardType::Planeswalker),
+        "sorcery" | "sorceries" => Some(CardType::Sorcery),
+        _ => None,
+    }
+}
+
+fn parse_exiling_graveyard_additional_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::costs::Cost>, CardTextError> {
+    parse_exiling_graveyard_additional_cost_words(&token_word_refs(tokens))
+}
+
+fn parse_exiling_graveyard_additional_cost_words(
+    words: &[&str],
+) -> Result<Option<crate::costs::Cost>, CardTextError> {
+    let Some(rest) = words.strip_prefix(&["exiling"]) else {
+        return Ok(None);
+    };
+    let Some(count_word) = rest.first() else {
+        return Ok(None);
+    };
+    let Some(count) = parse_named_number(count_word) else {
+        return Ok(None);
+    };
+    let Some(card_idx) = rest
+        .iter()
+        .position(|word| matches!(*word, "card" | "cards"))
+    else {
+        return Ok(None);
+    };
+    if rest.get(card_idx + 1..) != Some(&["from", "your", "graveyard"][..]) {
+        return Ok(None);
+    }
+
+    let mut card_types = Vec::new();
+    for word in &rest[1..card_idx] {
+        if matches!(*word, "and" | "or" | "and/or") {
+            continue;
+        }
+        let Some(card_type) = parse_card_type_word(word) else {
+            return Ok(None);
+        };
+        if !card_types.contains(&card_type) {
+            card_types.push(card_type);
+        }
+    }
+
+    Ok(Some(crate::costs::Cost::exile_from_graveyard(
+        count, card_types,
+    )))
+}
+
+fn parse_graveyard_cast_additional_cost_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<crate::costs::Cost>, CardTextError> {
+    if let Some(cost) = parse_sacrificing_additional_cost_tokens(tokens)? {
+        return Ok(Some(cost));
+    }
+    parse_exiling_graveyard_additional_cost_tokens(tokens)
+}
+
 fn parse_once_each_turn_graveyard_cast_permission(
     tokens: &[OwnedLexToken],
     clause_refs: &[&str],
@@ -1000,7 +1068,7 @@ fn parse_once_each_turn_graveyard_cast_permission(
         let Some(cost_tokens) = token_slice_for_word_range(tokens, cost_start, cost_end) else {
             return Ok(None);
         };
-        let Some(cost) = parse_sacrificing_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
+        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
         else {
             return Ok(None);
         };
@@ -1145,6 +1213,55 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     }
 
     let rest_words = token_word_refs(rest_tokens);
+    if let Some(after_source) = rest_words
+        .strip_prefix(&["this", "card", "from", "your", "graveyard", "by"])
+        .or_else(|| {
+            rest_words.strip_prefix(&["this", "spell", "from", "your", "graveyard", "by"])
+        })
+    {
+        const ADDITIONAL_COST_SUFFIX: &[&str] =
+            &["in", "addition", "to", "paying", "its", "other", "costs"];
+        if word_slice_ends_with(after_source, ADDITIONAL_COST_SUFFIX) {
+            let cost_words = &after_source[..after_source.len() - ADDITIONAL_COST_SUFFIX.len()];
+            if let Some(cost) = parse_exiling_graveyard_additional_cost_words(cost_words)? {
+                return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                    player,
+                    spec: crate::grant::GrantSpec::new(
+                        crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
+                            vec![cost], false,
+                        ),
+                        ObjectFilter::source(),
+                        Zone::Graveyard,
+                    ),
+                    lifetime: PermissionLifetime::Static,
+                }));
+            }
+
+            let cost_start = rest_words.len() - after_source.len();
+            let cost_end = rest_words.len() - ADDITIONAL_COST_SUFFIX.len();
+            let Some(cost_tokens) = token_slice_for_word_range(rest_tokens, cost_start, cost_end)
+            else {
+                return Ok(None);
+            };
+            let Some(cost) =
+                parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
+            else {
+                return Ok(None);
+            };
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec: crate::grant::GrantSpec::new(
+                    crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
+                        vec![cost], false,
+                    ),
+                    ObjectFilter::source(),
+                    Zone::Graveyard,
+                ),
+                lifetime: PermissionLifetime::Static,
+            }));
+        }
+    }
+
     if SOURCE_CARD_OR_SPELL_FROM_GRAVEYARD_PATTERN.matches_words(&rest_words) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,

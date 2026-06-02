@@ -353,8 +353,11 @@ const GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN: ClauseShape<'static> =
 const THAT_PLAYER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "player"]);
 const THEN_THOSE_VOTES_ARE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["then", "those", "votes", "are"]);
+const THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["then", "those", "choices", "are"]);
 const VOTE_OR_VOTES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["vote"], &["votes"]]);
+const CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
 const EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["each"]);
 const PLAYER_OR_PLAYERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["player"], &["players"]]);
@@ -1354,9 +1357,22 @@ pub(crate) fn parse_vote_affinity_subject_verb(
 pub(crate) fn parse_vote_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_secret_number_choice_vote_start(tokens)? {
+        return Ok(Some(effect));
+    }
+    if let Some(effect) = parse_vote_reveal_sentence(tokens) {
+        return Ok(Some(effect));
+    }
     if let Some(effect) = parse_generic_vote_start(tokens)? {
-        if let EffectAst::VoteStart { options, secret } = effect {
-            return Ok(Some(GenericVoteProgram::Start { options, secret }.lower()));
+        if let EffectAst::VoteStart { options, secret } = effect
+        {
+            return Ok(Some(
+                GenericVoteProgram::Start {
+                    options,
+                    secret,
+                }
+                .lower(),
+            ));
         }
         return Ok(Some(effect));
     }
@@ -1379,11 +1395,61 @@ pub(crate) fn parse_vote_subject_verb(
 
 fn truncate_vote_reveal_tail<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
     for idx in 0..words.len().saturating_sub(3) {
-        if THEN_THOSE_VOTES_ARE_PREFIX_PATTERN.matches_words(&words[idx..]) {
+        if THEN_THOSE_VOTES_ARE_PREFIX_PATTERN.matches_words(&words[idx..])
+            || THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN.matches_words(&words[idx..])
+        {
             return &words[..idx];
         }
     }
     words
+}
+
+fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        ["then", "those", "choices", "are", "revealed"]
+            | ["those", "choices", "are", "revealed"]
+    ) {
+        return Some(EffectAst::SecretChoiceReveal);
+    }
+    None
+}
+
+fn parse_secret_number_choice_vote_start(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(choose_idx) = find_index(&clause_words, |word| CHOOSE_WORD_PATTERN.matches_word(word))
+    else {
+        return Ok(None);
+    };
+    if !clause_words[..choose_idx].starts_with(&["you", "and", "target", "opponent"])
+        || !clause_words[..choose_idx].contains(&"each")
+        || !clause_words[..choose_idx]
+            .iter()
+            .any(|word| SECRET_OR_SECRETLY_WORD_PATTERN.matches_word(word))
+    {
+        return Ok(None);
+    }
+
+    let option_words = truncate_vote_reveal_tail(&clause_words[choose_idx + 1..]);
+    let options = option_words
+        .iter()
+        .filter(|word| !OR_WORD_PATTERN.matches_word(word))
+        .filter(|word| word.chars().all(|ch| ch.is_ascii_digit()))
+        .map(|word| (*word).to_string())
+        .collect::<Vec<_>>();
+    if options.len() < 2 {
+        return Err(CardTextError::ParseError(
+            "secret choice clause requires at least two numeric options".to_string(),
+        ));
+    }
+
+    Ok(Some(EffectAst::SecretChoiceStart {
+        options,
+        participants: vec![PlayerFilter::You, PlayerFilter::target_opponent()],
+    }))
 }
 
 fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {

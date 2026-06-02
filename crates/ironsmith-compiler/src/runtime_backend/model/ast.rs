@@ -136,6 +136,7 @@ pub(crate) enum TriggerSpec {
     ThisBlocks,
     ThisBlocksObject(ObjectFilter),
     Blocks(ObjectFilter),
+    BlocksOneOrMore(ObjectFilter),
     ThisBecomesBlocked,
     ThisBecomesBlockedByObject(ObjectFilter),
     ThisDies,
@@ -208,6 +209,7 @@ pub(crate) enum TriggerSpec {
         activator: PlayerFilter,
         filter: ObjectFilter,
         non_mana_only: bool,
+        loyalty_only: bool,
     },
     ThisIsDealtDamage,
     ThisIsDealtCombatDamage,
@@ -525,6 +527,7 @@ pub(crate) enum PredicateAst {
     VoteOptionGetsMoreVotes {
         option: String,
     },
+    SecretChoicesMatch,
     VoteOptionGetsMoreVotesOrTied {
         option: String,
     },
@@ -826,6 +829,7 @@ pub(crate) enum SubjectVerbActionAst {
         random: bool,
         exclude_previous_choices: usize,
     },
+    NoteLifeTotal,
     ChooseSpellCastHistory {
         cast_by: PlayerAst,
         filter: ObjectFilter,
@@ -1030,6 +1034,11 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+    },
+    PreventAllDamageToTargetFromSourceFilter {
+        target: TargetAst,
+        duration: Until,
+        source_filter: ObjectFilter,
     },
     PreventAllDamageFromSourceFilter {
         duration: Until,
@@ -1396,6 +1405,7 @@ pub(crate) enum SubjectVerbActionAst {
         source: PreventNextTimeDamageSourceAst,
         target: TargetAst,
         destination: RedirectNextTimeDamageDestinationAst,
+        destination_target: Option<TargetAst>,
         all_this_turn: bool,
     },
     RedirectAllDamageThisTurnBySourceToSourceController {
@@ -1727,6 +1737,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     Regenerate {
         target: TargetAst,
+        follow_up_effects: Vec<EffectAst>,
     },
     RegenerateAll {
         filter: ObjectFilter,
@@ -1898,6 +1909,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("random", random)
                 .field("exclude_previous_choices", exclude_previous_choices)
                 .finish(),
+            Self::NoteLifeTotal => f.write_str("NoteLifeTotal"),
             Self::ChooseSpellCastHistory {
                 cast_by,
                 filter,
@@ -2211,6 +2223,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PreventAllDamageToTarget")
                 .field("target", target)
                 .field("duration", duration)
+                .finish(),
+            Self::PreventAllDamageToTargetFromSourceFilter {
+                target,
+                duration,
+                source_filter,
+            } => f
+                .debug_struct("PreventAllDamageToTargetFromSourceFilter")
+                .field("target", target)
+                .field("duration", duration)
+                .field("source_filter", source_filter)
                 .finish(),
             Self::PreventAllDamageFromSourceFilter {
                 duration,
@@ -2806,12 +2828,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 source,
                 target,
                 destination,
+                destination_target,
                 all_this_turn,
             } => f
                 .debug_struct("RedirectNextTimeDamageToSource")
                 .field("source", source)
                 .field("target", target)
                 .field("destination", destination)
+                .field("destination_target", destination_target)
                 .field("all_this_turn", all_this_turn)
                 .finish(),
             Self::RedirectAllDamageThisTurnBySourceToSourceController { source } => f
@@ -3249,7 +3273,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }
             Self::Flip { target } => f.debug_tuple("Flip").field(target).finish(),
-            Self::Regenerate { target } => f.debug_tuple("Regenerate").field(target).finish(),
+            Self::Regenerate {
+                target,
+                follow_up_effects,
+            } => f
+                .debug_struct("Regenerate")
+                .field("target", target)
+                .field("follow_up_effects", follow_up_effects)
+                .finish(),
             Self::RegenerateAll { filter } => f.debug_tuple("RegenerateAll").field(filter).finish(),
             Self::Sacrifice {
                 filter,
@@ -3452,6 +3483,11 @@ pub(crate) enum EffectAst {
         options: Vec<String>,
         secret: bool,
     },
+    SecretChoiceStart {
+        options: Vec<String>,
+        participants: Vec<PlayerFilter>,
+    },
+    SecretChoiceReveal,
     VoteStartObjects {
         filter: ObjectFilter,
         count: ChoiceCount,
@@ -3678,6 +3714,22 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::PreventAllDamageToTarget { target, duration },
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_to_target_from_source_filter(
+        target: TargetAst,
+        source_filter: ObjectFilter,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+                target,
+                duration,
+                source_filter,
+            },
         )
     }
 
@@ -4686,6 +4738,25 @@ impl EffectAst {
                 source,
                 target,
                 destination,
+                destination_target: None,
+                all_this_turn: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_next_time_damage_to_target(
+        source: PreventNextTimeDamageSourceAst,
+        target: TargetAst,
+        destination_target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectNextTimeDamageToSource {
+                source,
+                target,
+                destination: RedirectNextTimeDamageDestinationAst::TargetObject,
+                destination_target: Some(destination_target),
                 all_this_turn: false,
             },
         )
@@ -4703,6 +4774,7 @@ impl EffectAst {
                 source,
                 target,
                 destination,
+                destination_target: None,
                 all_this_turn: true,
             },
         )
@@ -6609,7 +6681,24 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::Regenerate { target },
+            SubjectVerbActionAst::Regenerate {
+                target,
+                follow_up_effects: Vec::new(),
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_regenerate_with_follow_up_effects(
+        target: TargetAst,
+        follow_up_effects: Vec<EffectAst>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Regenerate {
+                target,
+                follow_up_effects,
+            },
         )
     }
 

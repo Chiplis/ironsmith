@@ -832,6 +832,23 @@ impl TurnHistory {
         None
     }
 
+    pub fn spell_cast_order_for_player(&self, spell: ObjectId, player: PlayerId) -> Option<u32> {
+        let mut order = 0u32;
+        for record in self.projected_records() {
+            let Some(event) = record.event.downcast::<SpellCastEvent>() else {
+                continue;
+            };
+            if event.caster != player {
+                continue;
+            }
+            order = order.saturating_add(1);
+            if event.spell == spell {
+                return Some(order);
+            }
+        }
+        None
+    }
+
     pub fn spell_cast_snapshot_history(&self) -> Vec<ObjectSnapshot> {
         let mut order = 0u32;
         let mut snapshots = Vec::new();

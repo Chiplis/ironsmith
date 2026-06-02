@@ -176,6 +176,45 @@ fn tagged_move_to_zone_cost_precheck(
     }
 }
 
+fn tagged_unattach_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let unattach = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;
+    let tag = match unattach.objects.base() {
+        crate::target::ChooseSpec::Tagged(tag) => tag,
+        crate::target::ChooseSpec::Object(filter) => tagged_selection_tag(filter)?,
+        _ => return None,
+    };
+
+    let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other(
+            "unattach cost has no chosen object".to_string(),
+        )));
+    };
+    if chosen.is_empty() {
+        return Some(Err(CostPaymentError::Other(
+            "unattach cost has no chosen object".to_string(),
+        )));
+    }
+
+    let valid = chosen.iter().any(|snapshot| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| {
+                object.attached_to.and_then(|target| target.object_id()) == Some(ctx.source)
+            })
+    });
+    if valid {
+        Some(Ok(()))
+    } else {
+        Some(Err(CostPaymentError::Other(
+            "chosen object is not attached to this source".to_string(),
+        )))
+    }
+}
+
 fn simple_exile_from_hand_filter(
     filter: &crate::filter::ObjectFilter,
 ) -> Option<Option<crate::color::ColorSet>> {
@@ -222,6 +261,8 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+            result?;
+        } else if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else {
             self.can_pay(game, ctx)?;
@@ -361,12 +402,25 @@ impl CostPayer for CostEffect {
         let crate::effect::Value::Fixed(count) = effect.count else {
             return None;
         };
+        let card_type = match &effect.card_filter {
+            None => None,
+            Some(filter) => {
+                let card_type = match filter.card_types.as_slice() {
+                    [] => None,
+                    [card_type] => Some(*card_type),
+                    _ => return None,
+                };
+                let mut non_type_filter = filter.clone();
+                non_type_filter.card_types.clear();
+                if non_type_filter != crate::filter::ObjectFilter::default() {
+                    return None;
+                }
+                card_type
+            }
+        };
         Some((
             count.max(0) as u32,
-            effect
-                .card_filter
-                .as_ref()
-                .and_then(|filter| filter.card_types.first().copied()),
+            card_type,
         ))
     }
 
@@ -376,6 +430,21 @@ impl CostPayer for CostEffect {
 
     fn exile_from_hand_details(&self) -> Option<(u32, Option<crate::color::ColorSet>)> {
         self.effect.0.exile_from_hand_cost_info()
+    }
+
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[crate::types::CardType])> {
+        let exile = self.effect.downcast_ref::<crate::effects::ExileEffect>()?;
+        let crate::target::ChooseSpec::Object(filter) = exile.spec.base() else {
+            return None;
+        };
+        if filter.zone != Some(crate::zone::Zone::Graveyard) {
+            return None;
+        }
+        let count = exile.spec.count();
+        if count.min == 0 || count.max != Some(count.min) {
+            return None;
+        }
+        Some((count.min as u32, &filter.card_types))
     }
 
     fn is_remove_counters(&self) -> bool {

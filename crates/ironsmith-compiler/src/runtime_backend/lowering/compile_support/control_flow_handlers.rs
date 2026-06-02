@@ -861,6 +861,10 @@ fn is_vote_related_predicate(predicate: &PredicateAst) -> bool {
     )
 }
 
+fn is_secret_choice_related_predicate(predicate: &PredicateAst) -> bool {
+    matches!(predicate, PredicateAst::SecretChoicesMatch)
+}
+
 fn compiled_vote_option_uses_iterated_player(effects: &[Effect], choices: &[ChooseSpec]) -> bool {
     str_contains(format!("{effects:?}{choices:?}").as_str(), "IteratedPlayer")
 }
@@ -872,6 +876,45 @@ pub(crate) fn compile_vote_sequence(
     let Some(first) = effects.first() else {
         return Ok(None);
     };
+    if let EffectAst::SecretChoiceStart {
+        options,
+        participants,
+    } = &first.effect
+    {
+        let consumed = effects
+            .iter()
+            .enumerate()
+            .skip(1)
+            .filter_map(|(idx, annotated)| match &annotated.effect {
+                EffectAst::Conditional { predicate, .. }
+                    if is_secret_choice_related_predicate(predicate) =>
+                {
+                    Some(idx + 1)
+                }
+                _ => None,
+            })
+            .last()
+            .unwrap_or(1);
+
+        let mut compiled = vec![Effect::new(crate::effects::SecretChoiceEffect::new(
+            options.clone(),
+            participants.clone(),
+        ))];
+        let mut choices = Vec::new();
+        for annotated in effects.iter().take(consumed).skip(1) {
+            apply_local_reference_env(ctx, &annotated.in_env);
+            ctx.auto_tag_object_targets =
+                ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
+            let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+            compiled.extend(followups);
+            for choice in followup_choices {
+                push_choice(&mut choices, choice);
+            }
+            apply_local_reference_env(ctx, &annotated.out_env);
+        }
+        return Ok(Some((compiled, choices, consumed)));
+    }
+
     let vote_start = match &first.effect {
         EffectAst::VoteStart { options, secret } => Some((Some(options.clone()), None, *secret)),
         EffectAst::VoteStartObjects {

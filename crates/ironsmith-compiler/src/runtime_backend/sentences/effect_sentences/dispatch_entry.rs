@@ -2079,7 +2079,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::Suspect { target }
             | SubjectVerbActionAst::RemoveFromCombat { target }
             | SubjectVerbActionAst::Flip { target }
-            | SubjectVerbActionAst::Regenerate { target }
+            | SubjectVerbActionAst::Regenerate { target, .. }
             | SubjectVerbActionAst::TapOrUntap { target }
             | SubjectVerbActionAst::PhaseOut { target }
             | SubjectVerbActionAst::PhaseIn { target }
@@ -2501,6 +2501,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ChooseCreatureType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
+            | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddMana { .. }
             | SubjectVerbActionAst::ExchangeLifeTotals { .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
@@ -2593,6 +2594,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
@@ -2836,6 +2838,7 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             }
             | SubjectVerbActionAst::Regenerate {
                 target: effect_target,
+                ..
             }
             | SubjectVerbActionAst::TapOrUntap {
                 target: effect_target,
@@ -2879,6 +2882,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 ..
             }
             | SubjectVerbActionAst::PreventAllDamageToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
                 target: effect_target,
                 ..
             }

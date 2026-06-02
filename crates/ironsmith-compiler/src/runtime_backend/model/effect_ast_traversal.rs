@@ -160,6 +160,8 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RepeatProcess { .. } => {}
         EffectAst::BidLife { .. } => {}
         EffectAst::VoteStart { .. } => {}
+        EffectAst::SecretChoiceStart { .. } => {}
+        EffectAst::SecretChoiceReveal => {}
         EffectAst::VoteStartObjects { .. } => {}
         EffectAst::VoteOption { .. } => {}
         EffectAst::VoteExtra { .. } => {}

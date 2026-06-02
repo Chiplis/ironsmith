@@ -19,6 +19,24 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn prevention_target_from_non_choice_target(
+    target: &TargetAst,
+    ctx: &EffectLoweringContext,
+) -> Result<ironsmith_core::PreventionTarget, CardTextError> {
+    match target {
+        TargetAst::Player(PlayerFilter::You, _) => Ok(ironsmith_core::PreventionTarget::You),
+        TargetAst::Player(PlayerFilter::Any, _) => Ok(ironsmith_core::PreventionTarget::Players),
+        TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
+            Ok(ironsmith_core::PreventionTarget::PermanentsMatching(
+                resolve_it_tag(filter, &current_reference_env(ctx))?,
+            ))
+        }
+        _ => Err(CardTextError::ParseError(
+            "unsupported prevent-all damage protected target with source filter".to_string(),
+        )),
+    }
+}
+
 fn resolve_tagged_top_library_condition(
     condition: &crate::ConditionExpr,
     ctx: &EffectLoweringContext,
@@ -198,6 +216,22 @@ fn compile_effect_inner(
             ))],
             choices,
         ));
+    }
+    if let EffectAst::SecretChoiceStart {
+        options,
+        participants,
+    } = effect
+    {
+        return Ok((
+            vec![Effect::new(crate::effects::SecretChoiceEffect::new(
+                options.clone(),
+                participants.clone(),
+            ))],
+            Vec::new(),
+        ));
+    }
+    if let EffectAst::SecretChoiceReveal = effect {
+        return Ok((Vec::new(), Vec::new()));
     }
     if let EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
         player,
@@ -805,6 +839,7 @@ fn compile_subject_verb_effect(
                 .push(resolved_tag.as_str().to_string());
             Ok((effects, choices))
         }
+        SubjectVerbActionAst::NoteLifeTotal => Ok((vec![Effect::note_life_total()], Vec::new())),
         SubjectVerbActionAst::ChooseSpellCastHistory {
             cast_by,
             filter,
@@ -1607,6 +1642,13 @@ fn compile_subject_verb_effect(
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::PreventNextTimeDamageSource::Choice
                 }
+                PreventNextTimeDamageSourceAst::Target(target) => {
+                    let (spec, _) = resolve_target_spec_with_choices(
+                        target,
+                        &current_reference_env(ctx),
+                    )?;
+                    crate::effects::PreventNextTimeDamageSource::Target(spec)
+                }
                 PreventNextTimeDamageSourceAst::Filter(filter) => {
                     crate::effects::PreventNextTimeDamageSource::Filter(resolve_it_tag(
                         filter,
@@ -1711,6 +1753,24 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
+        SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+            target,
+            duration,
+            source_filter,
+        } => {
+            let target = prevention_target_from_non_choice_target(target, ctx)?;
+            let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            let mut damage_filter = ironsmith_core::DamageFilter::all();
+            damage_filter.from_source = Some(source_filter);
+            Ok((
+                vec![Effect::new(crate::effects::PreventAllDamageEffect::new(
+                    target,
+                    damage_filter,
+                    duration.clone(),
+                ))],
+                Vec::new(),
+            ))
+        }
         SubjectVerbActionAst::PreventDamageToTargetPutCounters {
             amount,
             target,
@@ -1774,11 +1834,17 @@ fn compile_subject_verb_effect(
             source,
             target,
             destination,
+            destination_target,
             all_this_turn,
         } => {
             let source_spec = match source {
                 PreventNextTimeDamageSourceAst::Choice => {
                     crate::effects::RedirectNextTimeDamageSource::Choice
+                }
+                PreventNextTimeDamageSourceAst::Target(_) => {
+                    return Err(CardTextError::ParseError(
+                        "target-referenced redirect damage source is unsupported".to_string(),
+                    ));
                 }
                 PreventNextTimeDamageSourceAst::Filter(filter) => {
                     crate::effects::RedirectNextTimeDamageSource::Filter(resolve_it_tag(
@@ -1787,29 +1853,42 @@ fn compile_subject_verb_effect(
                     )?)
                 }
             };
-            compile_effect_for_target(target, ctx, |spec| {
-                let effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
-                    source_spec.clone(),
-                    spec,
-                );
-                let effect = match destination {
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
-                        effect
-                    }
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
-                        effect.to_controller()
-                    }
-                    crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
-                        effect.to_source_controller()
-                    }
-                };
-                let effect = if *all_this_turn {
-                    effect.all_this_turn()
-                } else {
+            let refs = current_reference_env(ctx);
+            let (protected_spec, mut choices) = resolve_target_spec_with_choices(target, &refs)?;
+            let mut effect = crate::effects::RedirectNextTimeDamageToSourceEffect::new(
+                source_spec,
+                protected_spec,
+            );
+            effect = match destination {
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject => {
                     effect
-                };
-                Effect::new(effect)
-            })
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
+                    effect.to_controller()
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
+                    effect.to_source_controller()
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
+                    let destination_target = destination_target.as_ref().ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "missing redirected-next-time damage destination target".to_string(),
+                        )
+                    })?;
+                    let (destination_spec, destination_choices) =
+                        resolve_target_spec_with_choices(destination_target, &refs)?;
+                    for choice in destination_choices {
+                        push_choice(&mut choices, choice);
+                    }
+                    effect.to_target(destination_spec)
+                }
+            };
+            let effect = if *all_this_turn {
+                effect.all_this_turn()
+            } else {
+                effect
+            };
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { source } => {
             compile_effect_for_target(source, ctx, |spec| {
@@ -2534,6 +2613,15 @@ fn compile_subject_verb_effect(
                     )],
                     choices,
                 ));
+            }
+            if *zone == Zone::Hand
+                && let ChooseSpec::Object(filter) = spec.base()
+                && filter.zone == Some(Zone::Exile)
+                && filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                })
+            {
+                spec = ChooseSpec::All(filter.clone());
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
@@ -5705,11 +5793,30 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::Flip { target } => {
             compile_tagged_effect_for_target(target, ctx, "flipped", Effect::flip)
         }
-        SubjectVerbActionAst::Regenerate { target } => {
-            let (spec, choices) =
+        SubjectVerbActionAst::Regenerate {
+            target,
+            follow_up_effects,
+        } => {
+            let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let mut follow_ups = Vec::new();
+            if !follow_up_effects.is_empty() {
+                let saved_last_object_tag = ctx.last_object_tag.clone();
+                ctx.last_object_tag = Some(IT_TAG.to_string());
+                let (compiled_follow_ups, follow_up_choices) = compile_effects(follow_up_effects, ctx)?;
+                follow_ups = compiled_follow_ups;
+                for choice in follow_up_choices {
+                    push_choice(&mut choices, choice);
+                }
+                ctx.last_object_tag = saved_last_object_tag;
+            }
+            let regenerate = crate::effects::RegenerateEffect::new(
+                spec.clone(),
+                crate::effect::Until::EndOfTurn,
+            )
+            .with_follow_up_effects(follow_ups);
             let effect = tag_object_target_effect(
-                Effect::regenerate(spec.clone(), crate::effect::Until::EndOfTurn),
+                Effect::new(regenerate),
                 &spec,
                 ctx,
                 "regenerated",
@@ -5970,12 +6077,47 @@ where
     let (player_filter, choices) = subject.into_parts();
     let value = per_player_partition_value_for_filter(value, &player_filter);
     let you_value = per_player_partition_value_for_filter(you_value, &PlayerFilter::You);
-    compile_player_effect_from_resolved_filter(
+    let mut prelude_effects = Vec::new();
+    let mut merged_choices = choices.clone();
+    if let Some(spec) = value_object_target_spec(&value)
+        && ctx.auto_tag_object_targets
+    {
+        let effect = tag_object_target_effect(
+            Effect::new(crate::effects::TargetOnlyEffect::new(spec.clone())),
+            &spec,
+            ctx,
+            "targeted",
+        );
+        prelude_effects.push(effect);
+        push_choice(&mut merged_choices, spec);
+    }
+    let (mut effects, choices) = compile_player_effect_from_resolved_filter(
         player_filter,
         choices,
         || build_you(you_value),
         |filter| build_other(value, filter),
-    )
+    )?;
+    prelude_effects.append(&mut effects);
+    for choice in choices {
+        push_choice(&mut merged_choices, choice);
+    }
+    Ok((prelude_effects, merged_choices))
+}
+
+fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {
+    match value {
+        Value::SurfaceHinted { value, .. } => value_object_target_spec(value),
+        Value::Add(left, right) => {
+            value_object_target_spec(left).or_else(|| value_object_target_spec(right))
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => {
+            (spec.is_target() && choose_spec_targets_object(spec)).then(|| (**spec).clone())
+        }
+        _ => None,
+    }
 }
 
 fn per_player_partition_value_for_filter(value: Value, player_filter: &PlayerFilter) -> Value {

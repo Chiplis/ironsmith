@@ -203,6 +203,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_override,
     },
     SequenceRuleDef {
+        name: "look-at-top-exile-one-rest-bottom-cast-else-hand",
+        feature_tag: Some("looked-card-exile-cast-else-hand"),
+        priority: 430,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_at_top_exile_one_rest_bottom_cast_else_hand,
+    },
+    SequenceRuleDef {
         name: "look-at-top-may-put-match-onto-battlefield-if-not-put-into-hand-rest-bottom",
         feature_tag: Some("looked-cards-battlefield-or-hand"),
         priority: 429,

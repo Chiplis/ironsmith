@@ -268,8 +268,24 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Detain => parse_detain(tokens),
         Verb::Goad => parse_goad(tokens),
         Verb::Suspect => parse_suspect(tokens),
+        Verb::Note => parse_note(tokens),
         Verb::End => parse_end(tokens, subject),
     }
+}
+
+fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.as_slice() == ["your", "life", "total"] {
+        return Ok(subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::NoteLifeTotal,
+        ));
+    }
+    Err(CardTextError::ParseError(format!(
+        "unsupported note clause: '{}'",
+        words.join(" ")
+    )))
 }
 
 fn parse_take(

@@ -138,6 +138,25 @@ fn exile_from_graveyard_cost_filter(effect: &ExileEffect) -> Option<(&ObjectFilt
     (filter.zone == Some(Zone::Graveyard)).then_some((filter, count))
 }
 
+fn describe_card_type_cost_list(card_types: &[crate::types::CardType]) -> String {
+    match card_types {
+        [] => "card".to_string(),
+        [one] => one.card_phrase().to_string(),
+        [left, right] => format!(
+            "{} and/or {} card",
+            left.to_string().to_ascii_lowercase(),
+            right.to_string().to_ascii_lowercase()
+        ),
+        _ => {
+            let names = card_types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            format!("{} card", names.join(", "))
+        }
+    }
+}
+
 fn matching_cost_candidates(
     game: &GameState,
     filter: &ObjectFilter,
@@ -362,11 +381,7 @@ impl EffectExecutor for ExileEffect {
         }
 
         if let Some((filter, count)) = exile_from_graveyard_cost_filter(self) {
-            let type_str = filter
-                .card_types
-                .first()
-                .map(|card_type| card_type.card_phrase().to_string())
-                .unwrap_or_else(|| "card".to_string());
+            let type_str = describe_card_type_cost_list(&filter.card_types);
             return Some(if count == 1 {
                 format!("Exile a {type_str} from your graveyard")
             } else {

@@ -693,6 +693,26 @@ pub(crate) fn parse_put_into_hand(
     let has_hand = CCA_HAND_MARKER_PATTERN.matches_words(&clause_words);
     let has_into = CCA_INTO_MARKER_PATTERN.matches_words(&clause_words);
 
+    if has_hand
+        && has_into
+        && CCA_PUT_WORD_PATTERN.matches_first_word(&clause_words)
+        && tokens
+            .get(1)
+            .is_some_and(|token| CCA_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
+        && grammar::contains_word(tokens, "exiled")
+        && grammar::contains_word(tokens, "cards")
+        && let Some(into_idx) = find_index(tokens, |token| {
+            token.as_word().is_some_and(|word| word == "into")
+        })
+    {
+        let filter_tokens = trim_commas(&tokens[1..into_idx]);
+        let filter = parse_object_filter(&filter_tokens, false)?;
+        return Ok(wrap_return_with_delayed_timing(
+            EffectAst::subject_verb_return_all_to_hand(filter),
+            parse_put_into_hand_delayed_timing(tokens),
+        ));
+    }
+
     // "Put one of those cards on top of your library and the rest on the bottom of your library"
     if CCA_REST_TOP_BOTTOM_LIBRARY_MARKER_PATTERN.matches_words(&clause_words)
         && CCA_AND_OR_THEN_WORD_PATTERN.matches_words(&clause_words)

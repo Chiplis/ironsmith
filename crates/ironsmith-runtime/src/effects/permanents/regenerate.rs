@@ -6,9 +6,10 @@ use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::permanents::matchers::RegenerationShieldMatcher;
 use crate::game_state::GameState;
 use crate::replacement::{ReplacementAction, ReplacementEffect};
+use crate::tag::TagKey;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
-pub use ironsmith_core::RegenerateEffect;
+pub type RegenerateEffect = ironsmith_core::RegenerateEffect<crate::effect::Effect>;
 
 /// Effect that regenerates a target creature.
 ///
@@ -68,15 +69,16 @@ impl EffectExecutor for RegenerateEffect {
             if !game.can_be_regenerated(target_id) {
                 continue;
             }
-            let controller = game.controller_of(obj);
+            let controller = ctx.controller;
 
-            let replacement_effects = vec![
-                Effect::tap(ChooseSpec::SpecificObject(target_id)),
+            let mut replacement_effects = vec![
+                Effect::tap(ChooseSpec::SpecificObject(target_id)).tag(TagKey::from("__it__")),
                 Effect::clear_damage(ChooseSpec::SpecificObject(target_id)),
                 Effect::new(crate::effects::RemoveFromCombatEffect::with_spec(
                     ChooseSpec::SpecificObject(target_id),
                 )),
             ];
+            replacement_effects.extend(self.follow_up_effects.clone());
 
             let matcher = RegenerationShieldMatcher::new(target_id);
             let replacement_effect = ReplacementEffect::with_matcher(

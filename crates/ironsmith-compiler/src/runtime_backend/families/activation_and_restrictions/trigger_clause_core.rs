@@ -1905,6 +1905,17 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = subject_word_view.to_word_refs();
         if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
             let tail_words = &words[activate_idx + 1..];
+            if let Some(filter) = parse_loyalty_ability_trigger_tail_lexed(
+                &tokens[activate_idx + 1..],
+                tail_words,
+            )? {
+                return Ok(TriggerSpec::AbilityActivated {
+                    activator,
+                    filter,
+                    non_mana_only: false,
+                    loyalty_only: true,
+                });
+            }
             if let Some((owner_filter, marker)) = parse_possessive_ability_trigger_tail_lexed(
                 &tokens[activate_idx + 1..],
                 tail_words,
@@ -1917,6 +1928,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     activator,
                     filter,
                     non_mana_only: false,
+                    loyalty_only: false,
                 });
             }
             if ACTIVATED_ABILITY_TAIL_PATTERN.matches_words(tail_words) {
@@ -1924,6 +1936,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                     activator,
                     filter: ObjectFilter::default(),
                     non_mana_only: MANA_ABILITY_TAIL_PATTERN.matches_words(tail_words),
+                    loyalty_only: false,
                 });
             }
         }
@@ -3885,7 +3898,9 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_for_word_index(block_word_idx)
                 .unwrap_or(tokens.len());
             let subject_tokens = &tokens[..block_token_idx];
+            let one_or_more = has_leading_one_or_more(subject_tokens);
             Ok(match parse_trigger_subject_filter_lexed(subject_tokens)? {
+                Some(filter) if one_or_more => TriggerSpec::BlocksOneOrMore(filter),
                 Some(filter) => TriggerSpec::Blocks(filter),
                 None => TriggerSpec::ThisBlocks,
             })
@@ -4078,6 +4093,37 @@ pub(crate) fn parse_trigger_clause_lexed(
             words.join(" ")
         ))),
     }
+}
+
+fn parse_loyalty_ability_trigger_tail_lexed(
+    tail_tokens: &[OwnedLexToken],
+    tail_words: &[&str],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(ability_idx) = find_token_shape(tail_tokens, &ABILITY_OR_ABILITIES_PATTERN) else {
+        return Ok(None);
+    };
+    if ability_idx == 0 || !tail_words[..ability_idx].contains(&"loyalty") {
+        return Ok(None);
+    }
+    let Some(of_idx) = tail_words
+        .iter()
+        .enumerate()
+        .skip(ability_idx + 1)
+        .find_map(|(idx, word)| (*word == "of").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    let owner_tokens = trim_commas(&tail_tokens[of_idx + 1..]);
+    if owner_tokens.is_empty() {
+        return Ok(None);
+    }
+    let owner_filter = parse_object_filter_lexed(&owner_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported loyalty-ability trigger source filter (clause: '{}')",
+            tail_words.join(" ")
+        ))
+    })?;
+    Ok(Some(owner_filter))
 }
 
 fn parse_possessive_ability_trigger_tail_lexed<'a>(

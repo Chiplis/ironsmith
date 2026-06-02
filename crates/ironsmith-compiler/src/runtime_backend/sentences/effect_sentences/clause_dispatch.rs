@@ -823,6 +823,52 @@ fn parse_cast_single_spell_from_among_hand_cards_clause(
     )
 }
 
+fn parse_passive_sacrifice_by_controller_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let word_view = ClauseDispatchCompatWords::new(tokens);
+    let words = word_view.to_word_refs();
+    let Some(sacrificed_idx) = words.iter().position(|word| *word == "sacrificed") else {
+        return Ok(None);
+    };
+    if sacrificed_idx < 3 || !matches!(words[sacrificed_idx - 1], "is" | "are") {
+        return Ok(None);
+    }
+    if !matches!(
+        words.get(sacrificed_idx + 1..),
+        Some(["by", "its", "controller"])
+            | Some(["by", "their", "controller"])
+            | Some(["by", "their", "controllers"])
+    ) {
+        return Ok(None);
+    }
+
+    if !matches!(words[0], "each" | "all") {
+        return Ok(None);
+    }
+    let Some(object_start) = word_view.token_index_for_word_index(1) else {
+        return Ok(None);
+    };
+    let Some(be_verb_start) = word_view.token_index_for_word_index(sacrificed_idx - 1) else {
+        return Ok(None);
+    };
+    let object_tokens = trim_commas(&tokens[object_start..be_verb_start]);
+    if object_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let filter = parse_object_filter(&object_tokens, false)?;
+    Ok(Some(EffectAst::ForEachObject {
+        filter,
+        effects: vec![EffectAst::subject_verb_sacrifice(
+            PlayerAst::ItsController,
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            1,
+            None,
+        )],
+    }))
+}
+
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
@@ -1064,6 +1110,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if let Some(effect) = parse_has_base_power_toughness_clause(tokens)? {
+        return Ok(effect);
+    }
+
+    if let Some(effect) = parse_passive_sacrifice_by_controller_clause(tokens)? {
         return Ok(effect);
     }
 
@@ -1831,6 +1881,22 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
     let for_each_subject_filter = parse_for_each_object_subject(subject_tokens)?;
     let rest = &tokens[verb_idx + 1..];
+    if matches!(verb, Verb::Put)
+        && subject_words
+            .first()
+            .is_some_and(|word| matches!(*word, "all" | "each"))
+        && subject_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"))
+        && subject_words.iter().any(|word| *word == "exiled")
+        && ClauseDispatchCompatWords::new(rest)
+            .to_word_refs()
+            .iter()
+            .any(|word| matches!(*word, "hand" | "hands"))
+    {
+        let filter = parse_object_filter(subject_tokens, false)?;
+        return Ok(EffectAst::subject_verb_return_all_to_hand(filter));
+    }
     let mut effect = if matches!(verb, Verb::Become) {
         parse_become_clause(subject_tokens, rest)?
     } else {

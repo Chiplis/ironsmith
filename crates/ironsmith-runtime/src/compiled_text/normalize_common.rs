@@ -21,6 +21,25 @@ pub(super) fn with_effect_render_depth<F: FnOnce() -> String>(render: F) -> Stri
     })
 }
 
+fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
+    if filter.zone != Some(Zone::Exile)
+        || !filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        })
+    {
+        return false;
+    }
+
+    let mut base = filter.clone();
+    base.zone = None;
+    base.tagged_constraints.retain(|constraint| {
+        !(constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
+    });
+    base == ObjectFilter::default()
+}
+
 pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::You => "you".to_string(),
@@ -134,6 +153,23 @@ pub(super) fn describe_player_set_filter(filter: &PlayerFilter) -> String {
 pub(super) fn describe_cast_limit_spell_filter(filter: &ObjectFilter) -> String {
     if filter == &ObjectFilter::default() {
         return "spell".to_string();
+    }
+    if filter.name.as_deref() == Some("{chosen name}") {
+        let mut base = filter.clone();
+        base.name = None;
+        if base == ObjectFilter::default() {
+            return "spell with the chosen name".to_string();
+        }
+    }
+    if filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints[0].tag.as_str() == "__chosen_name__"
+        && filter.tagged_constraints[0].relation == TaggedOpbjectRelation::SameNameAsTagged
+    {
+        let mut base = filter.clone();
+        base.tagged_constraints.clear();
+        if base == ObjectFilter::default() {
+            return "spell with the chosen name".to_string();
+        }
     }
     if filter == &ObjectFilter::default().without_type(CardType::Creature) {
         return "noncreature spell".to_string();
@@ -1990,7 +2026,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(" and gains this creature can't ", " and can't ")
         .replace(" and gains this creature cant ", " and can't ")
         .replace(" and gains this permanent can't ", " and can't ")
-        .replace(" and gains this permanent cant ", " and can't ");
+        .replace(" and gains this permanent cant ", " and can't ")
+        .replace(
+            "if it's an instant with mana value",
+            "if it's an instant spell with mana value",
+        )
+        .replace(
+            "if it's a sorcery with mana value",
+            "if it's a sorcery spell with mana value",
+        );
     normalized = normalized.replace(
         "Tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
         "Tap target creature or planeswalker. Its activated abilities can't be activated this turn",
@@ -8497,6 +8541,7 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the highest number you noted for cards named {}",
             title_case_card_name_fragment(card_name)
         ),
+        Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {
@@ -10531,6 +10576,31 @@ fn all_magic_colors() -> crate::color::ColorSet {
         .union(crate::color::ColorSet::GREEN)
 }
 
+fn describe_sacrifice_cost_object_condition(
+    tag: &crate::tag::TagKey,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if !tag.as_str().starts_with("sacrifice_cost_") {
+        return None;
+    }
+    let colors = filter.colors?;
+    if colors.is_empty() || filter.card_types.len() != 1 {
+        return None;
+    }
+    let mut rest = filter.clone();
+    rest.colors = None;
+    rest.card_types.clear();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+
+    Some(format!(
+        "the sacrificed {} was {}",
+        describe_card_type_word_local(filter.card_types[0]),
+        describe_token_color_words(colors, false)
+    ))
+}
+
 pub(super) fn describe_comparison(cmp: &Comparison) -> String {
     match cmp {
         Comparison::GreaterThan(n) => format!("is greater than {n}"),
@@ -11003,6 +11073,7 @@ fn describe_source_condition_static_ability(
         Flanking => Some("flanking"),
         Landwalk => Some("landwalk"),
         Bloodthirst => Some("bloodthirst"),
+        Tribute => Some("tribute"),
         Morph => Some("morph"),
         Disguise => Some("disguise"),
         Megamorph => Some("megamorph"),
@@ -11128,6 +11199,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::VoteOptionGetsMoreVotes(option) => {
             format!("{} gets more votes", option.to_ascii_lowercase())
         }
+        Condition::SecretChoicesMatch => "the choices match".to_string(),
         Condition::VoteOptionGetsMoreVotesOrTied(option) => format!(
             "{} gets more votes or the vote is tied",
             option.to_ascii_lowercase()
@@ -11560,6 +11632,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
             }
+            if label.eq_ignore_ascii_case("tribute") {
+                return "tribute was paid".to_string();
+            }
             if label.eq_ignore_ascii_case("CastDuringYourMainPhase") {
                 return "you cast this spell during your main phase".to_string();
             }
@@ -11757,6 +11832,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if let Some(condition) = describe_attached_object_type_condition(tag, filter) {
                 return condition;
             }
+            if let Some(condition) = describe_sacrifice_cost_object_condition(tag, filter) {
+                return condition;
+            }
             if tag.as_str().starts_with("countered_")
                 && strip_leading_article(&desc)
                     .eq_ignore_ascii_case("permanent")
@@ -11770,89 +11848,95 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 }
                 let subject = if matches!(tag.as_str(), "triggering" | "damaged") {
                     "that object"
-	                } else {
-	                    "it"
-	                };
-	                let card_context = is_generated_internal_tag(tag.as_str())
-	                    || tag.as_str().starts_with("exiled_")
-	                    || tag.as_str().starts_with("revealed_");
-	                let is_clause = |noun_phrase: &str| {
-	                    let phrase = with_indefinite_article(noun_phrase);
-	                    if subject == "it" {
-	                        format!("it's {phrase}")
-	                    } else {
-	                        format!("{subject} is {phrase}")
-	                    }
-	                };
+                } else {
+                    "it"
+                };
+                let card_context = is_generated_internal_tag(tag.as_str())
+                    || tag.as_str().starts_with("exiled_")
+                    || tag.as_str().starts_with("revealed_");
+                let is_clause = |noun_phrase: &str| {
+                    let phrase = with_indefinite_article(noun_phrase);
+                    if subject == "it" {
+                        format!("it's {phrase}")
+                    } else {
+                        format!("{subject} is {phrase}")
+                    }
+                };
 
-	                if card_context
-	                    && !filter.card_types.is_empty()
-	                    && filter.zone.is_none()
-	                    && filter.controller.is_none()
-	                    && filter.owner.is_none()
-	                    && !filter.single_graveyard
-	                    && filter.targets_player.is_none()
-	                    && filter.targets_object.is_none()
-	                    && !filter.targets_any_of
-	                    && filter.all_card_types.is_empty()
-	                    && filter.excluded_card_types.is_empty()
-	                    && filter.subtypes.is_empty()
-	                    && !filter.type_or_subtype_union
-	                    && filter.excluded_subtypes.is_empty()
-	                    && filter.supertypes.is_empty()
-	                    && filter.excluded_supertypes.is_empty()
-	                    && filter.colors.is_none()
-	                    && filter.excluded_colors.is_empty()
-	                    && !filter.colorless
-	                    && !filter.multicolored
-	                    && !filter.monocolored
-	                    && filter.all_colors.is_none()
-	                    && filter.exactly_two_colors.is_none()
-	                    && !filter.historic
-	                    && !filter.nonhistoric
-	                    && !filter.token
-	                    && !filter.nontoken
-	                    && filter.face_down.is_none()
-	                    && !filter.other
-	                    && !filter.tapped
-	                    && !filter.untapped
-	                    && !filter.attacking
-	                    && !filter.nonattacking
-	                    && !filter.blocking
-	                    && !filter.nonblocking
-	                    && !filter.blocked
-	                    && !filter.unblocked
-	                    && !filter.entered_since_your_last_turn_ended
-	                    && filter.power.is_none()
-	                    && filter.toughness.is_none()
-	                    && filter.mana_value.is_none()
-	                    && filter.mana_value_eq_counters_on_source.is_none()
-	                    && !filter.has_mana_cost
-	                    && !filter.has_tap_activated_ability
-	                    && !filter.no_abilities
-	                    && !filter.no_x_in_cost
-	                    && !filter.has_x_in_cost
-	                    && filter.with_counter.is_none()
-	                    && filter.without_counter.is_none()
-	                    && filter.name.is_none()
-	                    && filter.excluded_name.is_none()
-	                    && filter.alternative_cast.is_none()
-	                    && filter.static_abilities.is_empty()
-	                    && filter.excluded_static_abilities.is_empty()
-	                    && filter.ability_markers.is_empty()
-	                    && filter.excluded_ability_markers.is_empty()
-	                    && !filter.is_commander
-	                    && !filter.noncommander
-	                    && filter.tagged_constraints.is_empty()
-	                    && filter.specific.is_none()
-	                    && filter.any_of.is_empty()
-	                    && !filter.source
-	                {
-	                    let words = filter
-	                        .card_types
-	                        .iter()
-	                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
-	                        .collect::<Vec<_>>();
+                if let Some(state_clause) =
+                    describe_implicit_tagged_object_state_condition(subject, filter)
+                {
+                    return state_clause;
+                }
+
+                if card_context
+                    && !filter.card_types.is_empty()
+                    && filter.zone.is_none()
+                    && filter.controller.is_none()
+                    && filter.owner.is_none()
+                    && !filter.single_graveyard
+                    && filter.targets_player.is_none()
+                    && filter.targets_object.is_none()
+                    && !filter.targets_any_of
+                    && filter.all_card_types.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.subtypes.is_empty()
+                    && !filter.type_or_subtype_union
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.supertypes.is_empty()
+                    && filter.excluded_supertypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.excluded_colors.is_empty()
+                    && !filter.colorless
+                    && !filter.multicolored
+                    && !filter.monocolored
+                    && filter.all_colors.is_none()
+                    && filter.exactly_two_colors.is_none()
+                    && !filter.historic
+                    && !filter.nonhistoric
+                    && !filter.token
+                    && !filter.nontoken
+                    && filter.face_down.is_none()
+                    && !filter.other
+                    && !filter.tapped
+                    && !filter.untapped
+                    && !filter.attacking
+                    && !filter.nonattacking
+                    && !filter.blocking
+                    && !filter.nonblocking
+                    && !filter.blocked
+                    && !filter.unblocked
+                    && !filter.entered_since_your_last_turn_ended
+                    && filter.power.is_none()
+                    && filter.toughness.is_none()
+                    && filter.mana_value.is_none()
+                    && filter.mana_value_eq_counters_on_source.is_none()
+                    && !filter.has_mana_cost
+                    && !filter.has_tap_activated_ability
+                    && !filter.no_abilities
+                    && !filter.no_x_in_cost
+                    && !filter.has_x_in_cost
+                    && filter.with_counter.is_none()
+                    && filter.without_counter.is_none()
+                    && filter.name.is_none()
+                    && filter.excluded_name.is_none()
+                    && filter.alternative_cast.is_none()
+                    && filter.static_abilities.is_empty()
+                    && filter.excluded_static_abilities.is_empty()
+                    && filter.ability_markers.is_empty()
+                    && filter.excluded_ability_markers.is_empty()
+                    && !filter.is_commander
+                    && !filter.noncommander
+                    && filter.tagged_constraints.is_empty()
+                    && filter.specific.is_none()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    let words = filter
+                        .card_types
+                        .iter()
+                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+                        .collect::<Vec<_>>();
                     let noun_phrase = format!("{} card", join_with_or(&words));
                     return is_clause(&noun_phrase);
                 }
@@ -12291,6 +12375,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
             ) = (left, operator, right)
+                && is_source_exiled_count_filter(filter)
+            {
+                let count_text = small_number_word(*count as u32)
+                    .unwrap_or_else(|| count.to_string());
+                return format!("{count_text} or more cards have been exiled with this permanent");
+            }
+            if let (
+                Value::Count(filter),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
                 && filter.zone == Some(Zone::Graveyard)
             {
                 let count_text = small_number_word(*count as u32)
@@ -12440,6 +12535,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 "no permanents left the battlefield this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
+            } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref()
+                && label.eq_ignore_ascii_case("tribute")
+            {
+                "tribute wasn't paid".to_string()
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 let subject = describe_player_filter(player);
                 let mut described_filter = filter.clone();
@@ -12520,6 +12619,34 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+fn describe_implicit_tagged_object_state_condition(
+    subject: &str,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    let mut base = filter.clone();
+    base.attacking = false;
+    base.nonattacking = false;
+    if base != ObjectFilter::default()
+        && base != ObjectFilter::permanent()
+        && base != ObjectFilter::creature()
+    {
+        return None;
+    }
+
+    if filter.attacking {
+        return Some("it was attacking".to_string());
+    }
+    if filter.nonattacking {
+        return Some(if subject == "it" {
+            "it wasn't attacking".to_string()
+        } else {
+            "that object wasn't attacking".to_string()
+        });
+    }
+
+    None
 }
 
 fn describe_you_or_attacked_player_initiative_condition(

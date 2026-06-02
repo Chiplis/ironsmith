@@ -130,6 +130,10 @@ pub enum Cost<E> {
         count: u32,
         color_filter: Option<ColorSet>,
     },
+    ExileFromGraveyard {
+        count: u32,
+        card_types: Vec<CardType>,
+    },
     ReturnSelfToHand,
     Effect(E),
 }
@@ -253,6 +257,10 @@ impl<E> Cost<E> {
         }
     }
 
+    pub fn exile_from_graveyard(count: u32, card_types: Vec<CardType>) -> Self {
+        Self::ExileFromGraveyard { count, card_types }
+    }
+
     pub fn return_self_to_hand() -> Self {
         Self::ReturnSelfToHand
     }
@@ -305,6 +313,9 @@ impl<E> Cost<E> {
                 count,
                 color_filter,
             },
+            Self::ExileFromGraveyard { count, card_types } => {
+                Cost::ExileFromGraveyard { count, card_types }
+            }
             Self::ReturnSelfToHand => Cost::ReturnSelfToHand,
             Self::Effect(effect) => Cost::Effect(map_effect(effect)?),
         })
@@ -348,6 +359,11 @@ where
             Self::Life(amount) => format!("pay {amount:?} life"),
             Self::ExileSelf => "exile this card".to_string(),
             Self::ExileFromHand { count, .. } => format!("exile {count} card(s) from hand"),
+            Self::ExileFromGraveyard { count, card_types } => {
+                let type_text = describe_card_type_cost_list(card_types);
+                let card_word = if *count == 1 { "card" } else { "cards" };
+                format!("exile {count} {type_text}{card_word} from your graveyard")
+            }
             Self::ReturnSelfToHand => "return this permanent to its owner's hand".to_string(),
             Self::Effect(_) => "effect".to_string(),
         }
@@ -378,6 +394,13 @@ where
         }
     }
 
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[CardType])> {
+        match self {
+            Self::ExileFromGraveyard { count, card_types } => Some((*count, card_types)),
+            _ => None,
+        }
+    }
+
     fn is_loyalty_activation_cost(&self) -> bool {
         matches!(
             self,
@@ -401,6 +424,25 @@ where
 {
     fn tap_cost() -> Self {
         Self::Tap
+    }
+}
+
+fn describe_card_type_cost_list(card_types: &[CardType]) -> String {
+    match card_types {
+        [] => String::new(),
+        [one] => format!("{} ", one.to_string().to_ascii_lowercase()),
+        [left, right] => format!(
+            "{} and/or {} ",
+            left.to_string().to_ascii_lowercase(),
+            right.to_string().to_ascii_lowercase()
+        ),
+        _ => {
+            let names = card_types
+                .iter()
+                .map(|card_type| card_type.to_string().to_ascii_lowercase())
+                .collect::<Vec<_>>();
+            format!("{} ", names.join(", "))
+        }
     }
 }
 
@@ -434,6 +476,10 @@ pub trait CostComponent: Clone + std::fmt::Debug + PartialEq {
     }
 
     fn exile_from_hand_details(&self) -> Option<(u32, Option<ColorSet>)> {
+        None
+    }
+
+    fn exile_from_graveyard_details(&self) -> Option<(u32, &[CardType])> {
         None
     }
 

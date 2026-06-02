@@ -335,6 +335,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ChooseCreatureType { .. }
             | SubjectVerbActionAst::ChooseCardName { .. }
             | SubjectVerbActionAst::ChoosePlayer { .. }
+            | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddMana { .. }
             | SubjectVerbActionAst::ExchangeLifeTotals { .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { .. }
@@ -429,6 +430,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }

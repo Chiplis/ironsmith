@@ -531,9 +531,13 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
         .or_else(|| word_slice_find_word(clause_words.as_slice(), "costs"))?;
     let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
 
+    let has_you_cast = word_slice_contains_phrase(&clause_words, &["you", "cast"]);
+    let has_chosen_name = word_slice_contains_phrase(&clause_words, &["with", "chosen", "name"])
+        || word_slice_contains_phrase(&clause_words, &["with", "the", "chosen", "name"]);
+
     if cost_idx <= spell_idx
         || less_idx <= cost_idx
-        || !word_slice_contains_phrase(&clause_words, &["you", "cast"])
+        || (!has_you_cast && !has_chosen_name)
         || !word_slice_contains_phrase(&clause_words, &["this", "turn"])
         || clause_words.get(less_idx + 1).copied() != Some("to")
         || clause_words.get(less_idx + 2).copied() != Some("cast")
@@ -560,9 +564,17 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
     }
 
     let mut filter = crate::runtime_backend::parse_spell_filter_lexed(&subject_tokens);
-    filter.cast_by = Some(PlayerFilter::You);
+    let player = if has_you_cast {
+        filter.cast_by = Some(PlayerFilter::You);
+        PlayerAst::You
+    } else {
+        PlayerAst::Any
+    };
 
     let between_words = &clause_words[spell_idx + 1..cost_idx];
+    if has_chosen_name {
+        filter.name = Some("{chosen name}".to_string());
+    }
     if word_slice_contains_phrase(between_words, &["from", "exile"]) {
         filter.zone = Some(Zone::Exile);
     } else if word_slice_contains_phrase(between_words, &["from", "your", "graveyard"]) {
@@ -575,13 +587,13 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
         && used == reduction_tokens.len()
     {
         Some(EffectAst::subject_verb_reduce_next_spell_cost_this_turn(
-            PlayerAst::You,
+            player,
             filter,
             mana_reduction,
         ))
     } else {
         Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
-            PlayerAst::You,
+            player,
             filter,
             reduction,
         ))

@@ -141,6 +141,7 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
             }
         }),
         KeywordAction::Bloodthirst(amount) => Some(StaticAbility::bloodthirst(amount)),
+        KeywordAction::Tribute(amount) => Some(StaticAbility::tribute(amount)),
         KeywordAction::Rampage(amount) => {
             Some(StaticAbility::keyword_marker(format!("rampage {amount}")))
         }

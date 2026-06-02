@@ -385,6 +385,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         condition: Option<Condition>,
     },
     ChoosePlayerAsEnters(String),
+    NoteLifeTotalAsEnters(String),
     ChooseCardNameAsEnters(String),
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
@@ -495,6 +496,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    Tribute(u32),
     PreventDamageToSelfRemoveCounter {
         counter_type: CounterType,
         amount: u32,
@@ -1192,6 +1194,9 @@ where
             StaticAbilityPayload::ChoosePlayerAsEnters(display) => {
                 StaticAbilityPayload::ChoosePlayerAsEnters(display)
             }
+            StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
+                StaticAbilityPayload::NoteLifeTotalAsEnters(display)
+            }
             StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
                 StaticAbilityPayload::ChooseCardNameAsEnters(display)
             }
@@ -1437,6 +1442,7 @@ where
             StaticAbilityPayload::Bloodthirst(amount) => {
                 StaticAbilityPayload::Bloodthirst(amount)
             }
+            StaticAbilityPayload::Tribute(amount) => StaticAbilityPayload::Tribute(amount),
             StaticAbilityPayload::PreventDamageToSelfRemoveCounter {
                 counter_type,
                 amount,
@@ -2383,6 +2389,13 @@ impl<
             payload: StaticAbilityPayload::Bloodthirst(amount),
         }
     }
+    pub fn tribute(amount: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::Tribute),
+            label: format!("tribute {amount}"),
+            payload: StaticAbilityPayload::Tribute(amount),
+        }
+    }
     pub fn krrik_black_mana_may_be_paid_with_life() -> Self {
         Self {
             id: Some(StaticAbilityId::BlackManaMayBePaidWithLife),
@@ -3216,6 +3229,14 @@ impl<
             id: Some(StaticAbilityId::ChoosePlayerAsEnters),
             label: display.clone(),
             payload: StaticAbilityPayload::ChoosePlayerAsEnters(display),
+        }
+    }
+    pub fn note_life_total_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::NoteLifeTotalAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::NoteLifeTotalAsEnters(display),
         }
     }
     pub fn choose_card_name_as_enters(display: impl Into<String>) -> Self {
@@ -4319,12 +4340,22 @@ impl<Cond> ThisSpellCostReduction<Cond> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisSpellCostReductionManaCost<Cond> {
     pub cost: ManaCost,
+    pub repetitions: Option<Value>,
     pub condition: Cond,
 }
 
 impl<Cond> ThisSpellCostReductionManaCost<Cond> {
     pub fn new(cost: ManaCost, condition: Cond) -> Self {
-        Self { cost, condition }
+        Self {
+            cost,
+            repetitions: None,
+            condition,
+        }
+    }
+
+    pub fn with_repetitions(mut self, repetitions: Value) -> Self {
+        self.repetitions = Some(repetitions);
+        self
     }
 }
 

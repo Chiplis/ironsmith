@@ -11,7 +11,7 @@ use crate::color::Color;
 use crate::cost::OptionalCostsPaid;
 use crate::decision::DecisionMaker;
 use crate::effect::{EffectId, EffectOutcome};
-use crate::effects::VoteResult;
+use crate::effects::{SecretChoiceResult, VoteResult};
 use crate::events::cause::EventCause;
 use crate::game_state::{GameState, TargetAssignment};
 use crate::ids::{ObjectId, PlayerId};
@@ -189,6 +189,8 @@ pub struct ExecutionContext<'a> {
     pub effect_outcomes: HashMap<EffectId, EffectOutcome>,
     /// The most recent vote result(s) available to this resolution path.
     pub vote_results: HashMap<ObjectId, VoteResult>,
+    /// The most recent simultaneous secret-choice result(s) in this resolution path.
+    pub secret_choice_results: HashMap<ObjectId, SecretChoiceResult>,
     /// Iteration-specific state for nested effect execution.
     pub iteration: IterationContext,
     /// Decision maker for handling player choices (May effects, searches, etc.).
@@ -260,6 +262,7 @@ impl std::fmt::Debug for ExecutionContext<'_> {
             .field("target_assignments", &self.target_assignments)
             .field("x_value", &self.x_value)
             .field("effect_outcomes", &self.effect_outcomes)
+            .field("secret_choice_results", &self.secret_choice_results)
             .field("iteration", &self.iteration)
             .field("decision_maker", &"<&mut dyn DecisionMaker>")
             .field("optional_costs_paid", &self.optional_costs_paid)
@@ -307,6 +310,7 @@ impl<'a> ExecutionContext<'a> {
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
+            secret_choice_results: HashMap::new(),
             iteration: IterationContext::default(),
             decision_maker,
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -351,6 +355,7 @@ impl<'a> ExecutionContext<'a> {
             x_value: None,
             effect_outcomes: HashMap::new(),
             vote_results: HashMap::new(),
+            secret_choice_results: HashMap::new(),
             iteration: IterationContext::default(),
             decision_maker: dm,
             optional_costs_paid: OptionalCostsPaid::default(),
@@ -385,6 +390,7 @@ impl<'a> ExecutionContext<'a> {
             x_value: self.x_value,
             effect_outcomes: self.effect_outcomes,
             vote_results: self.vote_results,
+            secret_choice_results: self.secret_choice_results,
             iteration: self.iteration,
             decision_maker: dm,
             optional_costs_paid: self.optional_costs_paid,

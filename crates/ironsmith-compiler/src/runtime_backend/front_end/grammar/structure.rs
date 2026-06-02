@@ -633,6 +633,8 @@ fn is_statement_verb_word(word: &str) -> bool {
             | "loses"
             | "mill"
             | "mills"
+            | "note"
+            | "notes"
             | "put"
             | "puts"
             | "return"
@@ -661,6 +663,16 @@ pub(crate) fn classify_static_line_family_lexed(
 ) -> Option<StaticLineFamily> {
     if super::abilities::split_untap_each_other_players_untap_step_line_lexed(tokens).is_some() {
         return Some(StaticLineFamily::UntapAllDuringEachOtherPlayersUntapStep);
+    }
+
+    if primitives::contains_any_phrase(
+        tokens,
+        &[
+            &["you", "may", "cast", "this", "card", "from", "your", "graveyard"],
+            &["you", "may", "cast", "this", "spell", "from", "your", "graveyard"],
+        ],
+    ) {
+        return Some(StaticLineFamily::Generic);
     }
 
     if let Some(quote_idx) = primitives::find_token_index(tokens, |token| token.is_quote()) {

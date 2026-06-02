@@ -4,7 +4,7 @@ use crate::ability::AbilityKind;
 use crate::card::{CardBuilder, LinkedFaceLayout, PowerToughness, PtValue};
 use crate::cards::builders::CardDefinitionBuilder;
 use crate::cards::definitions::emrakul_the_promised_end;
-use crate::combat_state::AttackTarget;
+use crate::combat_state::{AttackTarget, CombatState};
 use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionMaker};
 use crate::effect::RestrictionExt as _;
 use crate::effect::{Effect, EventValueSpec, Until, Value};
@@ -36,6 +36,188 @@ fn setup_three_player_game() -> GameState {
         ],
         20,
     )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn tide_of_war_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Whenever one or more creatures block, flip a coin. If you win the flip, each blocking creature is sacrificed by its controller. If you lose the flip, each blocked creature is sacrificed by its controller.",
+        )
+        .expect("Tide of War should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_tide_of_war_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_tide_of_war_combat_state(
+    game: &mut GameState,
+    attacker: ObjectId,
+    blocker: ObjectId,
+    defending_player: PlayerId,
+) {
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: AttackTarget::Player(defending_player),
+    });
+    combat.blockers.insert(attacker, vec![blocker]);
+    game.combat = Some(combat);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_tide_of_war_trigger(
+    game: &mut GameState,
+    tide_id: ObjectId,
+    controller: PlayerId,
+    attacker: ObjectId,
+    blocker: ObjectId,
+) {
+    use crate::effects::{ExecutionContext, execute_effect};
+
+    let tide = tide_of_war_definition();
+    let triggered = tide
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Tide of War should have one triggered ability");
+    let blocker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(blocker).expect("blocking creature should exist"),
+        game,
+    );
+    let attacker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(attacker).expect("blocked creature should exist"),
+        game,
+    );
+    let trigger_event = TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureBlockedEvent::with_snapshots(
+            blocker,
+            attacker,
+            blocker_snapshot,
+            attacker_snapshot,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx =
+        ExecutionContext::new_default(tide_id, controller).with_triggering_event(trigger_event);
+    for effect in triggered.effects.flattened_default_effects() {
+        execute_effect(game, effect, &mut ctx).expect("Tide of War trigger effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_queues_once_when_multiple_creatures_block() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let _ = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker_one = create_tide_of_war_creature(&mut game, "Blocked Attacker One", bob);
+    let attacker_two = create_tide_of_war_creature(&mut game, "Blocked Attacker Two", bob);
+    let blocker_one = create_tide_of_war_creature(&mut game, "Blocking Creature One", alice);
+    let blocker_two = create_tide_of_war_creature(&mut game, "Blocking Creature Two", alice);
+
+    let mut combat = CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_one,
+        target: AttackTarget::Player(alice),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker_two,
+        target: AttackTarget::Player(alice),
+    });
+    let mut trigger_queue = TriggerQueue::new();
+
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            BlockerDeclaration {
+                blocker: blocker_one,
+                blocking: attacker_one,
+            },
+            BlockerDeclaration {
+                blocker: blocker_two,
+                blocking: attacker_two,
+            },
+        ],
+        alice,
+    )
+    .expect("Tide of War blockers should be legal");
+
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Tide of War should trigger once for one or more creatures blocking"
+    );
+    assert_eq!(
+        trigger_queue.entries[0].ability.trigger.display(),
+        "Whenever one or more creatures block"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_win_flip_sacrifices_blocking_creatures_only() {
+    let mut game = setup_game();
+    game.set_random_seed(2);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let tide_id = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker = create_tide_of_war_creature(&mut game, "Blocked Attacker", bob);
+    let blocker = create_tide_of_war_creature(&mut game, "Blocking Creature", alice);
+    let noncombat = create_tide_of_war_creature(&mut game, "Noncombat Creature", alice);
+    put_tide_of_war_combat_state(&mut game, attacker, blocker, alice);
+
+    resolve_tide_of_war_trigger(&mut game, tide_id, alice, attacker, blocker);
+
+    assert!(game.battlefield.contains(&attacker));
+    assert!(!game.battlefield.contains(&blocker));
+    assert!(game.battlefield.contains(&noncombat));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tide_of_war_lose_flip_sacrifices_blocked_creatures_only() {
+    let mut game = setup_game();
+    game.set_random_seed(7);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tide = tide_of_war_definition();
+    let tide_id = game.create_object_from_definition(&tide, alice, Zone::Battlefield);
+    let attacker = create_tide_of_war_creature(&mut game, "Blocked Attacker", bob);
+    let blocker = create_tide_of_war_creature(&mut game, "Blocking Creature", alice);
+    let noncombat = create_tide_of_war_creature(&mut game, "Noncombat Creature", bob);
+    put_tide_of_war_combat_state(&mut game, attacker, blocker, alice);
+
+    resolve_tide_of_war_trigger(&mut game, tide_id, alice, attacker, blocker);
+
+    assert!(!game.battlefield.contains(&attacker));
+    assert!(game.battlefield.contains(&blocker));
+    assert!(game.battlefield.contains(&noncombat));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -114,6 +296,55 @@ fn graveyard_scroll_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn colfenors_urn_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(696_471), "Colfenor's Urn")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Whenever a creature with toughness 4 or greater is put into your graveyard from the battlefield, you may exile it.\n\
+             At the beginning of the end step, if three or more cards have been exiled with this artifact, sacrifice it. If you do, return those cards to the battlefield under their owner's control.",
+        )
+        .expect("Colfenor's Urn should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vanilla_creature_definition(
+    card_id: u32,
+    name: &str,
+    power: i32,
+    toughness: i32,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_colfenor_end_step_trigger_on_stack(game: &mut GameState) -> usize {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Colfenor's Urn end-step trigger processing should succeed");
+    game.stack.len()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn count_named_objects_in_zone(game: &GameState, zone: Zone, name: &str) -> usize {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| object.name == name)
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
     game.calculated_characteristics(object_id)
         .expect("object should have calculated characteristics")
@@ -121,6 +352,133 @@ fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
         .iter()
         .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_death_trigger_exiles_only_toughness_four_or_greater_creatures() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+
+    let small = vanilla_creature_definition(696_472, "Small Creature", 3, 3);
+    let large = vanilla_creature_definition(696_473, "Large Creature", 4, 4);
+    let small_id = game.create_object_from_definition(&small, alice, Zone::Battlefield);
+    let large_id = game.create_object_from_definition(&large, alice, Zone::Battlefield);
+
+    game.move_object_by_effect(small_id, Zone::Graveyard)
+        .expect("small creature should move to graveyard");
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Colfenor's Urn should not trigger for toughness below four"
+    );
+
+    game.move_object_by_effect(large_id, Zone::Graveyard)
+        .expect("large creature should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Colfenor's Urn should trigger for a creature with toughness four or greater"
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Colfenor's Urn death trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Colfenor's Urn death trigger should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Large Creature"),
+        1,
+        "accepting Colfenor's Urn optional trigger should exile the large creature card"
+    );
+    assert_eq!(
+        game.get_exiled_with_source_links(urn_id).len(),
+        1,
+        "the exiled card should be linked to Colfenor's Urn as cards exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_end_step_requires_three_source_exiled_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+    let card = vanilla_creature_definition(696_474, "Exiled Creature", 2, 2);
+    let unrelated_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+
+    for idx in 0..2 {
+        let card_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(urn_id, card_id);
+        assert_eq!(
+            game.get_exiled_with_source_links(urn_id).len(),
+            idx + 1,
+            "test setup should link exiled cards to Colfenor's Urn"
+        );
+    }
+
+    assert_eq!(
+        put_colfenor_end_step_trigger_on_stack(&mut game),
+        0,
+        "Colfenor's Urn should not count unrelated exiled cards toward its threshold"
+    );
+    assert_eq!(
+        game.object(unrelated_id).expect("unrelated card exists").zone,
+        Zone::Exile,
+        "unrelated exiled cards should remain exiled below the source-linked threshold"
+    );
+    assert_eq!(
+        game.object(urn_id).expect("urn exists").zone,
+        Zone::Battlefield,
+        "below threshold Colfenor's Urn should remain on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn colfenors_urn_end_step_sacrifices_and_returns_source_exiled_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let urn = colfenors_urn_definition();
+    let urn_id = game.create_object_from_definition(&urn, alice, Zone::Battlefield);
+    let card = vanilla_creature_definition(696_475, "Exiled Creature", 2, 2);
+    let unrelated_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+    let mut exiled = Vec::new();
+
+    for _ in 0..3 {
+        let card_id = game.create_object_from_definition(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(urn_id, card_id);
+        exiled.push(card_id);
+    }
+
+    assert_eq!(
+        put_colfenor_end_step_trigger_on_stack(&mut game),
+        1,
+        "Colfenor's Urn should trigger once when three cards have been exiled with it"
+    );
+    resolve_stack_entry(&mut game).expect("Colfenor's Urn end-step trigger should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Colfenor's Urn"),
+        1,
+        "Colfenor's Urn should sacrifice itself when the threshold trigger resolves"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Battlefield, "Exiled Creature"),
+        exiled.len(),
+        "only cards exiled with Colfenor's Urn should return to the battlefield"
+    );
+    assert_eq!(
+        game.object(unrelated_id).expect("unrelated card exists").zone,
+        Zone::Exile,
+        "unrelated exiled cards should not return with Colfenor's Urn"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -4238,6 +4596,197 @@ fn regeneration_count_tracks_used_shields_until_cleanup() {
         game.regenerated_this_turn_count(creature),
         0,
         "regenerated-this-turn counts expire during cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn debt_of_loyalty_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_542), "Debt of Loyalty")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Regenerate target creature. You gain control of that creature if it regenerates this way.",
+        )
+        .expect("Debt of Loyalty should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_debt_of_loyalty_on_target(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+) {
+    let debt = debt_of_loyalty_definition();
+    let [effect] = debt
+        .spell_effect
+        .as_ref()
+        .expect("Debt of Loyalty should have a spell effect")
+        .flattened_default_effects()
+    else {
+        panic!("Debt of Loyalty should lower to one regenerate effect");
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: crate::target::ChooseSpec::target(crate::target::ChooseSpec::creature()),
+            range: 0..1,
+        }]);
+    crate::effects::execute_effect(game, effect, &mut ctx)
+        .expect("Debt of Loyalty should create a regeneration shield");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_gains_control_when_target_regenerates_this_way() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_card = CardBuilder::new(CardId::from_raw(74_543), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    resolve_debt_of_loyalty_on_target(&mut game, source, alice, creature);
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(bob),
+        "Debt of Loyalty should not change control before the shield is used"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    let outcome = crate::events::processing::process_destroy(
+        &mut game,
+        creature,
+        Some(source),
+        &mut dm,
+    );
+
+    assert!(
+        matches!(outcome, crate::events::processing::EventOutcome::Replaced),
+        "the destroy event should be replaced by the regeneration shield, got {outcome:?}"
+    );
+    assert!(
+        game.battlefield.contains(&creature),
+        "the regenerated creature should remain on the battlefield"
+    );
+    assert!(
+        game.is_tapped(creature),
+        "the regenerated creature should be tapped by regeneration"
+    );
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(alice),
+        "Debt of Loyalty should gain control only after the target regenerates this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_does_not_gain_control_if_regeneration_shield_is_unused() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_card = CardBuilder::new(CardId::from_raw(74_544), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    resolve_debt_of_loyalty_on_target(&mut game, source, alice, creature);
+
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(bob),
+        "Debt of Loyalty's control change is conditional on the target actually regenerating"
+    );
+    assert!(
+        game.battlefield.contains(&creature),
+        "the target should remain on the battlefield while the shield is unused"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn debt_of_loyalty_shield_is_not_deduplicated_with_plain_regeneration() {
+    struct ChooseLastReplacementDecisionMaker {
+        replacement_choices: usize,
+    }
+
+    impl DecisionMaker for ChooseLastReplacementDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description == "Choose which replacement effect to apply" {
+                self.replacement_choices += 1;
+                return ctx
+                    .options
+                    .iter()
+                    .rev()
+                    .find(|option| option.legal)
+                    .map(|option| vec![option.index])
+                    .unwrap_or_default();
+            }
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let plain_source_card = CardBuilder::new(CardId::from_raw(74_545), "Plain Regeneration")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let plain_source = game.create_object_from_card(&plain_source_card, alice, Zone::Stack);
+    let debt_source_card = CardBuilder::new(CardId::from_raw(74_546), "Debt of Loyalty")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let debt_source = game.create_object_from_card(&debt_source_card, alice, Zone::Stack);
+    let creature = create_creature(&mut game, "Debt Target", bob, 2, 2);
+
+    let plain_regeneration = Effect::regenerate(
+        crate::target::ChooseSpec::SpecificObject(creature),
+        Until::EndOfTurn,
+    );
+    let mut plain_ctx = crate::effects::ExecutionContext::new_default(plain_source, alice);
+    crate::effects::execute_effect(&mut game, &plain_regeneration, &mut plain_ctx)
+        .expect("plain regeneration should create the first shield");
+    resolve_debt_of_loyalty_on_target(&mut game, debt_source, alice, creature);
+
+    let mut dm = ChooseLastReplacementDecisionMaker {
+        replacement_choices: 0,
+    };
+    let outcome = crate::events::processing::process_destroy(
+        &mut game,
+        creature,
+        Some(plain_source),
+        &mut dm,
+    );
+
+    assert!(
+        matches!(outcome, crate::events::processing::EventOutcome::Replaced),
+        "the destroy event should be replaced by a regeneration shield, got {outcome:?}"
+    );
+    assert_eq!(
+        dm.replacement_choices, 1,
+        "non-equivalent regeneration shields must be offered as a replacement choice"
+    );
+    assert_eq!(
+        game.controller_of_id(creature),
+        Some(alice),
+        "choosing the Debt of Loyalty shield should run its control-change follow-up"
     );
 }
 
@@ -28814,6 +29363,198 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn run_lyzolda_the_blood_witch_sacrifice_branch(
+    colors: crate::color::ColorSet,
+    expect_damage: bool,
+    expect_draw: bool,
+) {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let lyzolda_def =
+        CardDefinitionBuilder::new(CardId::from_raw(571_572), "Lyzolda, the Blood Witch")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Red],
+            ]))
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Human, Subtype::Cleric])
+            .power_toughness(PowerToughness::fixed(3, 1))
+            .parse_text(
+                "{2}, Sacrifice a creature: Lyzolda deals 2 damage to any target if the sacrificed creature was red. Draw a card if the sacrificed creature was black.",
+            )
+            .expect("Lyzolda, the Blood Witch should parse for runtime tests");
+
+    let lyzolda_id = game.create_object_from_definition(&lyzolda_def, alice, Zone::Battlefield);
+    let fodder_card = CardBuilder::new(CardId::new(), "Lyzolda Fodder")
+        .card_types(vec![CardType::Creature])
+        .color_indicator(colors)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let fodder_id = game.create_object_from_card(&fodder_card, alice, Zone::Battlefield);
+    let draw_card = CardBuilder::new(CardId::new(), "Lyzolda Draw Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&draw_card, alice, Zone::Library);
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let ability_index = game
+        .object(lyzolda_id)
+        .expect("Lyzolda should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Lyzolda should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: lyzolda_id,
+            ability_index,
+        }),
+        &mut dm,
+    )
+    .expect("Lyzolda activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected Lyzolda to ask for an any-target target first, got {other:?}"),
+    }
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept Bob as any target");
+
+    let cost_ctx = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected Lyzolda to ask for cost order after targeting, got {other:?}"),
+    };
+    let sacrifice_cost_index = cost_ctx
+        .options
+        .iter()
+        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .map(|option| option.index)
+        .expect("expected a sacrifice cost option for Lyzolda");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept choosing the sacrifice cost first");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {}
+        other => panic!("expected Lyzolda to ask which creature to sacrifice, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(fodder_id),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept the sacrificed creature");
+
+    assert_eq!(game.stack.len(), 1, "Lyzolda ability should be on the stack");
+    let stack_entry = game.stack.last().expect("Lyzolda ability should be stacked");
+    let sacrificed = stack_entry
+        .tagged_objects
+        .get(&crate::tag::TagKey::from("sacrifice_cost_0"))
+        .expect("Lyzolda stack entry should remember the sacrificed creature");
+    assert_eq!(sacrificed.len(), 1);
+    assert_eq!(sacrificed[0].name, "Lyzolda Fodder");
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    resolve_stack_entry(&mut game).expect("Lyzolda ability should resolve");
+
+    let expected_bob_life = if expect_damage { 18 } else { 20 };
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        expected_bob_life,
+        "red sacrificed creatures should be the only ones that make Lyzolda deal damage"
+    );
+    let hand_after = game.player(alice).expect("Alice exists").hand.len();
+    assert_eq!(
+        hand_after,
+        hand_before + usize::from(expect_draw),
+        "black sacrificed creatures should be the only ones that make Lyzolda draw"
+    );
+    let drew_fixture_card = game
+        .player(alice)
+        .expect("Alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .any(|object| object.name == "Lyzolda Draw Card");
+    assert_eq!(
+        drew_fixture_card, expect_draw,
+        "Lyzolda should move a library card to hand exactly when the black branch is true"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_red_sacrifice_deals_damage_only() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::RED, true, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_black_sacrifice_draws_only() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::BLACK, false, true);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_black_red_sacrifice_damages_and_draws() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(
+        crate::color::ColorSet::BLACK.union(crate::color::ColorSet::RED),
+        true,
+        true,
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_non_red_non_black_sacrifice_does_neither_branch() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::GREEN, false, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn maestros_ascendancy_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(92_180), "Maestros Ascendancy")
         .mana_cost(ManaCost::from_pips(vec![
@@ -29113,6 +29854,304 @@ fn maestros_ascendancy_is_once_each_turn_and_only_on_your_turn() {
         )
         .is_none(),
         "Maestros Ascendancy's once-during-your-turn permission should not function on another player's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn demilich_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(92_190), "Demilich")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Skeleton, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text(
+            "This spell costs {U} less to cast for each instant and sorcery spell you've cast this turn.\n\
+             Whenever this creature attacks, exile up to one target instant or sorcery card from your graveyard. Copy it. You may cast the copy.\n\
+             You may cast this card from your graveyard by exiling four instant and/or sorcery cards from your graveyard in addition to paying its other costs.",
+        )
+        .expect("Demilich should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn demilich_graveyard_cast_action(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+) -> Option<LegalAction> {
+    compute_legal_actions(game, player)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: action_spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Graveyard,
+                        use_alternative: Some(_),
+                    },
+                } if *action_spell_id == spell_id && *source == spell_id
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn graveyard_cost_card(name: &str, card_type: CardType) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .mana_cost(ManaCost::new())
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn record_demilich_test_spell_cast(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    card_type: CardType,
+) {
+    let spell_id = game.create_object_from_card(
+        &graveyard_cost_card(name, card_type),
+        player,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, player, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_cost_reduction_removes_one_blue_for_each_instant_or_sorcery_cast() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id = game.create_object_from_definition(&demilich_definition(), alice, Zone::Hand);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let base_cost = demilich
+        .mana_cost
+        .as_ref()
+        .expect("Demilich has mana cost")
+        .clone();
+    assert_eq!(base_cost.to_oracle(), "{U}{U}{U}{U}");
+
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Instant", CardType::Instant);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let reduced_once = crate::decision::calculate_effective_mana_cost(
+        &game, alice, demilich, &base_cost,
+    );
+    assert_eq!(reduced_once.to_oracle(), "{U}{U}{U}");
+
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Sorcery", CardType::Sorcery);
+    record_demilich_test_spell_cast(&mut game, alice, "Cast Creature", CardType::Creature);
+    let demilich = game.object(demilich_id).expect("Demilich should exist");
+    let reduced_twice = crate::decision::calculate_effective_mana_cost(
+        &game, alice, demilich, &base_cost,
+    );
+    assert_eq!(reduced_twice.to_oracle(), "{U}{U}");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_casts_from_graveyard_by_exiling_four_instant_or_sorcery_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id =
+        game.create_object_from_definition(&demilich_definition(), alice, Zone::Graveyard);
+    for idx in 0..4 {
+        record_demilich_test_spell_cast(
+            &mut game,
+            alice,
+            &format!("Previously Cast Instant {idx}"),
+            CardType::Instant,
+        );
+    }
+    let valid_cards = [
+        game.create_object_from_card(
+            &graveyard_cost_card("First Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Second Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Third Buried Instant", CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        ),
+        game.create_object_from_card(
+            &graveyard_cost_card("Buried Sorcery", CardType::Sorcery),
+            alice,
+            Zone::Graveyard,
+        ),
+    ];
+    let artifact_id = game.create_object_from_card(
+        &graveyard_cost_card("Buried Artifact", CardType::Artifact),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let action = demilich_graveyard_cast_action(&game, alice, demilich_id)
+        .expect("Demilich should be castable from graveyard with four instant/sorcery cards to exile");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    let mut progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("Demilich graveyard cast should start");
+
+    for _ in 0..8 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let option_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.to_ascii_lowercase().contains("exile"))
+                    .map(|option| option.index)
+                    .expect("Demilich cast should offer an exile cost step");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option_index),
+                    &mut dm,
+                )
+                .expect("Demilich cast should accept the exile cost step")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .all(|candidate| candidate.id != artifact_id || !candidate.legal),
+                    "Demilich exile cost must not allow artifact cards"
+                );
+                let card_id = ctx
+                    .candidates
+                    .iter()
+                    .find(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .expect("Demilich exile cost should have an instant or sorcery choice");
+                assert!(
+                    valid_cards.contains(&card_id),
+                    "Demilich exile cost should choose only the prepared instant/sorcery cards"
+                );
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(card_id),
+                    &mut dm,
+                )
+                .expect("Demilich cast should accept an instant or sorcery exile choice")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("expected Demilich exile cost flow, got {other:?}"),
+        };
+    }
+
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Priority(_))
+        ),
+        "Demilich cast should finish after four exile choices, got {progress:?}"
+    );
+    assert!(
+        game.stack.iter().any(|entry| game
+            .object(entry.object_id)
+            .is_some_and(|object| object.name == "Demilich")),
+        "Demilich should be on the stack after paying its graveyard-cast cost"
+    );
+    for name in [
+        "First Buried Instant",
+        "Second Buried Instant",
+        "Third Buried Instant",
+        "Buried Sorcery",
+    ] {
+        assert!(
+            game.exile
+                .iter()
+                .any(|id| game.object(*id).is_some_and(|object| object.name == name)),
+            "{name} should be exiled to pay Demilich's graveyard-cast cost"
+        );
+    }
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .graveyard
+            .iter()
+            .any(|id| *id == artifact_id),
+        "the artifact card should remain in the graveyard because it is not a legal Demilich cost card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn demilich_graveyard_cast_requires_four_instant_or_sorcery_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let demilich_id =
+        game.create_object_from_definition(&demilich_definition(), alice, Zone::Graveyard);
+    for idx in 0..4 {
+        record_demilich_test_spell_cast(
+            &mut game,
+            alice,
+            &format!("Previously Cast Instant {idx}"),
+            CardType::Instant,
+        );
+    }
+    for idx in 0..3 {
+        game.create_object_from_card(
+            &graveyard_cost_card(&format!("Buried Instant {idx}"), CardType::Instant),
+            alice,
+            Zone::Graveyard,
+        );
+    }
+    game.create_object_from_card(
+        &graveyard_cost_card("Buried Artifact", CardType::Artifact),
+        alice,
+        Zone::Graveyard,
+    );
+
+    assert!(
+        demilich_graveyard_cast_action(&game, alice, demilich_id).is_none(),
+        "Demilich should not be castable from graveyard with only three instant/sorcery cards plus an artifact"
     );
 }
 
@@ -34272,6 +35311,105 @@ fn commander_liara_portyr_runtime_has_no_reduction_without_attacked_players() {
         game.exile.len(),
         exile_before,
         "without attacked players, Commander Liara Portyr should leave exile unchanged"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cheering_fanatic_runtime_reduces_only_spells_with_chosen_name_this_turn() {
+    struct ChooseLightningBoltName;
+
+    impl DecisionMaker for ChooseLightningBoltName {
+        fn decide_text(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Lightning Bolt".to_string()
+        }
+    }
+
+    fn generic_spell(name: &str) -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(vec![CardType::Sorcery])
+            .with_spell_effect(vec![Effect::draw(1)])
+            .build()
+    }
+
+    fn effective_cost_text(game: &GameState, player: PlayerId, spell_id: ObjectId) -> String {
+        let spell = game.object(spell_id).expect("spell should exist");
+        crate::decision::calculate_effective_mana_cost(
+            game,
+            player,
+            spell,
+            spell.mana_cost.as_ref().expect("spell mana cost"),
+        )
+        .to_oracle()
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let cheering = CardDefinitionBuilder::new(CardId::from_raw(56_400), "Cheering Fanatic")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Goblin])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Whenever this creature attacks, choose a card name. \
+             Spells with the chosen name cost {1} less to cast this turn.",
+        )
+        .expect("Cheering Fanatic should parse for runtime regression");
+    let triggered = cheering
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Cheering Fanatic should have an attack trigger");
+    let cheering_id = game.create_object_from_definition(&cheering, alice, Zone::Battlefield);
+
+    let lightning = generic_spell("Lightning Bolt");
+    let other_spell = generic_spell("Giant Growth");
+    let alice_lightning = game.create_object_from_definition(&lightning, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    let alice_other = game.create_object_from_definition(&other_spell, alice, Zone::Hand);
+
+    let mut decision_maker = ChooseLightningBoltName;
+    let mut ctx = crate::effects::ExecutionContext::new_default(cheering_id, alice)
+        .with_decision_maker(&mut decision_maker);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Cheering Fanatic attack trigger effect should resolve");
+    }
+
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_lightning),
+        "{1}",
+        "the chosen Lightning Bolt should cost one less for Cheering Fanatic's controller"
+    );
+    assert_eq!(
+        effective_cost_text(&game, bob, bob_lightning),
+        "{1}",
+        "Cheering Fanatic's unqualified cost reduction should apply to other players too"
+    );
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_other),
+        "{2}",
+        "spells without the chosen name should not be reduced"
+    );
+
+    game.turn.turn_number += 1;
+    game.cleanup_temporary_spell_cost_reductions_end_of_turn();
+    assert_eq!(
+        effective_cost_text(&game, alice, alice_lightning),
+        "{2}",
+        "Cheering Fanatic's reduction should expire after this turn"
     );
 }
 

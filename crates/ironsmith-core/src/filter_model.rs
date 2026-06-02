@@ -2507,6 +2507,7 @@ fn describe_comparison(cmp: &Comparison) -> String {
             }
             Value::Speed(player) => format!("{player:?}'s speed"),
             Value::StartingLifeTotal(player) => format!("{player:?}'s starting life total"),
+            Value::LastNotedLifeTotal => "last noted life total".to_string(),
             Value::ThisAbilityResolvedThisTurnCount => {
                 "the number of times this ability has resolved this turn".to_string()
             }

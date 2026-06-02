@@ -472,9 +472,7 @@ pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
     })?;
     let label_tokens = &tokens[..split_idx];
     let body_tokens = &tokens[split_idx + 1..];
-    if label_tokens.is_empty()
-        || body_tokens.is_empty()
-        || contains_token_kind(label_tokens, TokenKind::Period)
+    if label_tokens.is_empty() || body_tokens.is_empty() || label_has_disallowed_period(label_tokens)
     {
         return None;
     }
@@ -485,6 +483,29 @@ pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
     }
 
     Some((label_tokens, body_tokens))
+}
+
+fn label_has_disallowed_period(tokens: &[OwnedLexToken]) -> bool {
+    if !contains_token_kind(tokens, TokenKind::Period) {
+        return false;
+    }
+
+    let Some(first_non_period) = tokens
+        .iter()
+        .position(|token| token.kind != TokenKind::Period)
+    else {
+        return true;
+    };
+    let Some(last_non_period) = tokens
+        .iter()
+        .rposition(|token| token.kind != TokenKind::Period)
+    else {
+        return true;
+    };
+
+    tokens[first_non_period..=last_non_period]
+        .iter()
+        .any(|token| token.kind == TokenKind::Period)
 }
 
 pub(crate) fn split_em_dash_label_prefix<'a>(

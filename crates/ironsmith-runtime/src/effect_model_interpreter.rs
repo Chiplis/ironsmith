@@ -132,6 +132,9 @@ where
             count,
             color_filter,
         },
+        ironsmith_core::Cost::ExileFromGraveyard { count, card_types } => {
+            ironsmith_core::Cost::ExileFromGraveyard { count, card_types }
+        }
         ironsmith_core::Cost::ReturnSelfToHand => ironsmith_core::Cost::ReturnSelfToHand,
         ironsmith_core::Cost::Effect(effect) => {
             ironsmith_core::Cost::Effect(interpret_effect_model::<M, H>(effect, hooks)?)
@@ -530,8 +533,12 @@ where
         };
         return Ok(Effect::new(converted));
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::RegenerateEffect>(&effect) {
-        return Ok(converted);
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::RegenerateEffect<M::Effect>>(&effect) {
+        let follow_up_effects = convert_effects(payload.follow_up_effects.clone(), hooks)?;
+        return Ok(Effect::new(
+            crate::effects::RegenerateEffect::new(payload.target.clone(), payload.duration.clone())
+                .with_follow_up_effects(follow_up_effects),
+        ));
     }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::AddManaFromCommanderColorIdentityEffect>(&effect)
@@ -708,6 +715,10 @@ where
         return Ok(converted);
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::AttachObjectsEffect>(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::UnattachObjectsEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -979,6 +990,9 @@ where
             ironsmith_core::PreventNextTimeDamageSource::Choice => {
                 crate::effects::PreventNextTimeDamageSource::Choice
             }
+            ironsmith_core::PreventNextTimeDamageSource::Target(spec) => {
+                crate::effects::PreventNextTimeDamageSource::Target(spec.clone())
+            }
             ironsmith_core::PreventNextTimeDamageSource::Filter(filter) => {
                 crate::effects::PreventNextTimeDamageSource::Filter(filter.clone())
             }
@@ -1034,6 +1048,7 @@ where
                 source,
                 target: None,
                 destination: crate::effects::RedirectNextTimeDamageDestination::SourceObject,
+                destination_target: None,
                 all_this_turn: false,
             }
         };
@@ -1042,6 +1057,14 @@ where
             ironsmith_core::RedirectNextTimeDamageDestination::Controller => effect.to_controller(),
             ironsmith_core::RedirectNextTimeDamageDestination::SourceController => {
                 effect.to_source_controller()
+            }
+            ironsmith_core::RedirectNextTimeDamageDestination::TargetObject => {
+                let Some(target) = payload.destination_target.clone() else {
+                    return Err(hooks.unsupported_effect(
+                        "redirect next time damage to target object without a target".to_string(),
+                    ));
+                };
+                effect.to_target(target)
             }
         };
         let effect = if payload.all_this_turn {
@@ -1365,6 +1388,12 @@ where
             payload.options.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::SecretChoiceEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::SecretChoiceEffect::new(
+            payload.options.clone(),
+            payload.participants.clone(),
+        )));
+    }
     if let Some(converted) =
         clone_direct_effect::<M, crate::effects::DirectionalAdjacentPlayerControlEffect>(&effect)
     {
@@ -1375,6 +1404,9 @@ where
             payload.amount.clone(),
             payload.player.clone(),
         )));
+    }
+    if M::downcast_ref::<ironsmith_core::NoteLifeTotalEffect>(&effect).is_some() {
+        return Ok(Effect::note_life_total());
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::IncreaseSpeedEffect>(&effect)
     {
