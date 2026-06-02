@@ -1463,16 +1463,6 @@ pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) ->
     if !token_slice_starts_with(head_tokens, &["gift"]) {
         return false;
     }
-    if !primitives::contains_phrase(
-        tokens,
-        &[
-            "you", "may", "promise", "an", "opponent", "a", "gift", "as", "you", "cast", "this",
-            "spell",
-        ],
-    ) || !primitives::contains_phrase(tokens, &["if", "you", "do"])
-    {
-        return false;
-    }
 
     [
         &["gift", "a", "card"][..],

@@ -613,8 +613,9 @@ impl GrantRegistry {
 
     /// Remove grants tied to a physical card's continuous presence in a zone.
     pub fn remove_stable_card_grants_for_zone(&mut self, stable_id: StableId, zone: Zone) {
-        self.grants
-            .retain(|grant| grant.target_stable_id != Some(stable_id) || grant.zone != zone);
+        self.grants.retain(|grant| {
+            grant.target_stable_id != Some(stable_id) || grant.zone != zone
+        });
     }
 
     /// Clean up expired grants (call at end of turn).

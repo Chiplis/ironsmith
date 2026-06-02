@@ -1696,7 +1696,7 @@ fn parse_shape_anew_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
         ),
         EffectAst::subject_verb(
             SubjectVerbRoleAst::LibraryOwner,
-            PlayerAst::That,
+            PlayerAst::ItsController,
             SubjectVerbActionAst::ShuffleLibrary,
         ),
     ])

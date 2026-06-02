@@ -186,6 +186,17 @@ mod tests {
                         "Should only require Swamp, not Plains"
                     );
                 }
+                Some(crate::ConditionExpr::PlayerControlsAtLeast {
+                    player: crate::PlayerFilter::You,
+                    filter,
+                    count: 1,
+                }) => {
+                    assert!(filter.subtypes.contains(&Subtype::Swamp));
+                    assert!(
+                        !filter.subtypes.contains(&Subtype::Plains),
+                        "Should only require Swamp, not Plains"
+                    );
+                }
                 other => panic!("Expected generic subtype activation condition, got {other:?}"),
             }
         } else {
@@ -406,9 +417,12 @@ mod tests {
                 .contains("Add {W} or {B}")
         );
         assert!(
-            crate::compiled_text::debug_compiled_lines(&def)
-                .join("\n")
-                .contains("control Swamp")
+            {
+                let rendered = crate::compiled_text::debug_compiled_lines(&def).join("\n");
+                rendered.contains("control Swamp")
+                    || rendered.contains("control one or more Swamps")
+                    || rendered.contains("control a Swamp")
+            }
         );
     }
 

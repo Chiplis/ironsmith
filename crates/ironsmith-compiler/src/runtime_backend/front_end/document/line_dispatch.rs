@@ -90,7 +90,7 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 31] = [
     LineFamilyRuleDef {
         id: "partner-variant-keyword-line",
         priority: 36,
-        heads: &["partner"],
+        heads: &[],
         run: run_partner_variant_keyword_line_family,
     },
     LineFamilyRuleDef {

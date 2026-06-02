@@ -374,6 +374,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
     }
     let mut subtype_only_spell_filter = ObjectFilter::default();
     subtype_only_spell_filter.zone = Some(Zone::Stack);
+    subtype_only_spell_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
     subtype_only_spell_filter.subtypes = filter.subtypes.clone();
     subtype_only_spell_filter.has_mana_cost = filter.has_mana_cost;
     if !filter.subtypes.is_empty() && *filter == subtype_only_spell_filter {

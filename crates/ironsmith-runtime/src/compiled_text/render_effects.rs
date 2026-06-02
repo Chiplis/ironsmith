@@ -2468,6 +2468,9 @@ fn normalize_search_descriptor_for_origin(descriptor: &str, searched_library: bo
             descriptor = descriptor.replace(phrase, "");
         }
     }
+    descriptor = descriptor.replace("permanent you own named ", "card you own named ");
+    descriptor = descriptor.replace("permanent named ", "card named ");
+    descriptor = descriptor.replace("card you own named ", "card named ");
     descriptor
 }
 
@@ -3248,7 +3251,7 @@ fn describe_reveal_top_to_hand_then_lose_mana_value_effects(effects: &[Effect]) 
         return None;
     }
     Some(
-        "Reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value"
+        "Reveal the top card of your library and put that card into your hand. You lose life equal to that card's mana value"
             .to_string(),
     )
 }
@@ -14911,7 +14914,7 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
     if compact_trimmed
-        == "Reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value"
+        == "Reveal the top card of your library and put that card into your hand. You lose life equal to that card's mana value"
     {
         return Some(cleanup_decompiled_text(&lowercase_first(compact_trimmed)));
     }
@@ -16507,8 +16510,16 @@ fn normalize_spellcast_trigger_mana_value_surface(
         "where X is that spell's mana value",
     )
     .replace(
+        "where X is a card in that object's controller's hand's mana value",
+        "where X is that spell's mana value",
+    )
+    .replace(
         "where X is a card in your hand's mana value",
         "where X is that spell's mana value",
+    )
+    .replace(
+        "unless that object's controller pays",
+        "unless that player pays",
     )
 }
 
@@ -21988,6 +21999,12 @@ fn split_token_ability_sentence(token_phrase: &str) -> (&str, Option<String>) {
     }
     if let Some((head, tail)) = token_phrase.split_once(". They have ") {
         return (head, Some(format!(". They have {tail}")));
+    }
+    if let Some((head, tail)) = token_phrase.split_once(" tokens with \"") {
+        return (
+            token_phrase[..head.len() + " tokens".len()].trim(),
+            Some(format!(". The tokens have \"{tail}")),
+        );
     }
     (token_phrase, None)
 }
@@ -29033,12 +29050,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_each_player_return_from_graveyard_to_hand(for_players) {
             return compact;
         }
-        if let Some(compact) = describe_each_player_may_discard_hand_draw(for_players) {
-            return compact;
-        }
         if let Some(compact) =
             describe_each_player_may_discard_hand_draw_commander_value(for_players)
         {
+            return compact;
+        }
+        if let Some(compact) = describe_each_player_may_discard_hand_draw(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_nonland_put_counter(for_players) {
@@ -32445,15 +32462,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             pluralize_token_phrase(&token_blueprint)
         };
-        let (mut token_main, mut token_ability) = split_token_ability_sentence(&token_phrase);
-        if use_where_x
-            && token_ability.is_none()
-            && let Some((head, tail)) = token_main.split_once(" with ")
-            && head.ends_with(" tokens")
-        {
-            token_main = head;
-            token_ability = Some(format!(". The tokens have {tail}"));
-        }
+        let (token_main, token_ability) = split_token_ability_sentence(&token_phrase);
         let count_text = if use_where_x {
             "X".to_string()
         } else if singular_count {
@@ -39327,6 +39336,33 @@ pub(super) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                     line
                 }
             }
+        }
+        crate::ConditionExpr::PlayerControlsAtLeast {
+            player,
+            filter,
+            count: 1,
+        } if filter.zone == Some(Zone::Battlefield)
+            && (filter.controller.is_none()
+                || filter
+                .controller
+                .as_ref()
+                .is_some_and(|controller| controller == player))
+            && filter.card_types.is_empty()
+            && filter.subtypes.len() == 1
+            && filter.excluded_card_types.is_empty()
+            && filter.excluded_subtypes.is_empty() =>
+        {
+            let subject = describe_player_filter(player);
+            let mut described_filter = filter.clone();
+            described_filter.controller = None;
+            let described =
+                with_indefinite_article(strip_indefinite_article(&described_filter.description()));
+            format!(
+                "Activate only if {} {} {}",
+                subject,
+                player_verb(&subject, "control", "controls"),
+                described
+            )
         }
         crate::ConditionExpr::ControlCreaturesTotalPowerAtLeast(power) => {
             format!("Activate only if creatures you control have total power {power} or greater")

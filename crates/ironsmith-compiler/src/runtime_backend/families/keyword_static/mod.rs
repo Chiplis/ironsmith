@@ -3026,7 +3026,7 @@ fn parse_count_as_card_named_for_spell_effect_line(words: &[&str]) -> Option<Sta
     ];
     if !GRAVEYARD_PREFIXES
         .iter()
-        .any(|prefix| words.starts_with(prefix))
+        .any(|prefix| word_slice_starts_with(words, prefix))
     {
         return None;
     }

@@ -5137,6 +5137,30 @@ impl StaticAbilityKind for DeckConstructionRuleText {
     }
 
     fn display(&self) -> String {
+        fn title_case_name_fragment(name: &str) -> String {
+            name.split_whitespace()
+                .map(|part| {
+                    let mut chars = part.chars();
+                    let Some(first) = chars.next() else {
+                        return String::new();
+                    };
+                    format!(
+                        "{}{}",
+                        first.to_ascii_uppercase(),
+                        chars.as_str().to_ascii_lowercase()
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        }
+
+        if let Some((prefix, name)) = self.text.rsplit_once("cards named ") {
+            let name = name.trim_end_matches('.');
+            return format!(
+                "{prefix}cards named {}.",
+                title_case_name_fragment(name)
+            );
+        }
         self.text.clone()
     }
 }

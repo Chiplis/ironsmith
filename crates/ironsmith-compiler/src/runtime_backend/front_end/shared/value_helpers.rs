@@ -97,7 +97,11 @@ const SOURCE_COUNTER_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
         & [
             &["it"],
             &["this"],
+            &["this", "artifact"],
             &["this", "creature"],
+            &["this", "enchantment"],
+            &["this", "equipment"],
+            &["this", "land"],
             &["this", "permanent"],
             &["this", "source"],
         ]

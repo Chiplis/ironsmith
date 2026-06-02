@@ -744,6 +744,10 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(vec![EffectAst::DelayedUntilEndOfCombat { effects }]);
     }
 
+    if let Some(effect) = parse_additional_phase_sentence(tokens) {
+        return Ok(vec![effect]);
+    }
+
     let leading_if_replacement_shape =
         token_slice_first_is(tokens, "if") && SENTENCE_WOULD_MARKER_PATTERN.matches_words(&sentence_words);
     if token_slice_first_is(tokens, "if")
@@ -758,6 +762,9 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     if let Some(effect) = parse_vote_subject_verb(tokens)? {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Vote subject=explicit recognizer=vote-procedure",
+        );
         return Ok(vec![effect]);
     }
 

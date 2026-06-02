@@ -136,6 +136,32 @@ impl Cost {
             .map(crate::cost::TotalCost::from_costs)
     }
 
+    pub(crate) fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
+        let debug = format!("{effect:?}");
+        if debug.contains("TaggedEffect")
+            && debug.contains("TagKey(\"typed_")
+            && debug.contains("ApplyContinuousEffect")
+            && debug.contains("AddCardTypes")
+        {
+            return true;
+        }
+        let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+            return false;
+        };
+        if !tagged.tag.as_str().starts_with("typed_") {
+            return false;
+        }
+        tagged
+            .effect
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .is_some_and(|continuous| {
+                matches!(
+                    continuous.modification.as_ref(),
+                    Some(crate::continuous::Modification::AddCardTypes(_))
+                )
+            })
+    }
+
     /// Create a cost from an effect value after validating that the runtime effect
     /// explicitly opted into cost execution.
     pub(crate) fn validated_effect(effect: crate::effect::Effect) -> Self {
@@ -215,6 +241,11 @@ impl Cost {
                 color_filter,
             } => Self::exile_from_hand(count, color_filter),
             ironsmith_core::Cost::ReturnSelfToHand => Self::return_self_to_hand(),
+            ironsmith_core::Cost::Effect(effect)
+                if Self::is_tagged_type_marker_effect(&effect) =>
+            {
+                Self::mana(ManaCost::new())
+            }
             ironsmith_core::Cost::Effect(effect) => Self::try_from_runtime_effect(effect)
                 .map_err(|detail| format!("effect-backed cost is not cost-executable: {detail}"))?,
         })

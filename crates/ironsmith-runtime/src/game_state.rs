@@ -3953,10 +3953,18 @@ impl GameState {
         let old_zone = old_object.zone;
         let owner = old_object.owner;
 
-        if old_zone != new_zone {
+        let preserves_exile_grants_for_adventure_stack_cast = old_zone == Zone::Exile
+            && new_zone == Zone::Stack
+            && crate::decision::spell_has_adventure_half(self, &old_object);
+        if old_zone != new_zone && !preserves_exile_grants_for_adventure_stack_cast {
             self.effect_store
                 .grant_registry
                 .remove_stable_card_grants_for_zone(old_object.stable_id, old_zone);
+        }
+        if old_zone == Zone::Stack && new_zone != Zone::Exile {
+            self.effect_store
+                .grant_registry
+                .remove_stable_card_grants_for_zone(old_object.stable_id, Zone::Exile);
         }
 
         if let Some(target) = old_object.attached_to {

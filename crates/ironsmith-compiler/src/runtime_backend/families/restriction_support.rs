@@ -246,12 +246,22 @@ fn normalize_activation_restriction(
         end = range.start;
     }
 
-    let normalized = render_token_slice(&tokens[start..end]).trim().to_string();
+    let normalized = lowercase_first_ascii(render_token_slice(&tokens[start..end]).trim());
     if normalized.is_empty() {
         None
     } else {
         Some(normalized)
     }
+}
+
+fn lowercase_first_ascii(text: &str) -> String {
+    let mut chars = text.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut lowered = first.to_ascii_lowercase().to_string();
+    lowered.push_str(chars.as_str());
+    lowered
 }
 
 fn restriction_tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

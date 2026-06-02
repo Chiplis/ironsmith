@@ -127,14 +127,38 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
 }
 
 pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Cost, String> {
-    if is_payment_effect(&effect) {
+    let payload_type = effect.payload_type_name();
+    if is_payment_effect(&effect) || payload_type.contains("TaggedEffect") {
         Ok(Cost::effect(effect))
     } else {
         Err(format!(
             "effect is not marked as cost-executable: {}",
-            effect.payload_type_name()
+            payload_type
         ))
     }
+}
+
+fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
+    let debug = format!("{effect:?}");
+    if debug.contains("TaggedEffect")
+        && debug.contains("TagKey(\"typed_")
+        && debug.contains("ApplyContinuousEffect")
+        && debug.contains("AddCardTypes")
+    {
+        return true;
+    }
+    let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
+        return false;
+    };
+    tagged
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+        .is_some_and(|continuous| {
+            matches!(
+                continuous.modification.as_ref(),
+                Some(crate::continuous::Modification::AddCardTypes(_))
+            )
+        })
 }
 
 pub(crate) fn payment_effects_to_total_cost(
@@ -142,6 +166,7 @@ pub(crate) fn payment_effects_to_total_cost(
 ) -> Result<crate::cost::TotalCost, String> {
     effects
         .into_iter()
+        .filter(|effect| !is_tagged_type_marker_effect(effect))
         .map(payment_effect_to_cost)
         .collect::<Result<Vec<_>, _>>()
         .map(crate::cost::TotalCost::from_costs)

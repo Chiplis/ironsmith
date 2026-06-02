@@ -195,6 +195,16 @@ fn is_bullet_line(line: &PreprocessedLine) -> bool {
     if first.kind == TokenKind::Bullet {
         return true;
     }
+    let dash_starts_loyalty_or_numeric_prefix = first.kind == TokenKind::Dash
+        && line.tokens.get(1).is_some_and(|token| {
+            let text = token.parser_text();
+            token.kind == TokenKind::Number
+                || text.eq_ignore_ascii_case("x")
+                || text.parse::<u32>().is_ok()
+        });
+    if dash_starts_loyalty_or_numeric_prefix {
+        return false;
+    }
     first.kind == TokenKind::Dash
         && !line
             .tokens
@@ -314,7 +324,7 @@ impl TriggeredSplitCandidate {
             effect_text: self.effect_text,
             effect_parse_tokens: self.effect_parse_tokens,
             intervening_if: self.intervening_if,
-            presentation_label: trigger_presentation_label_from_line_tokens(&line.tokens),
+            presentation_label: trigger_presentation_label_from_preprocessed_line(line),
             max_triggers_per_turn: self.max_triggers_per_turn,
             chosen_option_label: None,
         }
@@ -773,6 +783,14 @@ fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Opti
         return None;
     }
     line_starts_with_trigger_intro_tokens(body_tokens).then_some(label)
+}
+
+fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) -> Option<String> {
+    trigger_presentation_label_from_line_tokens(&line.tokens).or_else(|| {
+        super::lexer::lex_line(&line.info.raw_line, line.info.line_index)
+            .ok()
+            .and_then(|tokens| trigger_presentation_label_from_line_tokens(&tokens))
+    })
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {

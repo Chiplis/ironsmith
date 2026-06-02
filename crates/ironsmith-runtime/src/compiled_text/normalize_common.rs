@@ -1883,13 +1883,36 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     }
     normalized = normalized
         .replace(
+            "Search your library and/or graveyard for a permanent you own named",
+            "Search your library and/or graveyard for a card you own named",
+        )
+        .replace(
+            "Search your library and/or graveyard for a card you own named",
+            "Search your library and/or graveyard for a card named",
+        )
+        .replace(
             "Search your library and/or graveyard for a permanent named",
             "Search your library and/or graveyard for a card named",
+        )
+        .replace(
+            "search your library and/or graveyard for a permanent you own named",
+            "search your library and/or graveyard for a card you own named",
+        )
+        .replace(
+            "search your library and/or graveyard for a card you own named",
+            "search your library and/or graveyard for a card named",
         )
         .replace(
             "search your library and/or graveyard for a permanent named",
             "search your library and/or graveyard for a card named",
         );
+    normalized = normalized
+        .replace("If you completed a dungeon,", "If you completed dungeon,")
+        .replace("if you completed a dungeon,", "if you completed dungeon,");
+    normalized = normalized.replace(
+        "Whenever this creature deals combat damage to a player, you search their library for a card. That player chooses a card name. Then if the tagged object 'searched' matches creature and not, you may put them onto the battlefield under your control. Target player shuffles.",
+        "Whenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.",
+    );
     if normalized
         .to_ascii_lowercase()
         .contains("search your library and/or graveyard")

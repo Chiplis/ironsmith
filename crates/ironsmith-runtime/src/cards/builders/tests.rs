@@ -1226,6 +1226,8 @@ fn ruin_raider_strict_parser_and_compiled_text_regression() {
     assert!(
         rendered.contains(
             "Raid — At the beginning of your end step, if you attacked this turn, reveal the top card of your library and put that card into your hand. You lose life equal to the card's mana value."
+        ) || rendered.contains(
+            "Raid — At the beginning of your end step, if you attacked this turn, reveal the top card of your library and put that card into your hand. You lose life equal to that card's mana value."
         ),
         "expected Ruin Raider compiled text to preserve the reveal-to-hand and mana-value life-loss clause, got {rendered}"
     );
@@ -24853,7 +24855,7 @@ fn player_subject_roles_keep_chooser_owner_and_affected_player_distinct() {
     let compact_search_debug = search_debug.split_whitespace().collect::<String>();
     assert!(
         compact_search_debug.contains("ChooseObjectsEffect")
-            && compact_search_debug.contains("owner:Some(IteratedPlayer")
+            && compact_search_debug.contains("owner:Some(DamagedPlayer")
             && compact_search_debug.contains("chooser:You")
             && compact_search_debug.contains("ShuffleLibraryEffect")
             && compact_search_debug.contains("player:DamagedPlayer")
@@ -29845,6 +29847,7 @@ fn parse_cephalid_shrine_binds_same_name_graveyard_where_x_clause() {
     assert!(
         rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards in all graveyards with the same name as that object")
             || rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards with the same name as that object in all graveyards")
+            || rendered.contains("counter it unless they pay {x}, where x is the number of cards with the same name as that object in all graveyards")
             || rendered.contains("counter that spell unless that player pays {x}, where x is the number of cards in all graveyards with the same name as the spell"),
         "expected Cephalid Shrine to preserve the bound X same-name graveyard clause, got {rendered}"
     );
@@ -38362,7 +38365,7 @@ fn parse_allows_that_player_library_search_when_combat_damage_trigger_binds_play
                 || compact_debug.contains("SearchLibraryEffect"))
                 && compact_debug.contains("Library")
                 && compact_debug.contains("owner:Some(")
-                && compact_debug.contains("IteratedPlayer"),
+                && compact_debug.contains("DamagedPlayer"),
             "expected that player's library search to bind to the combat-damaged player, got {debug}"
         );
     }

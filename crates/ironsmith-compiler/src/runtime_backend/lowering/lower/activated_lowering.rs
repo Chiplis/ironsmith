@@ -242,7 +242,7 @@ struct SplitRewriteActivatedEffectText {
 }
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
-    let words = token_word_refs(tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     let value_tokens = if word_slice_starts_with(&words, &["where", "x", "is"]) {
         tokens.to_vec()
     } else if word_slice_starts_with(&words, &["x", "is"]) {
@@ -259,7 +259,7 @@ fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate
     };
 
     parse_value_binding_clause(&value_tokens).or_else(|| {
-        let value_words = token_word_refs(&value_tokens);
+        let value_words = crate::runtime_backend::lexer::parser_token_word_refs(&value_tokens);
         matches!(
             value_words.get(3..),
             Some(["the", "mana", "value", "of", "that", "card"])
@@ -282,6 +282,14 @@ fn activated_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effec
     split_lexed_sentences(tokens)
         .into_iter()
         .find_map(parse_standalone_x_definition_value)
+        .or_else(|| {
+            let (where_token_idx, _) =
+                crate::runtime_backend::lexer::find_token_word_sequence_span(
+                    tokens,
+                    WHERE_X_IS_PHRASE,
+                )?;
+            parse_standalone_x_definition_value(&tokens[where_token_idx..])
+        })
 }
 
 fn bind_activated_x_definition_to_mana_cost(
@@ -608,6 +616,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     original_effect_parse_tokens: &[OwnedLexToken],
 ) -> Result<LoweredRewriteActivatedLine, CardTextError> {
     let x_definition_value = activated_x_definition_value(original_effect_parse_tokens);
+    let has_x_definition_value = x_definition_value.is_some();
     let SplitRewriteActivatedEffectText {
         effect_text,
         effect_parse_tokens,
@@ -623,6 +632,8 @@ fn lower_rewrite_activated_to_chunk_impl(
 
     let normalized_cost =
         bind_activated_x_definition_to_mana_cost(line.cost.clone(), x_definition_value);
+    let original_effect_mentions_where_x =
+        tokens_mention_phrase(original_effect_parse_tokens, WHERE_X_IS_PHRASE);
     let ability_text = rewrite_activated_display_text(line);
     let additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
         vec!["Activate each exhaust ability only once.".to_string()]
@@ -630,7 +641,8 @@ fn lower_rewrite_activated_to_chunk_impl(
         Vec::new()
     };
     if contains_token_word_sequence(&effect_parse_tokens, ADD_X_MANA_PHRASE)
-        && !tokens_mention_phrase(original_effect_parse_tokens, WHERE_X_IS_PHRASE)
+        && !has_x_definition_value
+        && !original_effect_mentions_where_x
         && !activation_cost_defines_x_for_mana_ability(&normalized_cost)
     {
         return Err(CardTextError::ParseError(

@@ -155,6 +155,23 @@ where
         ironsmith_core::TotalCostKind::All(_) => {
             let mut runtime_costs = Vec::with_capacity(cost.costs().len());
             for component in cost.costs().iter().cloned() {
+                if let ironsmith_core::Cost::Effect(effect) = component {
+                    let runtime_effect = interpret_effect_model::<M, H>(effect, hooks)?;
+                    if crate::costs::Cost::is_tagged_type_marker_effect(&runtime_effect) {
+                        continue;
+                    }
+                    runtime_costs.push(
+                        crate::costs::Cost::from_model(ironsmith_core::Cost::Effect(
+                            runtime_effect,
+                        ))
+                        .map_err(|detail| {
+                            hooks.unsupported_effect(format!(
+                                "unsupported runtime cost model: {detail}"
+                            ))
+                        })?,
+                    );
+                    continue;
+                }
                 runtime_costs.push(interpret_core_cost_model::<M, H>(component, hooks)?);
             }
             Ok(crate::cost::TotalCost::from_costs(runtime_costs))

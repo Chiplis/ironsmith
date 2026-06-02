@@ -512,7 +512,9 @@ pub(super) fn run_learn_line_family(
 pub(super) fn run_split_top_and_face_down_look_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !token_slice_words_eq(&ctx.line.tokens, SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE) {
+    if crate::runtime_backend::token_word_refs(&ctx.line.tokens)
+        != SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE
+    {
         return Ok(None);
     }
 
@@ -749,7 +751,7 @@ pub(super) fn run_station_line_family(
         })
         .any(|line| parse_station_threshold_line(line).is_some());
     if !has_explicit_station_threshold_rows
-        && let Some(threshold) = parse_station_keyword_creature_threshold(&ctx.line.tokens)
+        && let Some(threshold) = parse_station_keyword_creature_threshold_for_line(ctx.line)
         && let Some(pt) = ctx.preprocessed.builder.card_builder.power_toughness_ref()
     {
         let label = station_threshold_condition_label(threshold);
@@ -789,6 +791,16 @@ pub(super) fn run_station_threshold_line_family(
         normalize_named_source_sentence_for_builder(&ctx.preprocessed.builder, body_text.as_str())
     {
         body_text = rewritten;
+    } else {
+        let source_name = ctx.preprocessed.builder.card_builder.name_ref();
+        if !source_name.is_empty() {
+            let source_name_lower = source_name.to_ascii_lowercase();
+            let rewritten =
+                replace_named_source_aliases(&body_text, source_name_lower.as_str(), "this artifact");
+            if rewritten != body_text {
+                body_text = rewritten;
+            }
+        }
     }
     if !str_ends_with_any_char(body_text.as_str(), &['.', '!', '?']) {
         body_text.push('.');
@@ -912,6 +924,14 @@ fn parse_station_keyword_creature_threshold(tokens: &[OwnedLexToken]) -> Option<
     None
 }
 
+fn parse_station_keyword_creature_threshold_for_line(line: &PreprocessedLine) -> Option<i32> {
+    parse_station_keyword_creature_threshold(&line.tokens).or_else(|| {
+        crate::runtime_backend::lexer::lex_line(&line.info.raw_line, line.info.line_index)
+            .ok()
+            .and_then(|tokens| parse_station_keyword_creature_threshold(&tokens))
+    })
+}
+
 fn station_threshold_condition_label(threshold: i32) -> String {
     format!("{STATION_THRESHOLD_CONDITION_PREFIX}{threshold}")
 }
@@ -933,7 +953,7 @@ fn station_threshold_is_creature_pt_threshold(
         let PreprocessedItem::Line(line) = item else {
             return false;
         };
-        parse_station_keyword_creature_threshold(&line.tokens) == Some(threshold)
+        parse_station_keyword_creature_threshold_for_line(line) == Some(threshold)
     })
 }
 
@@ -967,24 +987,16 @@ pub(super) fn run_partner_variant_keyword_line_family(
         return Ok(None);
     }
 
-    let partner_line = rewrite_line_normalized(ctx.line, "Partner")?;
-    if let Some(mut keyword_line) = parse_keyword_line_cst(&partner_line)? {
-        let visible_label = source_before_reminder_or_period(raw, &ctx.line.tokens)
-            .unwrap_or(raw)
-            .trim()
-            .to_string();
-        keyword_line.text = visible_label;
-        return Ok(Some(LineDispatchResult::single(
-            RewriteLineCst::Keyword(keyword_line),
-            ctx.idx + 1,
-        )));
-    }
-
+    let visible_label = source_before_reminder_or_period(raw, &ctx.line.tokens)
+        .unwrap_or(raw)
+        .trim()
+        .to_string();
+    let visible_line = rewrite_line_normalized(ctx.line, &visible_label)?;
     Ok(Some(LineDispatchResult::single(
         RewriteLineCst::Static(StaticLineCst {
-            info: partner_line.info.clone(),
-            text: partner_line.info.normalized.normalized.clone(),
-            parse_tokens: partner_line.tokens.clone(),
+            info: visible_line.info.clone(),
+            text: visible_label,
+            parse_tokens: visible_line.tokens.clone(),
             chosen_option_label: None,
         }),
         ctx.idx + 1,
@@ -992,6 +1004,12 @@ pub(super) fn run_partner_variant_keyword_line_family(
 }
 
 fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool {
+    if tokens.first().is_some_and(first_token_is_partner_variant) {
+        return true;
+    }
+    if token_slice_starts_with(tokens, &["character", "select"]) {
+        return true;
+    }
     let words = TokenWordView::new(tokens);
     if !words.starts_with(PARTNER_PREFIX) {
         return false;
@@ -1002,6 +1020,17 @@ fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool
     tokens
         .get(separator_idx)
         .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+}
+
+fn first_token_is_partner_variant(token: &OwnedLexToken) -> bool {
+    let text = token.parser_text().to_ascii_lowercase();
+    if text == "partnercharacter" || text == "partnercharacterselect" {
+        return true;
+    }
+    ["-", "\u{2013}", "\u{2014}"].iter().any(|separator| {
+        text.split_once(separator)
+            .is_some_and(|(head, tail)| head == "partner" && !tail.trim().is_empty())
+    })
 }
 
 pub(super) fn run_escape_enters_with_counter_line_family(
