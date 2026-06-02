@@ -1141,6 +1141,7 @@ impl StaticAbilityKind for Tribute {
             ThisWouldEnterBattlefieldMatcher,
             ReplacementAction::InteractiveMarkLabel {
                 chooser: PlayerFilter::Opponent,
+                chooser_prompt: Some("Choose an opponent for tribute".to_string()),
                 label: "Tribute".to_string(),
                 prompt: format!("Put {} +1/+1 counters on this creature?", self.amount),
             },

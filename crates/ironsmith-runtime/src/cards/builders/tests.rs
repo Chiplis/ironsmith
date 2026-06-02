@@ -40615,6 +40615,52 @@ fn ornitharch_paid_tribute_enters_with_counters_and_skips_birds() {
 }
 
 #[test]
+fn ornitharch_tribute_controller_chooses_which_opponent_is_prompted() {
+    let def = parse_oracle_card_definition("Ornitharch");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut decision_maker =
+        OrnitharchTributeDecisionMaker::new_with_chosen_opponent(charlie, true);
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+        .expect("Ornitharch should enter the battlefield");
+
+    assert_eq!(
+        decision_maker.opponent_choice_prompts,
+        1,
+        "controller should choose among multiple opponents for Tribute"
+    );
+    assert_eq!(
+        decision_maker.tribute_prompt_players,
+        vec![charlie],
+        "only the controller-chosen opponent should receive the Tribute counter prompt"
+    );
+    assert!(!decision_maker.tribute_prompt_players.contains(&bob));
+    let ornitharch = game
+        .object(result.new_id)
+        .expect("Ornitharch should exist on the battlefield");
+    assert!(
+        ornitharch.optional_costs_paid.was_paid_label("Tribute"),
+        "accepted chosen-opponent Tribute choice should be recorded"
+    );
+    assert_eq!(
+        ornitharch
+            .counters
+            .get(&crate::object::CounterType::PlusOnePlusOne)
+            .copied(),
+        Some(2),
+        "chosen opponent accepting Tribute 2 should make Ornitharch enter with counters"
+    );
+}
+
+#[test]
 fn ornitharch_unpaid_tribute_creates_two_flying_birds() {
     let def = parse_oracle_card_definition("Ornitharch");
     let alice = PlayerId::from_index(0);
@@ -40700,21 +40746,85 @@ fn ornitharch_bird_tokens(game: &crate::game_state::GameState, controller: Playe
 
 struct OrnitharchTributeDecisionMaker {
     expected_player: PlayerId,
+    chosen_opponent: Option<PlayerId>,
     accept: bool,
+    opponent_choice_prompts: usize,
     tribute_prompts: usize,
+    tribute_prompt_players: Vec<PlayerId>,
 }
 
 impl OrnitharchTributeDecisionMaker {
     fn new(expected_player: PlayerId, accept: bool) -> Self {
         Self {
             expected_player,
+            chosen_opponent: None,
             accept,
+            opponent_choice_prompts: 0,
             tribute_prompts: 0,
+            tribute_prompt_players: Vec::new(),
+        }
+    }
+
+    fn new_with_chosen_opponent(chosen_opponent: PlayerId, accept: bool) -> Self {
+        Self {
+            expected_player: chosen_opponent,
+            chosen_opponent: Some(chosen_opponent),
+            accept,
+            opponent_choice_prompts: 0,
+            tribute_prompts: 0,
+            tribute_prompt_players: Vec::new(),
         }
     }
 }
 
 impl crate::decision::DecisionMaker for OrnitharchTributeDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        let Some(chosen_opponent) = self.chosen_opponent else {
+            return ctx
+                .options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect();
+        };
+        assert!(
+            ctx.description.to_ascii_lowercase().contains("tribute"),
+            "expected only the Tribute opponent-choice prompt, got {:?}",
+            ctx.description
+        );
+        assert_eq!(
+            ctx.player,
+            PlayerId::from_index(0),
+            "the entering creature's controller should choose the Tribute opponent"
+        );
+        assert!(
+            ctx.options.iter().any(|option| option.description == "Bob")
+                && ctx.options.iter().any(|option| option.description == "Charlie"),
+            "Tribute opponent choice should offer all opponents, got {:?}",
+            ctx.options
+                .iter()
+                .map(|option| option.description.as_str())
+                .collect::<Vec<_>>()
+        );
+        self.opponent_choice_prompts += 1;
+        let chosen_name = match chosen_opponent.index() {
+            1 => "Bob",
+            2 => "Charlie",
+            _ => panic!("unexpected chosen opponent {chosen_opponent:?}"),
+        };
+        vec![ctx
+            .options
+            .iter()
+            .find(|option| option.description == chosen_name)
+            .expect("chosen opponent should be offered")
+            .index]
+    }
+
     fn decide_boolean(
         &mut self,
         _game: &crate::game_state::GameState,
@@ -40730,6 +40840,7 @@ impl crate::decision::DecisionMaker for OrnitharchTributeDecisionMaker {
             ctx.description
         );
         self.tribute_prompts += 1;
+        self.tribute_prompt_players.push(ctx.player);
         self.accept
     }
 }

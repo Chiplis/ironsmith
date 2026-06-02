@@ -385,6 +385,8 @@ fn process_event_direct(
                 object_id,
                 filter,
                 mark_label,
+                mark_label_prompt,
+                mark_label_chooser_options,
                 destinations,
             } => TraitEventResult::NeedsInteraction {
                 decision_ctx,
@@ -400,6 +402,8 @@ fn process_event_direct(
                     _ => None,
                 },
                 mark_label,
+                mark_label_prompt,
+                mark_label_chooser_options,
                 destinations,
             },
         };
@@ -458,6 +462,8 @@ fn process_event_direct(
             object_id,
             filter,
             mark_label,
+            mark_label_prompt,
+            mark_label_chooser_options,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -468,6 +474,8 @@ fn process_event_direct(
             filter,
             life_cost,
             mark_label,
+            mark_label_prompt,
+            mark_label_chooser_options,
             destinations,
         },
     }
@@ -583,6 +591,8 @@ fn continue_interactive_replacement(
     redirect_zone: Zone,
     life_cost: Option<u32>,
     mark_label: Option<&str>,
+    mark_label_prompt: Option<&str>,
+    mark_label_chooser_options: Option<&[PlayerId]>,
     destinations: Option<&[Zone]>,
     provenance: crate::provenance::ProvNodeId,
     decision_maker: &mut dyn DecisionMaker,
@@ -607,9 +617,34 @@ fn continue_interactive_replacement(
     }
 
     if let Some(label) = mark_label {
-        if matches!(response, InteractiveReplacementResponse::Accept)
-            && let Some(object) = game.object_mut(object_id)
+        let accepted = if let (Some(prompt), Some(chooser_options)) =
+            (mark_label_prompt, mark_label_chooser_options)
         {
+            let chosen_player = match response {
+                InteractiveReplacementResponse::Options(selected) => selected
+                    .first()
+                    .and_then(|idx| chooser_options.get(*idx))
+                    .copied(),
+                _ => None,
+            };
+            if let Some(chosen_player) = chosen_player {
+                let source_name = game.object(object_id).map(|object| object.name.clone());
+                let mut bool_ctx = crate::decisions::context::BooleanContext::new(
+                    chosen_player,
+                    Some(object_id),
+                    prompt.to_string(),
+                );
+                if let Some(source_name) = source_name {
+                    bool_ctx = bool_ctx.with_source_name(source_name);
+                }
+                decision_maker.decide_boolean(game, &bool_ctx)
+            } else {
+                false
+            }
+        } else {
+            matches!(response, InteractiveReplacementResponse::Accept)
+        };
+        if accepted && let Some(object) = game.object_mut(object_id) {
             object.optional_costs_paid.mark_label_paid(label);
         }
         return InteractiveReplacementResult::enters_battlefield();
@@ -1137,6 +1172,10 @@ enum TraitApplyResult {
         filter: Option<crate::target::ObjectFilter>,
         /// Label to mark on the entering object if the interaction is accepted.
         mark_label: Option<String>,
+        /// Prompt for the player chosen by an earlier mark-label chooser step.
+        mark_label_prompt: Option<String>,
+        /// Players selectable by an earlier mark-label chooser step.
+        mark_label_chooser_options: Option<Vec<PlayerId>>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
     },
@@ -1267,6 +1306,10 @@ pub enum TraitEventResult {
         life_cost: Option<u32>,
         /// Label to mark on the entering object if the interaction is accepted.
         mark_label: Option<String>,
+        /// Prompt for the player chosen by an earlier mark-label chooser step.
+        mark_label_prompt: Option<String>,
+        /// Players selectable by an earlier mark-label chooser step.
+        mark_label_chooser_options: Option<Vec<PlayerId>>,
         /// Destination options for InteractiveChooseDestination.
         destinations: Option<Vec<Zone>>,
     },
@@ -2000,6 +2043,8 @@ fn process_with_dm_and_additional_effects_and_applied(
                         object_id,
                         filter,
                         mark_label,
+                        mark_label_prompt,
+                        mark_label_chooser_options,
                         destinations,
                     } => {
                         return TraitEventResult::NeedsInteraction {
@@ -2016,6 +2061,8 @@ fn process_with_dm_and_additional_effects_and_applied(
                                 _ => None,
                             },
                             mark_label,
+                            mark_label_prompt,
+                            mark_label_chooser_options,
                             destinations,
                         };
                     }
@@ -3038,6 +3085,8 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         object_id,
                         filter,
                         mark_label,
+                        mark_label_prompt,
+                        mark_label_chooser_options,
                         destinations,
                     } => {
                         let life_cost = match &chosen_effect.replacement {
@@ -3080,6 +3129,8 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             redirect_zone,
                             life_cost,
                             mark_label.as_deref(),
+                            mark_label_prompt.as_deref(),
+                            mark_label_chooser_options.as_deref(),
                             destinations.as_deref(),
                             current_event.provenance(),
                             dm,
@@ -3108,6 +3159,8 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                 filter,
                 life_cost,
                 mark_label,
+                mark_label_prompt,
+                mark_label_chooser_options,
                 destinations,
             } => {
                 let controller = game
@@ -3140,6 +3193,8 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     redirect_zone,
                     life_cost,
                     mark_label.as_deref(),
+                    mark_label_prompt.as_deref(),
+                    mark_label_chooser_options.as_deref(),
                     destinations.as_deref(),
                     event.provenance(),
                     dm,
@@ -3453,6 +3508,8 @@ pub fn process_event_with_chosen_replacement_trait(
             object_id,
             filter,
             mark_label,
+            mark_label_prompt,
+            mark_label_chooser_options,
             destinations,
         } => TraitEventResult::NeedsInteraction {
             decision_ctx,
@@ -3468,6 +3525,8 @@ pub fn process_event_with_chosen_replacement_trait(
                 _ => None,
             },
             mark_label,
+            mark_label_prompt,
+            mark_label_chooser_options,
             destinations,
         },
     }

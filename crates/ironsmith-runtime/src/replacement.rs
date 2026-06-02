@@ -228,6 +228,9 @@ pub enum ReplacementAction {
     InteractiveMarkLabel {
         /// Player asked to make the yes/no choice.
         chooser: crate::target::PlayerFilter,
+        /// Optional prompt for the effect controller to choose which matching
+        /// player will make the yes/no choice.
+        chooser_prompt: Option<String>,
         /// Label recorded on the entering object if the choice is accepted.
         label: String,
         /// Prompt text shown to the chooser.
