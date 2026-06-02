@@ -12,6 +12,7 @@ use crate::effects::{
     TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
+use crate::ids::StableId;
 use crate::object::AuraAttachmentFilter;
 use crate::static_abilities::StaticAbilityId;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, SourceReferenceSurface};
@@ -41990,6 +41991,257 @@ fn parse_oracle_warp_world_strict_parse_and_render_regression() {
     assert!(
         !rendered.contains("tagged '") && !rendered.contains("tagged object"),
         "expected Warp World to avoid internal tagged-object markers, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_oracle_discover_the_impossible_strict_parse_and_render_regression() {
+    let def = parse_oracle_card_definition("Discover the Impossible");
+
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("lookattopcardseffect")
+            && debug.contains("chooseobjectseffect")
+            && debug.contains("exileeffect")
+            && debug.contains("puttaggedremainderonlibrarybottomeffect")
+            && debug.contains("casttaggedeffect")
+            && debug.contains("conditionaleffect")
+            && debug.contains("didnothappen"),
+        "expected Discover the Impossible to compile to look/choose/exile/remainder/conditional-cast/fallback-hand effects, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Look at the top five cards of your library. Exile one of them face down and put the rest on the bottom of your library in a random order. You may cast the exiled card without paying its mana cost if it's an instant spell with mana value 2 or less. If you don't, put that card into your hand."
+    );
+    assert!(
+        !rendered.contains("tagged '") && !rendered.contains("tagged object"),
+        "Discover the Impossible rendered text should not leak internal tagged-object markers: {rendered}"
+    );
+}
+
+fn discover_the_impossible_definition() -> CardDefinition {
+    parse_oracle_card_definition("Discover the Impossible")
+}
+
+fn one_mana_instant_card(id: u32, name: &str) -> crate::card::Card {
+    instant_card_with_mana_value(id, name, 1)
+}
+
+fn three_mana_instant_card(id: u32, name: &str) -> crate::card::Card {
+    instant_card_with_mana_value(id, name, 3)
+}
+
+fn instant_card_with_mana_value(id: u32, name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+            mana_value,
+        )]))
+        .build()
+}
+
+fn one_mana_creature_card(id: u32, name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)]))
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+fn resolve_discover_the_impossible_with<D: crate::decision::DecisionMaker>(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    decision_maker: &mut D,
+) {
+    let discover = discover_the_impossible_definition();
+    let source_id = game.create_object_from_definition(&discover, controller, Zone::Stack);
+    game.push_to_stack(crate::game_state::StackEntry::new(source_id, controller));
+    crate::game_loop::resolve_stack_entry_with(game, decision_maker)
+        .expect("Discover the Impossible should resolve");
+}
+
+fn discover_test_zones_by_stable(
+    game: &crate::game_state::GameState,
+    stable_ids: &[StableId],
+) -> Vec<String> {
+    stable_ids
+        .iter()
+        .map(|&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .map(|object| format!("{}:{:?}", object.name, object.zone))
+                .unwrap_or_else(|| format!("{stable_id:?}:missing"))
+        })
+        .collect()
+}
+
+#[test]
+fn discover_the_impossible_casts_chosen_small_instant_and_bottoms_rest() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut library_stables = Vec::new();
+    for idx in 0..5 {
+        let card = one_mana_instant_card(90_100 + idx, &format!("Discover Instant {idx}"));
+        let id = game.create_object_from_card(&card, alice, Zone::Library);
+        library_stables.push(game.object(id).expect("library card exists").stable_id);
+    }
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    resolve_discover_the_impossible_with(&mut game, alice, &mut dm);
+
+    let cast_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Stack)
+        })
+        .count();
+    let bottomed_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Library)
+        })
+        .count();
+    assert_eq!(
+        cast_count,
+        1,
+        "one selected small instant should be cast from exile; zones={:?}",
+        discover_test_zones_by_stable(&game, &library_stables)
+    );
+    assert_eq!(
+        bottomed_count, 4,
+        "the four unchosen looked-at cards should remain in the library as the bottomed rest"
+    );
+}
+
+#[test]
+fn discover_the_impossible_declined_cast_puts_exiled_card_into_hand() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut library_stables = Vec::new();
+    for idx in 0..5 {
+        let card = one_mana_instant_card(
+            90_200 + idx,
+            &format!("Declined Discover Instant {idx}"),
+        );
+        let id = game.create_object_from_card(&card, alice, Zone::Library);
+        library_stables.push(game.object(id).expect("library card exists").stable_id);
+    }
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    resolve_discover_the_impossible_with(&mut game, alice, &mut dm);
+
+    let hand_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Hand)
+        })
+        .count();
+    let library_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Library)
+        })
+        .count();
+    assert_eq!(
+        hand_count,
+        1,
+        "declining the free cast should put that card into hand; zones={:?}",
+        discover_test_zones_by_stable(&game, &library_stables)
+    );
+    assert_eq!(
+        library_count, 4,
+        "declining should still bottom the unchosen cards"
+    );
+}
+
+#[test]
+fn discover_the_impossible_noninstant_choice_goes_to_hand_not_stack() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut library_stables = Vec::new();
+    for idx in 0..5 {
+        let card = one_mana_creature_card(90_300 + idx, &format!("Discover Creature {idx}"));
+        let id = game.create_object_from_card(&card, alice, Zone::Library);
+        library_stables.push(game.object(id).expect("library card exists").stable_id);
+    }
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    resolve_discover_the_impossible_with(&mut game, alice, &mut dm);
+
+    let stack_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Stack)
+        })
+        .count();
+    let hand_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Hand)
+        })
+        .count();
+    assert_eq!(stack_count, 0, "a noninstant exiled card should not be cast");
+    assert_eq!(
+        hand_count,
+        1,
+        "a chosen noninstant should move to hand through the if-you-don't branch; zones={:?}",
+        discover_test_zones_by_stable(&game, &library_stables)
+    );
+}
+
+#[test]
+fn discover_the_impossible_large_instant_choice_goes_to_hand_not_stack() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut library_stables = Vec::new();
+    for idx in 0..5 {
+        let card = three_mana_instant_card(90_400 + idx, &format!("Discover Large Instant {idx}"));
+        let id = game.create_object_from_card(&card, alice, Zone::Library);
+        library_stables.push(game.object(id).expect("library card exists").stable_id);
+    }
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    resolve_discover_the_impossible_with(&mut game, alice, &mut dm);
+
+    let stack_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Stack)
+        })
+        .count();
+    let hand_count = library_stables
+        .iter()
+        .filter(|&&stable_id| {
+            game.find_object_by_stable_id(stable_id)
+                .and_then(|id| game.object(id))
+                .is_some_and(|object| object.zone == Zone::Hand)
+        })
+        .count();
+    assert_eq!(
+        stack_count, 0,
+        "an instant above the mana-value limit should not be cast"
+    );
+    assert_eq!(
+        hand_count,
+        1,
+        "an instant above the mana-value limit should move to hand through the if-you-don't branch; zones={:?}",
+        discover_test_zones_by_stable(&game, &library_stables)
     );
 }
 

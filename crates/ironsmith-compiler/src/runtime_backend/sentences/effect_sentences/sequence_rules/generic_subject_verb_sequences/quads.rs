@@ -4,8 +4,9 @@ use super::super::super::dispatch_entry::{
     parse_if_you_dont_put_card_from_among_them_into_your_hand,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, ObjectFilter, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    CardTextError, EffectAst, IfResultPredicate, LibraryBottomOrderAst, ObjectFilter, PlayerAst,
+    PredicateAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
@@ -13,8 +14,10 @@ use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::{
-    helper_tag_for_tokens, parse_choice_count_token_prefix_consumed,
+    helper_tag_for_tokens, non_article_token_word_refs, parse_choice_count_token_prefix_consumed,
+    trim_commas,
 };
 use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
@@ -129,6 +132,28 @@ const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN: ClauseShape<'static> = cla
         ]
 );
 
+const EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["exile", "one", "of", "them", "face", "down"];
+    contains_phrases & [&["put", "rest"], &["bottom", "of", "your", "library"]]
+);
+
+const CAST_EXILED_CARD_FREE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact & [
+        "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost"
+    ]
+);
+
+const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
+
+const EXILED_CARD_HAND_FOLLOWUP_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["if", "you", "don't", "put", "that", "card", "into", "your", "hand"],
+            &["if", "you", "dont", "put", "that", "card", "into", "your", "hand"],
+            &["if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"],
+        ]
+);
+
 fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let clause = LexedClause::new(tokens);
     if !NAMED_REVEALED_THIS_WAY_PATTERN.matches(clause) {
@@ -165,6 +190,53 @@ fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
 fn then_shuffle(tokens: &[OwnedLexToken]) -> bool {
     let clause = LexedClause::new(tokens).trimmed();
     THEN_SHUFFLE_PATTERN.matches(clause)
+}
+
+fn exiles_one_looked_card_face_down_and_bottoms_rest(tokens: &[OwnedLexToken]) -> bool {
+    let trimmed = trim_commas(tokens);
+    let words = non_article_token_word_refs(&trimmed);
+    EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN.matches_words(&words)
+}
+
+fn parse_exiled_card_cast_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let trimmed = trim_commas(tokens);
+    let words = non_article_token_word_refs(&trimmed);
+    let Some(if_word_idx) = IF_WORD_PATTERN.find_word(&words) else {
+        return Ok(None);
+    };
+    if !CAST_EXILED_CARD_FREE_PREFIX_PATTERN.matches_words(&words[..if_word_idx]) {
+        return Ok(None);
+    }
+
+    let clause = LexedClause::new(&trimmed);
+    let Some(condition_token_idx) = clause.token_index_for_word_index(if_word_idx + 1) else {
+        return Ok(None);
+    };
+    let mut condition = trim_commas(&trimmed[condition_token_idx..]);
+    if let Some(first) = condition.first().and_then(|token| token.as_word())
+        && matches!(first, "it's" | "its" | "it" | "that" | "that's")
+    {
+        condition = trim_commas(&condition[1..]);
+    }
+    if let Some(first) = condition.first().and_then(|token| token.as_word())
+        && first == "card"
+    {
+        condition = trim_commas(&condition[1..]);
+    }
+
+    let mut filter = parse_object_filter_lexed(&condition, false)?;
+    if filter.zone == Some(Zone::Stack) {
+        filter.zone = None;
+    }
+    Ok(Some(filter))
+}
+
+fn puts_exiled_card_into_hand_if_not_cast(tokens: &[OwnedLexToken]) -> bool {
+    let trimmed = trim_commas(tokens);
+    let words = LexedClause::new(&trimmed).word_refs();
+    EXILED_CARD_HAND_FOLLOWUP_PATTERN.matches_words(&words)
 }
 
 fn parse_may_reveal_up_to_from_looked_cards(
@@ -359,6 +431,78 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
             PlayerAst::You,
             SubjectVerbActionAst::ShuffleLibrary,
         ),
+    ]))
+}
+
+pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, reveal_top)) =
+        effect_sentences::parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    if reveal_top {
+        return Ok(None);
+    }
+    if !exiles_one_looked_card_face_down_and_bottoms_rest(sentences[sentence_idx + 1].lowered()) {
+        return Ok(None);
+    }
+    let Some(cast_filter) = parse_exiled_card_cast_filter(sentences[sentence_idx + 2].lowered())?
+    else {
+        return Ok(None);
+    };
+    if !puts_exiled_card_into_hand_if_not_cast(sentences[sentence_idx + 3].lowered()) {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+    let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
+    choice_filter.zone = Some(Zone::Library);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: exiled_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(exiled_tag.clone()),
+            LibraryBottomOrderAst::Random,
+            player,
+        ),
+        EffectAst::May {
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(exiled_tag.clone(), cast_filter),
+                if_true: vec![EffectAst::subject_verb_cast_tagged(
+                    exiled_tag.clone(),
+                    player,
+                    false,
+                    false,
+                    true,
+                    None,
+                )],
+                if_false: Vec::new(),
+            }],
+        },
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(exiled_tag, None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        },
     ]))
 }
 
