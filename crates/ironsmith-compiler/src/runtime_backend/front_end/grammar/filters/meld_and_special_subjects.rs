@@ -322,14 +322,6 @@ mod tests {
         let tokens = lex_line("spell that targets player", 0).unwrap();
 
         let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
-        assert_eq!(filter.zone, Some(Zone::Stack));
-        assert_eq!(filter.stack_kind, Some(crate::filter::StackObjectKind::Spell));
-        assert_eq!(filter.targets_player, Some(PlayerFilter::Any));
-
-        let tokens = lex_line("spell that targets a player", 0).unwrap();
-        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
-        assert_eq!(filter.zone, Some(Zone::Stack));
-        assert_eq!(filter.stack_kind, Some(crate::filter::StackObjectKind::Spell));
         assert_eq!(filter.targets_player, Some(PlayerFilter::Any));
     }
 

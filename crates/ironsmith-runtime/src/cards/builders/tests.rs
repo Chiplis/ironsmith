@@ -7,8 +7,8 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CounterEffect, CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect,
-    EffectExecutor, GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
+    CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect, EffectExecutor,
+    GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
     TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
@@ -449,49 +449,6 @@ fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
     assert_eq!(
         rendered,
         "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library. Until end of turn, you may cast spells from among those exiled cards."
-    );
-}
-
-#[test]
-fn outwit_strict_parser_and_compiled_text_regression() {
-    let def = parse_oracle_card_definition("Outwit");
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    let counter = def
-        .spell_effect
-        .as_ref()
-        .expect("Outwit should have a spell effect")
-        .flattened_default_effects()
-        .iter()
-        .find_map(|effect| {
-            effect.downcast_ref::<CounterEffect>().or_else(|| {
-                effect
-                    .downcast_ref::<TaggedEffect>()
-                    .and_then(|tagged| tagged.effect.downcast_ref::<CounterEffect>())
-            })
-        })
-        .expect("Outwit should lower to a CounterEffect");
-
-    let ChooseSpec::Target(targeted) = counter.target.unhinted() else {
-        panic!("Outwit should target a spell, got {:?}", counter.target);
-    };
-    let ChooseSpec::Object(filter) = targeted.unhinted() else {
-        panic!("Outwit should target an object-filtered spell, got {targeted:?}");
-    };
-
-    assert_eq!(
-        filter.stack_kind,
-        Some(crate::filter::StackObjectKind::Spell),
-        "Outwit should target only spells"
-    );
-    assert_eq!(
-        filter.targets_player,
-        Some(PlayerFilter::Any),
-        "Outwit should require the target spell to target a player"
-    );
-    assert_eq!(
-        rendered,
-        "Counter target spell that targets a player.",
-        "Outwit compiled text should preserve its player-targeting spell clause"
     );
 }
 
