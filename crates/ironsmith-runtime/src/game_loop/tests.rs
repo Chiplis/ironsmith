@@ -28814,6 +28814,198 @@ fn test_bosh_iron_golem_uses_sacrificed_artifact_mana_value_for_damage() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn run_lyzolda_the_blood_witch_sacrifice_branch(
+    colors: crate::color::ColorSet,
+    expect_damage: bool,
+    expect_draw: bool,
+) {
+    use crate::decision::LegalAction;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let lyzolda_def =
+        CardDefinitionBuilder::new(CardId::from_raw(571_572), "Lyzolda, the Blood Witch")
+            .mana_cost(ManaCost::from_pips(vec![
+                vec![ManaSymbol::Generic(1)],
+                vec![ManaSymbol::Black],
+                vec![ManaSymbol::Red],
+            ]))
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Human, Subtype::Cleric])
+            .power_toughness(PowerToughness::fixed(3, 1))
+            .parse_text(
+                "{2}, Sacrifice a creature: Lyzolda deals 2 damage to any target if the sacrificed creature was red. Draw a card if the sacrificed creature was black.",
+            )
+            .expect("Lyzolda, the Blood Witch should parse for runtime tests");
+
+    let lyzolda_id = game.create_object_from_definition(&lyzolda_def, alice, Zone::Battlefield);
+    let fodder_card = CardBuilder::new(CardId::new(), "Lyzolda Fodder")
+        .card_types(vec![CardType::Creature])
+        .color_indicator(colors)
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let fodder_id = game.create_object_from_card(&fodder_card, alice, Zone::Battlefield);
+    let draw_card = CardBuilder::new(CardId::new(), "Lyzolda Draw Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&draw_card, alice, Zone::Library);
+
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let ability_index = game
+        .object(lyzolda_id)
+        .expect("Lyzolda should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Lyzolda should have an activated ability");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::ActivateAbility {
+            source: lyzolda_id,
+            ability_index,
+        }),
+        &mut dm,
+    )
+    .expect("Lyzolda activation should start");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(_),
+        ) => {}
+        other => panic!("expected Lyzolda to ask for an any-target target first, got {other:?}"),
+    }
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Player(bob)]),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept Bob as any target");
+
+    let cost_ctx = match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectOptions(ctx),
+        ) => ctx,
+        other => panic!("expected Lyzolda to ask for cost order after targeting, got {other:?}"),
+    };
+    let sacrifice_cost_index = cost_ctx
+        .options
+        .iter()
+        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .map(|option| option.index)
+        .expect("expected a sacrifice cost option for Lyzolda");
+
+    let progress = apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept choosing the sacrifice cost first");
+
+    match progress {
+        crate::decision::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::SelectObjects(_),
+        ) => {}
+        other => panic!("expected Lyzolda to ask which creature to sacrifice, got {other:?}"),
+    }
+
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::SacrificeTarget(fodder_id),
+        &mut dm,
+    )
+    .expect("Lyzolda should accept the sacrificed creature");
+
+    assert_eq!(game.stack.len(), 1, "Lyzolda ability should be on the stack");
+    let stack_entry = game.stack.last().expect("Lyzolda ability should be stacked");
+    let sacrificed = stack_entry
+        .tagged_objects
+        .get(&crate::tag::TagKey::from("sacrifice_cost_0"))
+        .expect("Lyzolda stack entry should remember the sacrificed creature");
+    assert_eq!(sacrificed.len(), 1);
+    assert_eq!(sacrificed[0].name, "Lyzolda Fodder");
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    resolve_stack_entry(&mut game).expect("Lyzolda ability should resolve");
+
+    let expected_bob_life = if expect_damage { 18 } else { 20 };
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        expected_bob_life,
+        "red sacrificed creatures should be the only ones that make Lyzolda deal damage"
+    );
+    let hand_after = game.player(alice).expect("Alice exists").hand.len();
+    assert_eq!(
+        hand_after,
+        hand_before + usize::from(expect_draw),
+        "black sacrificed creatures should be the only ones that make Lyzolda draw"
+    );
+    let drew_fixture_card = game
+        .player(alice)
+        .expect("Alice exists")
+        .hand
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .any(|object| object.name == "Lyzolda Draw Card");
+    assert_eq!(
+        drew_fixture_card, expect_draw,
+        "Lyzolda should move a library card to hand exactly when the black branch is true"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_red_sacrifice_deals_damage_only() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::RED, true, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_black_sacrifice_draws_only() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::BLACK, false, true);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_black_red_sacrifice_damages_and_draws() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(
+        crate::color::ColorSet::BLACK.union(crate::color::ColorSet::RED),
+        true,
+        true,
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_lyzolda_the_blood_witch_non_red_non_black_sacrifice_does_neither_branch() {
+    run_lyzolda_the_blood_witch_sacrifice_branch(crate::color::ColorSet::GREEN, false, false);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn maestros_ascendancy_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(92_180), "Maestros Ascendancy")
         .mana_cost(ManaCost::from_pips(vec![

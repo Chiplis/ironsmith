@@ -1080,6 +1080,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.contains(": this creature gets ")
+        || lower.contains(": this creature deals ")
         || lower.contains(": whenever this creature deals combat damage to a player");
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
         return line.to_string();

@@ -10508,6 +10508,31 @@ fn all_magic_colors() -> crate::color::ColorSet {
         .union(crate::color::ColorSet::GREEN)
 }
 
+fn describe_sacrifice_cost_object_condition(
+    tag: &crate::tag::TagKey,
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if !tag.as_str().starts_with("sacrifice_cost_") {
+        return None;
+    }
+    let colors = filter.colors?;
+    if colors.is_empty() || filter.card_types.len() != 1 {
+        return None;
+    }
+    let mut rest = filter.clone();
+    rest.colors = None;
+    rest.card_types.clear();
+    if rest != ObjectFilter::default() {
+        return None;
+    }
+
+    Some(format!(
+        "the sacrificed {} was {}",
+        describe_card_type_word_local(filter.card_types[0]),
+        describe_token_color_words(colors, false)
+    ))
+}
+
 pub(super) fn describe_comparison(cmp: &Comparison) -> String {
     match cmp {
         Comparison::GreaterThan(n) => format!("is greater than {n}"),
@@ -11732,6 +11757,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 return condition;
             }
             if let Some(condition) = describe_attached_object_type_condition(tag, filter) {
+                return condition;
+            }
+            if let Some(condition) = describe_sacrifice_cost_object_condition(tag, filter) {
                 return condition;
             }
             if tag.as_str().starts_with("countered_")

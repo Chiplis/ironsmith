@@ -3191,6 +3191,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_sacrificed_object_conditional_sequence(effects) {
+        return Some(compact);
+    }
+
     if effects.len() == 3 {
         let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
@@ -3221,6 +3225,37 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_sacrificed_object_conditional_sequence(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+    let mut parts = Vec::with_capacity(effects.len());
+    for effect in effects {
+        let conditional = effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() || conditional.if_true.is_empty() {
+            return None;
+        }
+        let condition_text = describe_condition(&conditional.condition);
+        if !condition_text.starts_with("the sacrificed ") {
+            return None;
+        }
+        let rendered = describe_effect(effect);
+        let trimmed = rendered.trim().trim_end_matches('.');
+        if trimmed.is_empty()
+            || trimmed.contains(". ")
+            || trimmed.contains(": ")
+            || trimmed.starts_with("If ")
+            || trimmed.starts_with("When ")
+            || trimmed.starts_with("Whenever ")
+            || trimmed.starts_with("At ")
+        {
+            return None;
+        }
+        parts.push(trimmed.to_string());
+    }
+    Some(parts.join(". "))
 }
 
 fn unwrap_with_id(effect: &Effect) -> (&Effect, Option<crate::effect::EffectId>) {
@@ -32321,9 +32356,20 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_condition(&conditional.condition)
                 );
             }
+            let condition_text = describe_condition(&conditional.condition);
+            if condition_text.starts_with("the sacrificed ")
+                && !true_branch.contains(". ")
+                && !true_branch.contains(": ")
+                && !true_branch.starts_with("If ")
+                && !true_branch.starts_with("When ")
+                && !true_branch.starts_with("Whenever ")
+                && !true_branch.starts_with("At ")
+            {
+                return format!("{true_branch} if {condition_text}");
+            }
             return format!(
                 "If {}, {}",
-                describe_condition(&conditional.condition),
+                condition_text,
                 true_branch
             );
         }
