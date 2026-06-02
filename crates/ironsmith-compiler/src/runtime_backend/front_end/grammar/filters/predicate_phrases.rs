@@ -1,3 +1,5 @@
+use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::super::super::lexer::{LexedClause, OwnedLexToken};
 use super::*;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
@@ -1949,6 +1951,146 @@ fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<Predic
     }
 }
 
+fn parse_combat_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_you_attacked_this_turn_shape(&tokens)
+        .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(&tokens))
+        .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(&tokens))
+        .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(&tokens))
+}
+
+fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["attacked"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action_clause.word_refs().as_slice(), ["attacked"]) {
+        return None;
+    }
+    let window_clause = matched.capture_clause("window", clause)?;
+    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::YouAttackedThisTurn)
+}
+
+fn parse_triggering_object_had_to_attack_this_combat_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["had", "to", "attack"], &["must", "attack"]];
+    for action_phrase in action_phrases {
+        let atoms = [
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::modifier("window", LexCaptureKind::Rest),
+        ];
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        if !matches!(
+            subject_clause.word_refs().as_slice(),
+            ["that", "creature"] | ["it"]
+        ) {
+            continue;
+        }
+        let window_clause = matched.capture_clause("window", clause)?;
+        if !matches!(window_clause.word_refs().as_slice(), ["this", "combat"]) {
+            continue;
+        }
+        return Some(PredicateAst::TriggeringObjectHadToAttackThisCombat);
+    }
+    None
+}
+
+fn parse_you_attacked_with_exactly_other_creatures_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let tail_phrases: &[&[&str]] = &[
+        &["other", "creature", "this", "combat"],
+        &["other", "creatures", "this", "combat"],
+        &["others", "creature", "this", "combat"],
+        &["others", "creatures", "this", "combat"],
+    ];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::WordCount(3)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(tail_phrases)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action_clause.word_refs().as_slice(),
+        ["attacked", "with", "exactly"]
+    ) {
+        return None;
+    }
+    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        object_clause.word_refs().as_slice(),
+        ["other", "creature" | "creatures", "this", "combat"]
+            | ["others", "creature" | "creatures", "this", "combat"]
+    ) {
+        return None;
+    }
+    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count_words = count_clause.word_refs();
+    let (count, used) = predicate_number_prefix(&count_words)?;
+    if used != count_words.len() {
+        return None;
+    }
+    Some(PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count))
+}
+
+fn parse_source_attacked_or_blocked_this_turn_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilPhrase(&["attacked", "or", "blocked"]),
+        ),
+        LexPattern::action("action", LexCaptureKind::WordCount(3)),
+        LexPattern::modifier("window", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        subject_clause.word_refs().as_slice(),
+        ["this", "creature"] | ["this", "permanent"] | ["this"] | ["it"]
+    ) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action_clause.word_refs().as_slice(),
+        ["attacked", "or", "blocked"]
+    ) {
+        return None;
+    }
+    let window_clause = matched.capture_clause("window", clause)?;
+    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+        return None;
+    }
+    Some(PredicateAst::SourceAttackedOrBlockedThisTurn)
+}
+
 fn graveyard_possessive_matches_subject(player: PlayerAst, possessive: &str) -> bool {
     match player {
         PlayerAst::You | PlayerAst::Implicit => YOUR_WORD_PATTERN.matches_word(possessive),
@@ -3338,6 +3480,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_battlefield_entry_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_combat_turn_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -4744,6 +4890,36 @@ mod tests {
             (
                 "If you control more creatures than its controller",
                 PredicateAst::YouControlMoreCreaturesThanTargetSpellController,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_combat_turn_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If you attacked this turn",
+                PredicateAst::YouAttackedThisTurn,
+            ),
+            (
+                "If that creature had to attack this combat",
+                PredicateAst::TriggeringObjectHadToAttackThisCombat,
+            ),
+            (
+                "If you attacked with exactly two other creatures this combat",
+                PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(2),
+            ),
+            (
+                "If this creature attacked or blocked this turn",
+                PredicateAst::SourceAttackedOrBlockedThisTurn,
             ),
         ] {
             let tokens = lex_line(text, 0)?;
