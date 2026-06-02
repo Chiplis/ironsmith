@@ -344,17 +344,6 @@ const CONTROL_OR_CONTROLS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["control"], &["controls"]]);
 const ZONE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["graveyard"], &["hand"], &["exile"], &["library"]]);
-const OPPONENT_CONTROLS_IT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["an", "opponent", "controls", "it"],
-            &["an", "opponent", "controls", "that", "creature"],
-            &["an", "opponent", "controls", "that", "permanent"],
-            &["opponent", "controls", "it"],
-            &["opponent", "controls", "that", "creature"],
-            &["opponent", "controls", "that", "permanent"],
-        ]
-);
 const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
@@ -2428,6 +2417,39 @@ fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<Predica
     None
 }
 
+fn parse_opponent_controls_referenced_object_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilPhrase(&["controls"])),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        player.word_refs().as_slice(),
+        ["opponent"] | ["an", "opponent"]
+    ) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["controls"]) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let mut filter = ObjectFilter {
+        controller: Some(PlayerFilter::Opponent),
+        ..Default::default()
+    };
+    match object.word_refs().as_slice() {
+        ["it"] | ["that", "permanent"] => {}
+        ["that", "creature"] => filter.card_types.push(CardType::Creature),
+        _ => return None,
+    }
+    Some(PredicateAst::ItMatches(filter))
+}
+
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["was"], &["wasnt"], &["was", "not"]];
@@ -3155,18 +3177,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if OPPONENT_CONTROLS_IT_PATTERN.matches_words(&filtered) {
-        let mut filter = ObjectFilter {
-            controller: Some(PlayerFilter::Opponent),
-            ..Default::default()
-        };
-        if filtered
-            .last()
-            .is_some_and(|word| CREATURE_WORD_PATTERN.matches_word(word))
-        {
-            filter.card_types.push(CardType::Creature);
-        }
-        return Ok(PredicateAst::ItMatches(filter));
+    if let Some(predicate) = parse_opponent_controls_referenced_object_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 3
@@ -4961,6 +4973,52 @@ mod tests {
                         ..Default::default()
                     }
                 ),
+                "{text}"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_opponent_controls_reference_uses_capture_parser() -> Result<(), CardTextError>
+    {
+        for text in [
+            "if an opponent controls it",
+            "if opponent controls it",
+            "if an opponent controls that permanent",
+            "if opponent controls that permanent",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::ItMatches(ObjectFilter {
+                    controller: Some(PlayerFilter::Opponent),
+                    ..Default::default()
+                }),
+                "{text}"
+            );
+        }
+
+        for text in [
+            "if an opponent controls that creature",
+            "if opponent controls that creature",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::ItMatches(ObjectFilter {
+                    controller: Some(PlayerFilter::Opponent),
+                    card_types: vec![CardType::Creature],
+                    ..Default::default()
+                }),
                 "{text}"
             );
         }
