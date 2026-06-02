@@ -276,10 +276,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const ON_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["on", "the", "battlefield"], &["on", "battlefield"]]);
-const ON_THE_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["on", "the", "battlefield"]);
 const THAT_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "player"]);
 const TARGET_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
@@ -3188,6 +3184,60 @@ fn parse_graveyard_card_types_predicate(filtered: &[&str]) -> Option<PredicateAs
     Some(PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count })
 }
 
+fn parse_battlefield_count_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let battlefield_phrases: &[&[&str]] = &[&["on", "battlefield"], &["on", "the", "battlefield"]];
+    let atoms = [
+        LexPattern::word("there"),
+        LexPattern::action("are", LexCaptureKind::WordCount(1)),
+        LexPattern::amount(
+            "counted_object",
+            LexCaptureKind::UntilAnyPhrase(battlefield_phrases),
+        ),
+        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["are"]) {
+        return None;
+    }
+    let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !battlefield_phrases
+        .iter()
+        .any(|phrase| zone.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+    let counted_object = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let counted_words = counted_object.word_refs();
+    let (count, used) = predicate_at_least_quantity_prefix(&counted_words)?;
+    if used >= counted_words.len() {
+        return None;
+    }
+    let raw_filter_words = &counted_words[used..];
+    let other = raw_filter_words
+        .first()
+        .is_some_and(|word| OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word));
+    let filter_words = if other {
+        &raw_filter_words[1..]
+    } else {
+        raw_filter_words
+    };
+    if filter_words.is_empty() {
+        return None;
+    }
+    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
+    let mut filter = parse_object_filter(&filter_tokens, other).ok()?;
+    filter.zone = Some(Zone::Battlefield);
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(filter),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(count as i32),
+    })
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -4279,45 +4329,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 7
-        && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((count, idx)) = predicate_at_least_quantity_prefix(&filtered[2..])
-            .map(|(count, used)| (count, 2 + used))
-    {
-        let battlefield_suffix_len =
-            if ON_BATTLEFIELD_SUFFIX_PATTERN.matches_words(&filtered[idx..]) {
-                if ON_THE_BATTLEFIELD_SUFFIX_PATTERN.matches_words(&filtered) {
-                    Some(3usize)
-                } else {
-                    Some(2usize)
-                }
-            } else {
-                None
-            };
-        if let Some(battlefield_suffix_len) = battlefield_suffix_len {
-            let raw_filter_words = &filtered[idx..filtered.len() - battlefield_suffix_len];
-            let other = raw_filter_words
-                .first()
-                .is_some_and(|word| OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word));
-            let filter_words = if other {
-                &raw_filter_words[1..]
-            } else {
-                raw_filter_words
-            };
-            if !filter_words.is_empty() {
-                let filter_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
-                if let Ok(mut filter) = parse_object_filter(&filter_tokens, other) {
-                    filter.zone = Some(Zone::Battlefield);
-
-                    return Ok(PredicateAst::ValueComparison {
-                        left: Value::Count(filter),
-                        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
-                        right: Value::Fixed(count as i32),
-                    });
-                }
-            }
-        }
+    if let Some(predicate) = parse_battlefield_count_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_graveyard_card_types_predicate(&filtered) {
@@ -5841,6 +5854,43 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_battlefield_counts_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_filter, expected_count) in [
+            (
+                "if there are three or more artifacts on battlefield",
+                ObjectFilter::artifact().in_zone(Zone::Battlefield),
+                3,
+            ),
+            (
+                "if there are two or more other creatures on the battlefield",
+                ObjectFilter {
+                    card_types: vec![CardType::Creature],
+                    zone: Some(Zone::Battlefield),
+                    other: true,
+                    ..Default::default()
+                },
+                2,
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::ValueComparison {
+                    left: Value::Count(expected_filter),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(expected_count),
+                },
+                "{text}"
+            );
         }
         Ok(())
     }
