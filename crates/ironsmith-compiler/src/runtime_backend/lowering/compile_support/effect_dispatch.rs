@@ -19,6 +19,24 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn prevention_target_from_non_choice_target(
+    target: &TargetAst,
+    ctx: &EffectLoweringContext,
+) -> Result<ironsmith_core::PreventionTarget, CardTextError> {
+    match target {
+        TargetAst::Player(PlayerFilter::You, _) => Ok(ironsmith_core::PreventionTarget::You),
+        TargetAst::Player(PlayerFilter::Any, _) => Ok(ironsmith_core::PreventionTarget::Players),
+        TargetAst::Object(filter, explicit_target_span, _) if explicit_target_span.is_none() => {
+            Ok(ironsmith_core::PreventionTarget::PermanentsMatching(
+                resolve_it_tag(filter, &current_reference_env(ctx))?,
+            ))
+        }
+        _ => Err(CardTextError::ParseError(
+            "unsupported prevent-all damage protected target with source filter".to_string(),
+        )),
+    }
+}
+
 fn resolve_tagged_top_library_condition(
     condition: &crate::ConditionExpr,
     ctx: &EffectLoweringContext,
@@ -1708,6 +1726,24 @@ fn compile_subject_verb_effect(
                     source_filter,
                     duration.clone(),
                 )],
+                Vec::new(),
+            ))
+        }
+        SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+            target,
+            duration,
+            source_filter,
+        } => {
+            let target = prevention_target_from_non_choice_target(target, ctx)?;
+            let source_filter = resolve_it_tag(source_filter, &current_reference_env(ctx))?;
+            let mut damage_filter = ironsmith_core::DamageFilter::all();
+            damage_filter.from_source = Some(source_filter);
+            Ok((
+                vec![Effect::new(crate::effects::PreventAllDamageEffect::new(
+                    target,
+                    damage_filter,
+                    duration.clone(),
+                ))],
                 Vec::new(),
             ))
         }
