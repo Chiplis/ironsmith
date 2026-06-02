@@ -15701,6 +15701,7 @@ fn describe_exile_then_return_transformed_with_counter(
     transform_effect: &Effect,
     put_counter_effect: &Effect,
 ) -> Option<String> {
+    let exile_tag = direct_wrapped_effect_tag(exile_effect)?;
     let exile_move = unwrap_basic_tag_wrappers(exile_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let move_back = unwrap_basic_tag_wrappers(return_effect)
@@ -15719,7 +15720,10 @@ fn describe_exile_then_return_transformed_with_counter(
     let crate::target::ChooseSpec::Tagged(return_tag) = &move_back.target else {
         return None;
     };
-    if !return_tag.as_str().starts_with("exiled_") && return_tag.as_str() != "__source_exiled__" {
+    if return_tag != exile_tag
+        || (!return_tag.as_str().starts_with("exiled_")
+            && return_tag.as_str() != "__source_exiled__")
+    {
         return None;
     }
     if !matches!(&transform.target, ChooseSpec::Tagged(tag) if tag == return_tag)

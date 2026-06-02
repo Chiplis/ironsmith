@@ -37,8 +37,6 @@ pub(crate) const RETURN_WITH_COUNTERS_ON_IT_PATTERN_ATOMS: &[LexPatternAtom<'sta
     ),
 ];
 const PUT_ONTO_BATTLEFIELD_WORDS: &[&str] = &["put", "puts"];
-const OPTIONAL_PUT_ONTO_BATTLEFIELD_PATTERN_ATOMS: &[LexPatternAtom<'static>] =
-    &[LexPattern::any_word(PUT_ONTO_BATTLEFIELD_WORDS)];
 const PUT_WORD: &str = "put";
 const AND_WORD: &str = "and";
 const ON_WORD: &str = "on";
@@ -55,7 +53,7 @@ const PUT_OR_REMOVE_COUNTER_KIND_TAIL_PHRASE: &[&str] = &[
 pub(crate) const PUT_ONTO_BATTLEFIELD_WITH_COUNTERS_ON_IT_PATTERN_ATOMS: &[LexPatternAtom<
     'static,
 >] = &[
-    LexPattern::optional(OPTIONAL_PUT_ONTO_BATTLEFIELD_PATTERN_ATOMS),
+    LexPattern::any_word(PUT_ONTO_BATTLEFIELD_WORDS),
     LexPattern::role_capture(
         "object",
         LexCaptureRole::Object,
