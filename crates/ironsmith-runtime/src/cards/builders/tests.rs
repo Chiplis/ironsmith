@@ -144,6 +144,147 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn gorex_the_tombshell_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Gorex, the Tombshell");
+
+    let def = parse_oracle_card_definition("Gorex, the Tombshell");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains(crate::tag::SOURCE_EXILED_TAG)
+            && ability_debug.contains("random: true")
+            && ability_debug.contains("CountScaled")
+            && ability_debug.contains("MoveToZoneEffect"),
+        "Gorex should structurally count cards exiled this way and choose one at random to move to hand, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("This spell costs {2} less to cast for each card exiled this way."),
+        "Gorex should render the source-exiled cost reduction, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever this creature attacks or dies, you choose a card at random exiled with this creature and put that card into its owner's hand."
+        ),
+        "Gorex should render the random source-exiled return trigger, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gorex_the_tombshell_cost_reduction_counts_cards_exiled_with_gorex() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let def = parse_oracle_card_definition("Gorex, the Tombshell");
+    let gorex_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let base_cost = ManaCost::from_pips(vec![
+        vec![ManaSymbol::Generic(6)],
+        vec![ManaSymbol::Black],
+        vec![ManaSymbol::Black],
+    ]);
+
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(
+            &game,
+            alice,
+            game.object(gorex_id).expect("Gorex should exist"),
+            &base_cost,
+        )
+        .to_oracle(),
+        "{6}{B}{B}",
+        "without source-exiled links, Gorex should receive no reduction"
+    );
+
+    let linked_card = CardDefinitionBuilder::new(CardId::new(), "Actually Exiled Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let linked_id = game.create_object_from_definition(&linked_card, alice, Zone::Exile);
+    game.add_exiled_with_source_link(gorex_id, linked_id);
+
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(
+            &game,
+            alice,
+            game.object(gorex_id).expect("Gorex should exist"),
+            &base_cost,
+        )
+        .to_oracle(),
+        "{4}{B}{B}",
+        "one card exiled with Gorex should reduce its cost by {{2}}"
+    );
+
+    for _ in 0..2 {
+        let extra_id = game.create_object_from_definition(&linked_card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(gorex_id, extra_id);
+    }
+
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(
+            &game,
+            alice,
+            game.object(gorex_id).expect("Gorex should exist"),
+            &base_cost,
+        )
+        .to_oracle(),
+        "{B}{B}",
+        "three cards exiled with Gorex should reduce its cost by {{6}}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gorex_the_tombshell_trigger_returns_only_card_exiled_with_gorex() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    game.set_random_seed(1);
+    let alice = PlayerId::from_index(0);
+    let def = parse_oracle_card_definition("Gorex, the Tombshell");
+    let gorex_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let linked_card = CardDefinitionBuilder::new(CardId::new(), "Linked Exiled Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let unrelated_card = CardDefinitionBuilder::new(CardId::new(), "Unrelated Exiled Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let linked_id = game.create_object_from_definition(&linked_card, alice, Zone::Exile);
+    let unrelated_id = game.create_object_from_definition(&unrelated_card, alice, Zone::Exile);
+    game.add_exiled_with_source_link(gorex_id, linked_id);
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Gorex should have an attacks-or-dies trigger");
+    let mut ctx = crate::effects::ExecutionContext::new_default(gorex_id, alice);
+    for effect in triggered.effects.flattened_default_effects() {
+        if effect
+            .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+            .is_some()
+        {
+            continue;
+        }
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Gorex source-exiled choice and move should resolve");
+    }
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "Gorex should put the linked exiled card into its owner's hand"
+    );
+    assert_eq!(
+        game.object(unrelated_id).expect("unrelated card exists").zone,
+        Zone::Exile,
+        "Gorex should ignore exiled cards not linked to it"
+    );
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 

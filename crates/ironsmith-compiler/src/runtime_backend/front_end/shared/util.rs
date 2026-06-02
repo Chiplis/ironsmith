@@ -3961,6 +3961,7 @@ fn tagged_it_owner_or_controller_player_filter(word: &str) -> PlayerFilter {
 
 fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let mut tokens = tokens;
+    let stripped_random_tokens;
     while token_slice_first_is(tokens, "then") {
         tokens = &tokens[1..];
     }
@@ -3995,6 +3996,22 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         && let Some(random_idx) = token_word_view.token_index_for_word_index(token_words.len() - 2)
     {
         tokens = &tokens[..random_idx];
+        random_choice = true;
+    } else if let Some(random_word_idx) = token_words
+        .windows(2)
+        .position(|window| window == ["at", "random"])
+        && let Some(random_start) = token_word_view.token_index_for_word_index(random_word_idx)
+    {
+        let random_end = token_word_view
+            .token_index_for_word_index(random_word_idx + 2)
+            .unwrap_or(tokens.len());
+        stripped_random_tokens = tokens
+            .iter()
+            .take(random_start)
+            .chain(tokens.iter().skip(random_end))
+            .cloned()
+            .collect::<Vec<_>>();
+        tokens = &stripped_random_tokens;
         random_choice = true;
     }
 

@@ -14341,6 +14341,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(move_to_zone) = unwrap_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_choose_then_move_to_hand(choose, move_to_zone)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) =
                 filtered[idx + 1].downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(compact) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
@@ -16858,7 +16869,8 @@ fn describe_trigger_surface_with_frequency(
         return "At the beginning of the end step".to_string();
     }
 
-    let mut trigger_surface = triggered.trigger.display();
+    let mut trigger_surface = describe_this_attacks_or_dies_trigger(&triggered.trigger)
+        .unwrap_or_else(|| triggered.trigger.display());
     if matches!(
         trigger_frequency,
         Some(TriggerFrequencySurface::FirstTimeThisTurn)
@@ -16866,6 +16878,28 @@ fn describe_trigger_surface_with_frequency(
         trigger_surface.push_str(" for the first time each turn");
     }
     trigger_surface
+}
+
+fn describe_this_attacks_or_dies_trigger(trigger: &crate::triggers::Trigger) -> Option<String> {
+    let or_trigger = trigger.downcast_ref::<crate::triggers::OrTrigger>()?;
+    if or_trigger.triggers.len() != 2 {
+        return None;
+    }
+    let has_attacks = or_trigger.triggers.iter().any(trigger_is_this_attacks);
+    let has_dies = or_trigger.triggers.iter().any(|trigger| {
+        trigger
+            .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+            .is_some_and(|zone_change| {
+                zone_change.this_object
+                    && zone_change.from
+                        == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+                    && zone_change.to
+                        == crate::triggers::zone_changes::ZonePattern::Specific(Zone::Graveyard)
+                    && zone_change.player == crate::triggers::zone_changes::PlayerRelation::Any
+            })
+    });
+
+    (has_attacks && has_dies).then(|| "Whenever this creature attacks or dies".to_string())
 }
 
 fn describe_triggered_resolution_text(
@@ -23353,6 +23387,10 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return "the top card".to_string();
     }
 
+    if let Some(selection) = describe_source_exiled_choose_selection(choose) {
+        return selection;
+    }
+
     let filter_text = choose.filter.description();
     let mut card_desc = filter_text
         .split(" in ")
@@ -23419,7 +23457,12 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     };
 
     if choose.count.is_single() {
-        return format!("{}{}", with_indefinite_article(&card_desc), where_x_suffix);
+        let mut selection = with_indefinite_article(&card_desc);
+        if choose.count.random {
+            selection.push_str(" at random");
+        }
+        selection.push_str(&where_x_suffix);
+        return selection;
     }
     if let Some(runtime_count) = describe_runtime_choice_count(choose) {
         let mut selection = describe_plural_selection(runtime_count, &card_desc);
@@ -23436,6 +23479,38 @@ pub(super) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
     let mut selection = describe_plural_selection(describe_choice_count(&choose.count), &card_desc);
     selection.push_str(&where_x_suffix);
     selection
+}
+
+fn source_exiled_with_phrase(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let base = description
+        .split(" in ")
+        .next()
+        .unwrap_or(description.as_str())
+        .trim();
+    if let Some(source) = base
+        .strip_prefix("exiled with ")
+        .and_then(|rest| rest.strip_suffix(" card"))
+    {
+        return format!("exiled with {source}");
+    }
+    "exiled with this source".to_string()
+}
+
+fn describe_source_exiled_choose_selection(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<String> {
+    if !choose.count.is_single() || !is_source_exiled_cards_filter(&choose.filter) {
+        return None;
+    }
+
+    let mut selection = "a card".to_string();
+    if choose.count.random {
+        selection.push_str(" at random");
+    }
+    selection.push(' ');
+    selection.push_str(&source_exiled_with_phrase(&choose.filter));
+    Some(selection)
 }
 
 fn apply_mana_value_where_x_surface(card_desc: &mut String, filter: &ObjectFilter) -> String {
@@ -23902,6 +23977,32 @@ pub(super) fn describe_choose_then_move_to_battlefield(
     let put_verb = player_verb(&chooser, "put", "puts");
     Some(format!(
         "{chooser} {put_verb} {chosen} {origin} onto the battlefield{tapped}{attacking}{control_suffix}{where_x_clause}"
+    ))
+}
+
+pub(super) fn describe_choose_then_move_to_hand(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if choose.is_search
+        || !is_source_exiled_cards_filter(&choose.filter)
+        || !move_to_hand_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    let choose_verb = player_verb(&chooser, "choose", "chooses");
+    let put_verb = player_verb(&chooser, "put", "puts");
+    let chosen = describe_choose_selection(choose);
+    let moved_ref = if choose.count.is_single() {
+        "that card"
+    } else {
+        "those cards"
+    };
+
+    Some(format!(
+        "{chooser} {choose_verb} {chosen} and {put_verb} {moved_ref} into its owner's hand"
     ))
 }
 
@@ -40794,6 +40895,22 @@ pub(super) fn describe_enchant_filter(filter: &crate::object::AuraAttachmentFilt
 }
 
 pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String {
+    fn normalize_additional_cost_surface(text: String) -> String {
+        let mut text = if let Some(rest) = text.strip_prefix("may ") {
+            format!("you may {rest}")
+        } else if let Some(rest) = text.strip_prefix("May ") {
+            format!("you may {rest}")
+        } else {
+            text
+        };
+        if text.contains("exile ") {
+            text = text
+                .replace(" cards in your graveyard", " cards from your graveyard")
+                .replace(" card in your graveyard", " card from your graveyard");
+        }
+        text
+    }
+
     fn describe_blight_cost(amount: &str) -> String {
         if amount == "1" || amount == "one" {
             "you may blight 1 by putting a -1/-1 counter on a creature you control".to_string()
@@ -40907,7 +41024,7 @@ pub(super) fn describe_additional_costs(costs: &[crate::costs::Cost]) -> String 
     {
         return describe_blight_cost(amount_text);
     }
-    described
+    normalize_additional_cost_surface(described)
 }
 
 pub(super) fn describe_alternative_costs(costs: &[crate::costs::Cost]) -> String {
