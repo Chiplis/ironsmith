@@ -45123,6 +45123,182 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+fn cult_of_skaro_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            triggered
+                .effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Cult of Skaro should lower its attack trigger to a modal choice")
+}
+
+fn cult_of_skaro_test_game() -> (crate::game_state::GameState, PlayerId, PlayerId) {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    for idx in 0..2 {
+        let filler =
+            CardDefinitionBuilder::new(CardId::from_raw(95_500 + idx), "Cult Draw Filler")
+                .card_types(vec![CardType::Creature])
+                .build();
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+    (game, alice, bob)
+}
+
+#[test]
+fn cult_of_skaro_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Cult of Skaro");
+    let def = parse_oracle_card_definition("Cult of Skaro");
+    let modal = cult_of_skaro_modal_effect(&def);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(modal.random, "Cult of Skaro's modal choice should be random");
+    assert_eq!(
+        modal.modes.len(),
+        4,
+        "Cult of Skaro should have four random modes"
+    );
+    assert!(
+        rendered_lower.contains("choose one at random"),
+        "compiled text should preserve the random modal marker, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("put a +1/+1 counter on each artifact creature you control")
+            && rendered_lower.contains("draw two cards")
+            && rendered_lower
+                .contains("create a 3/3 black dalek artifact creature token with menace")
+            && rendered_lower.contains("each opponent loses 4 life"),
+        "compiled text should preserve all Cult of Skaro mode effects, got {rendered}"
+    );
+}
+
+#[test]
+fn cult_of_skaro_random_runtime_selects_one_mode_without_prompting() {
+    let def = parse_oracle_card_definition("Cult of Skaro");
+    let effect = cult_of_skaro_modal_effect(&def);
+    let (mut game, alice, bob) = cult_of_skaro_test_game();
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let hand_before = game.player(alice).expect("Alice").hand.len();
+    let bob_life_before = game.player(bob).expect("Bob").life;
+    let battlefield_before = game.objects_in_zone(Zone::Battlefield).len();
+    let random_count_before = game.irreversible_random_count();
+    let mut decisions = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut decisions);
+
+    let outcome = crate::effects::execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx)
+        .expect("Cult of Skaro random modal choice should resolve");
+    let chosen = outcome
+        .execution_facts()
+        .iter()
+        .find_map(|fact| match fact {
+            crate::effect::ExecutionFact::ChosenOptions(indices) => Some(indices.as_slice()),
+            _ => None,
+        })
+        .expect("random Cult of Skaro choice should record the selected mode");
+
+    assert_eq!(
+        chosen.len(),
+        1,
+        "Cult of Skaro should choose exactly one random mode"
+    );
+    assert!(
+        !ctx.decision_maker.awaiting_choice(),
+        "random mode choice should not prompt"
+    );
+    assert_eq!(
+        game.irreversible_random_count(),
+        random_count_before + 1,
+        "random mode choice should consume deterministic game RNG"
+    );
+    match chosen[0] {
+        0 => assert_eq!(
+            game.counter_count(source, crate::object::CounterType::PlusOnePlusOne),
+            1,
+            "Thay should put a +1/+1 counter on Cult of Skaro as an artifact creature"
+        ),
+        1 => assert_eq!(
+            game.player(alice).expect("Alice").hand.len(),
+            hand_before + 2,
+            "Caan should draw two cards"
+        ),
+        2 => assert_eq!(
+            game.objects_in_zone(Zone::Battlefield).len(),
+            battlefield_before + 1,
+            "Sec should create one Dalek token"
+        ),
+        3 => assert_eq!(
+            game.player(bob).expect("Bob").life,
+            bob_life_before - 4,
+            "Jast should make each opponent lose 4 life"
+        ),
+        other => panic!("unexpected random Cult of Skaro mode {other}"),
+    }
+}
+
+#[test]
+fn cult_of_skaro_runtime_branches_resolve_each_mode() {
+    let def = parse_oracle_card_definition("Cult of Skaro");
+    let effect = cult_of_skaro_modal_effect(&def);
+
+    for mode_idx in 0..4 {
+        let (mut game, alice, bob) = cult_of_skaro_test_game();
+        let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        let hand_before = game.player(alice).expect("Alice").hand.len();
+        let battlefield_before = game.objects_in_zone(Zone::Battlefield).len();
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut decisions)
+            .with_chosen_modes(Some(vec![mode_idx]));
+
+        let outcome =
+            crate::effects::execute_effect(&mut game, &Effect::new(effect.clone()), &mut ctx)
+                .unwrap_or_else(|err| {
+                    panic!("Cult of Skaro mode {mode_idx} should resolve: {err:?}")
+                });
+
+        match mode_idx {
+            0 => {
+                assert_eq!(
+                    game.counter_count(source, crate::object::CounterType::PlusOnePlusOne),
+                    1,
+                    "Thay should put a +1/+1 counter on each artifact creature you control"
+                );
+                assert_eq!(game.player(alice).expect("Alice").hand.len(), hand_before);
+            }
+            1 => assert_eq!(
+                game.player(alice).expect("Alice").hand.len(),
+                hand_before + 2,
+                "Caan should draw exactly two cards"
+            ),
+            2 => {
+                assert_eq!(
+                    outcome.objects().map(|objects| objects.len()),
+                    Some(1),
+                    "Sec should report one created token object"
+                );
+                assert_eq!(
+                    game.objects_in_zone(Zone::Battlefield).len(),
+                    battlefield_before + 1,
+                    "Sec should put one created token onto the battlefield"
+                );
+            }
+            3 => assert_eq!(
+                game.player(bob).expect("Bob").life,
+                16,
+                "Jast should make the opposing player lose 4 life"
+            ),
+            _ => unreachable!(),
+        }
+    }
+}
+
 #[test]
 fn departed_deckhand_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Departed Deckhand");

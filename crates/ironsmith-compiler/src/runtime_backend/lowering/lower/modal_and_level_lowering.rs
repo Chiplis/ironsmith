@@ -51,6 +51,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
             min: choose_mode.min.clone(),
             max: choose_mode.max.clone(),
             allow_repeat: choose_mode.allow_repeat,
+            random: choose_mode.random,
             choose_count: choose_mode.choose_count.clone(),
             min_choose_count: choose_mode.min_choose_count.clone(),
             allow_repeated_modes: choose_mode.allow_repeated_modes,
@@ -64,6 +65,7 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             modes,
+            random: choose_mode.random,
             choose_count: choose_mode.choose_count.clone(),
             min_choose_count: choose_mode.min_choose_count.clone(),
             allow_repeated_modes: choose_mode.allow_repeated_modes,
@@ -113,6 +115,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let crate::cards::builders::ParsedModalHeader {
         min: header_min,
         max: header_max,
+        random: random_mode_choice,
         same_mode_more_than_once,
         mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn,
@@ -197,6 +200,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
         let mut choose_mode = choose_mode.clone();
         if same_mode_more_than_once {
             choose_mode = choose_mode.with_repeated_modes();
+        }
+        if random_mode_choice {
+            choose_mode = choose_mode.with_random_mode_choice();
         }
         if weighted_mode_points {
             choose_mode = choose_mode.with_mode_point_costs(mode_point_costs.clone());

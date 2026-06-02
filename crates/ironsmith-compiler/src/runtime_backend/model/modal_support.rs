@@ -67,6 +67,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     let choose_idx = choose_spec.choose_idx;
     let min = choose_spec.min;
     let max = choose_spec.max;
+    let random = choose_spec.random;
 
     let mut trigger = None;
     let mut activated = None;
@@ -139,6 +140,7 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
     Ok(Some(ModalHeader {
         min,
         max,
+        random,
         same_mode_more_than_once: modal_flags.same_mode_more_than_once,
         mode_must_be_unchosen: modal_flags.mode_must_be_unchosen,
         mode_must_be_unchosen_this_turn: modal_flags.mode_must_be_unchosen_this_turn,

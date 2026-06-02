@@ -227,6 +227,7 @@ pub(crate) struct ParsedModalAst {
 pub(crate) struct ParsedModalHeader {
     pub(crate) min: Value,
     pub(crate) max: Option<Value>,
+    pub(crate) random: bool,
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,

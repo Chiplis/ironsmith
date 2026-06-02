@@ -257,6 +257,7 @@ pub(crate) struct ModalHeaderChooseSpec {
     pub(crate) choose_idx: usize,
     pub(crate) min: Value,
     pub(crate) max: Option<Value>,
+    pub(crate) random: bool,
     pub(crate) x_clause_start: Option<usize>,
 }
 
@@ -1902,12 +1903,14 @@ fn parse_modal_header_choose_spec_inner<'a>(
         };
         let x_clause_start = primitives::find_phrase_start(choose_tail, &["x", "is"])
             .map(|idx| choose_idx + 1 + idx);
+        let random = primitives::find_phrase_start(choose_tail, &["at", "random"]).is_some();
 
         input.finish();
         return Ok(Some(ModalHeaderChooseSpec {
             choose_idx,
             min,
             max,
+            random,
             x_clause_start,
         }));
     }
