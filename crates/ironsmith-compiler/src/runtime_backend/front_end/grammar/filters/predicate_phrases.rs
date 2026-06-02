@@ -413,40 +413,6 @@ const HAS_OR_HAVE_TOXIC_PATTERN: ClauseShape<'static> =
 const THERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["there"]);
 const MOST_COMMON_COLOR_AMONG_ALL_PERMANENTS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["most", "common", "color", "among", "all", "permanents"]);
-const SOURCE_TAPPED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this", "tapped"], &["thiss", "tapped"]]);
-const SOURCE_UNTAPPED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "untapped"],
-            &["thiss", "untapped"],
-            &["this", "is", "untapped"],
-            &["this", "creature", "is", "untapped"],
-            &["this", "permanent", "is", "untapped"],
-        ]
-);
-const SOURCE_OR_SOURCE_POSSESSIVE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this"], &["thiss"]]);
-const TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
-const UNTAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["untapped"]);
-const SOURCE_NOT_SADDLED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "creature", "isnt", "saddled"],
-            &["this", "permanent", "isnt", "saddled"],
-            &["this", "isnt", "saddled"],
-            &["it", "isnt", "saddled"],
-        ]
-);
-const SOURCE_SADDLED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "creature", "is", "saddled"],
-            &["this", "permanent", "is", "saddled"],
-            &["this", "is", "saddled"],
-            &["it", "is", "saddled"],
-        ]
-);
 const IS_OR_ARE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["is"], &["are"]]);
 const BE_VERB_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"]]);
@@ -717,6 +683,72 @@ fn parse_attachment_quantity_prefix(
     tokens: &[OwnedLexToken],
 ) -> Result<(crate::effect::Comparison, usize), CardTextError> {
     parse_quantity_comparison_prefix(tokens, false, false, "attachment-count predicate")
+}
+
+fn parse_source_simple_state_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_source_bare_state_shape(&tokens).or_else(|| parse_source_copula_state_shape(&tokens))
+}
+
+fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let state_phrases: &[&[&str]] = &[&["tapped"], &["untapped"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
+        LexPattern::object("state", LexCaptureKind::OneOf(&["tapped", "untapped"])),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_state_subject_words(&subject_clause.word_refs()) {
+        return None;
+    }
+    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    source_state_predicate_from_words(&state_clause.word_refs(), false)
+}
+
+fn parse_source_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let copula_phrases: &[&[&str]] = &[&["is"], &["isnt"], &["isn't"], &["is", "not"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action(
+            "copula",
+            LexCaptureKind::UntilAnyPhrase(&[&["tapped"], &["untapped"], &["saddled"]]),
+        ),
+        LexPattern::object(
+            "state",
+            LexCaptureKind::OneOf(&["tapped", "untapped", "saddled"]),
+        ),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_state_subject_words(&subject_clause.word_refs()) {
+        return None;
+    }
+    let copula_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let negative = match copula_clause.word_refs().as_slice() {
+        ["is"] => false,
+        ["isnt"] | ["isn't"] | ["is", "not"] => true,
+        _ => return None,
+    };
+    let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    source_state_predicate_from_words(&state_clause.word_refs(), negative)
+}
+
+fn is_source_state_subject_words(words: &[&str]) -> bool {
+    is_source_reference_words(words) || SOURCE_REFERENCE_WORD_PATTERN.matches_words(words)
+}
+
+fn source_state_predicate_from_words(words: &[&str], negative: bool) -> Option<PredicateAst> {
+    match (words, negative) {
+        (["tapped"], false) | (["untapped"], true) => Some(PredicateAst::SourceIsTapped),
+        (["untapped"], false) | (["tapped"], true) => {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+        }
+        (["saddled"], false) => Some(PredicateAst::SourceIsSaddled),
+        (["saddled"], true) => Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled))),
+        _ => None,
+    }
 }
 
 fn parse_source_exiled_with_counter_predicate(
@@ -3421,34 +3453,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::And(Box::new(left), Box::new(right)));
     }
 
-    if SOURCE_TAPPED_PATTERN.matches_words(&filtered)
-        || (filtered
-            .first()
-            .is_some_and(|word| SOURCE_OR_SOURCE_POSSESSIVE_WORD_PATTERN.matches_word(word))
-            && filtered
-                .last()
-                .is_some_and(|word| TAPPED_WORD_PATTERN.matches_word(word)))
-    {
-        return Ok(PredicateAst::SourceIsTapped);
-    }
-
-    if SOURCE_UNTAPPED_PATTERN.matches_words(&filtered)
-        || (filtered
-            .first()
-            .is_some_and(|word| SOURCE_OR_SOURCE_POSSESSIVE_WORD_PATTERN.matches_word(word))
-            && filtered
-                .last()
-                .is_some_and(|word| UNTAPPED_WORD_PATTERN.matches_word(word)))
-    {
-        return Ok(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)));
-    }
-
-    if SOURCE_NOT_SADDLED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)));
-    }
-
-    if SOURCE_SADDLED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceIsSaddled);
+    if let Some(predicate) = parse_source_simple_state_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(is_idx) = find_index(&filtered, |word| IS_OR_ARE_WORD_PATTERN.matches_word(word)) {
@@ -4742,6 +4748,33 @@ mod tests {
                     filter: ObjectFilter::land(),
                     count: 2,
                 },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_states_use_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            ("If this tapped", PredicateAst::SourceIsTapped),
+            (
+                "If this creature is untapped",
+                PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)),
+            ),
+            (
+                "If this permanent is saddled",
+                PredicateAst::SourceIsSaddled,
+            ),
+            (
+                "If it isn't saddled",
+                PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
