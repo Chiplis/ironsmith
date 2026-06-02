@@ -29,22 +29,6 @@ const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["counter"], &["counters"]]);
 const COUNTER_ON_SOURCE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["on", "it"], &["on", "this"], &["on", "them"]]);
-const THAT_SPELL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "spell"]);
-const SPELL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["spell"]);
-const IT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it"]);
-const TARGETS_ONLY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["targets", "only"]);
-const TARGET_THIS_CREATURE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["this", "creature"]);
-const TARGET_THIS_ARTIFACT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["this", "artifact"]);
-const TARGET_THIS_ENCHANTMENT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["this", "enchantment"]);
-const TARGET_THIS_LAND_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "land"]);
-const TARGET_THIS_PERMANENT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["this", "permanent"]);
-const TARGET_SOURCE_REFERENCE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this", "source"], &["it"]]);
 const PERMANENTS_YOU_CONTROL_SCOPE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1016,35 +1000,35 @@ fn parse_ring_bearer_temptation_predicate(
 }
 
 fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option<PredicateAst> {
-    let tail = if THAT_SPELL_PREFIX_PATTERN.matches_words(filtered) {
-        &filtered[2..]
-    } else if SPELL_PREFIX_PATTERN.matches_words(filtered)
-        || IT_PREFIX_PATTERN.matches_words(filtered)
-    {
-        &filtered[1..]
-    } else {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["targets", "only"])),
+        LexPattern::action("targets_only", LexCaptureKind::WordCount(2)),
+        LexPattern::object("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(
+        spell.word_refs().as_slice(),
+        ["that", "spell"] | ["spell"] | ["it"]
+    ) {
+        return None;
+    }
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["targets", "only"]) {
         return None;
     };
 
-    if !TARGETS_ONLY_PREFIX_PATTERN.matches_words(tail) {
-        return None;
-    }
-
-    let target_words = &tail[2..];
-    let mut target_filter = if TARGET_THIS_CREATURE_PATTERN.matches_words(target_words) {
-        ObjectFilter::creature()
-    } else if TARGET_THIS_ARTIFACT_PATTERN.matches_words(target_words) {
-        ObjectFilter::artifact()
-    } else if TARGET_THIS_ENCHANTMENT_PATTERN.matches_words(target_words) {
-        ObjectFilter::enchantment()
-    } else if TARGET_THIS_LAND_PATTERN.matches_words(target_words) {
-        ObjectFilter::land()
-    } else if TARGET_THIS_PERMANENT_PATTERN.matches_words(target_words) {
-        ObjectFilter::default().in_zone(Zone::Battlefield)
-    } else if TARGET_SOURCE_REFERENCE_PATTERN.matches_words(target_words) {
-        ObjectFilter::source()
-    } else {
-        return None;
+    let target = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let mut target_filter = match target.word_refs().as_slice() {
+        ["this", "creature"] => ObjectFilter::creature(),
+        ["this", "artifact"] => ObjectFilter::artifact(),
+        ["this", "enchantment"] => ObjectFilter::enchantment(),
+        ["this", "land"] => ObjectFilter::land(),
+        ["this", "permanent"] => ObjectFilter::default().in_zone(Zone::Battlefield),
+        ["this", "source"] | ["it"] => ObjectFilter::source(),
+        _ => return None,
     };
     target_filter.source = true;
 
@@ -4328,7 +4312,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::effect::ValueComparisonOperator;
+    use crate::effect::{ChoiceCount, ValueComparisonOperator};
+    use crate::filter::StackObjectKind;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
@@ -4925,6 +4910,35 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_targets_only_source_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_card_types) in [
+            (
+                "If that spell targets only this creature",
+                vec![CardType::Creature],
+            ),
+            ("If spell targets only this permanent", vec![]),
+            ("If it targets only it", vec![]),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+            let PredicateAst::ItMatches(filter) = parsed else {
+                panic!("expected spell target predicate for {text}");
+            };
+            assert_eq!(filter.zone, Some(Zone::Stack), "{text}");
+            assert_eq!(filter.stack_kind, Some(StackObjectKind::Spell), "{text}");
+            assert_eq!(filter.target_count, Some(ChoiceCount::exactly(1)), "{text}");
+            let Some(target_filter) = filter.targets_only_object.as_deref() else {
+                panic!("expected targets-only object filter for {text}");
+            };
+            assert!(target_filter.source, "{text}");
+            assert_eq!(target_filter.zone, Some(Zone::Battlefield), "{text}");
+            assert_eq!(target_filter.card_types, expected_card_types, "{text}");
         }
         Ok(())
     }
