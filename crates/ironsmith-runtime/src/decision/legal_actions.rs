@@ -8,6 +8,10 @@ fn grant_usage_limit_allows(
     limit: Option<crate::grant::GrantUsageLimit>,
 ) -> bool {
     match limit {
+        Some(crate::grant::GrantUsageLimit::OnceEachTurn) => !game
+            .turn_store
+            .grant_cast_uses_this_turn
+            .contains(&(player, source_id)),
         Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns) => {
             game.turn.active_player == player
                 && !game
@@ -30,6 +34,9 @@ fn append_granted_play_from_actions_for_card(
 ) {
     let play_from_grants = view.granted_play_from_for_card(card_id, source_zone, player);
     for grant in play_from_grants {
+        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+            continue;
+        }
         // PlayFrom (e.g., Yawgmoth's Will): can cast from zone as if from hand.
         let from_zone = grant.zone;
         let granted_alternatives =
@@ -116,6 +123,9 @@ fn append_granted_play_from_actions_for_card(
         return;
     }
     for grant in adventure_play_from_grants {
+        if !grant_usage_limit_allows(game, player, grant.source_id, grant.usage_limit) {
+            continue;
+        }
         actions.push(LegalAction::CastSpell {
             spell_id: card_id,
             from_zone: grant.zone,

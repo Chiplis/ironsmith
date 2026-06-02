@@ -406,6 +406,7 @@ impl StaticAbilityModelInterpreter {
             filter: spec.filter.clone(),
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
+            usage_limit: spec.usage_limit,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()

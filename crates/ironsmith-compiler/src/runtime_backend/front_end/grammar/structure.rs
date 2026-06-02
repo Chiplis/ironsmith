@@ -670,6 +670,14 @@ pub(crate) fn classify_static_line_family_lexed(
         &[
             &["you", "may", "cast", "this", "card", "from", "your", "graveyard"],
             &["you", "may", "cast", "this", "spell", "from", "your", "graveyard"],
+            &[
+                "once", "each", "turn", "you", "may", "cast", "a", "spell", "from", "the",
+                "top", "of", "your", "library",
+            ],
+            &[
+                "once", "each", "turn", "you", "may", "cast", "spells", "from", "the", "top",
+                "of", "your", "library",
+            ],
         ],
     ) {
         return Some(StaticLineFamily::Generic);
