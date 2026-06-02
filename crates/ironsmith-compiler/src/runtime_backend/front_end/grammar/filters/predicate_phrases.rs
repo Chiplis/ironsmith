@@ -302,11 +302,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["there", "are", "no"];
-    contains_words & ["counters", "on"];
-    contains_any_words & [&["this", "it", "them"]]
-);
 const SOURCE_POWER_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -2858,6 +2853,45 @@ fn parse_there_are_source_counter_predicate(filtered: &[&str]) -> Option<Predica
     None
 }
 
+fn parse_there_are_no_source_counter_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let counter_words: &[&[&str]] = &[&["counter"], &["counters"]];
+    let atoms = [
+        LexPattern::word("there"),
+        LexPattern::action("are", LexCaptureKind::WordCount(1)),
+        LexPattern::amount("counter", LexCaptureKind::UntilAnyPhrase(counter_words)),
+        LexPattern::object("counter_word", LexCaptureKind::WordCount(1)),
+        LexPattern::modifier("tail", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["are"]) {
+        return None;
+    }
+    let counter_word = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        counter_word.word_refs().as_slice(),
+        ["counter"] | ["counters"]
+    ) {
+        return None;
+    }
+    let tail = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !source_counter_tail_matches(tail.word_refs().as_slice())
+        && !matches!(tail.word_refs().as_slice(), ["on", "them"])
+    {
+        return None;
+    }
+    let counter = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let counter_words = counter.word_refs();
+    if !matches!(counter_words.first(), Some(&"no")) {
+        return None;
+    }
+    let counter_prefix_len = 2 + counter_words.len();
+    let counter_type = parse_counter_type_from_tokens(&tokens[..=counter_prefix_len])?;
+    Some(PredicateAst::SourceHasNoCounter(counter_type))
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -3925,14 +3959,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if THERE_ARE_NO_COUNTERS_ON_SOURCE_PATTERN.matches_words(&filtered)
-        && let Some(counters_idx) = find_index(&raw_words, |word| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-        })
-        && counters_idx >= 4
-        && let Some(counter_type) = parse_counter_type_from_tokens(&tokens[..=counters_idx])
-    {
-        return Ok(PredicateAst::SourceHasNoCounter(counter_type));
+    if let Some(predicate) = parse_there_are_no_source_counter_predicate(&raw_words) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_source_has_counter_predicate(&raw_words) {
@@ -5529,6 +5557,29 @@ mod tests {
                     counter_type: CounterType::Time,
                     count: 5,
                 },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_there_are_no_source_counters_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if there are no more scream counters on it",
+                PredicateAst::SourceHasNoCounter(CounterType::Named("scream")),
+            ),
+            (
+                "if there are no time counters on them",
+                PredicateAst::SourceHasNoCounter(CounterType::Time),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
