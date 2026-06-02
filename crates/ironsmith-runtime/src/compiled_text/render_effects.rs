@@ -3470,6 +3470,7 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     describe_roll_choose_destroy_create_structural(effects)
+        .or_else(|| describe_draw_discard_then_conditional_untap_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
         .or_else(|| describe_gain_control_untap_haste_structural(effects))
@@ -3806,6 +3807,59 @@ fn describe_draw_discard_then_create_structural(effects: &[Effect]) -> Option<St
     let draw_discard = describe_draw_then_discard(draw, discard)?;
     let create = describe_effect(create_effect);
     Some(format!("{}. {}", capitalize_first(&draw_discard), create))
+}
+
+fn describe_draw_discard_then_conditional_untap_structural(effects: &[Effect]) -> Option<String> {
+    let (draw_effect, discard_effect, conditional_effect) = match effects {
+        [draw_effect, discard_effect, conditional_effect] => {
+            (draw_effect, discard_effect, conditional_effect)
+        }
+        [target_effect, draw_effect, discard_effect, conditional_effect] => {
+            target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            (draw_effect, discard_effect, conditional_effect)
+        }
+        _ => return None,
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let discard = unwrap_structural_effect_tag(discard_effect)
+        .downcast_ref::<crate::effects::DiscardEffect>()?;
+    let discard_tag = structural_effect_tag(discard_effect).or(discard.tag.as_ref())?;
+    let draw_discard = describe_draw_then_discard(draw, discard)?;
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+    } = &conditional.condition
+    else {
+        return None;
+    };
+    if tag != discard_tag || player != &draw.player {
+        return None;
+    }
+    let [untap_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let untap = untap_effect.downcast_ref::<crate::effects::UntapEffect>()?;
+    if !matches!(untap.target.unhinted(), ChooseSpec::Source) {
+        return None;
+    }
+
+    let subject = if *player == PlayerFilter::You {
+        "you".to_string()
+    } else {
+        "that player".to_string()
+    };
+    let object_text = describe_player_tagged_object_text(tag, filter);
+    let untap_text = lowercase_first(describe_effect(untap_effect).trim_end_matches('.'));
+    Some(format!(
+        "{}. If {subject} discards {object_text} this way, {untap_text}.",
+        capitalize_first(&draw_discard)
+    ))
 }
 
 fn join_or_list(items: &[String]) -> Option<String> {
