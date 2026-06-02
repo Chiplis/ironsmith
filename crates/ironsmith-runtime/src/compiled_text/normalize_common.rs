@@ -11499,6 +11499,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 )
             }
         }
+        Condition::SourceIsRingBearer { player } => format!(
+            "this creature is {} Ring-bearer",
+            describe_possessive_player_filter(player)
+        ),
+        Condition::PlayerRingTemptedThisGameOrMore { player, count } => {
+            let count_text = small_number_word(*count).unwrap_or_else(|| count.to_string());
+            format!(
+                "the Ring has tempted {} {count_text} or more times this game",
+                describe_player_filter(player)
+            )
+        }
         Condition::PlayerHadLandEnterBattlefieldThisTurn { player } => {
             format!(
                 "{} had a land enter the battlefield under {} control this turn",

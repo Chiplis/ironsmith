@@ -687,6 +687,13 @@ pub enum Condition {
     PlayerHasCitysBlessing {
         player: PlayerFilter,
     },
+    SourceIsRingBearer {
+        player: PlayerFilter,
+    },
+    PlayerRingTemptedThisGameOrMore {
+        player: PlayerFilter,
+        count: u32,
+    },
     PlayerCommittedCrimeThisTurn {
         player: PlayerFilter,
     },

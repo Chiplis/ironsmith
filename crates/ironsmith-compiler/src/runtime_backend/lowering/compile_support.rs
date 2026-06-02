@@ -410,6 +410,17 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasCitysBlessing { player }
         }
+        PredicateAst::SourceIsRingBearer { player } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::SourceIsRingBearer { player }
+        }
+        PredicateAst::PlayerRingTemptedThisGameOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerRingTemptedThisGameOrMore {
+                player,
+                count: *count,
+            }
+        }
         PredicateAst::PlayerCompletedDungeon {
             player,
             dungeon_name,

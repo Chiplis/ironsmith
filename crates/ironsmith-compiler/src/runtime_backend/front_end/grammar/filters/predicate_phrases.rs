@@ -195,6 +195,23 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
 );
 const YOU_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "attacked", "this", "turn"]);
+const SOURCE_IS_YOUR_RING_BEARER_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["this", "is", "your", "ring", "bearer"],
+            &["this", "creature", "is", "your", "ring", "bearer"],
+        ]
+);
+const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(
+        prefix_any
+            & [
+                &["ring", "has", "tempted", "you"],
+                &["the", "ring", "has", "tempted", "you"],
+            ]
+    );
+const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
 const TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -925,6 +942,60 @@ fn parse_source_exiled_with_counter_predicate(
             count,
         }),
     ))
+}
+
+fn parse_source_is_your_ring_bearer_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if SOURCE_IS_YOUR_RING_BEARER_PATTERN.matches_words(words) {
+        Some(PredicateAst::SourceIsRingBearer {
+            player: PlayerAst::You,
+        })
+    } else {
+        None
+    }
+}
+
+fn parse_ring_has_tempted_you_this_game_predicate(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    if !RING_HAS_TEMPTED_YOU_PREFIX_PATTERN.matches_words(words) {
+        return None;
+    }
+    let count_start = if words.first() == Some(&"the") { 5 } else { 4 };
+    let (count, used) = parse_number(tokens.get(count_start..)?)?;
+    let tail = words.get(count_start + used..)?;
+    if tail.len() == 5 && OR_MORE_PREFIX_PATTERN.matches_words(&tail[..2]) {
+        if TIMES_THIS_GAME_TAIL_PATTERN.matches_words(&tail[2..]) {
+            return Some(PredicateAst::PlayerRingTemptedThisGameOrMore {
+                player: PlayerAst::You,
+                count,
+            });
+        }
+    }
+    None
+}
+
+fn parse_ring_bearer_temptation_predicate(
+    words: &[&str],
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    if let Some(predicate) = parse_source_is_your_ring_bearer_predicate(words) {
+        return Some(predicate);
+    }
+    if let Some(predicate) = parse_ring_has_tempted_you_this_game_predicate(words, tokens) {
+        return Some(predicate);
+    }
+
+    let and_idx = find_index(words, |word| AND_WORD_PATTERN.matches_word(word))?;
+    let left_words = &words[..and_idx];
+    let right_words = &words[and_idx + 1..];
+    if left_words.is_empty() || right_words.is_empty() {
+        return None;
+    }
+    let left = parse_source_is_your_ring_bearer_predicate(left_words)?;
+    let right =
+        parse_ring_has_tempted_you_this_game_predicate(right_words, &tokens[and_idx + 1..])?;
+    Some(PredicateAst::And(Box::new(left), Box::new(right)))
 }
 
 fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option<PredicateAst> {
@@ -3855,6 +3926,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_ring_bearer_temptation_predicate(&filtered, tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_player_status_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -4641,6 +4716,31 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_supports_ring_bearer_temptation_gate() -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If this is your Ring-bearer and the Ring has tempted you two or more times this game",
+            0,
+        )?;
+        let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+        let parsed = parse_predicate(&predicate_tokens)?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::And(
+                Box::new(PredicateAst::SourceIsRingBearer {
+                    player: PlayerAst::You,
+                }),
+                Box::new(PredicateAst::PlayerRingTemptedThisGameOrMore {
+                    player: PlayerAst::You,
+                    count: 2,
+                })
+            )
+        );
         Ok(())
     }
 

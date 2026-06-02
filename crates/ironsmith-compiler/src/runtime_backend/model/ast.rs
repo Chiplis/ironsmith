@@ -475,6 +475,13 @@ pub(crate) enum PredicateAst {
     PlayerHasCitysBlessing {
         player: PlayerAst,
     },
+    SourceIsRingBearer {
+        player: PlayerAst,
+    },
+    PlayerRingTemptedThisGameOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerCompletedDungeon {
         player: PlayerAst,
         dungeon_name: Option<String>,
