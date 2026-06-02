@@ -58,15 +58,6 @@ const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
 const COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["color"], &["colors"]]);
 const AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
-const CARD_TYPES_AMONG_CARDS_IN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["card", "type", "among", "card", "in"],
-            &["card", "type", "among", "cards", "in"],
-            &["card", "types", "among", "card", "in"],
-            &["card", "types", "among", "cards", "in"],
-        ]
-);
 const TYPE_OR_TYPES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["type"], &["types"]]);
 const SACRIFICED_OR_SACRIFICED_TAG_WORD_PATTERN: ClauseShape<'static> =
@@ -306,31 +297,6 @@ const ON_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["on", "the", "battlefield"], &["on", "battlefield"]]);
 const ON_THE_BATTLEFIELD_SUFFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["on", "the", "battlefield"]);
-const YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your", "graveyard"]);
-const THAT_PLAYER_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "player", "graveyard"],
-            &["that", "players", "graveyard"],
-        ]
-);
-const TARGET_PLAYER_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["target", "player", "graveyard"],
-            &["target", "players", "graveyard"],
-        ]
-);
-const TARGET_OPPONENT_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["target", "opponent", "graveyard"],
-            &["target", "opponents", "graveyard"],
-        ]
-);
-const OPPONENT_GRAVEYARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["opponent", "graveyard"], &["opponents", "graveyard"]]);
-const YOU_HAVE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "have"]);
 const THAT_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "player"]);
 const TARGET_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
@@ -2967,6 +2933,62 @@ fn parse_basic_land_types_among_lands_predicate(filtered: &[&str]) -> Option<Pre
     Some(PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count })
 }
 
+fn parse_graveyard_card_types_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let card_type_phrases: &[&[&str]] = &[
+        &["card", "type", "among", "card", "in"],
+        &["card", "type", "among", "cards", "in"],
+        &["card", "types", "among", "card", "in"],
+        &["card", "types", "among", "cards", "in"],
+    ];
+    let atoms = [
+        LexPattern::subject("intro", LexCaptureKind::WordCount(2)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(card_type_phrases)),
+        LexPattern::object("domain", LexCaptureKind::WordCount(5)),
+        LexPattern::modifier("graveyard", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let intro = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let constrain_to_you = match intro.word_refs().as_slice() {
+        ["there", "are"] => false,
+        ["you", "have"] => true,
+        _ => return None,
+    };
+
+    let domain = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !card_type_phrases
+        .iter()
+        .any(|phrase| domain.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+
+    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let (comparison, used) = predicate_quantity_prefix(&count_clause.word_refs())?;
+    if used != count_clause.word_refs().len() {
+        return None;
+    }
+    let count = comparison_to_at_least_threshold(&comparison)?;
+
+    let graveyard = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let player = match graveyard.word_refs().as_slice() {
+        ["your", "graveyard"] => PlayerAst::You,
+        ["that", "player", "graveyard"] | ["that", "players", "graveyard"] => PlayerAst::That,
+        ["target", "player", "graveyard"] | ["target", "players", "graveyard"] => PlayerAst::Target,
+        ["target", "opponent", "graveyard"] | ["target", "opponents", "graveyard"] => {
+            PlayerAst::TargetOpponent
+        }
+        ["opponent", "graveyard"] | ["opponents", "graveyard"] => PlayerAst::Opponent,
+        _ => return None,
+    };
+    if constrain_to_you && player != PlayerAst::You {
+        return None;
+    }
+
+    Some(PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count })
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -4099,39 +4121,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    let parse_graveyard_card_types_subject = |words: &[&str]| -> Option<PlayerAst> {
-        if YOUR_GRAVEYARD_PATTERN.matches_words(words) {
-            Some(PlayerAst::You)
-        } else if THAT_PLAYER_GRAVEYARD_PATTERN.matches_words(words) {
-            Some(PlayerAst::That)
-        } else if TARGET_PLAYER_GRAVEYARD_PATTERN.matches_words(words) {
-            Some(PlayerAst::Target)
-        } else if TARGET_OPPONENT_GRAVEYARD_PATTERN.matches_words(words) {
-            Some(PlayerAst::TargetOpponent)
-        } else if OPPONENT_GRAVEYARD_PATTERN.matches_words(words) {
-            Some(PlayerAst::Opponent)
-        } else {
-            None
-        }
-    };
-    if filtered.len() >= 11 {
-        let (count_idx, subject_start, constrained_player) =
-            if THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
-                (2usize, 10usize, None)
-            } else if YOU_HAVE_PREFIX_PATTERN.matches_words(&filtered) {
-                (2usize, 10usize, Some(PlayerAst::You))
-            } else {
-                (usize::MAX, usize::MAX, None)
-            };
-        if count_idx != usize::MAX
-            && let Some((count, used)) = predicate_at_least_quantity_prefix(&filtered[count_idx..])
-            && CARD_TYPES_AMONG_CARDS_IN_PREFIX_PATTERN.matches_words(&filtered[count_idx + used..])
-            && subject_start <= filtered.len()
-            && let Some(player) = parse_graveyard_card_types_subject(&filtered[subject_start..])
-            && constrained_player.map_or(true, |expected| expected == player)
-        {
-            return Ok(PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count });
-        }
+    if let Some(predicate) = parse_graveyard_card_types_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     let parse_comparison_player_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
@@ -5645,6 +5636,41 @@ mod tests {
                 PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore {
                     player: PlayerAst::That,
                     count: 5,
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_graveyard_card_types_uses_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "if there are four or more card types among cards in your graveyard",
+                PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+                    player: PlayerAst::You,
+                    count: 4,
+                },
+            ),
+            (
+                "if you have four or more card types among cards in your graveyard",
+                PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+                    player: PlayerAst::You,
+                    count: 4,
+                },
+            ),
+            (
+                "if there are three card type among card in target opponent graveyard",
+                PredicateAst::PlayerHasCardTypesInGraveyardOrMore {
+                    player: PlayerAst::TargetOpponent,
+                    count: 3,
                 },
             ),
         ] {
