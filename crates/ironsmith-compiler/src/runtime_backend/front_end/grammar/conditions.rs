@@ -1666,6 +1666,10 @@ fn parse_lands_entered_this_turn_shape(
 pub(crate) fn parse_spell_context_condition(
     tokens: &[OwnedLexToken],
 ) -> Option<SpellContextConditionAst> {
+    if let Some(condition) = parse_spell_context_condition_shape(tokens) {
+        return Some(condition);
+    }
+
     let words = TokenWordView::new(tokens);
     let word_refs = words.to_word_refs();
 
@@ -1680,6 +1684,94 @@ pub(crate) fn parse_spell_context_condition(
     }
 
     None
+}
+
+fn parse_spell_context_condition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SpellContextConditionAst> {
+    parse_target_spell_controller_poisoned_shape(tokens)
+        .or_else(|| parse_no_mana_spent_to_cast_target_spell_shape(tokens))
+        .or_else(|| parse_you_control_more_creatures_than_spell_controller_shape(tokens))
+}
+
+fn parse_target_spell_controller_poisoned_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SpellContextConditionAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("controller", LexCaptureKind::UntilPhrase(&["poisoned"])),
+        LexPattern::object("status", LexCaptureKind::WordCount(1)),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let status_clause = matched.capture_clause("status", clause)?;
+    if !matches!(status_clause.word_refs().as_slice(), ["poisoned"]) {
+        return None;
+    }
+    let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let spell = parse_target_spell_controller_capture(&controller_clause.word_refs())?;
+    Some(SpellContextConditionAst::ControllerIsPoisoned { spell })
+}
+
+fn parse_no_mana_spent_to_cast_target_spell_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SpellContextConditionAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::amount("amount", LexCaptureKind::WordCount(2)),
+        LexPattern::action("action", LexCaptureKind::WordCount(4)),
+        LexPattern::object("spell", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let amount_clause = matched.capture_clause("amount", clause)?;
+    if !matches!(amount_clause.word_refs().as_slice(), ["no", "mana"]) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action_clause.word_refs().as_slice(),
+        ["was" | "were", "spent", "to", "cast"]
+    ) {
+        return None;
+    }
+    let spell_clause = matched.capture_clause("spell", clause)?;
+    let spell = parse_target_spell_reference(&spell_clause.word_refs())?;
+    Some(SpellContextConditionAst::NoManaSpentToCast { spell })
+}
+
+fn parse_you_control_more_creatures_than_spell_controller_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<SpellContextConditionAst> {
+    let clause = LexedClause::new(tokens);
+    let control_phrases: &[&[&str]] = &[&["control"], &["controls"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilAnyPhrase(control_phrases)),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object("controlled_object", LexCaptureKind::UntilPhrase(&["than"])),
+        LexPattern::word("than"),
+        LexPattern::object("controller", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(player_clause.word_refs().as_slice(), ["you"]) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(
+        action_clause.word_refs().as_slice(),
+        ["control" | "controls"]
+    ) {
+        return None;
+    }
+    let controlled_object_clause = matched.capture_clause("controlled_object", clause)?;
+    if !matches!(
+        controlled_object_clause.word_refs().as_slice(),
+        ["more", "creature" | "creatures"]
+    ) {
+        return None;
+    }
+    let controller_clause = matched.capture_clause("controller", clause)?;
+    let spell = parse_target_spell_controller_capture(&controller_clause.word_refs())?;
+    Some(SpellContextConditionAst::YouControlMoreCreaturesThanController { spell })
 }
 
 pub(crate) fn parse_player_spell_cast_this_turn_condition(
@@ -2731,6 +2823,15 @@ fn parse_target_spell_controller_subject<'a>(words: &'a [&'a str]) -> Option<&'a
         ["its", "controller", rest @ ..]
         | ["that", "spells", "controller", rest @ ..]
         | ["that", "spell", "controller", rest @ ..] => Some(rest),
+        _ => None,
+    }
+}
+
+fn parse_target_spell_controller_capture(words: &[&str]) -> Option<SpellContextReferenceAst> {
+    match words {
+        ["its", "controller"]
+        | ["that", "spells", "controller"]
+        | ["that", "spell", "controller"] => Some(SpellContextReferenceAst::TargetSpell),
         _ => None,
     }
 }
