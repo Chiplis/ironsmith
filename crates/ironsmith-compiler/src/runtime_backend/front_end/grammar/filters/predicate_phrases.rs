@@ -348,23 +348,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const THIS_HAS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "has"]);
-const THIS_TYPED_HAS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "creature", "has"],
-            &["this", "permanent", "has"],
-            &["this", "artifact", "has"],
-            &["this", "enchantment", "has"],
-            &["this", "land", "has"],
-            &["this", "planeswalker", "has"],
-            &["this", "battle", "has"],
-        ]
-);
-const COUNTER_ON_SOURCE_PRONOUN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["on"];
-    contains_any_words & [&["it", "him", "her", "them", "this", "that"]]
-);
 const COUNTER_ON_SOURCE_TAIL_ANY_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -673,6 +656,54 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         counter_type,
         count: 1,
     })
+}
+
+fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["has"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["has"])),
+        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
+        LexPattern::modifier("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_reference_words(&source_clause.word_refs()) {
+        return None;
+    }
+    let target_clause = matched.capture_clause("target", clause)?;
+    if !is_counter_on_source_pronoun_tail(&target_clause.word_refs()) {
+        return None;
+    }
+    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter_words = counter_clause.word_refs();
+    let (comparison, used) = predicate_quantity_prefix(&counter_words)?;
+    let count = comparison_to_at_least_threshold(&comparison)?;
+    let counter_tail = counter_clause.tokens().get(used..)?;
+    let counter_tail_words = crate::runtime_backend::token_word_refs(counter_tail);
+    let counter_idx = find_index(&counter_tail_words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    })?;
+    if counter_idx == 0 || counter_idx + 1 != counter_tail_words.len() {
+        return None;
+    }
+    let counter_type = parse_counter_type_from_tokens(counter_tail.get(..=counter_idx)?)?;
+    Some(PredicateAst::SourceHasCounterAtLeast {
+        counter_type,
+        count,
+    })
+}
+
+fn is_counter_on_source_pronoun_tail(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["on", "it"]
+            | ["on", "him"]
+            | ["on", "her"]
+            | ["on", "them"]
+            | ["on", "this"]
+            | ["on", "that"]
+    )
 }
 
 fn parse_there_are_no_counters_on_source_predicate(
@@ -4091,14 +4122,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let source_has_counter_prefix_len = if THIS_HAS_PREFIX_PATTERN.matches_words(&raw_words) {
-        Some(2)
-    } else if raw_words.len() >= 3 && THIS_TYPED_HAS_PREFIX_PATTERN.matches_words(&raw_words) {
-        Some(3)
-    } else {
-        None
-    };
     if let Some(predicate) = parse_source_has_counter_predicate(tokens) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_source_has_counted_counter_predicate(tokens) {
         return Ok(predicate);
     }
 
@@ -4133,27 +4161,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                 });
             }
         }
-    }
-
-    if let Some(prefix_len) = source_has_counter_prefix_len
-        && raw_words.len() >= prefix_len + 6
-        && let Some((comparison, used)) = predicate_quantity_prefix(&raw_words[prefix_len..])
-        && let Some(count) = comparison_to_at_least_threshold(&comparison)
-        && let Some(counter_idx) = find_index(&raw_words[prefix_len + used..], |word| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-        })
-        && counter_idx > 0
-        && let Some(counter_type) = parse_counter_type_from_tokens(
-            &tokens[prefix_len + used..=prefix_len + used + counter_idx],
-        )
-        && raw_words
-            .get(prefix_len + used + counter_idx + 1..)
-            .is_some_and(|tail| COUNTER_ON_SOURCE_PRONOUN_TAIL_PATTERN.matches_words(tail))
-    {
-        return Ok(PredicateAst::SourceHasCounterAtLeast {
-            counter_type,
-            count,
-        });
     }
 
     if let Some(predicate) = parse_source_power_threshold_predicate(&filtered) {
@@ -6417,6 +6424,13 @@ mod tests {
                 PredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::PlusOnePlusOne,
                     count: 1,
+                },
+            ),
+            (
+                "If this creature has two stun counters on it",
+                PredicateAst::SourceHasCounterAtLeast {
+                    counter_type: CounterType::Stun,
+                    count: 2,
                 },
             ),
         ] {
