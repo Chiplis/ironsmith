@@ -253,52 +253,6 @@ const IS_PUT_ONTO_BATTLEFIELD_THIS_WAY_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["is", "put", "onto", "battlefield", "this", "way"]);
 const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
-const YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "you",
-                "or",
-                "player",
-                "youre",
-                "attacking",
-                "has",
-                "initiative",
-            ],
-            &[
-                "you",
-                "or",
-                "a",
-                "player",
-                "youre",
-                "attacking",
-                "has",
-                "the",
-                "initiative",
-            ],
-        ]
-);
-const IT_IS_NIGHT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["its", "night"], &["it", "is", "night"], &["it", "night"]]);
-const FIRST_COMBAT_PHASE_OF_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "its", "the", "first", "combat", "phase", "of", "the", "turn",
-            ],
-            &[
-                "it", "is", "the", "first", "combat", "phase", "of", "the", "turn",
-            ],
-            &["it", "first", "combat", "phase", "of", "turn"],
-            &["it", "the", "first", "combat", "phase", "of", "the", "turn"],
-        ]
-);
-const CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you", "cast", "this", "spell", "during", "your", "main", "phase",
-        ]
-);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const THAT_PLAYER_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1761,6 +1715,110 @@ fn parse_player_status_predicate(words: &[&str]) -> Option<PredicateAst> {
             })
         }
     }
+}
+
+fn parse_world_state_or_timing_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_initiative_choice_predicate_shape(&tokens)
+        .or_else(|| parse_night_state_predicate_shape(&tokens))
+        .or_else(|| parse_first_combat_phase_predicate_shape(&tokens))
+        .or_else(|| parse_cast_this_spell_during_main_phase_shape(&tokens))
+}
+
+fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrase = &["has"];
+    let atoms = [
+        LexPattern::subject("first_player", LexCaptureKind::OneOf(&["you"])),
+        LexPattern::word("or"),
+        LexPattern::subject("second_player", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action(
+            "status_verb",
+            LexCaptureKind::WordCount(action_phrase.len()),
+        ),
+        LexPattern::object("status", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let second_player = matched.capture_clause("second_player", clause)?;
+    if !matches!(
+        second_player.word_refs().as_slice(),
+        ["player", "youre", "attacking"] | ["a", "player", "youre", "attacking"]
+    ) {
+        return None;
+    }
+    let status = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(
+        status.word_refs().as_slice(),
+        ["initiative"] | ["the", "initiative"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::Or(
+        Box::new(PredicateAst::PlayerHasInitiative {
+            player: PlayerAst::You,
+        }),
+        Box::new(PredicateAst::PlayerHasInitiative {
+            player: PlayerAst::Defending,
+        }),
+    ))
+}
+
+fn parse_night_state_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let copula = [LexPattern::action("copula", LexCaptureKind::OneOf(&["is"]))];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::OneOf(&["it", "its"])),
+        LexPattern::optional(&copula),
+        LexPattern::object("state", LexCaptureKind::OneOf(&["night"])),
+    ];
+    LexPattern::new(&atoms).match_clause(clause)?;
+    Some(PredicateAst::ItIsNight)
+}
+
+fn parse_first_combat_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let copula = [LexPattern::action("copula", LexCaptureKind::OneOf(&["is"]))];
+    let article = [LexPattern::word("the")];
+    let tail_article = [LexPattern::word("the")];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::OneOf(&["it", "its"])),
+        LexPattern::optional(&copula),
+        LexPattern::optional(&article),
+        LexPattern::object("phase", LexCaptureKind::WordCount(3)),
+        LexPattern::word("of"),
+        LexPattern::optional(&tail_article),
+        LexPattern::modifier("turn", LexCaptureKind::OneOf(&["turn"])),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let phase = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(phase.word_refs().as_slice(), ["first", "combat", "phase"]) {
+        return None;
+    }
+    Some(PredicateAst::FirstCombatPhaseOfTurn)
+}
+
+fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let during_phrase = &["during"];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::OneOf(&["you"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["cast"])),
+        LexPattern::object("spell", LexCaptureKind::UntilPhrase(during_phrase)),
+        LexPattern::word("during"),
+        LexPattern::modifier("phase", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(object.word_refs().as_slice(), ["this", "spell"]) {
+        return None;
+    }
+    let phase = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(phase.word_refs().as_slice(), ["your", "main", "phase"]) {
+        return None;
+    }
+    Some(PredicateAst::ThisSpellPaidLabel(
+        "CastDuringYourMainPhase".to_string(),
+    ))
 }
 
 fn parse_player_achievement_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -4600,33 +4658,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if YOU_OR_DEFENDING_PLAYER_HAS_INITIATIVE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Or(
-            Box::new(PredicateAst::PlayerHasInitiative {
-                player: PlayerAst::You,
-            }),
-            Box::new(PredicateAst::PlayerHasInitiative {
-                player: PlayerAst::Defending,
-            }),
-        ));
-    }
-
-    if IT_IS_NIGHT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ItIsNight);
-    }
-
-    if FIRST_COMBAT_PHASE_OF_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::FirstCombatPhaseOfTurn);
+    if let Some(predicate) = parse_world_state_or_timing_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_combat_damage_this_turn_predicate(&filtered) {
         return Ok(predicate);
-    }
-
-    if CAST_THIS_SPELL_DURING_YOUR_MAIN_PHASE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel(
-            "CastDuringYourMainPhase".to_string(),
-        ));
     }
 
     if let Some(predicate) = parse_player_spell_cast_this_turn_predicate(&filtered) {
@@ -4723,24 +4760,54 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_you_or_player_youre_attacking_has_initiative()
-    -> Result<(), CardTextError> {
-        let tokens = lex_line("If you or a player you're attacking has the initiative", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+    fn parse_predicate_world_state_timing_uses_shared_capture_parser() -> Result<(), CardTextError>
+    {
+        for (text, expected) in [
+            (
+                "If you or player you're attacking has initiative",
+                PredicateAst::Or(
+                    Box::new(PredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::You,
+                    }),
+                    Box::new(PredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::Defending,
+                    }),
+                ),
+            ),
+            (
+                "If you or a player you're attacking has the initiative",
+                PredicateAst::Or(
+                    Box::new(PredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::You,
+                    }),
+                    Box::new(PredicateAst::PlayerHasInitiative {
+                        player: PlayerAst::Defending,
+                    }),
+                ),
+            ),
+            ("If it's night", PredicateAst::ItIsNight),
+            ("If it is night", PredicateAst::ItIsNight),
+            ("If it night", PredicateAst::ItIsNight),
+            (
+                "If it's the first combat phase of the turn",
+                PredicateAst::FirstCombatPhaseOfTurn,
+            ),
+            (
+                "If it first combat phase of turn",
+                PredicateAst::FirstCombatPhaseOfTurn,
+            ),
+            (
+                "If you cast this spell during your main phase",
+                PredicateAst::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string()),
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(
-            parsed,
-            PredicateAst::Or(
-                Box::new(PredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::You,
-                }),
-                Box::new(PredicateAst::PlayerHasInitiative {
-                    player: PlayerAst::Defending,
-                }),
-            )
-        );
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
@@ -4945,28 +5012,6 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_its_night() -> Result<(), CardTextError> {
-        let tokens = lex_line("If it's night", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-
-        assert_eq!(parsed, PredicateAst::ItIsNight);
-        Ok(())
-    }
-
-    #[test]
-    fn parse_predicate_accepts_first_combat_phase_of_turn() -> Result<(), CardTextError> {
-        let tokens = lex_line("If it's the first combat phase of the turn", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-
-        assert_eq!(parsed, PredicateAst::FirstCombatPhaseOfTurn);
-        Ok(())
-    }
-
-    #[test]
     fn parse_predicate_inherits_it_for_bare_or_descriptor_tail() -> Result<(), CardTextError> {
         let tokens = lex_line("If it's a creature or planeswalker card", 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);
@@ -5066,21 +5111,6 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
-        Ok(())
-    }
-
-    #[test]
-    fn parse_predicate_supports_you_cast_this_spell_during_your_main_phase()
-    -> Result<(), CardTextError> {
-        let tokens = lex_line("If you cast this spell during your main phase", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
-
-        let parsed = parse_predicate(&predicate_tokens)?;
-
-        assert_eq!(
-            parsed,
-            PredicateAst::ThisSpellPaidLabel("CastDuringYourMainPhase".to_string())
-        );
         Ok(())
     }
 
