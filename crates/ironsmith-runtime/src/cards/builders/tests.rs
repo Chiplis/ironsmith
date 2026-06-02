@@ -36609,6 +36609,139 @@ fn season_of_the_burrow_weighted_mode_boundary_rejects_more_than_five_points() {
 }
 
 #[test]
+fn season_of_the_burrow_priority_mode_prompt_exposes_weighted_costs() {
+    let mut def = parse_oracle_card_definition("Season of the Burrow");
+    def.card.mana_cost = Some(ManaCost::new());
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_702), "Bob's Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_703), "Alice's Keepsake")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut trigger_queue = crate::triggers::check::TriggerQueue::new();
+    let progress = crate::game_loop::apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(crate::decision::LegalAction::CastSpell {
+            spell_id: source,
+            from_zone: Zone::Hand,
+            casting_method: crate::alternative_cast::CastingMethod::Normal,
+        }),
+    )
+    .expect("casting Season should reach the mode chooser");
+
+    let modes_ctx = match progress {
+        crate::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Modes(ctx),
+        ) => ctx,
+        other => panic!("expected Season modal choice decision, got {other:?}"),
+    };
+    assert_eq!(modes_ctx.spec.min_modes, 0);
+    assert_eq!(modes_ctx.spec.max_modes, 5);
+    assert!(modes_ctx.spec.allow_repeated_modes);
+    assert_eq!(
+        modes_ctx
+            .spec
+            .modes
+            .iter()
+            .map(|mode| mode.point_cost)
+            .collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+
+    struct AssertSeasonModeCostsDecisionMaker {
+        saw_select_options_context: bool,
+    }
+
+    impl crate::decision::DecisionMaker for AssertSeasonModeCostsDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            self.saw_select_options_context = true;
+            assert_eq!(ctx.min, 0);
+            assert_eq!(ctx.max, 5);
+            assert_eq!(
+                ctx.options
+                    .iter()
+                    .map(|option| option.point_cost)
+                    .collect::<Vec<_>>(),
+                vec![1, 2, 3]
+            );
+            assert!(ctx.selection_within_limits(&[2, 1]));
+            assert!(!ctx.selection_within_limits(&[2, 2]));
+            vec![2, 1]
+        }
+    }
+
+    let mut dm = AssertSeasonModeCostsDecisionMaker {
+        saw_select_options_context: false,
+    };
+    let progress = crate::game_loop::apply_decision_context_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::decisions::context::DecisionContext::Modes(modes_ctx),
+        &mut dm,
+    )
+    .expect("five-point Season mode selection should be accepted");
+
+    assert!(dm.saw_select_options_context);
+    match progress {
+        crate::GameProgress::NeedsDecisionCtx(
+            crate::decisions::context::DecisionContext::Targets(ctx),
+        ) => assert_eq!(ctx.requirements.len(), 2),
+        other => panic!(
+            "expected Season target prompt after selecting weighted modes, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn season_of_the_burrow_direct_resolution_rejects_over_budget_modes() {
+    let def = parse_oracle_card_definition("Season of the Burrow");
+    let modal = season_of_the_burrow_modal_effect(&def).clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![2, 2]));
+
+    let result = modal.execute(&mut game, &mut ctx);
+
+    assert!(
+        result.is_err(),
+        "direct Season resolution must reject two 3-point modes instead of truncating to one"
+    );
+}
+
+#[test]
 fn season_of_the_burrow_target_requirements_enforce_mode_filters() {
     let def = parse_oracle_card_definition("Season of the Burrow");
     let effects = def

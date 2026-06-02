@@ -92,13 +92,25 @@ pub trait DecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::SelectOptionsContext,
     ) -> Vec<usize> {
-        // Default: select minimum required from legal options
-        ctx.options
-            .iter()
-            .filter(|o| o.legal)
-            .map(|o| o.index)
-            .take(ctx.min)
-            .collect()
+        // Default: select legal options until the required point total is met.
+        if ctx.min == 0 {
+            return Vec::new();
+        }
+
+        let mut selected = Vec::new();
+        let mut total = 0usize;
+        for option in ctx.options.iter().filter(|o| o.legal) {
+            let cost = option.point_cost.max(1) as usize;
+            if total.saturating_add(cost) > ctx.max {
+                continue;
+            }
+            selected.push(option.index);
+            total += cost;
+            if total >= ctx.min {
+                break;
+            }
+        }
+        selected
     }
 
     /// Ordering (blockers, attackers, scry, surveil).
@@ -2964,18 +2976,25 @@ fn prompt_select_options(
     max: usize,
 ) -> Vec<usize> {
     println!("Available options:");
+    let weighted = options.iter().any(|option| option.point_cost != 1);
     for opt in options {
         let legal_marker = if opt.legal { "" } else { " [ILLEGAL]" };
-        println!("  {}: {}{}", opt.index, opt.description, legal_marker);
+        let cost_marker = if weighted {
+            format!(" [{} points]", opt.point_cost)
+        } else {
+            String::new()
+        };
+        println!(
+            "  {}: {}{}{}",
+            opt.index, opt.description, cost_marker, legal_marker
+        );
     }
 
     if min == max && min == 1 {
         println!("Select one option:");
     } else {
-        println!(
-            "Select {} to {} option(s) (comma-separated indices):",
-            min, max
-        );
+        let unit = if weighted { "option point(s)" } else { "option(s)" };
+        println!("Select {} to {} {} (comma-separated indices):", min, max, unit);
     }
 
     loop {
@@ -3018,13 +3037,18 @@ fn prompt_select_options(
             continue;
         }
 
-        // Validate count
-        if selected.len() < min {
-            println!("Must select at least {} option(s).", min);
+        // Validate point total. Unweighted options cost 1, preserving count-based behavior.
+        let selected_total: usize = selected
+            .iter()
+            .filter_map(|idx| options.iter().find(|option| option.index == *idx))
+            .map(|option| option.point_cost.max(1) as usize)
+            .sum();
+        if selected_total < min {
+            println!("Must select at least {} option point(s).", min);
             continue;
         }
-        if selected.len() > max {
-            println!("Cannot select more than {} option(s).", max);
+        if selected_total > max {
+            println!("Cannot select more than {} option point(s).", max);
             continue;
         }
 

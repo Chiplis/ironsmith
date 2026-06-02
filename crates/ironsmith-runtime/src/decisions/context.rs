@@ -555,6 +555,8 @@ pub struct SelectableOption {
     pub repeatable: bool,
     /// Maximum times this option can be selected when repeatable.
     pub max_count: Option<u32>,
+    /// Point cost for weighted option selection. Unweighted options cost 1.
+    pub point_cost: u32,
     /// Optional object this option is associated with for richer UI rendering.
     pub object_id: Option<ObjectId>,
     /// Optional related objects this option would affect or otherwise refers to.
@@ -570,6 +572,7 @@ impl SelectableOption {
             legal: true,
             repeatable: false,
             max_count: Some(1),
+            point_cost: 1,
             object_id: None,
             related_object_ids: None,
         }
@@ -583,6 +586,7 @@ impl SelectableOption {
             legal,
             repeatable: false,
             max_count: Some(1),
+            point_cost: 1,
             object_id: None,
             related_object_ids: None,
         }
@@ -591,6 +595,11 @@ impl SelectableOption {
     pub fn with_repeatability(mut self, repeatable: bool, max_count: Option<u32>) -> Self {
         self.repeatable = repeatable;
         self.max_count = max_count;
+        self
+    }
+
+    pub fn with_point_cost(mut self, point_cost: u32) -> Self {
+        self.point_cost = point_cost.max(1);
         self
     }
 
@@ -712,6 +721,19 @@ impl SelectOptionsContext {
             .ui_hints
             .with_hidden_card_view(object_ids, visibility, description);
         self
+    }
+
+    pub fn selected_point_total(&self, selected: &[usize]) -> usize {
+        selected
+            .iter()
+            .filter_map(|idx| self.options.iter().find(|option| option.index == *idx))
+            .map(|option| option.point_cost.max(1) as usize)
+            .sum()
+    }
+
+    pub fn selection_within_limits(&self, selected: &[usize]) -> bool {
+        let total = self.selected_point_total(selected);
+        total >= self.min && total <= self.max
     }
 }
 

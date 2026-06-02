@@ -214,6 +214,7 @@ pub(crate) fn run_choose_mode(
             min_modes,
             max_modes,
             effect.allow_repeated_modes,
+            effect.mode_point_costs.clone(),
         );
         make_decision(
             game,
@@ -227,25 +228,28 @@ pub(crate) fn run_choose_mode(
         return Ok(EffectOutcome::count(0));
     }
 
-    // Filter to valid/legal indices while preserving selection order.
+    // Validate selected mode indices while preserving selection order.
     let mut valid_chosen_indices: Vec<usize> = Vec::new();
     let mut chosen_point_total = 0usize;
     for idx in chosen_indices {
         if !is_mode_legal(idx) {
-            continue;
+            return Err(ExecutionError::Impossible(
+                "Selected mode is not legal".to_string(),
+            ));
         }
         if !effect.allow_repeated_modes && valid_chosen_indices.contains(&idx) {
-            continue;
+            return Err(ExecutionError::Impossible(
+                "Selected mode cannot be repeated".to_string(),
+            ));
         }
         let point_cost = mode_point_cost(effect, idx);
         if chosen_point_total.saturating_add(point_cost) > max_modes {
-            continue;
+            return Err(ExecutionError::Impossible(
+                "Selected modes exceed the modal point limit".to_string(),
+            ));
         }
         valid_chosen_indices.push(idx);
         chosen_point_total += point_cost;
-        if chosen_point_total >= max_modes {
-            break;
-        }
     }
 
     if selected_mode_point_total(effect, &valid_chosen_indices) < min_modes {

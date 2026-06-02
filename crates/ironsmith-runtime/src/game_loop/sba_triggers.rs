@@ -700,6 +700,7 @@ fn choose_trigger_modes(
         min_modes,
         max_modes,
         modal_spec.allow_repeated_modes,
+        modal_spec.mode_point_costs.clone(),
     );
     let chosen: Vec<usize> = crate::decisions::make_decision(
         game,
