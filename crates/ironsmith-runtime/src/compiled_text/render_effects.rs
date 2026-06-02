@@ -35878,6 +35878,9 @@ fn describe_mana_usage_restriction(
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }
+        crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts => {
+            Some("Spend this mana only to pay cumulative upkeep costs".to_string())
+        }
     }
 }
 

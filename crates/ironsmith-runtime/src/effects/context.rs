@@ -160,6 +160,8 @@ pub struct ManaExecutionContext {
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for mana produced by the source.
     pub mana_source_chosen_creature_type: Option<Subtype>,
+    /// Why mana costs paid by this effect are being paid.
+    pub payment_reason: crate::costs::PaymentReason,
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.

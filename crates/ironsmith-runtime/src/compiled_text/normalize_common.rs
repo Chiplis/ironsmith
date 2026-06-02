@@ -109,6 +109,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         {
             "its controller".to_string()
         }
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == "triggering" =>
+        {
+            "its controller".to_string()
+        }
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Target) => {
             "its controller".to_string()
         }
@@ -947,6 +952,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("pays ", "pay "),
         ("loses ", "lose "),
         ("gains ", "gain "),
+        ("adds ", "add "),
         ("draws ", "draw "),
         ("puts ", "put "),
         ("discards ", "discard "),
@@ -1954,11 +1960,47 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     normalized
 }
 
+fn normalize_tap_for_mana_conditional_restriction(line: &str) -> String {
+    let Some(rest) = line.strip_prefix("Whenever a player taps ") else {
+        return line.to_string();
+    };
+    let Some((object_phrase, rest)) = rest.split_once(" for mana, its controller may add ") else {
+        return line.to_string();
+    };
+    let Some((base_mana, rest)) = rest.split_once(". Spend this mana only to ") else {
+        return line.to_string();
+    };
+    let Some((restriction_tail, rest)) = rest.split_once(". If that object is ") else {
+        return line.to_string();
+    };
+    let Some((condition, rest)) = rest.split_once(", its controller may add ") else {
+        return line.to_string();
+    };
+    let Some((replacement_mana, replacement_restriction)) =
+        rest.split_once(". Spend this mana only to ")
+    else {
+        return line.to_string();
+    };
+    let replacement_restriction = replacement_restriction.trim_end_matches('.');
+    let Some(replacement_restriction) = replacement_restriction.strip_suffix(" instead") else {
+        return line.to_string();
+    };
+    if restriction_tail != replacement_restriction {
+        return line.to_string();
+    }
+
+    let object_noun = strip_leading_article(object_phrase);
+    format!(
+        "Whenever {object_phrase} is tapped for mana, its controller may add an additional {base_mana}. If that {object_noun} is {condition}, its controller may add an additional {replacement_mana} instead. Spend this mana only to {restriction_tail}"
+    )
+}
+
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
+    normalized = normalize_tap_for_mana_conditional_restriction(&normalized);
     normalized = normalized
         .replace(" and gains This creature can't ", " and can't ")
         .replace(" and gains This creature cant ", " and can't ")
@@ -11944,6 +11986,48 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                         "creature"
                     };
                     return is_clause(noun);
+                }
+                if filter.supertypes.len() == 1
+                    && filter.zone.is_none()
+                    && filter.controller.is_none()
+                    && filter.owner.is_none()
+                    && !filter.single_graveyard
+                    && filter.card_types.is_empty()
+                    && filter.all_card_types.is_empty()
+                    && filter.excluded_card_types.is_empty()
+                    && filter.subtypes.is_empty()
+                    && filter.excluded_subtypes.is_empty()
+                    && filter.excluded_supertypes.is_empty()
+                    && filter.colors.is_none()
+                    && filter.excluded_colors.is_empty()
+                    && !filter.colorless
+                    && !filter.multicolored
+                    && !filter.monocolored
+                    && filter.all_colors.is_none()
+                    && filter.exactly_two_colors.is_none()
+                    && filter.power.is_none()
+                    && filter.toughness.is_none()
+                    && filter.total_power_toughness.is_none()
+                    && filter.mana_value.is_none()
+                    && filter.with_counter.is_none()
+                    && filter.without_counter.is_none()
+                    && filter.name.is_none()
+                    && filter.excluded_name.is_none()
+                    && filter.tagged_constraints.is_empty()
+                    && filter.any_of.is_empty()
+                    && !filter.source
+                {
+                    let supertype = match filter.supertypes[0] {
+                        Supertype::Basic => "basic",
+                        Supertype::Legendary => "legendary",
+                        Supertype::Snow => "snow",
+                        Supertype::World => "world",
+                    };
+                    return if subject == "it" {
+                        format!("it's {supertype}")
+                    } else {
+                        format!("{subject} is {supertype}")
+                    };
                 }
                 if filter.subtypes.len() == 1
                     && filter.zone.is_none()

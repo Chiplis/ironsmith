@@ -39,6 +39,7 @@ pub enum ManaUsageRestriction {
         granted_abilities: Vec<StaticAbilityId>,
     },
     ActivateAbility,
+    PayCumulativeUpkeepCosts,
 }
 
 impl Eq for ManaUsageRestriction {}

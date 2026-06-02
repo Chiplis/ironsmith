@@ -24,20 +24,21 @@ fn try_pay_interactively(
     player_id: PlayerId,
 ) -> bool {
     const MAX_PAYMENT_STEPS: usize = 32;
+    let reason = ctx.mana.payment_reason;
 
     for _ in 0..MAX_PAYMENT_STEPS {
         let adjusted_cost = game.adjust_mana_cost_for_payment_reason(
             player_id,
             Some(ctx.source),
             &effect.cost,
-            crate::costs::PaymentReason::Effect,
+            reason,
         );
         let can_pay_now = game.can_pay_mana_cost_with_reason(
             player_id,
             Some(ctx.source),
             &adjusted_cost,
             0,
-            crate::costs::PaymentReason::Effect,
+            reason,
         );
         let mana_abilities = get_available_mana_abilities(game, player_id, &mut ctx.decision_maker);
 
@@ -88,7 +89,7 @@ fn try_pay_interactively(
                     Some(ctx.source),
                     &adjusted_cost,
                     0,
-                    crate::costs::PaymentReason::Effect,
+                    reason,
                 );
             }
             return false;
@@ -104,7 +105,7 @@ fn try_pay_interactively(
                     Some(ctx.source),
                     &adjusted_cost,
                     0,
-                    crate::costs::PaymentReason::Effect,
+                    reason,
                 );
             }
             PayManaChoice::ActivateManaAbility {
@@ -127,14 +128,14 @@ fn try_pay_interactively(
         player_id,
         Some(ctx.source),
         &effect.cost,
-        crate::costs::PaymentReason::Effect,
+        reason,
     );
     game.try_pay_mana_cost_with_reason(
         player_id,
         Some(ctx.source),
         &adjusted_cost,
         0,
-        crate::costs::PaymentReason::Effect,
+        reason,
     )
 }
 

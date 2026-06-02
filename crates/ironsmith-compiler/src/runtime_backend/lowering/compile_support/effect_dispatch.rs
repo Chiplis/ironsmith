@@ -150,19 +150,19 @@ fn compile_effect_inner(
         restrictions,
     } = effect
     {
-        let mut compiled_effects = Vec::new();
-        let mut choices = Vec::new();
-        for child in effects {
-            let (mut child_effects, mut child_choices) = compile_effect(child, ctx)?;
-            compiled_effects.append(&mut child_effects);
-            choices.append(&mut child_choices);
-        }
+        let lowered = compile_statement_effects_with_imports(
+            effects,
+            &ReferenceImports {
+                last_object_tag: ctx.last_object_tag.clone().map(TagKey::from),
+                ..ReferenceImports::default()
+            },
+        )?;
         return Ok((
             vec![Effect::mana_restricted(
-                compiled_effects,
+                lowered.effects.flattened_default_effects().to_vec(),
                 restrictions.clone(),
             )],
-            choices,
+            lowered.choices,
         ));
     }
     if let EffectAst::RepeatEffects { count, effects } = effect {
