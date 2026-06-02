@@ -4591,32 +4591,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 5
-        && matches!(
-            filtered.as_slice(),
-            ["this", "permanent", "attached", "to", ..]
-                | ["that", "permanent", "attached", "to", ..]
-                | ["this", "permanent", "is", "attached", "to", ..]
-                | ["that", "permanent", "is", "attached", "to", ..]
-        )
-    {
-        let attached_start = if IS_OR_ARE_WORD_PATTERN.matches_word_at(&filtered, 2) {
-            5
-        } else {
-            4
-        };
-        let attached_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[attached_start..]);
-        let mut filter = parse_object_filter(&attached_tokens, false)?;
-        if filter.card_types.is_empty() {
-            filter.card_types.push(CardType::Creature);
-        }
-        return Ok(PredicateAst::TaggedMatches(
-            TagKey::from("enchanted"),
-            filter,
-        ));
-    }
-
     let sacrificed_idx = if SACRIFICED_WORD_PATTERN.matches_word_at(&filtered, 0) {
         Some(0usize)
     } else if filtered.len() >= 2
@@ -6064,6 +6038,8 @@ mod tests {
         for text in [
             "If this permanent is attached to a creature",
             "If that permanent attached to an artifact creature",
+            "If this permanent attached to an enchantment creature",
+            "If that permanent is attached to a land creature",
         ] {
             let tokens = lex_line(text, 0)?;
             let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
