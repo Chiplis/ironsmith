@@ -594,6 +594,77 @@ fn parse_source_keyword_predicate(words: &[&str]) -> Option<PredicateAst> {
     Some(PredicateAst::SourceMatches(filter))
 }
 
+fn parse_you_life_total_at_most_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let have_atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["have"])),
+        LexPattern::amount("amount", LexCaptureKind::UntilLastPhrase(&["life"])),
+        LexPattern::object("unit", LexCaptureKind::OneOf(&["life"])),
+    ];
+    if let Some(matched) = LexPattern::new(&have_atoms).match_clause(clause) {
+        let player = matched
+            .capture_clause_by_role(LexCaptureRole::Subject, clause)
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing player in life predicate".to_string())
+            })?;
+        if matches!(player.word_refs().as_slice(), ["you"]) {
+            let amount = matched
+                .capture_clause_by_role(LexCaptureRole::Amount, clause)
+                .ok_or_else(|| {
+                    CardTextError::ParseError("missing amount in life predicate".to_string())
+                })?;
+            return life_total_at_most_from_amount_tokens(amount.tokens());
+        }
+    }
+
+    let total_atoms = [
+        LexPattern::subject("life_total", LexCaptureKind::WordCount(3)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["is"])),
+        LexPattern::amount("amount", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&total_atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let subject = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing subject in life predicate".to_string())
+        })?;
+    if !matches!(subject.word_refs().as_slice(), ["your", "life", "total"]) {
+        return Ok(None);
+    }
+    let amount = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)
+        .ok_or_else(|| CardTextError::ParseError("missing amount in life predicate".to_string()))?;
+    life_total_at_most_from_amount_tokens(amount.tokens())
+}
+
+fn life_total_at_most_from_amount_tokens(
+    amount_tokens: &[OwnedLexToken],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some((amount, used)) = parse_less_than_or_equal_quantity_prefix(
+        amount_tokens,
+        false,
+        false,
+        "life-total predicate",
+    )?
+    else {
+        return Ok(None);
+    };
+    if used != amount_tokens.len() {
+        return Ok(None);
+    }
+    Ok(Some(PredicateAst::ValueComparison {
+        left: Value::LifeTotal(PlayerFilter::You),
+        operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+        right: Value::Fixed(amount as i32),
+    }))
+}
+
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     parse_source_possessive_power_threshold_shape(&tokens)
@@ -4326,48 +4397,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 4 && filtered.get(0..2) == Some(&["you", "have"]) {
-        let tail_words = &filtered[2..];
-        if tail_words.last().copied() == Some("life") {
-            let quantity_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
-                &tail_words[..tail_words.len() - 1],
-            );
-            if let Some((amount, used)) = parse_less_than_or_equal_quantity_prefix(
-                &quantity_tokens,
-                false,
-                false,
-                "life-total predicate",
-            )
-            .ok()
-            .flatten()
-                && used == tail_words.len() - 1
-            {
-                return Ok(PredicateAst::ValueComparison {
-                    left: Value::LifeTotal(PlayerFilter::You),
-                    operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
-                    right: Value::Fixed(amount as i32),
-                });
-            }
-        }
-    }
-    if filtered.len() >= 6 && filtered.get(0..4) == Some(&["your", "life", "total", "is"]) {
-        let quantity_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[4..]);
-        if let Some((amount, used)) = parse_less_than_or_equal_quantity_prefix(
-            &quantity_tokens,
-            false,
-            false,
-            "life-total predicate",
-        )
-        .ok()
-        .flatten()
-            && used == filtered.len() - 4
-        {
-            return Ok(PredicateAst::ValueComparison {
-                left: Value::LifeTotal(PlayerFilter::You),
-                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
-                right: Value::Fixed(amount as i32),
-            });
-        }
+    if let Some(predicate) = parse_you_life_total_at_most_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_object_keyword_predicate(&filtered)? {
@@ -6530,6 +6561,14 @@ mod tests {
         for (text, expected) in [
             (
                 "If you have five or less life",
+                PredicateAst::ValueComparison {
+                    left: crate::effect::Value::LifeTotal(PlayerFilter::You),
+                    operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                    right: crate::effect::Value::Fixed(5),
+                },
+            ),
+            (
+                "If your life total is five or less",
                 PredicateAst::ValueComparison {
                     left: crate::effect::Value::LifeTotal(PlayerFilter::You),
                     operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
