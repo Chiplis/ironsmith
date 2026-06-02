@@ -70,6 +70,24 @@ fn describe_pay_any_energy_amount(
     }
 }
 
+fn is_target_permanent_with_counter_or_suspended_card(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::Target(inner) = spec else {
+        return false;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return false;
+    };
+    let permanent = crate::target::ObjectFilter::permanent().with_any_counter();
+    let suspended = crate::target::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Exile)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    filter.any_of.len() == 2
+        && filter.zone.is_none()
+        && filter.any_of.iter().any(|arm| arm == &permanent)
+        && filter.any_of.iter().any(|arm| arm == &suspended)
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -35930,9 +35948,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
     {
+        let target = describe_choose_spec(&for_each_counter_kind.target);
+        if for_each_counter_kind.all_kinds {
+            return format!(
+                "For each kind of counter on {target}, choose to put or remove one of that kind"
+            );
+        }
+        if is_target_permanent_with_counter_or_suspended_card(&for_each_counter_kind.target) {
+            return "Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it".to_string();
+        }
         return format!(
-            "For each kind of counter on {}, choose to put or remove one of that kind",
-            describe_choose_spec(&for_each_counter_kind.target)
+            "Choose a counter on {target}. Remove that counter from it or put another of those counters on it"
         );
     }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantEffect>() {

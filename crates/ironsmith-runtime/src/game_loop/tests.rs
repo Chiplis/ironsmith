@@ -6663,6 +6663,191 @@ fn bought_back_instant_returns_to_owners_hand_after_resolution() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_600), "Clockspinning")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Buyback {3}
+Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it.",
+        )
+        .expect("Clockspinning should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn suspended_card_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_601), "Suspended Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Suspend 3—{U}")
+        .expect("suspend probe should parse for Clockspinning target tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ClockspinningDecisionMaker {
+    mode_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ClockspinningDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description == "Choose a counter kind" {
+            vec![0]
+        } else if ctx.description.starts_with("Choose for ") {
+            vec![self.mode_index.min(ctx.options.len().saturating_sub(1))]
+        } else {
+            vec![0]
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_counter_effect(
+    def: &crate::cards::CardDefinition,
+) -> &crate::effect::Effect {
+    def.spell_effect
+        .as_ref()
+        .expect("Clockspinning should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
+                .is_some()
+        })
+        .expect("Clockspinning should have a chosen-counter put/remove effect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_target_permanent(game: &mut GameState, controller: PlayerId) -> ObjectId {
+    let target = CardBuilder::new(CardId::from_raw(80_602), "Clockspinning Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&target, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_targets_only_countered_permanents_or_suspended_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let effects = def.spell_effect.as_ref().expect("Clockspinning spell effects");
+
+    let countered_permanent = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(countered_permanent, crate::object::CounterType::Charge, 1)
+        .expect("countered permanent should accept a charge counter");
+    let uncountered_permanent = clockspinning_target_permanent(&mut game, alice);
+    let suspended = suspended_card_definition();
+    let suspended_id = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(suspended_id, crate::object::CounterType::Time, 1)
+        .expect("suspended card should accept a time counter");
+    let uncountered_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    let no_longer_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(no_longer_suspended, crate::object::CounterType::Charge, 1)
+        .expect("exiled suspend card should accept non-time counters");
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Clockspinning should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(countered_permanent)),
+        "countered permanents should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(suspended_id)),
+        "suspended cards with counters should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(uncountered_permanent)),
+        "permanents without counters should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(uncountered_suspended)),
+        "suspended cards without counters should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(no_longer_suspended)),
+        "exiled cards with suspend but no time counter should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_buyback_put_branch_returns_to_hand_and_adds_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 1)
+        .expect("target should accept an initial charge counter");
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.mark_label_paid("Buyback");
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_optional_costs_paid(paid)
+            .with_source_info(
+                game.object(spell_id)
+                    .expect("Clockspinning spell object")
+                    .stable_id,
+                "Clockspinning".to_string(),
+            ),
+    );
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 0 };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Clockspinning should resolve its put branch");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        2,
+        "Clockspinning put branch should add one chosen counter kind"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Clockspinning")),
+        "Clockspinning should return to hand when buyback was paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_remove_branch_removes_one_chosen_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 2)
+        .expect("target should accept charge counters");
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 1 };
+    let ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    let mut ctx = ctx.with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, clockspinning_counter_effect(&def), &mut ctx)
+        .expect("Clockspinning remove branch should execute");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        1,
+        "Clockspinning remove branch should remove exactly one chosen counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn feudkillers_verdict_creates_token_when_you_have_more_life_than_an_opponent() {
     let mut game = setup_game();
