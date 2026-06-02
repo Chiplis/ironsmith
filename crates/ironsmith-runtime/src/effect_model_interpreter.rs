@@ -711,6 +711,10 @@ where
     {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::UnattachObjectsEffect>(&effect)
+    {
+        return Ok(converted);
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::SequenceEffect<M::Effect>>(&effect) {
         return Ok(Effect::new(crate::effects::SequenceEffect::new(
             convert_effects(payload.effects.iter().cloned(), hooks)?,

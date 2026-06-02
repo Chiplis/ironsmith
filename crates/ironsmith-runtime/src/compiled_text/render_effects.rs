@@ -2899,11 +2899,27 @@ fn describe_choose_each_basic_land_type_then_destroy(effects: &[&Effect]) -> Opt
 
 fn describe_distributed_damage_target(target: &ChooseSpec) -> String {
     match target {
+        ChooseSpec::WithCount(inner, count)
+            if matches!(inner.as_ref(), ChooseSpec::AnyTarget)
+                && count.min == 1
+                && count.max == Some(3) =>
+        {
+            "one, two, or three targets".to_string()
+        }
         ChooseSpec::WithCount(inner, count) if !inner.is_target() => {
             describe_choose_spec(&ChooseSpec::target(inner.as_ref().clone()).with_count(*count))
         }
         _ => describe_choose_spec(target),
     }
+}
+
+fn describe_distributed_damage_amount(value: &Value) -> String {
+    if let Value::ManaValueOf(spec) = value
+        && matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str().starts_with("unattach_cost_"))
+    {
+        return "that Equipment's mana value".to_string();
+    }
+    describe_value(value)
 }
 
 fn describe_for_each_tagged_shuffle_into_owner_library(
@@ -15993,7 +16009,7 @@ pub(super) fn describe_inline_ability_with_self_subject(
                 }
                 line.push_str(&clause);
             }
-            if line.is_empty() {
+            let line = if line.is_empty() {
                 "an activated ability".to_string()
             } else if activated.is_exhaust_ability() {
                 format!(
@@ -16002,9 +16018,65 @@ pub(super) fn describe_inline_ability_with_self_subject(
                 )
             } else {
                 normalize_ability_self_reference_surface(&line, self_subject)
+            };
+            if let Some(label) = activated_presentation_label(activated)
+                && !line.starts_with(label)
+            {
+                format!("{label} — {line}")
+            } else {
+                line
             }
         }
     }
+}
+
+fn activated_presentation_label(activated: &crate::ability::ActivatedAbility) -> Option<&str> {
+    activated
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix("__ironsmith_activation_label:"))
+        .or_else(|| inferred_throw_activation_label(activated))
+}
+
+fn inferred_throw_activation_label(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<&'static str> {
+    let unattach_tag = activated
+        .mana_cost
+        .costs()
+        .iter()
+        .filter_map(|cost| cost.effect_ref())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::UnattachObjectsEffect>()
+                .and_then(|unattach| match unattach.objects.base() {
+                    ChooseSpec::Tagged(tag) => Some(tag.as_str()),
+                    _ => None,
+                })
+        })?;
+
+    activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .any(|effect| effect_is_distributed_damage_from_tag(effect, unattach_tag))
+        .then_some("Throw ...")
+}
+
+fn effect_is_distributed_damage_from_tag(effect: &Effect, tag: &str) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return effect_is_distributed_damage_from_tag(tagged.effect.as_ref(), tag);
+    }
+
+    effect
+        .downcast_ref::<crate::effects::DealDistributedDamageEffect>()
+        .is_some_and(|damage| {
+            matches!(
+                &damage.amount,
+                crate::effect::Value::ManaValueOf(spec)
+                    if matches!(spec.as_ref(), ChooseSpec::Tagged(amount_tag) if amount_tag.as_str() == tag)
+            )
+        })
 }
 
 fn describe_granted_ability_phrase(ability: &Ability, self_subject: &str) -> String {
@@ -16712,6 +16784,11 @@ fn apply_triggered_presentation_label(
     if label.is_empty() || label.starts_with("__ironsmith_") || line.starts_with(label) {
         return line;
     }
+    let label = if label.eq_ignore_ascii_case("catch") {
+        "... Catch"
+    } else {
+        label
+    };
     format!("{label} — {line}")
 }
 
@@ -19561,6 +19638,19 @@ fn describe_cost_component_parts(costs: &[crate::costs::Cost]) -> Vec<String> {
             && let Some(choose) = costs[idx]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(unattach) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::UnattachObjectsEffect>())
+            && let Some(compact) = describe_choose_then_unattach_cost(choose, unattach)
+        {
+            parts.push(normalize_cost_phrase(&compact));
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(choose) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             && let Some(return_to_hand) = costs[idx + 1]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
@@ -19574,6 +19664,36 @@ fn describe_cost_component_parts(costs: &[crate::costs::Cost]) -> Vec<String> {
         idx += 1;
     }
     parts
+}
+
+fn describe_choose_then_unattach_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    unattach: &crate::effects::UnattachObjectsEffect,
+) -> Option<String> {
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || !matches!(unattach.objects.base(), ChooseSpec::Tagged(tag) if tag.as_str() == choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
+    if exact == 0 {
+        return None;
+    }
+    let noun = choose.filter.description();
+    if exact == 1 {
+        return Some(format!(
+            "Unattach {} from this source",
+            with_indefinite_article(&noun)
+        ));
+    }
+    let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
+    Some(format!(
+        "Unattach {count} {} from this source",
+        pluralize_noun_phrase(&noun)
+    ))
 }
 
 fn describe_choose_then_return_to_hand_cost(
@@ -30365,9 +30485,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(distributed) = effect.downcast_ref::<crate::effects::DealDistributedDamageEffect>()
     {
+        let amount = describe_distributed_damage_amount(&distributed.amount);
+        if amount.contains("mana value") {
+            return format!(
+                "Deal damage equal to {amount} divided as you choose among {}",
+                describe_distributed_damage_target(&distributed.target)
+            );
+        }
         return format!(
             "Deal {} damage divided as you choose among {}",
-            describe_value(&distributed.amount),
+            amount,
             describe_distributed_damage_target(&distributed.target)
         );
     }
@@ -36192,6 +36319,9 @@ pub(super) fn collect_activation_restriction_clauses(
         if raw.starts_with(STATION_THRESHOLD_RESTRICTION_PREFIX) {
             continue;
         }
+        if raw.starts_with("__ironsmith_activation_label:") {
+            continue;
+        }
         if raw
             .to_ascii_lowercase()
             .contains("exhaust ability only once")
@@ -39336,7 +39466,8 @@ pub(super) fn describe_ability(
             }
             let is_grandeur = is_grandeur_activation_cost(activated);
             let is_exhaust = activated.is_exhaust_ability();
-            let mut line = if is_grandeur || is_exhaust {
+            let has_presentation_label = activated_presentation_label(activated).is_some();
+            let mut line = if is_grandeur || is_exhaust || has_presentation_label {
                 String::new()
             } else {
                 format!("Activated ability {index}")
@@ -39416,6 +39547,10 @@ pub(super) fn describe_ability(
             }
             if is_exhaust {
                 line = format!("Exhaust — {line}");
+            } else if let Some(label) = activated_presentation_label(activated)
+                && !line.starts_with(label)
+            {
+                line = format!("{label} — {line}");
             }
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);

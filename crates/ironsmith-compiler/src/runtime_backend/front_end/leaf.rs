@@ -102,6 +102,10 @@ pub(crate) enum ActivationCostSegmentCst {
         filter_text: String,
         other: bool,
     },
+    UnattachChosen {
+        count: u32,
+        filter_text: String,
+    },
     ExileSelf,
     ExileSelfFromGraveyard,
     ExileFromHand {
@@ -827,6 +831,52 @@ fn parse_sacrifice_segment_tokens(
     })
 }
 
+fn parse_unattach_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<ActivationCostSegmentCst, CardTextError> {
+    let raw = render_lower_lexed_tokens(tokens);
+    let words = LeafCompatWords::new(tokens);
+    let lowered = words.to_word_refs();
+    let tail = lowered.get(1..).unwrap_or_default();
+
+    let mut idx = 0usize;
+    let mut count = 1u32;
+    if let Some((parsed, consumed_words)) = parse_count_prefix_words(tail) {
+        count = parsed;
+        idx = consumed_words;
+    } else if LEAF_A_OR_AN_WORD_PATTERN.matches_first_word(tail) {
+        idx = 1;
+    }
+
+    let filter_end = tail
+        .iter()
+        .position(|word| LEAF_FROM_WORD_PATTERN.matches_word(word))
+        .unwrap_or(tail.len());
+    if filter_end <= idx {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite unattach parser missing filter in '{raw}'"
+        )));
+    }
+
+    let from_tail = &tail[filter_end..];
+    if !from_tail.is_empty()
+        && !from_tail.get(1..).is_some_and(is_source_reference_words)
+    {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite unattach parser only supports unattach-from-source costs in '{raw}'"
+        )));
+    }
+
+    let filter_text = tail[idx..filter_end].join(" ");
+    if filter_text.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "rewrite unattach parser missing filter in '{raw}'"
+        )));
+    }
+
+    Ok(ActivationCostSegmentCst::UnattachChosen { count, filter_text })
+}
+
 fn parse_tap_chosen_segment_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<ActivationCostSegmentCst, CardTextError> {
@@ -1324,6 +1374,7 @@ fn parse_activation_cost_segment_tokens(
         "discard" => Some(parse_discard_segment_tokens(tokens)),
         "mill" => Some(parse_mill_segment_tokens(tokens)),
         "sacrifice" => Some(parse_sacrifice_segment_tokens(tokens)),
+        "unattach" => Some(parse_unattach_segment_tokens(tokens)),
         "tap" if word_slice_contains_word(&lowered, "untapped") => {
             Some(parse_tap_chosen_segment_tokens(tokens))
         }
@@ -1729,6 +1780,7 @@ fn starts_new_activation_cost_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
                 | "discard"
                 | "mill"
                 | "sacrifice"
+                | "unattach"
                 | "exile"
                 | "return"
                 | "put"
@@ -2063,6 +2115,29 @@ pub(crate) fn lower_activation_cost_cst(
                     Effect::sacrifice(ObjectFilter::tagged(tag), *count)
                 };
                 costs.push(Cost::validated_effect(sacrifice));
+            }
+            ActivationCostSegmentCst::UnattachChosen { count, filter_text } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let normalized_filter_text = if *count == 1 {
+                    strip_single_choice_article_from_filter_text(filter_text)
+                } else {
+                    filter_text.trim().to_string()
+                };
+                let mut filter = parse_filter_text(normalized_filter_text.as_str(), false)?;
+                if filter.zone.is_none() {
+                    filter.zone = Some(crate::zone::Zone::Battlefield);
+                }
+                let tag = format!("unattach_cost_{return_tag_id}");
+                return_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter,
+                    ChoiceCount::exactly(*count as usize),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::unattach_objects(
+                    crate::target::ChooseSpec::tagged(tag),
+                )));
             }
             ActivationCostSegmentCst::ExileSelf => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);

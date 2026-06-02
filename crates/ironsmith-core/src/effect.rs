@@ -5534,6 +5534,17 @@ impl AttachObjectsEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct UnattachObjectsEffect {
+    pub objects: ChooseSpec,
+}
+
+impl UnattachObjectsEffect {
+    pub fn new(objects: ChooseSpec) -> Self {
+        Self { objects }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RevealTopEffect {
     pub player: PlayerFilter,
     pub tag: Option<TagKey>,

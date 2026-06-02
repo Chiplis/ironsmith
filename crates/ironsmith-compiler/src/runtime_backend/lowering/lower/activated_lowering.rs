@@ -3,6 +3,7 @@ use super::super::ir::RewriteActivatedLine;
 use super::*;
 use crate::effect::Effect;
 use crate::object::CounterType;
+use crate::runtime_backend::util::find_first_unattach_cost_choice_tag;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -639,11 +640,19 @@ fn lower_rewrite_activated_to_chunk_impl(
     let original_effect_mentions_where_x =
         tokens_mention_phrase(original_effect_parse_tokens, WHERE_X_IS_PHRASE);
     let ability_text = rewrite_activated_display_text(line);
-    let additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
+    let presentation_display = line
+        .presentation_label
+        .as_deref()
+        .or(line.chosen_option_label.as_deref())
+        .and_then(activated_presentation_display_label);
+    let mut additional_activation_restrictions = if activated_line_has_exhaust_label(line) {
         vec!["Activate each exhaust ability only once.".to_string()]
     } else {
         Vec::new()
     };
+    if let Some(display) = presentation_display {
+        additional_activation_restrictions.push(format!("__ironsmith_activation_label:{display}"));
+    }
     if contains_token_word_sequence(&effect_parse_tokens, ADD_X_MANA_PHRASE)
         && !has_x_definition_value
         && !original_effect_mentions_where_x
@@ -749,6 +758,7 @@ fn lower_rewrite_activated_to_chunk_impl(
             )?;
             let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
                 .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
+                .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
                 .map(ReferenceImports::with_last_object_tag)
                 .unwrap_or_default();
             let mut parsed = ParsedAbility {
@@ -811,6 +821,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     )?;
     let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
         .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
+        .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
         .map(ReferenceImports::with_last_object_tag)
         .unwrap_or_default();
     let mut parsed = ParsedAbility {
@@ -910,6 +921,9 @@ fn activated_line_has_exhaust_label(line: &RewriteActivatedLine) -> bool {
 }
 
 fn activated_presentation_display_label(label: &str) -> Option<&'static str> {
+    if label.eq_ignore_ascii_case("Throw ...") || label.eq_ignore_ascii_case("Throw") {
+        return Some("Throw ...");
+    }
     let label_tokens = lex_line(label, 0).ok();
     let label_words = label_tokens
         .as_deref()

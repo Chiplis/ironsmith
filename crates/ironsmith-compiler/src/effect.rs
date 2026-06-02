@@ -1116,6 +1116,10 @@ impl Effect {
         Self::new(crate::effects::AttachObjectsEffect::new(objects, target))
     }
 
+    pub fn unattach_objects(objects: crate::target::ChooseSpec) -> Self {
+        Self::new(crate::effects::UnattachObjectsEffect::new(objects))
+    }
+
     pub fn transform(target: crate::target::ChooseSpec) -> Self {
         Self::new(crate::effects::TransformEffect::new(target))
     }
