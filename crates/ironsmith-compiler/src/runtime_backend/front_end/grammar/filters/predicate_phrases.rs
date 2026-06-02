@@ -159,17 +159,6 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
-const THAT_PLAYER_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["that", "player", "control"],
-            &["that", "player", "controls"],
-            &["that", "players", "control"],
-            &["that", "players", "controls"],
-        ]
-);
 const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -180,8 +169,6 @@ const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
 const NOT_TOKEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["not", "token"]);
 const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "enchantment"]);
-const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["your", "graveyard"]);
 const YOU_BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "both", "own", "and"]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
@@ -755,6 +742,191 @@ fn parse_player_controls_predicate(
         }));
     }
     Ok(Some(PredicateAst::PlayerControls { player, filter }))
+}
+
+fn parse_positive_player_controls_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if let Some(predicate) = parse_you_control_or_graveyard_predicate(filtered)? {
+        return Ok(Some(predicate));
+    }
+    if let Some(predicate) = parse_you_control_conjoined_predicate(filtered)? {
+        return Ok(Some(predicate));
+    }
+    parse_player_control_clause_predicate(filtered)
+}
+
+fn parse_player_control_clause_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["control"], &["controls"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(subject) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return Ok(None);
+    };
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controls"]) {
+        return Ok(None);
+    }
+    let prefix_len = subject.word_refs().len() + action.word_refs().len();
+    match subject.word_refs().as_slice() {
+        ["you"] => parse_player_controls_predicate(
+            filtered,
+            PlayerAst::You,
+            Some(PlayerFilter::You),
+            prefix_len,
+            true,
+            true,
+        ),
+        ["that", "player"] | ["that", "players"] => parse_player_controls_predicate(
+            filtered,
+            PlayerAst::That,
+            None,
+            prefix_len,
+            false,
+            false,
+        ),
+        _ => Ok(None),
+    }
+}
+
+fn parse_you_control_or_graveyard_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::object("controlled", LexCaptureKind::UntilPhrase(&["or"])),
+        LexPattern::word("or"),
+        LexPattern::modifier("graveyard", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(player) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return Ok(None);
+    };
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return Ok(None);
+    }
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controls"]) {
+        return Ok(None);
+    }
+    let Some(controlled) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    if controlled.word_refs().is_empty() {
+        return Ok(None);
+    }
+    let Some(graveyard) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause) else {
+        return Ok(None);
+    };
+    let mut graveyard_words = graveyard.word_refs();
+    if graveyard_words
+        .first()
+        .is_some_and(|word| THERE_WORD_PATTERN.matches_word(word))
+    {
+        graveyard_words.remove(0);
+    }
+    if !graveyard_words
+        .windows(2)
+        .any(|window| matches!(window, ["your", "graveyard"]))
+    {
+        return Ok(None);
+    }
+
+    let left_tokens = controlled.tokens();
+    let right_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&graveyard_words);
+    let (Ok(mut control_filter), Ok(mut graveyard_filter)) = (
+        parse_object_filter(left_tokens, false),
+        parse_object_filter(&right_tokens, false),
+    ) else {
+        return Ok(None);
+    };
+    control_filter.controller = Some(PlayerFilter::You);
+    if graveyard_filter.zone.is_none() {
+        graveyard_filter.zone = Some(Zone::Graveyard);
+    }
+    if graveyard_filter.owner.is_none() {
+        graveyard_filter.owner = Some(PlayerFilter::You);
+    }
+    Ok(Some(PredicateAst::PlayerControlsOrHasCardInGraveyard {
+        player: PlayerAst::You,
+        control_filter,
+        graveyard_filter,
+    }))
+}
+
+fn parse_you_control_conjoined_predicate(
+    filtered: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::WordCount(1)),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::modifier("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(player) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return Ok(None);
+    };
+    if !matches!(player.word_refs().as_slice(), ["you"]) {
+        return Ok(None);
+    }
+    let Some(action) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controls"]) {
+        return Ok(None);
+    }
+    let Some(left) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let Some(right) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause) else {
+        return Ok(None);
+    };
+    if left.word_refs().is_empty() || right.word_refs().is_empty() {
+        return Ok(None);
+    }
+    let (Ok(mut left_filter), Ok(mut right_filter)) = (
+        parse_object_filter(left.tokens(), false),
+        parse_object_filter(right.tokens(), false),
+    ) else {
+        return Ok(None);
+    };
+    left_filter.controller = Some(PlayerFilter::You);
+    right_filter.controller = Some(PlayerFilter::You);
+    Ok(Some(PredicateAst::And(
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: left_filter,
+        }),
+        Box::new(PredicateAst::PlayerControls {
+            player: PlayerAst::You,
+            filter: right_filter,
+        }),
+    )))
 }
 
 fn parse_negative_player_controls_predicate(
@@ -4798,90 +4970,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if filtered.len() >= 7
-        && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some(or_idx) = find_index(&filtered, |word| OR_WORD_PATTERN.matches_word(word))
-        && or_idx > 2
-    {
-        let left_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[2..or_idx]);
-        let mut right_words = filtered[or_idx + 1..].to_vec();
-        if right_words
-            .first()
-            .is_some_and(|word| THERE_WORD_PATTERN.matches_word(word))
-        {
-            right_words = right_words[1..].to_vec();
-        }
-        if YOUR_GRAVEYARD_WORDS_PATTERN.matches_words(&right_words) {
-            let right_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(right_words);
-            if let (Ok(mut control_filter), Ok(mut graveyard_filter)) = (
-                parse_object_filter(&left_tokens, false),
-                parse_object_filter(&right_tokens, false),
-            ) {
-                control_filter.controller = Some(PlayerFilter::You);
-                if graveyard_filter.zone.is_none() {
-                    graveyard_filter.zone = Some(Zone::Graveyard);
-                }
-                if graveyard_filter.owner.is_none() {
-                    graveyard_filter.owner = Some(PlayerFilter::You);
-                }
-                return Ok(PredicateAst::PlayerControlsOrHasCardInGraveyard {
-                    player: PlayerAst::You,
-                    control_filter,
-                    graveyard_filter,
-                });
-            }
-        }
-    }
-
-    if filtered.len() >= 3 && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some(and_idx) =
-            find_index(&filtered[2..], |word| AND_WORD_PATTERN.matches_word(word))
-        {
-            let and_idx = 2 + and_idx;
-            if and_idx > 2 && and_idx + 1 < filtered.len() {
-                let left_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[2..and_idx]);
-                let right_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[and_idx + 1..]);
-                if let (Ok(mut left_filter), Ok(mut right_filter)) = (
-                    parse_object_filter(&left_tokens, false),
-                    parse_object_filter(&right_tokens, false),
-                ) {
-                    left_filter.controller = Some(PlayerFilter::You);
-                    right_filter.controller = Some(PlayerFilter::You);
-                    return Ok(PredicateAst::And(
-                        Box::new(PredicateAst::PlayerControls {
-                            player: PlayerAst::You,
-                            filter: left_filter,
-                        }),
-                        Box::new(PredicateAst::PlayerControls {
-                            player: PlayerAst::You,
-                            filter: right_filter,
-                        }),
-                    ));
-                }
-            }
-        }
-
-        if let Some(predicate) = parse_player_controls_predicate(
-            &filtered,
-            PlayerAst::You,
-            Some(PlayerFilter::You),
-            2,
-            true,
-            true,
-        )? {
-            return Ok(predicate);
-        }
-    }
-
-    if filtered.len() >= 4 && THAT_PLAYER_CONTROLS_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some(predicate) =
-            parse_player_controls_predicate(&filtered, PlayerAst::That, None, 3, false, false)?
-        {
-            return Ok(predicate);
-        }
+    if let Some(predicate) = parse_positive_player_controls_predicate(&filtered)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_tagged_object_lifecycle_predicate(&filtered) {
@@ -5116,6 +5206,29 @@ mod tests {
                     filter: ObjectFilter::land(),
                     count: 2,
                 },
+            ),
+            (
+                "If you control an artifact or an artifact card in your graveyard",
+                PredicateAst::PlayerControlsOrHasCardInGraveyard {
+                    player: PlayerAst::You,
+                    control_filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+                    graveyard_filter: ObjectFilter::artifact()
+                        .in_zone(Zone::Graveyard)
+                        .owned_by(PlayerFilter::You),
+                },
+            ),
+            (
+                "If you control an artifact and an enchantment",
+                PredicateAst::And(
+                    Box::new(PredicateAst::PlayerControls {
+                        player: PlayerAst::You,
+                        filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+                    }),
+                    Box::new(PredicateAst::PlayerControls {
+                        player: PlayerAst::You,
+                        filter: ObjectFilter::enchantment().controlled_by(PlayerFilter::You),
+                    }),
+                ),
             ),
         ] {
             let tokens = lex_line(text, 0)?;
