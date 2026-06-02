@@ -29,7 +29,130 @@ use crate::replacement::{
 };
 use crate::types::CardType;
 use crate::zone::Zone;
-use application::{apply_trait_enter_tapped, apply_trait_replacement, find_matching_cards_in_hand};
+use application::{
+    apply_trait_enter_tapped, apply_trait_enter_with_counters, apply_trait_replacement,
+    find_matching_cards_in_hand,
+};
+
+fn apply_tribute_response(
+    game: &GameState,
+    event: Event,
+    response: &InteractiveReplacementResponse,
+    source: ObjectId,
+    controller: PlayerId,
+    counter_type: CounterType,
+    count: u32,
+    paid_label: &str,
+    paid_labels: &mut Vec<String>,
+    dm: &mut dyn DecisionMaker,
+) -> Event {
+    let response = resolve_tribute_response(game, response, source, controller, count, dm);
+    if !matches!(response, InteractiveReplacementResponse::Accept) {
+        return event;
+    }
+    if !paid_labels
+        .iter()
+        .any(|existing| existing.eq_ignore_ascii_case(paid_label))
+    {
+        paid_labels.push(paid_label.to_string());
+    }
+    apply_trait_enter_with_counters(&event, counter_type, count, &[], &[]).unwrap_or(event)
+}
+
+pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
+    let mut opponents = game
+        .players
+        .iter()
+        .filter(|player| player.is_in_game() && player.id != controller)
+        .map(|player| player.id)
+        .collect::<Vec<_>>();
+    opponents.sort_by_key(|player| player.0);
+    opponents
+}
+
+fn tribute_source_name(game: &GameState, source: ObjectId) -> String {
+    game.object(source)
+        .map(|object| object.name.clone())
+        .unwrap_or_else(|| "this creature".to_string())
+}
+
+pub(super) fn tribute_boolean_context(
+    game: &GameState,
+    source: ObjectId,
+    opponent: PlayerId,
+    count: u32,
+) -> crate::decisions::context::DecisionContext {
+    let source_name = tribute_source_name(game, source);
+    let bool_ctx = crate::decisions::context::BooleanContext::new(
+        opponent,
+        Some(source),
+        format!("Put {count} +1/+1 counters on {source_name}? (Tribute {count})"),
+    )
+    .with_source_name(source_name);
+    crate::decisions::context::DecisionContext::Boolean(bool_ctx)
+}
+
+pub(super) fn tribute_opponent_choice_context(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    opponents: &[PlayerId],
+) -> crate::decisions::context::DecisionContext {
+    let source_name = tribute_source_name(game, source);
+    let options = opponents
+        .iter()
+        .enumerate()
+        .map(|(index, opponent)| {
+            let name = game
+                .player(*opponent)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| format!("Player {}", opponent.index() + 1));
+            crate::decisions::context::SelectableOption::new(index, name)
+        })
+        .collect();
+    crate::decisions::context::DecisionContext::SelectOptions(
+        crate::decisions::context::SelectOptionsContext::new(
+            controller,
+            Some(source),
+            format!("Choose an opponent for {source_name}'s tribute"),
+            options,
+            1,
+            1,
+        ),
+    )
+}
+
+fn resolve_tribute_response(
+    game: &GameState,
+    response: &InteractiveReplacementResponse,
+    source: ObjectId,
+    controller: PlayerId,
+    count: u32,
+    dm: &mut dyn DecisionMaker,
+) -> InteractiveReplacementResponse {
+    let InteractiveReplacementResponse::Options(selected) = response else {
+        return response.clone();
+    };
+    let opponents = tribute_opponents(game, controller);
+    let Some(opponent) = selected
+        .first()
+        .and_then(|index| opponents.get(*index))
+        .copied()
+        .or_else(|| opponents.first().copied())
+    else {
+        return InteractiveReplacementResponse::Decline;
+    };
+    let crate::decisions::context::DecisionContext::Boolean(ctx) =
+        tribute_boolean_context(game, source, opponent, count)
+    else {
+        return InteractiveReplacementResponse::Decline;
+    };
+    if dm.decide_boolean(game, &ctx) {
+        InteractiveReplacementResponse::Accept
+    } else {
+        InteractiveReplacementResponse::Decline
+    }
+}
 
 fn replacement_effect_choice_description(game: &GameState, effect: &ReplacementEffect) -> String {
     match &effect.replacement {
@@ -2089,6 +2212,8 @@ pub struct EtbEventResult {
     pub set_base_power_toughness: Option<(i32, i32)>,
     /// If set, the controller to use as the object enters.
     pub controller_override: Option<crate::ids::PlayerId>,
+    /// Keyword payment labels set by as-enters replacements.
+    pub paid_labels: Vec<String>,
     /// An interactive replacement that requires player input.
     ///
     /// If present, the caller must:
@@ -2824,6 +2949,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
         etb_event_provenance,
     );
     let mut state = TraitEventProcessingState::default();
+    let mut paid_labels = Vec::new();
 
     loop {
         let copy_choice_consumed = copy_choice_effects
@@ -2897,6 +3023,7 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         added_abilities: etb.added_abilities.clone(),
                         set_base_power_toughness: etb.set_base_power_toughness,
                         controller_override: etb.controller_override,
+                        paid_labels,
                         interactive_replacement: None,
                     };
                 }
@@ -3051,6 +3178,26 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             _ => InteractiveReplacementResponse::Decline,
                         };
                         state.mark_applied(effect_id);
+                        if let ReplacementAction::Tribute {
+                            counter_type,
+                            count,
+                            paid_label,
+                        } = &chosen_effect.replacement
+                        {
+                            current_event = apply_tribute_response(
+                                game,
+                                current_event,
+                                &response,
+                                chosen_effect.source,
+                                chosen_effect.controller,
+                                *counter_type,
+                                *count,
+                                paid_label,
+                                &mut paid_labels,
+                                dm,
+                            );
+                            continue;
+                        }
                         let interactive_result = continue_interactive_replacement(
                             game,
                             &response,
@@ -3109,6 +3256,27 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                     _ => InteractiveReplacementResponse::Decline,
                 };
                 state.mark_applied(effect_id);
+                if let Some(ReplacementAction::Tribute {
+                    counter_type,
+                    count,
+                    paid_label,
+                }) = find_effect_for_choice(game, &current_additional_effects, effect_id)
+                    .map(|effect| effect.replacement)
+                {
+                    current_event = apply_tribute_response(
+                        game,
+                        *event,
+                        &response,
+                        object_id,
+                        controller,
+                        counter_type,
+                        count,
+                        &paid_label,
+                        &mut paid_labels,
+                        dm,
+                    );
+                    continue;
+                }
                 let interactive_result = continue_interactive_replacement(
                     game,
                     &response,

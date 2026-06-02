@@ -11107,6 +11107,7 @@ fn describe_source_condition_static_ability(
         Flanking => Some("flanking"),
         Landwalk => Some("landwalk"),
         Bloodthirst => Some("bloodthirst"),
+        Tribute => Some("tribute"),
         Morph => Some("morph"),
         Disguise => Some("disguise"),
         Megamorph => Some("megamorph"),
@@ -11664,6 +11665,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
             if label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
+            }
+            if label.eq_ignore_ascii_case("tribute") {
+                return "tribute was paid".to_string();
             }
             if label.eq_ignore_ascii_case("CastDuringYourMainPhase") {
                 return "you cast this spell during your main phase".to_string();
@@ -12607,6 +12611,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 "no permanents left the battlefield this turn".to_string()
             } else if let Condition::CardsInHandOrMore(1) = inner.as_ref() {
                 "you have no cards in hand".to_string()
+            } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref()
+                && label.eq_ignore_ascii_case("tribute")
+            {
+                "tribute wasn't paid".to_string()
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 let subject = describe_player_filter(player);
                 let mut described_filter = filter.clone();

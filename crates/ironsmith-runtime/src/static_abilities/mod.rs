@@ -1976,6 +1976,10 @@ impl StaticAbility {
         Self::new(Bloodthirst::new(amount))
     }
 
+    pub fn tribute(amount: u32) -> Self {
+        Self::new(Tribute::new(amount))
+    }
+
     pub fn morph(cost: crate::cost::TotalCost) -> Self {
         Self::new(Morph::new(cost))
     }

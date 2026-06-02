@@ -34,6 +34,7 @@ pub enum StaticAbilityId {
     CantBeBlockedAsLongAsDefendingPlayerControlsCardType,
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes,
     Bloodthirst,
+    Tribute,
     Daybound,
     Nightbound,
     DayNightStartsDayAsEnters,
@@ -296,6 +297,7 @@ impl StaticAbilityId {
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
             | Bloodthirst
+            | Tribute
             | Daybound
             | Nightbound
             | DayNightStartsDayAsEnters
@@ -557,6 +559,7 @@ impl StaticAbilityId {
                 | Flanking
                 | Landwalk
                 | Bloodthirst
+                | Tribute
                 | Morph
                 | Disguise
                 | Megamorph

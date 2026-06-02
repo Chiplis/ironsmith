@@ -4739,6 +4739,7 @@ fn describe_filter_static_ability(ability_id: StaticAbilityId) -> Option<&'stati
         Flanking => Some("flanking"),
         Landwalk => Some("landwalk"),
         Bloodthirst => Some("bloodthirst"),
+        Tribute => Some("tribute"),
         Morph => Some("morph"),
         Disguise => Some("disguise"),
         Megamorph => Some("megamorph"),

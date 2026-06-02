@@ -582,6 +582,7 @@ pub(crate) enum KeywordAction {
     UmbraArmor,
     Landwalk(crate::static_abilities::LandwalkKind),
     Bloodthirst(u32),
+    Tribute(u32),
     Rampage(u32),
     Bushido(u32),
     Changeling,
@@ -688,6 +689,7 @@ impl KeywordAction {
                 | Self::UmbraArmor
                 | Self::Landwalk(_)
                 | Self::Bloodthirst(_)
+                | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
                 | Self::Changeling
@@ -842,6 +844,7 @@ impl KeywordAction {
             Self::UmbraArmor => "Umbra armor".to_string(),
             Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+            Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
             Self::Changeling => "Changeling".to_string(),
@@ -1749,6 +1752,7 @@ impl CardDefinitionBuilder {
                 self.with_ability(Ability::static_ability(ability))
             }
             KeywordAction::Bloodthirst(amount) => self.bloodthirst(amount),
+            KeywordAction::Tribute(amount) => self.tribute(amount),
             KeywordAction::Rampage(amount) => self.rampage(amount),
             KeywordAction::Bushido(amount) => self.bushido(amount),
             KeywordAction::Changeling => {
@@ -3821,6 +3825,13 @@ impl CardDefinitionBuilder {
     /// the battlefield with N +1/+1 counters on it."
     pub fn bloodthirst(self, amount: u32) -> Self {
         self.with_ability(Ability::static_ability(StaticAbility::bloodthirst(amount)))
+    }
+
+    /// Add tribute N.
+    ///
+    /// Tribute means "As this creature enters, an opponent may put N +1/+1 counters on it."
+    pub fn tribute(self, amount: u32) -> Self {
+        self.with_ability(Ability::static_ability(StaticAbility::tribute(amount)))
     }
 
     /// Add rampage N.

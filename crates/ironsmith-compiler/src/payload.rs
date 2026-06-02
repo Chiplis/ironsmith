@@ -128,6 +128,7 @@ pub enum KeywordAction {
     UmbraArmor,
     Landwalk(LandwalkKind),
     Bloodthirst(u32),
+    Tribute(u32),
     Rampage(u32),
     Bushido(u32),
     Changeling,
@@ -235,6 +236,7 @@ impl KeywordAction {
                 | Self::UmbraArmor
                 | Self::Landwalk(_)
                 | Self::Bloodthirst(_)
+                | Self::Tribute(_)
                 | Self::Rampage(_)
                 | Self::Bushido(_)
                 | Self::Changeling
@@ -390,6 +392,7 @@ impl KeywordAction {
             Self::UmbraArmor => "Umbra armor".to_string(),
             Self::Landwalk(kind) => kind.display(),
             Self::Bloodthirst(amount) => format!("Bloodthirst {amount}"),
+            Self::Tribute(amount) => format!("Tribute {amount}"),
             Self::Rampage(amount) => format!("Rampage {amount}"),
             Self::Bushido(amount) => format!("Bushido {amount}"),
             Self::Changeling => "Changeling".to_string(),
