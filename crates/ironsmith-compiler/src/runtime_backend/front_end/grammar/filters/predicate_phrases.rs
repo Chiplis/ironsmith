@@ -180,12 +180,6 @@ const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
-const GETS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["gets"]);
-const MORE_VOTES_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more", "votes"]);
-const MORE_VOTES_OR_TIED_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["more", "votes", "or", "vote", "is", "tied"]);
-const NO_WORDS_GOT_VOTES_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["no"]; suffix & ["got", "votes"]);
 const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
         & [
@@ -2103,6 +2097,73 @@ fn parse_secret_choices_match_predicate(words: &[&str]) -> Option<PredicateAst> 
     Some(PredicateAst::SecretChoicesMatch)
 }
 
+fn parse_vote_result_predicate(
+    words: &[&str],
+    allow_tied: bool,
+) -> Result<Option<PredicateAst>, CardTextError> {
+    if let Some(predicate) = parse_vote_option_result_predicate(words, allow_tied) {
+        return Ok(Some(predicate));
+    }
+    parse_no_vote_objects_matched_predicate(words)
+}
+
+fn parse_vote_option_result_predicate(words: &[&str], allow_tied: bool) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::subject("option", LexCaptureKind::UntilPhrase(&["gets"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["gets"])),
+        LexPattern::object("result", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let option = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if option.word_refs().is_empty() {
+        return None;
+    }
+    let result = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    match result.word_refs().as_slice() {
+        ["more", "votes"] => Some(PredicateAst::VoteOptionGetsMoreVotes {
+            option: option.word_refs().join(" "),
+        }),
+        ["more", "votes", "or", "vote", "is", "tied"] if allow_tied => {
+            Some(PredicateAst::VoteOptionGetsMoreVotesOrTied {
+                option: option.word_refs().join(" "),
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_no_vote_objects_matched_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
+        LexPattern::object("objects", LexCaptureKind::UntilPhrase(&["got", "votes"])),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let action = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing action in vote result predicate".to_string())
+        })?;
+    if !matches!(action.word_refs().as_slice(), ["got", "votes"]) {
+        return Ok(None);
+    }
+    let objects = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in vote result predicate".to_string())
+        })?;
+    let filter = parse_object_filter(objects.tokens(), false)?;
+    Ok(Some(PredicateAst::NoVoteObjectsMatched { filter }))
+}
+
 fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let condition =
@@ -3437,13 +3498,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_secret_choices_match_predicate(&filtered) {
         return Ok(predicate);
     }
-    if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
-        && gets_idx > 0
-        && MORE_VOTES_OR_TIED_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
-    {
-        return Ok(PredicateAst::VoteOptionGetsMoreVotesOrTied {
-            option: filtered[..gets_idx].join(" "),
-        });
+    if let Some(predicate) = parse_vote_result_predicate(&filtered, true)? {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
@@ -3667,20 +3723,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(gets_idx) = find_index(&filtered, |word| GETS_WORD_PATTERN.matches_word(word))
-        && gets_idx > 0
-        && MORE_VOTES_TAIL_PATTERN.matches_words(&filtered[gets_idx + 1..])
-    {
-        return Ok(PredicateAst::VoteOptionGetsMoreVotes {
-            option: filtered[..gets_idx].join(" "),
-        });
-    }
-
-    if filtered.len() >= 4 && NO_WORDS_GOT_VOTES_PATTERN.matches_words(&filtered) {
-        let filter_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&filtered[1..filtered.len() - 2]);
-        let filter = parse_object_filter(&filter_tokens, false)?;
-        return Ok(PredicateAst::NoVoteObjectsMatched { filter });
+    if let Some(predicate) = parse_vote_result_predicate(&filtered, false)? {
+        return Ok(predicate);
     }
 
     if let Some(attacking_idx) = (0..filtered.len())
@@ -4854,6 +4898,38 @@ mod tests {
                 player: PlayerAst::Opponent,
             }
         );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_vote_results_use_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected) in [
+            (
+                "If death gets more votes",
+                PredicateAst::VoteOptionGetsMoreVotes {
+                    option: "death".to_string(),
+                },
+            ),
+            (
+                "If torture gets more votes or the vote is tied",
+                PredicateAst::VoteOptionGetsMoreVotesOrTied {
+                    option: "torture".to_string(),
+                },
+            ),
+            (
+                "If no creatures got votes",
+                PredicateAst::NoVoteObjectsMatched {
+                    filter: ObjectFilter::creature(),
+                },
+            ),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(parsed, expected, "{text}");
+        }
         Ok(())
     }
 
