@@ -175,9 +175,6 @@ const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_s
             &["permanents"],
         ]
 );
-const IT_WAS_KICKED_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it", "was", "kicked"]);
-const THAT_WAS_KICKED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["that", "was", "kicked"]);
 const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2020,6 +2017,7 @@ fn parse_cast_payment_state_predicate(filtered: &[&str]) -> Option<PredicateAst>
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
     parse_no_spells_cast_last_turn_shape(&tokens)
         .or_else(|| parse_source_spell_state_shape(&tokens))
+        .or_else(|| parse_target_spell_state_shape(&tokens))
         .or_else(|| parse_named_payment_state_shape(&tokens))
 }
 
@@ -2071,12 +2069,33 @@ fn parse_source_spell_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
     }
     let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
     match state.word_refs().as_slice() {
-        ["kicked"] if !matches!(spell.word_refs().as_slice(), ["it"]) => {
-            Some(PredicateAst::ThisSpellWasKicked)
-        }
+        ["kicked"] => Some(PredicateAst::ThisSpellWasKicked),
         ["bargained"] => Some(PredicateAst::ThisSpellPaidLabel("Bargain".to_string())),
         _ => None,
     }
+}
+
+fn parse_target_spell_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("spell", LexCaptureKind::UntilPhrase(&["was"])),
+        LexPattern::action("copula", LexCaptureKind::WordCount(1)),
+        LexPattern::object("state", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !matches!(spell.word_refs().as_slice(), ["that"]) {
+        return None;
+    }
+    let copula = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(copula.word_refs().as_slice(), ["was"]) {
+        return None;
+    }
+    let state = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !matches!(state.word_refs().as_slice(), ["kicked"]) {
+        return None;
+    }
+    Some(PredicateAst::TargetWasKicked)
 }
 
 fn parse_named_payment_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -3633,13 +3652,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         );
         return Ok(PredicateAst::ThisSpellPaidLabel(label));
     }
-    if IT_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellWasKicked);
-    }
-    if THAT_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TargetWasKicked);
-    }
-
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -5075,6 +5087,8 @@ mod tests {
                 PredicateAst::NoSpellsWereCastLastTurn,
             ),
             ("If this spell was kicked", PredicateAst::ThisSpellWasKicked),
+            ("If it was kicked", PredicateAst::ThisSpellWasKicked),
+            ("If that was kicked", PredicateAst::TargetWasKicked),
             (
                 "If it was bargained",
                 PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
