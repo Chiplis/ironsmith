@@ -12517,10 +12517,15 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                 };
                 format!("{count_text} {filter_text}")
             };
+            let hand_pronoun = if choose.count.max == Some(1) {
+                "it"
+            } else {
+                "them"
+            };
             Some((
                 if reveals_selection {
                     format!(
-                        "{}. You may reveal {selection} from among them and put them into your hand. Put the rest on the bottom of your library{order_text}",
+                        "{}. You may reveal {selection} from among them and put {hand_pronoun} into your hand. Put the rest on the bottom of your library{order_text}",
                         describe_effect(effects[0])
                     )
                 } else {
@@ -32560,6 +32565,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(look_at_top) = effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>() {
         let owner = describe_possessive_player_filter(&look_at_top.player);
+        if matches!(
+            look_at_top.count.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        ) {
+            let top_phrase = format!("that many cards from the top of {owner} library");
+            if look_at_top.reveal {
+                if look_at_top.player == PlayerFilter::You {
+                    return "Reveal that many cards from the top of your library".to_string();
+                }
+                let subject = describe_player_filter(&look_at_top.player);
+                let verb = player_verb(&subject, "reveal", "reveals");
+                return format!("{subject} {verb} {top_phrase}");
+            }
+            return format!("Look at {top_phrase}");
+        }
         let (count_text, noun, where_clause) =
             describe_top_count_noun_and_where_clause(&look_at_top.count);
         let top_phrase = if look_at_top.count == Value::Fixed(1) {

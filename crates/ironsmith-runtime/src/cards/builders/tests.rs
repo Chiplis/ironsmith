@@ -43119,6 +43119,234 @@ fn parse_oracle_discover_the_impossible_strict_parse_and_render_regression() {
     );
 }
 
+#[test]
+fn parse_oracle_doomskar_warrior_strict_parse_and_render_regression() {
+    assert_oracle_card_parses_strict("Doomskar Warrior");
+
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("OrTrigger")
+            && debug.contains("ThisDealsCombatDamageToPlayerTrigger")
+            && debug.contains("ThisDealsDamageToTrigger")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("EventValue")
+            && debug.contains("Amount")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+        "expected Doomskar Warrior to compile player-or-battle combat damage into event-count look/reveal/rest effects, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Backup 1")
+            && rendered.contains("Trample")
+            && rendered.contains("deals combat damage to a player")
+            && rendered.contains("deals combat damage to a battle")
+            && rendered.contains("look at that many cards from the top of your library")
+            && rendered.contains("put it into your hand")
+            && rendered.contains("Put the rest on the bottom of your library in a random order"),
+        "expected Doomskar Warrior rendered text to preserve backup, trample, player-or-battle trigger, event count, and reveal/rest clauses, got {rendered}"
+    );
+}
+
+fn doomskar_warrior_combat_damage_trigger(
+    def: &CardDefinition,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            triggered
+                .trigger
+                .display()
+                .to_ascii_lowercase()
+                .contains("deals combat damage")
+                .then_some(triggered)
+        })
+        .expect("Doomskar Warrior should have a combat damage look trigger")
+}
+
+fn doomskar_damage_event(
+    source: ObjectId,
+    target: crate::events::DamageTarget,
+    amount: u32,
+    is_combat: bool,
+) -> crate::triggers::TriggerEvent {
+    crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            target,
+            amount,
+            is_combat,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[test]
+fn doomskar_warrior_trigger_matches_player_and_battle_combat_damage_only() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let triggered = doomskar_warrior_combat_damage_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let battle = CardBuilder::new(CardId::from_raw(90_501), "Test Battle")
+        .card_types(vec![CardType::Battle])
+        .build();
+    let battle_id = game.create_object_from_card(&battle, bob, Zone::Battlefield);
+    let creature = CardBuilder::new(CardId::from_raw(90_502), "Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let creature_id = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+
+    let ctx = crate::triggers::TriggerContext::for_source(warrior_id, alice, &game);
+    let player_combat = doomskar_damage_event(
+        warrior_id,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        true,
+    );
+    let battle_combat = doomskar_damage_event(
+        warrior_id,
+        crate::events::DamageTarget::Object(battle_id),
+        4,
+        true,
+    );
+    let creature_combat = doomskar_damage_event(
+        warrior_id,
+        crate::events::DamageTarget::Object(creature_id),
+        4,
+        true,
+    );
+    let battle_noncombat = doomskar_damage_event(
+        warrior_id,
+        crate::events::DamageTarget::Object(battle_id),
+        4,
+        false,
+    );
+
+    assert!(triggered.trigger.matches(&player_combat, &ctx));
+    assert!(triggered.trigger.matches(&battle_combat, &ctx));
+    assert!(!triggered.trigger.matches(&creature_combat, &ctx));
+    assert!(!triggered.trigger.matches(&battle_noncombat, &ctx));
+}
+
+fn resolve_doomskar_warrior_trigger(
+    game: &mut crate::game_state::GameState,
+    warrior_id: ObjectId,
+    controller: PlayerId,
+    battle_id: ObjectId,
+    damage_amount: i32,
+    triggered: &crate::ability::TriggeredAbility,
+) {
+    let event = doomskar_damage_event(
+        warrior_id,
+        crate::events::DamageTarget::Object(battle_id),
+        damage_amount as u32,
+        true,
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(warrior_id, controller)
+        .with_triggering_event(event)
+        .with_event_value_amount(damage_amount);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Doomskar Warrior combat damage trigger should resolve");
+    }
+}
+
+fn stable_zone(game: &crate::game_state::GameState, stable_id: StableId) -> Option<Zone> {
+    game.find_object_by_stable_id(stable_id)
+        .and_then(|id| game.object(id))
+        .map(|object| object.zone)
+}
+
+#[test]
+fn doomskar_warrior_reveals_one_matching_looked_card_and_bottoms_the_rest() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let triggered = doomskar_warrior_combat_damage_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let battle = CardBuilder::new(CardId::from_raw(90_510), "Doomskar Test Battle")
+        .card_types(vec![CardType::Battle])
+        .build();
+    let battle_id = game.create_object_from_card(&battle, bob, Zone::Battlefield);
+
+    let instant = CardBuilder::new(CardId::from_raw(90_511), "Looked Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let land = CardBuilder::new(CardId::from_raw(90_512), "Looked Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let creature = CardBuilder::new(CardId::from_raw(90_513), "Looked Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let instant_id = game.create_object_from_card(&instant, alice, Zone::Library);
+    let land_id = game.create_object_from_card(&land, alice, Zone::Library);
+    let creature_id = game.create_object_from_card(&creature, alice, Zone::Library);
+    let looked_stables = [instant_id, land_id, creature_id]
+        .map(|id| game.object(id).expect("library card exists").stable_id);
+
+    resolve_doomskar_warrior_trigger(&mut game, warrior_id, alice, battle_id, 3, triggered);
+
+    let hand_count = looked_stables
+        .iter()
+        .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Hand))
+        .count();
+    let library_count = looked_stables
+        .iter()
+        .filter(|&&stable_id| stable_zone(&game, stable_id) == Some(Zone::Library))
+        .count();
+    assert_eq!(
+        hand_count, 1,
+        "exactly one revealed creature or land card should move to hand"
+    );
+    assert_eq!(
+        library_count, 2,
+        "the unchosen looked-at cards should remain in the library as the bottomed rest"
+    );
+}
+
+#[test]
+fn doomskar_warrior_no_matching_looked_card_puts_none_into_hand() {
+    let def = parse_oracle_card_definition("Doomskar Warrior");
+    let triggered = doomskar_warrior_combat_damage_trigger(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let warrior_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let battle = CardBuilder::new(CardId::from_raw(90_520), "Doomskar Empty Battle")
+        .card_types(vec![CardType::Battle])
+        .build();
+    let battle_id = game.create_object_from_card(&battle, bob, Zone::Battlefield);
+    let first = CardBuilder::new(CardId::from_raw(90_521), "First Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let second = CardBuilder::new(CardId::from_raw(90_522), "Second Sorcery")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let first_id = game.create_object_from_card(&first, alice, Zone::Library);
+    let second_id = game.create_object_from_card(&second, alice, Zone::Library);
+    let looked_stables = [first_id, second_id]
+        .map(|id| game.object(id).expect("library card exists").stable_id);
+
+    resolve_doomskar_warrior_trigger(&mut game, warrior_id, alice, battle_id, 2, triggered);
+
+    assert!(
+        looked_stables
+            .iter()
+            .all(|&stable_id| stable_zone(&game, stable_id) == Some(Zone::Library)),
+        "with no creature or land among the looked-at cards, none should move to hand"
+    );
+}
+
 fn discover_the_impossible_definition() -> CardDefinition {
     parse_oracle_card_definition("Discover the Impossible")
 }
