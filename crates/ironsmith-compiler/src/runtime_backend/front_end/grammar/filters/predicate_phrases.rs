@@ -531,17 +531,6 @@ const COUNTER_ON_SOURCE_TAIL_ANY_PATTERN: ClauseShape<'static> = clause_shape!(
             &["on", "this", "permanent"],
         ]
 );
-const SOURCE_POWER_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "creature", "power", "is"],
-            &["this", "creatures", "power", "is"],
-            &["this", "permanent", "power", "is"],
-            &["this", "permanents", "power", "is"],
-        ]
-);
-const SOURCE_HAS_POWER_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this", "has", "power"]);
 const BASIC_LAND_TYPES_AMONG_LANDS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -683,6 +672,55 @@ fn parse_attachment_quantity_prefix(
     tokens: &[OwnedLexToken],
 ) -> Result<(crate::effect::Comparison, usize), CardTextError> {
     parse_quantity_comparison_prefix(tokens, false, false, "attachment-count predicate")
+}
+
+fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    parse_source_possessive_power_threshold_shape(&tokens)
+        .or_else(|| parse_source_has_power_threshold_shape(&tokens))
+}
+
+fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["power"])),
+        LexPattern::object("stat", LexCaptureKind::OneOf(&["power"])),
+        LexPattern::action("copula", LexCaptureKind::OneOf(&["is"])),
+        LexPattern::amount("amount", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_reference_words(&source_clause.word_refs()) {
+        return None;
+    }
+    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    source_power_at_least_from_amount_words(&amount_clause.word_refs())
+}
+
+fn parse_source_has_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["has"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["has"])),
+        LexPattern::object("stat", LexCaptureKind::OneOf(&["power"])),
+        LexPattern::amount("amount", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_reference_words(&source_clause.word_refs()) {
+        return None;
+    }
+    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    source_power_at_least_from_amount_words(&amount_clause.word_refs())
+}
+
+fn source_power_at_least_from_amount_words(words: &[&str]) -> Option<PredicateAst> {
+    let (comparison, used) = predicate_quantity_prefix(words)?;
+    if used != words.len() {
+        return None;
+    }
+    let count = comparison_to_at_least_threshold(&comparison)?;
+    Some(PredicateAst::SourcePowerAtLeast(count))
 }
 
 fn parse_source_simple_state_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -3715,22 +3753,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         });
     }
 
-    if filtered.len() == 7
-        && SOURCE_POWER_IS_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[4..])
-        && used == filtered.len() - 4
-        && let Some(count) = comparison_to_at_least_threshold(&comparison)
-    {
-        return Ok(PredicateAst::SourcePowerAtLeast(count));
-    }
-
-    if filtered.len() == 6
-        && SOURCE_HAS_POWER_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((comparison, used)) = predicate_quantity_prefix(&filtered[3..])
-        && used == filtered.len() - 3
-        && let Some(count) = comparison_to_at_least_threshold(&comparison)
-    {
-        return Ok(PredicateAst::SourcePowerAtLeast(count));
+    if let Some(predicate) = parse_source_power_threshold_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if filtered.len() >= 10 && THERE_ARE_PREFIX_PATTERN.matches_words(&filtered) {
@@ -5892,13 +5916,22 @@ mod tests {
     }
 
     #[test]
-    fn parse_predicate_supports_this_has_power_or_greater() -> Result<(), CardTextError> {
-        let tokens = lex_line("If this has power 7 or greater", 0)?;
-        let predicate_tokens = predicate_tokens_after_if(&tokens);
+    fn parse_predicate_source_power_uses_shared_capture_parser() -> Result<(), CardTextError> {
+        for (text, expected_count) in [
+            ("If this has power 7 or greater", 7),
+            ("If this creature's power is 1 or more", 1),
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
 
-        let parsed = parse_predicate(&predicate_tokens)?;
+            let parsed = parse_predicate(&predicate_tokens)?;
 
-        assert_eq!(parsed, PredicateAst::SourcePowerAtLeast(7));
+            assert_eq!(
+                parsed,
+                PredicateAst::SourcePowerAtLeast(expected_count),
+                "{text}"
+            );
+        }
         Ok(())
     }
 
