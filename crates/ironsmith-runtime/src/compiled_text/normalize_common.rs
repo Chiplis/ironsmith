@@ -2026,7 +2026,15 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         .replace(" and gains this creature can't ", " and can't ")
         .replace(" and gains this creature cant ", " and can't ")
         .replace(" and gains this permanent can't ", " and can't ")
-        .replace(" and gains this permanent cant ", " and can't ");
+        .replace(" and gains this permanent cant ", " and can't ")
+        .replace(
+            "if it's an instant with mana value",
+            "if it's an instant spell with mana value",
+        )
+        .replace(
+            "if it's a sorcery with mana value",
+            "if it's a sorcery spell with mana value",
+        );
     normalized = normalized.replace(
         "Tap target creature or planeswalker. choose it. activated abilities of that permanent can't be activated this turn",
         "Tap target creature or planeswalker. Its activated abilities can't be activated this turn",

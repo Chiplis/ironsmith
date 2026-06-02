@@ -18236,17 +18236,23 @@ fn parse_ensoul_artifact_style_transform_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_equipped_activated_grant_with_unsupported_cost_errors_instead_of_partial_compile() {
-    let err = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unsupported Grant Variant")
-            .parse_text(
-                "Equip {5}\nEquipped creature gets +2/+1 and has \"{T}, Unattach this source: Destroy target creature.\"",
-            )
-            .expect_err("unsupported equipped activated cost should fail");
-    let message = format!("{err:?}");
+fn parse_equipped_activated_grant_with_unattach_cost_compiles() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Equip Unattach Grant Variant")
+        .parse_text(
+            "Equip {5}\nEquipped creature gets +2/+1 and has \"{T}, Unattach this source: Destroy target creature.\"",
+        )
+        .expect("equipped unattach activated cost should compile");
+    let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        message.contains("unsupported equipped activated-ability grant")
-            || message.contains("unsupported activation cost segment"),
-        "expected actionable equipped-grant error, got {message}"
+        debug.contains("attachedabilitygrant") && debug.contains("unattachobjectseffect"),
+        "expected equipped unattach grant to compile as an attached activated ability, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("unattach") && rendered.contains("destroy target creature"),
+        "expected rendered equipped ability to preserve unattach destroy clause, got {rendered}"
     );
 }
 
