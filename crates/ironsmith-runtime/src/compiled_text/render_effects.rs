@@ -35179,6 +35179,24 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
                 return format!("Prevent {damage_type} that would be dealt this turn");
             }
+            if let Some(source_phrase) = damage_type
+                .strip_prefix("all damage from ")
+                .and_then(|rest| rest.strip_suffix(" sources"))
+            {
+                let source_phrase = pluralize_noun_phrase(source_phrase);
+                return format!(
+                    "Prevent all damage that would be dealt to {protected} this turn by {source_phrase}"
+                );
+            }
+            if let Some(source_phrase) = damage_type
+                .strip_prefix("combat damage from ")
+                .and_then(|rest| rest.strip_suffix(" sources"))
+            {
+                let source_phrase = pluralize_noun_phrase(source_phrase);
+                return format!(
+                    "Prevent all combat damage that would be dealt to {protected} this turn by {source_phrase}"
+                );
+            }
             return format!(
                 "Prevent {damage_type} that would be dealt to {} this turn",
                 protected

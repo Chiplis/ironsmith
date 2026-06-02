@@ -473,6 +473,8 @@ const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PREFIX: &[&str] = &[
 ];
 const CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix CLAUSE_PREVENT_ALL_DAMAGE_TO_PREFIX; suffix &["this", "turn"]);
+const CLAUSE_THIS_TURN_BY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["this", "turn", "by"]);
 const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_TO_PREFIX);
 const CLAUSE_PREVENT_ALL_DAMAGE_THIS_TURN_BY_PATTERN: ClauseShape<'static> =
@@ -1632,6 +1634,42 @@ pub(crate) fn parse_prevent_all_damage_clause(
         ));
     }
 
+    if let PreventAllDamageClauseShape::TargetFirstSource {
+        prefix_len,
+        this_turn_idx,
+        by_idx,
+    } = shape
+    {
+        let target_clause = clause.between_words_trimmed(prefix_len, this_turn_idx);
+        let source_clause = clause
+            .after_words(by_idx + 1)
+            .unwrap_or_else(|| clause.from(tokens.len()))
+            .trimmed();
+        if target_clause.is_empty() || source_clause.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing prevent-all damage target or source filter (clause: '{}')",
+                clause_text
+            )));
+        }
+
+        let target = parse_target_phrase(target_clause.tokens())?;
+        let source_filter_target = parse_target_phrase(source_clause.tokens())?;
+        let TargetAst::Object(source_filter, _, _) = source_filter_target else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported prevent-all damage source filter target (clause: '{}')",
+                clause_text
+            )));
+        };
+
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_damage_to_target_from_source_filter(
+                target,
+                source_filter,
+                Until::EndOfTurn,
+            ),
+        ));
+    }
+
     let target_clause = match shape {
         PreventAllDamageClauseShape::DurationFirstTarget { prefix_len } => clause
             .after_words(prefix_len)
@@ -1652,6 +1690,9 @@ pub(crate) fn parse_prevent_all_damage_clause(
                 clause_text
             )));
         }
+        PreventAllDamageClauseShape::TargetFirstSource { .. } => unreachable!(
+            "target-plus-source prevent-all damage clauses are handled before target-only lowering"
+        ),
     };
     if target_clause.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -1673,6 +1714,11 @@ enum PreventAllDamageClauseShape {
     DurationFirstSource { prefix_len: usize },
     DurationFirstTarget { prefix_len: usize },
     TargetFirst { prefix_len: usize },
+    TargetFirstSource {
+        prefix_len: usize,
+        this_turn_idx: usize,
+        by_idx: usize,
+    },
 }
 
 fn classify_prevent_all_damage_clause(words: &[&str]) -> Option<PreventAllDamageClauseShape> {
@@ -1690,6 +1736,19 @@ fn classify_prevent_all_damage_clause(words: &[&str]) -> Option<PreventAllDamage
         && CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN.matches_words(words)
     {
         return Some(PreventAllDamageClauseShape::TargetFirst { prefix_len });
+    }
+    if let Some(prefix_len) = CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN.matched_prefix_len(words)
+        && let Some(this_turn_rel) = CLAUSE_THIS_TURN_BY_PATTERN.find_exact_window(
+            words.get(prefix_len..).unwrap_or_default(),
+            3,
+        )
+    {
+        let this_turn_idx = prefix_len + this_turn_rel;
+        return Some(PreventAllDamageClauseShape::TargetFirstSource {
+            prefix_len,
+            this_turn_idx,
+            by_idx: this_turn_idx + 2,
+        });
     }
     None
 }

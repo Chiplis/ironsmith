@@ -2594,6 +2594,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
             | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
@@ -2881,6 +2882,10 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 ..
             }
             | SubjectVerbActionAst::PreventAllDamageToTarget {
+                target: effect_target,
+                ..
+            }
+            | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
                 target: effect_target,
                 ..
             }

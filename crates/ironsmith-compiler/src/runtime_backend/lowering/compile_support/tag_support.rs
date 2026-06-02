@@ -725,6 +725,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController { .. }
         | SubjectVerbActionAst::RedirectAllDamageThisTurnToTarget { .. }
         | SubjectVerbActionAst::PreventAllDamageToTarget { .. }
+        | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventAllDamageFromSourceFilter { .. }
         | SubjectVerbActionAst::PreventDamageToTargetPutCounters { .. }
         | SubjectVerbActionAst::PutOrRemoveCounters { .. }
