@@ -1284,7 +1284,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         );
     }
 
-    if token_slice_first_is(tokens, "target")
+    if starts_with_target_indicator(tokens)
         && find_negation_span(tokens).is_some()
         && let (duration, clause_tokens) =
             parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()))
@@ -1300,7 +1300,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if token_slice_first_is(tokens, "target") && find_verb(tokens).is_none() {
+    if starts_with_target_indicator(tokens) && find_verb(tokens).is_none() {
         let looks_like_restriction_clause = find_negation_span(tokens).is_some()
             || TARGET_ONLY_RESTRICTION_WORD_PATTERN.matches_words(&clause_words);
         if looks_like_restriction_clause {
