@@ -247,8 +247,6 @@ const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_
             &["were", "spent", "to", "cast", "this", "spell"],
         ]
 );
-const NO_CREATURES_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["no", "creatures", "are", "on", "battlefield"]);
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const THAT_PLAYER_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1775,6 +1773,30 @@ fn parse_world_state_or_timing_predicate(words: &[&str]) -> Option<PredicateAst>
         .or_else(|| parse_night_state_predicate_shape(&tokens))
         .or_else(|| parse_first_combat_phase_predicate_shape(&tokens))
         .or_else(|| parse_cast_this_spell_during_main_phase_shape(&tokens))
+}
+
+fn parse_empty_battlefield_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::action("copula", LexCaptureKind::OneOf(&["is", "are"])),
+        LexPattern::word("on"),
+        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !matches!(
+        zone.word_refs().as_slice(),
+        ["battlefield"] | ["the", "battlefield"]
+    ) {
+        return None;
+    }
+    Some(PredicateAst::PlayerControlsNo {
+        player: PlayerAst::Any,
+        filter: ObjectFilter::creature(),
+    })
 }
 
 fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -4675,11 +4697,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if NO_CREATURES_ON_BATTLEFIELD_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::PlayerControlsNo {
-            player: PlayerAst::Any,
-            filter: ObjectFilter::creature(),
-        });
+    if let Some(predicate) = parse_empty_battlefield_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
@@ -4843,6 +4862,29 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_empty_battlefield_uses_capture_parser() -> Result<(), CardTextError> {
+        for text in [
+            "If no creatures are on the battlefield",
+            "If no creature is on battlefield",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            assert_eq!(
+                parsed,
+                PredicateAst::PlayerControlsNo {
+                    player: PlayerAst::Any,
+                    filter: ObjectFilter::creature(),
+                },
+                "{text}"
+            );
         }
         Ok(())
     }
