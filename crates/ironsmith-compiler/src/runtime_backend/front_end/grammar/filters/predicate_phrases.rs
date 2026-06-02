@@ -569,6 +569,13 @@ const PREDICATE_REFERENCE_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape
             &["token"],
         ]
 );
+
+fn is_predicate_reference_noun_word(word: &str) -> bool {
+    PREDICATE_REFERENCE_NOUN_WORD_PATTERN.matches_word(word)
+        || parse_card_type(word).is_some()
+        || parse_subtype_flexible(word).is_some()
+}
+
 const OR_COMPARISON_TAIL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["more"], &["fewer"], &["less"], &["greater"], &["equal"]]);
 const ITS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["its"], &["it's"]]);
@@ -1436,7 +1443,7 @@ fn predicate_reference_prefix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]>
     }
     if words.len() >= 2
         && THAT_WORD_PATTERN.matches_word(words[0])
-        && PREDICATE_REFERENCE_NOUN_WORD_PATTERN.matches_word(words[1])
+        && is_predicate_reference_noun_word(words[1])
     {
         return Some(&words[..2]);
     }
@@ -3467,7 +3474,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         Some(1usize)
     } else if filtered.len() >= 2
         && THAT_WORD_PATTERN.matches_word_at(&filtered, 0)
-        && PREDICATE_REFERENCE_NOUN_WORD_PATTERN.matches_word_at(&filtered, 1)
+        && is_predicate_reference_noun_word(filtered[1])
     {
         Some(2usize)
     } else {

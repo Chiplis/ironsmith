@@ -6540,6 +6540,8 @@ impl GameState {
             .and_then(|source| self.chosen_color_activation_mana_restriction(source, cost, reason))
         {
             self.mana_pool_restricted_to_symbol(&player.mana_pool, symbol)
+        } else if reason == crate::costs::PaymentReason::CumulativeUpkeep {
+            self.mana_pool_for_cumulative_upkeep_payment(player, source)
         } else {
             player.mana_pool.clone()
         };
@@ -6619,6 +6621,42 @@ impl GameState {
             }
             return true;
         }
+        if reason == crate::costs::PaymentReason::CumulativeUpkeep {
+            let Some(player) = self.player(payer) else {
+                return false;
+            };
+            let mut payable_pool = self.mana_pool_for_cumulative_upkeep_payment(player, source);
+            let before_payable = payable_pool.clone();
+            let (paid, life_to_pay) = payable_pool
+                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+                    cost,
+                    x_value,
+                    &mana_spend_policy,
+                    allow_black_life,
+                );
+            if !paid || !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
+                return false;
+            }
+            if !self.consume_cumulative_upkeep_restricted_mana(
+                payer,
+                source,
+                &before_payable,
+                &payable_pool,
+            ) {
+                if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {
+                    player.mana_pool = original_pool;
+                }
+                return false;
+            }
+            if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
+                if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {
+                    player.mana_pool = original_pool;
+                }
+                return false;
+            }
+            return true;
+        }
+
         let (paid, life_to_pay) = {
             let Some(player) = self.player_mut(payer) else {
                 return false;
@@ -6680,6 +6718,95 @@ impl GameState {
             self.chosen_color(source)
                 .map(crate::mana::ManaSymbol::from_color)
         })?
+    }
+
+    fn cumulative_upkeep_restricted_unit_is_payable(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        source: Option<ObjectId>,
+    ) -> bool {
+        let Some(source_id) = source else {
+            return false;
+        };
+        let Some(source_obj) = self.object(source_id) else {
+            return false;
+        };
+        if source_obj.zone != Zone::Battlefield {
+            return false;
+        }
+        let has_cumulative_upkeep = source_obj.abilities.iter().any(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::CumulativeUpkeepEffect>()
+                        .is_some()
+                }),
+            _ => false,
+        });
+        has_cumulative_upkeep
+            && unit.restrictions.iter().all(|restriction| {
+                matches!(
+                    restriction,
+                    crate::ability::ManaUsageRestriction::PayCumulativeUpkeepCosts
+                )
+            })
+    }
+
+    fn mana_pool_for_cumulative_upkeep_payment(
+        &self,
+        player: &crate::player::Player,
+        source: Option<ObjectId>,
+    ) -> crate::player::ManaPool {
+        let mut pool = player.mana_pool.clone();
+        for unit in &player.restricted_mana {
+            if !self.cumulative_upkeep_restricted_unit_is_payable(unit, source) {
+                pool.remove(unit.symbol, 1);
+            }
+        }
+        pool
+    }
+
+    fn consume_cumulative_upkeep_restricted_mana(
+        &mut self,
+        payer: PlayerId,
+        source: Option<ObjectId>,
+        before: &crate::player::ManaPool,
+        after: &crate::player::ManaPool,
+    ) -> bool {
+        use crate::mana::ManaSymbol;
+
+        for symbol in [
+            ManaSymbol::White,
+            ManaSymbol::Blue,
+            ManaSymbol::Black,
+            ManaSymbol::Red,
+            ManaSymbol::Green,
+            ManaSymbol::Colorless,
+        ] {
+            let mut spent = before.amount(symbol).saturating_sub(after.amount(symbol));
+            while spent > 0 {
+                let restricted_idx = self.player(payer).and_then(|player| {
+                    player.restricted_mana.iter().position(|unit| {
+                        unit.symbol == symbol
+                            && self.cumulative_upkeep_restricted_unit_is_payable(unit, source)
+                    })
+                });
+                let Some(player) = self.player_mut(payer) else {
+                    return false;
+                };
+                if let Some(idx) = restricted_idx {
+                    player.restricted_mana.remove(idx);
+                }
+                if !player.mana_pool.remove(symbol, 1) {
+                    return false;
+                }
+                spent -= 1;
+            }
+        }
+        true
     }
 
     fn mana_pool_restricted_to_symbol(
