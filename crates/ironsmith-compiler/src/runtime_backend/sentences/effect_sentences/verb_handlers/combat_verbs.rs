@@ -256,6 +256,9 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         if let Some((value, used)) = parse_value(tokens) {
             return parse_divided_damage_with_amount(tokens, value, used);
         }
+        if let Some(effect) = parse_divided_damage_equal_to_amount(tokens)? {
+            return Ok(effect);
+        }
         return Err(CardTextError::ParseError(format!(
             "unsupported divided-damage distribution clause (clause: '{}')",
             clause_words.join(" ")
@@ -294,6 +297,38 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
     Err(CardTextError::ParseError(format!(
         "missing damage amount (clause: '{}')",
         clause_words.join(" ")
+    )))
+}
+
+fn parse_divided_damage_equal_to_amount(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["damage", "equal", "to", ..]) {
+        return Ok(None);
+    }
+    let Some(divided_word_idx) = words.iter().position(|word| *word == "divided") else {
+        return Ok(None);
+    };
+    let Some(divided_token_idx) = token_index_for_word_index(tokens, divided_word_idx) else {
+        return Ok(None);
+    };
+    let amount_tokens = trim_commas(&tokens[3..divided_token_idx]);
+    let Some((amount, used)) = parse_value(&amount_tokens) else {
+        return Err(CardTextError::ParseError(format!(
+            "missing divided-damage amount (clause: '{}')",
+            words.join(" ")
+        )));
+    };
+    if used != amount_tokens.len() {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported divided-damage amount (clause: '{}')",
+            words.join(" ")
+        )));
+    }
+    let target = parse_divided_damage_target(&tokens[divided_token_idx..])?;
+    Ok(Some(EffectAst::subject_verb_distributed_damage(
+        amount, target,
     )))
 }
 

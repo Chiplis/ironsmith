@@ -136,7 +136,7 @@ pub use effect::{
     ShuffleLibraryEffect, ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
     SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, SneakCostEffect, SoulbondPairEffect,
-    SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect,
+    SupportEffect, SurveilEffect, SuspectEffect, TagAttachedToSourceEffect, UnattachObjectsEffect,
     TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
     TagTriggeringSourceEffect, TaggedEffect, TaggedLeavesAbilitySource, TakeInitiativeEffect,
     TapEffect, TargetOnlyEffect, TicketCountersEffect, TransformEffect, UnearthEffect,

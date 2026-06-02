@@ -2838,6 +2838,12 @@ impl Effect {
         Self::new(AttachObjectsEffect::new(objects, target))
     }
 
+    /// Create an effect that unattaches one or more attached objects.
+    pub fn unattach_objects(objects: ChooseSpec) -> Self {
+        use crate::effects::UnattachObjectsEffect;
+        Self::new(UnattachObjectsEffect::new(objects))
+    }
+
     /// Create a "mill N cards" effect.
     pub fn mill(count: impl Into<Value>) -> Self {
         use crate::effects::MillEffect;

@@ -160,7 +160,7 @@ pub use permanents::{
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
     ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
     SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect,
-    UntapEffect,
+    UnattachObjectsEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,

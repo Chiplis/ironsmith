@@ -19515,6 +19515,19 @@ fn describe_cost_component_parts(costs: &[crate::costs::Cost]) -> Vec<String> {
             && let Some(choose) = costs[idx]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+            && let Some(unattach) = costs[idx + 1]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::UnattachObjectsEffect>())
+            && let Some(compact) = describe_choose_then_unattach_cost(choose, unattach)
+        {
+            parts.push(normalize_cost_phrase(&compact));
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < costs.len()
+            && let Some(choose) = costs[idx]
+                .effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
             && let Some(return_to_hand) = costs[idx + 1]
                 .effect_ref()
                 .and_then(|effect| effect.downcast_ref::<crate::effects::ReturnToHandEffect>())
@@ -19528,6 +19541,36 @@ fn describe_cost_component_parts(costs: &[crate::costs::Cost]) -> Vec<String> {
         idx += 1;
     }
     parts
+}
+
+fn describe_choose_then_unattach_cost(
+    choose: &crate::effects::ChooseObjectsEffect,
+    unattach: &crate::effects::UnattachObjectsEffect,
+) -> Option<String> {
+    if choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || !matches!(unattach.objects.base(), ChooseSpec::Tagged(tag) if tag.as_str() == choose.tag.as_str())
+    {
+        return None;
+    }
+
+    let exact = choose.count.max.filter(|max| *max == choose.count.min)?;
+    if exact == 0 {
+        return None;
+    }
+    let noun = choose.filter.description();
+    if exact == 1 {
+        return Some(format!(
+            "Unattach {} from this source",
+            with_indefinite_article(&noun)
+        ));
+    }
+    let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
+    Some(format!(
+        "Unattach {count} {} from this source",
+        pluralize_noun_phrase(&noun)
+    ))
 }
 
 fn describe_choose_then_return_to_hand_cost(

@@ -51,6 +51,7 @@ use std::collections::HashMap;
 
 const SACRIFICE_COST_TAG_PREFIX: &str = "sacrifice_cost_";
 const EXILE_COST_TAG_PREFIX: &str = "exile_cost_";
+const UNATTACH_COST_TAG_PREFIX: &str = "unattach_cost_";
 
 #[derive(Clone)]
 struct SourceReferenceAlias {
@@ -1646,6 +1647,21 @@ pub(crate) fn find_last_exile_cost_choice_tag(mana_cost: &TotalCost) -> Option<T
     found
 }
 
+pub(crate) fn find_first_unattach_cost_choice_tag(mana_cost: &TotalCost) -> Option<TagKey> {
+    for cost in mana_cost.costs() {
+        let Some(effect) = cost.effect_ref() else {
+            continue;
+        };
+        let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() else {
+            continue;
+        };
+        if is_unattach_cost_choice_tag(&choose.tag) {
+            return Some(choose.tag.clone());
+        }
+    }
+    None
+}
+
 fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {
     tag.as_str().strip_prefix(prefix).is_some()
 }
@@ -1656,6 +1672,10 @@ fn is_sacrifice_cost_choice_tag(tag: &TagKey) -> bool {
 
 fn is_exile_cost_choice_tag(tag: &TagKey) -> bool {
     tag_has_prefix(tag, EXILE_COST_TAG_PREFIX)
+}
+
+fn is_unattach_cost_choice_tag(tag: &TagKey) -> bool {
+    tag_has_prefix(tag, UNATTACH_COST_TAG_PREFIX)
 }
 
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
@@ -2874,6 +2894,8 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         &["that", "permanent", "mana", "value"],
         &["that", "permanent's", "mana", "value"],
         &["that", "permanents", "mana", "value"],
+        &["that", "equipment", "mana", "value"],
+        &["that", "equipment's", "mana", "value"],
         &["that", "object", "mana", "value"],
         &["that", "object's", "mana", "value"],
         &["that", "objects", "mana", "value"],

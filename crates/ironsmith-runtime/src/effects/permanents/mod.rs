@@ -39,6 +39,7 @@ mod tap;
 mod transform;
 mod umbra_armor;
 mod unearth;
+mod unattach_objects;
 mod untap;
 
 pub(crate) fn attachment_can_attach_to_target(
@@ -225,4 +226,5 @@ pub use tap::TapEffect;
 pub use transform::{ConvertEffect, TransformEffect};
 pub use umbra_armor::UmbraArmorEffect;
 pub use unearth::UnearthEffect;
+pub use unattach_objects::UnattachObjectsEffect;
 pub use untap::UntapEffect;

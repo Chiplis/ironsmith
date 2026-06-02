@@ -690,6 +690,7 @@ fn looks_like_activation_cost_prefix(tokens: &[OwnedLexToken]) -> bool {
             | "remove"
             | "put"
             | "return"
+            | "unattach"
     )
 }
 
@@ -2637,8 +2638,10 @@ fn is_named_ability_label(label: &str) -> bool {
             | "stunning strike"
             | "teleport"
             | "trance"
+            | "throw ..."
             | "valiant"
             | "waterbend"
+            | "... catch"
     )
 }
 
@@ -2652,8 +2655,24 @@ fn looks_like_ability_word_label(
     !label_tokens.is_empty()
         && !label_tokens
             .iter()
-            .any(|token| matches!(token.kind, TokenKind::Period | TokenKind::Colon))
+            .any(|token| matches!(token.kind, TokenKind::Colon))
         && token_word_refs(label_tokens).len() <= 4
+}
+
+fn normalize_activation_cost_tokens_for_builder(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    cost_tokens: Vec<OwnedLexToken>,
+) -> Result<Vec<OwnedLexToken>, CardTextError> {
+    let cost_text = render_token_slice(&cost_tokens);
+    if !normalized_line_mentions_source_alias(builder, cost_text.as_str()) {
+        return Ok(cost_tokens);
+    }
+    let Some(rewritten) = normalize_named_source_sentence_for_builder(builder, cost_text.as_str())
+    else {
+        return Ok(cost_tokens);
+    };
+    Ok(rewrite_line_normalized(line, rewritten.as_str())?.tokens)
 }
 
 fn rewrite_line_normalized(
@@ -2963,13 +2982,18 @@ fn try_parse_labeled_line_dispatch(
     if prefer_activation
         && let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation.clone()
     {
-        match parse_activation_cost_tokens_rewrite(&cost_tokens) {
+        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+            &preprocessed.builder,
+            line,
+            cost_tokens.clone(),
+        )?;
+        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 return Ok(Some(LineDispatchResult::single(
                     RewriteLineCst::Activated(ActivatedLineCst {
                         info: line.info.clone(),
                         cost,
-                        cost_parse_tokens: cost_tokens,
+                        cost_parse_tokens: normalized_cost_tokens,
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),
@@ -3051,13 +3075,18 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if let Some((cost_tokens, effect_parse_tokens, effect_text)) = labeled_activation {
-        match parse_activation_cost_tokens_rewrite(&cost_tokens) {
+        let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+            &preprocessed.builder,
+            line,
+            cost_tokens.clone(),
+        )?;
+        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
                 return Ok(Some(LineDispatchResult::single(
                     RewriteLineCst::Activated(ActivatedLineCst {
                         info: line.info.clone(),
                         cost,
-                        cost_parse_tokens: cost_tokens,
+                        cost_parse_tokens: normalized_cost_tokens,
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),
@@ -3486,11 +3515,16 @@ pub(crate) fn parse_document_cst(
                         )));
                     };
                     let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-                    let cost = parse_activation_cost_tokens_rewrite(&cost_tokens)?;
+                    let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
+                        &preprocessed.builder,
+                        line,
+                        cost_tokens.clone(),
+                    )?;
+                    let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
                     let cst = RewriteLineCst::Activated(ActivatedLineCst {
                         info: suffix_line.info.clone(),
                         cost,
-                        cost_parse_tokens: cost_tokens,
+                        cost_parse_tokens: normalized_cost_tokens,
                         effect_text,
                         effect_parse_tokens,
                         presentation_label: Some(label.trim().to_string()),

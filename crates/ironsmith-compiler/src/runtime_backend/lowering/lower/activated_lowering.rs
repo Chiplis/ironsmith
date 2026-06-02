@@ -3,6 +3,7 @@ use super::super::ir::RewriteActivatedLine;
 use super::*;
 use crate::effect::Effect;
 use crate::object::CounterType;
+use crate::runtime_backend::util::find_first_unattach_cost_choice_tag;
 use ironsmith_core::TotalCostKind;
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -737,6 +738,7 @@ fn lower_rewrite_activated_to_chunk_impl(
             )?;
             let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
                 .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
+                .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
                 .map(ReferenceImports::with_last_object_tag)
                 .unwrap_or_default();
             let mut parsed = ParsedAbility {
@@ -799,6 +801,7 @@ fn lower_rewrite_activated_to_chunk_impl(
     )?;
     let reference_imports = find_first_sacrifice_cost_choice_tag(&normalized_cost)
         .or_else(|| find_last_exile_cost_choice_tag(&normalized_cost))
+        .or_else(|| find_first_unattach_cost_choice_tag(&normalized_cost))
         .map(ReferenceImports::with_last_object_tag)
         .unwrap_or_default();
     let mut parsed = ParsedAbility {
@@ -898,6 +901,9 @@ fn activated_line_has_exhaust_label(line: &RewriteActivatedLine) -> bool {
 }
 
 fn activated_presentation_display_label(label: &str) -> Option<&'static str> {
+    if label.eq_ignore_ascii_case("Throw ...") {
+        return Some("Throw ...");
+    }
     let label_tokens = lex_line(label, 0).ok();
     let label_words = label_tokens
         .as_deref()

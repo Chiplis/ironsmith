@@ -176,6 +176,45 @@ fn tagged_move_to_zone_cost_precheck(
     }
 }
 
+fn tagged_unattach_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let unattach = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;
+    let tag = match unattach.objects.base() {
+        crate::target::ChooseSpec::Tagged(tag) => tag,
+        crate::target::ChooseSpec::Object(filter) => tagged_selection_tag(filter)?,
+        _ => return None,
+    };
+
+    let Some(chosen) = ctx.tagged_objects.get(tag.as_str()) else {
+        return Some(Err(CostPaymentError::Other(
+            "unattach cost has no chosen object".to_string(),
+        )));
+    };
+    if chosen.is_empty() {
+        return Some(Err(CostPaymentError::Other(
+            "unattach cost has no chosen object".to_string(),
+        )));
+    }
+
+    let valid = chosen.iter().any(|snapshot| {
+        game.find_object_by_stable_id(snapshot.stable_id)
+            .and_then(|id| game.object(id))
+            .is_some_and(|object| {
+                object.attached_to.and_then(|target| target.object_id()) == Some(ctx.source)
+            })
+    });
+    if valid {
+        Some(Ok(()))
+    } else {
+        Some(Err(CostPaymentError::Other(
+            "chosen object is not attached to this source".to_string(),
+        )))
+    }
+}
+
 fn simple_exile_from_hand_filter(
     filter: &crate::filter::ObjectFilter,
 ) -> Option<Option<crate::color::ColorSet>> {
@@ -222,6 +261,8 @@ impl CostPayer for CostEffect {
         if let Some(result) = tagged_sacrifice_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else if let Some(result) = tagged_move_to_zone_cost_precheck(&self.effect, ctx) {
+            result?;
+        } else if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
             result?;
         } else {
             self.can_pay(game, ctx)?;

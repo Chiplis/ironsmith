@@ -102,6 +102,10 @@ pub(crate) enum ActivationCostSegmentCst {
         filter_text: String,
         other: bool,
     },
+    UnattachChosen {
+        count: u32,
+        filter_text: String,
+    },
     ExileSelf,
     ExileSelfFromGraveyard,
     ExileFromHand {
@@ -2063,6 +2067,32 @@ pub(crate) fn lower_activation_cost_cst(
                     Effect::sacrifice(ObjectFilter::tagged(tag), *count)
                 };
                 costs.push(Cost::validated_effect(sacrifice));
+            }
+            ActivationCostSegmentCst::UnattachChosen { count, filter_text } => {
+                flush_pending_mana(&mut costs, &mut pending_mana_pips);
+                let normalized_filter_text = if *count == 1 {
+                    strip_single_choice_article_from_filter_text(filter_text)
+                } else {
+                    filter_text.trim().to_string()
+                };
+                let mut filter = parse_filter_text(normalized_filter_text.as_str(), false)?;
+                if filter.controller.is_none() {
+                    filter.controller = Some(PlayerFilter::You);
+                }
+                if filter.zone.is_none() {
+                    filter.zone = Some(crate::zone::Zone::Battlefield);
+                }
+                let tag = format!("unattach_cost_{return_tag_id}");
+                return_tag_id += 1;
+                costs.push(Cost::validated_effect(Effect::choose_objects(
+                    filter,
+                    ChoiceCount::exactly(*count as usize),
+                    PlayerFilter::You,
+                    tag.clone(),
+                )));
+                costs.push(Cost::validated_effect(Effect::unattach_objects(
+                    crate::target::ChooseSpec::tagged(tag),
+                )));
             }
             ActivationCostSegmentCst::ExileSelf => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
