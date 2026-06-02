@@ -76,7 +76,6 @@ const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
 const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["another"], &["other"]]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
@@ -275,29 +274,6 @@ const OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["opponent", "controls"]);
 const AN_OPPONENT_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["an", "opponent", "controls"]);
-const THAT_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "player"]);
-const TARGET_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "player"]);
-const TARGET_OPPONENT_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "opponent"]);
-const EACH_OPPONENT_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["each", "opponent"]);
-const A_OR_ANY_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["a", "player"], &["any", "player"]]);
-const DEFENDING_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["defending", "player"]);
-const ATTACKING_PLAYER_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["attacking", "player"]);
-const OPPONENT_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["opponent"], &["opponents"]]);
-const PLAYER_WHO_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["player", "who"]);
-const PLAYER_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["player"]);
-const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
-const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["than", "you"], &["than", "you", "do"]]);
-
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let clause = LexedClause::new(&tokens);
@@ -3329,6 +3305,48 @@ fn parse_cards_in_graveyard_count_predicate(filtered: &[&str]) -> Option<Predica
     })
 }
 
+fn parse_player_controls_more_than_you_predicate(filtered: &[&str]) -> Option<PredicateAst> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["control"], &["controls"]];
+    let than_you_phrases: &[&[&str]] = &[&["than", "you"], &["than", "you", "do"]];
+    let atoms = [
+        LexPattern::subject("player", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("control", LexCaptureKind::WordCount(1)),
+        LexPattern::word("more"),
+        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(than_you_phrases)),
+        LexPattern::modifier("than_you", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = comparison_player_subject_from_words(&player_clause.word_refs())?;
+    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !matches!(action.word_refs().as_slice(), ["control"] | ["controls"]) {
+        return None;
+    }
+    let than_you = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !than_you_phrases
+        .iter()
+        .any(|phrase| than_you.word_refs().as_slice() == *phrase)
+    {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if object.word_refs().is_empty() {
+        return None;
+    }
+    let other = object
+        .tokens()
+        .first()
+        .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
+    let filter = parse_object_filter(object.tokens(), other).ok()?;
+    if filter == ObjectFilter::default() {
+        return None;
+    }
+
+    Some(PredicateAst::PlayerControlsMoreThanYou { player, filter })
+}
+
 fn source_counter_tail_matches(words: &[&str]) -> bool {
     matches!(
         words,
@@ -4445,73 +4463,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let parse_comparison_player_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
-        if THAT_PLAYER_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 2))
-        } else if TARGET_PLAYER_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Target, 2))
-        } else if TARGET_OPPONENT_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::TargetOpponent, 2))
-        } else if EACH_OPPONENT_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Opponent, 2))
-        } else if A_OR_ANY_PLAYER_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Any, 2))
-        } else if DEFENDING_PLAYER_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Defending, 2))
-        } else if ATTACKING_PLAYER_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Attacking, 2))
-        } else if words
-            .first()
-            .is_some_and(|word| YOU_WORD_PATTERN.matches_word(word))
-        {
-            Some((PlayerAst::You, 1))
-        } else if OPPONENT_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Opponent, 1))
-        } else if PLAYER_WHO_SUBJECT_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 1))
-        } else if words
-            .first()
-            .is_some_and(|word| PLAYER_SUBJECT_WORD_PATTERN.matches_word(word))
-        {
-            Some((PlayerAst::Any, 1))
-        } else {
-            None
-        }
-    };
     if let Some(predicate) = parse_half_starting_life_total_predicate(&filtered) {
         return Ok(predicate);
     }
     if let Some(predicate) = parse_cards_in_graveyard_count_predicate(&filtered) {
         return Ok(predicate);
     }
-    if let Some((player, subject_len)) = parse_comparison_player_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| CONTROL_OR_CONTROLS_WORD_PATTERN.matches_word(word))
-        && filtered
-            .get(subject_len + 1)
-            .is_some_and(|word| MORE_WORD_PATTERN.matches_word(word))
-        && let Some(than_offset) = find_index(&filtered[subject_len + 2..], |word| {
-            THAN_WORD_PATTERN.matches_word(word)
-        })
-    {
-        let than_idx = subject_len + 2 + than_offset;
-        let tail = &filtered[than_idx..];
-        if THAN_YOU_TAIL_PATTERN.matches_words(tail) {
-            let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
-                &filtered[subject_len + 2..than_idx],
-            );
-            if !filter_tokens.is_empty() {
-                let other = filter_tokens
-                    .first()
-                    .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
-                if let Ok(filter) = parse_object_filter(&filter_tokens, other)
-                    && filter != ObjectFilter::default()
-                {
-                    return Ok(PredicateAst::PlayerControlsMoreThanYou { player, filter });
-                }
-            }
-        }
+    if let Some(predicate) = parse_player_controls_more_than_you_predicate(&filtered) {
+        return Ok(predicate);
     }
 
     if let Some(predicate) = parse_player_life_relation_predicate(&filtered) {
@@ -5292,6 +5251,20 @@ mod tests {
                         filter: ObjectFilter::enchantment().controlled_by(PlayerFilter::You),
                     }),
                 ),
+            ),
+            (
+                "If an opponent controls more lands than you",
+                PredicateAst::PlayerControlsMoreThanYou {
+                    player: PlayerAst::Opponent,
+                    filter: ObjectFilter::land(),
+                },
+            ),
+            (
+                "If that player controls more creatures than you do",
+                PredicateAst::PlayerControlsMoreThanYou {
+                    player: PlayerAst::That,
+                    filter: ObjectFilter::creature(),
+                },
             ),
         ] {
             let tokens = lex_line(text, 0)?;
