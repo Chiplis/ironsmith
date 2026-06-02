@@ -202,8 +202,6 @@ const MELD_ATTACKING_OWN_CONTROL_TAIL_PATTERN: ClauseShape<'static> = clause_sha
             "them",
         ]
 );
-const YOU_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const SOURCE_IS_YOUR_RING_BEARER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -220,98 +218,6 @@ const RING_HAS_TEMPTED_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const TIMES_THIS_GAME_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["times", "this", "game"], &["time", "this", "game"]]);
-const TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "creature", "had", "to", "attack", "this", "combat"],
-            &["it", "had", "to", "attack", "this", "combat"],
-            &["that", "creature", "must", "attack", "this", "combat"],
-            &["it", "must", "attack", "this", "combat"],
-        ]
-);
-const YOU_ATTACKED_WITH_EXACTLY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "attacked", "with", "exactly"]);
-const OTHER_CREATURES_THIS_COMBAT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["other", "creature", "this", "combat"],
-            &["other", "creatures", "this", "combat"],
-            &["others", "creature", "this", "combat"],
-            &["others", "creatures", "this", "combat"],
-        ]
-);
-const SOURCE_ATTACKED_OR_BLOCKED_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "this", "creature", "attacked", "or", "blocked", "this", "turn",
-            ],
-            &[
-                "this",
-                "permanent",
-                "attacked",
-                "or",
-                "blocked",
-                "this",
-                "turn",
-            ],
-            &["this", "attacked", "or", "blocked", "this", "turn"],
-            &["it", "attacked", "or", "blocked", "this", "turn"],
-        ]
-);
-const YOU_CAST_SOURCE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you", "cast", "it"], &["you", "cast", "this", "spell"]]);
-const TAGGED_WAS_CAST_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "was", "cast"],
-            &["that", "creature", "was", "cast"],
-            &["that", "permanent", "was", "cast"],
-            &["that", "object", "was", "cast"],
-        ]
-);
-const THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this", "spell", "was", "cast", "from"]);
-const NO_SPELLS_CAST_LAST_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["no", "spells", "were", "cast", "last", "turn"],
-            &["no", "spell", "was", "cast", "last", "turn"],
-        ]
-);
-const THIS_SPELL_WAS_KICKED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "spell", "was", "kicked"],
-            &["this", "creature", "was", "kicked"],
-            &["this", "permanent", "was", "kicked"],
-        ]
-);
-const THIS_SPELL_WAS_BARGAINED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "spell", "was", "bargained"],
-            &["it", "was", "bargained"],
-        ]
-);
-const GIFT_PROMISED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["gift", "was", "promised"]);
-const GIFT_NOT_PROMISED_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["gift", "wasnt", "promised"],
-            &["gift", "was", "not", "promised"],
-        ]
-);
-const TRIBUTE_WAS_PAID_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["tribute", "was", "paid"]);
-const TRIBUTE_WASNT_PAID_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["tribute", "wasnt", "paid"],
-            &["tribute", "was", "not", "paid"],
-        ]
-);
 const COST_WAS_PAID_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "paid"]);
 const COST_WASNT_PAID_TAIL_PATTERN: ClauseShape<'static> =
@@ -320,10 +226,7 @@ const COST_WAS_NOT_PAID_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const DEFINITE_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const WAS_OR_WERE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["was"], &["were"]]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
-const BEHELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["beheld"]);
 const THIS_POSSESSIVE_PAID_LABEL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this"]; suffix & ["cost", "was", "paid"]);
 const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -339,9 +242,6 @@ const THIS_POSSESSIVE_PAID_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_s
             &["permanents"],
         ]
 );
-const IT_WAS_KICKED_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it", "was", "kicked"]);
-const THAT_WAS_KICKED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["that", "was", "kicked"]);
 const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2225,10 +2125,24 @@ fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<Pred
 fn parse_this_spell_paid_named_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_this_spell_was_kicked_shape(tokens)
         .or_else(|| parse_this_spell_was_bargained_shape(tokens))
-        .or_else(|| parse_named_spell_label_paid_shape(tokens, "Gift", false))
-        .or_else(|| parse_named_spell_label_paid_shape(tokens, "Gift", true))
-        .or_else(|| parse_named_spell_label_paid_shape(tokens, "Tribute", false))
-        .or_else(|| parse_named_spell_label_paid_shape(tokens, "Tribute", true))
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Gift", &["was", "promised"], false)
+        })
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Gift", &["wasnt", "promised"], true)
+        })
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Gift", &["was", "not", "promised"], true)
+        })
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Tribute", &["was", "paid"], false)
+        })
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Tribute", &["wasnt", "paid"], true)
+        })
+        .or_else(|| {
+            parse_named_spell_label_action_shape(tokens, "Tribute", &["was", "not", "paid"], true)
+        })
         .or_else(|| parse_behold_spell_label_shape(tokens))
 }
 
@@ -2264,7 +2178,10 @@ fn parse_this_spell_was_bargained_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["this", "spell"]) {
+    if !matches!(
+        subject_clause.word_refs().as_slice(),
+        ["this", "spell"] | ["it"]
+    ) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
@@ -2274,17 +2191,13 @@ fn parse_this_spell_was_bargained_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     Some(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()))
 }
 
-fn parse_named_spell_label_paid_shape(
+fn parse_named_spell_label_action_shape(
     tokens: &[OwnedLexToken],
     label: &str,
+    action_phrase: &[&str],
     negated: bool,
 ) -> Option<PredicateAst> {
     let label_word = label.to_ascii_lowercase();
-    let action_phrase: &[&str] = if negated {
-        &["wasnt", "paid"]
-    } else {
-        &["was", "paid"]
-    };
     let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("label", LexCaptureKind::UntilPhrase(action_phrase)),
@@ -2293,6 +2206,10 @@ fn parse_named_spell_label_paid_shape(
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let label_clause = matched.capture_clause("label", clause)?;
     if !matches!(label_clause.word_refs().as_slice(), [word] if *word == label_word) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if action_clause.word_refs().as_slice() != action_phrase {
         return None;
     }
     let predicate = PredicateAst::ThisSpellPaidLabel(label.to_string());
@@ -3826,98 +3743,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if YOU_ATTACKED_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::YouAttackedThisTurn);
-    }
-
-    if TRIGGERING_OBJECT_HAD_TO_ATTACK_THIS_COMBAT_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TriggeringObjectHadToAttackThisCombat);
-    }
-
-    if filtered.len() >= 9
-        && YOU_ATTACKED_WITH_EXACTLY_PREFIX_PATTERN.matches_words(&filtered)
-        && let Some((count, used)) = predicate_number_prefix(&filtered[4..])
-        && OTHER_CREATURES_THIS_COMBAT_TAIL_PATTERN.matches_words(&filtered[4 + used..])
-    {
-        return Ok(PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count));
-    }
-
-    if SOURCE_ATTACKED_OR_BLOCKED_THIS_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceAttackedOrBlockedThisTurn);
-    }
-
     if let Some(predicate) = parse_spell_lifecycle_predicate(&filtered) {
         return Ok(predicate);
     }
 
-    if YOU_CAST_SOURCE_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::SourceWasCast);
-    }
-    if TAGGED_WAS_CAST_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)));
-    }
-
-    if filtered.len() >= 6 && THIS_SPELL_WAS_CAST_FROM_PREFIX_PATTERN.matches_words(&filtered) {
-        let zone_words = &filtered[5..];
-        if zone_words == ["anywhere", "other", "than", "your", "hand"] {
-            return Ok(PredicateAst::ThisSpellWasCastFromNonHand);
-        }
-        let zone = if zone_words.len() == 1 {
-            parse_zone_word(zone_words[0])
-        } else if zone_words.len() == 2 && is_article(zone_words[0]) {
-            parse_zone_word(zone_words[1])
-        } else if zone_words.len() == 2 && DEFINITE_ARTICLE_WORD_PATTERN.matches_word(zone_words[0])
-        {
-            parse_zone_word(zone_words[1])
-        } else {
-            None
-        };
-
-        if let Some(zone) = zone {
-            return Ok(PredicateAst::ThisSpellWasCastFromZone(zone));
-        }
-    }
-
-    if NO_SPELLS_CAST_LAST_TURN_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::NoSpellsWereCastLastTurn);
-    }
-    if THIS_SPELL_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellWasKicked);
-    }
-    if THIS_SPELL_WAS_BARGAINED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()));
-    }
-    if filtered.len() == 4
-        && ARTICLE_WORD_PATTERN.matches_word(filtered[0])
-        && parse_subtype_word(filtered[1]).is_some()
-        && WAS_OR_WERE_WORD_PATTERN.matches_word(filtered[2])
-        && BEHELD_WORD_PATTERN.matches_word(filtered[3])
-    {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
-    }
-    if filtered.len() == 3
-        && parse_subtype_word(filtered[0]).is_some()
-        && WAS_OR_WERE_WORD_PATTERN.matches_word(filtered[1])
-        && BEHELD_WORD_PATTERN.matches_word(filtered[2])
-    {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Behold".to_string()));
-    }
-    if GIFT_PROMISED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Gift".to_string()));
-    }
-    if GIFT_NOT_PROMISED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
-        )));
-    }
-    if TRIBUTE_WAS_PAID_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellPaidLabel("Tribute".to_string()));
-    }
-    if TRIBUTE_WASNT_PAID_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::Not(Box::new(
-            PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
-        )));
-    }
     if filtered.len() >= 4
         && COST_WAS_PAID_TAIL_PATTERN.matches_words(&filtered[filtered.len() - 3..])
     {
@@ -3963,13 +3792,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         );
         return Ok(PredicateAst::ThisSpellPaidLabel(label));
     }
-    if IT_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::ThisSpellWasKicked);
-    }
-    if THAT_WAS_KICKED_PATTERN.matches_words(&filtered) {
-        return Ok(PredicateAst::TargetWasKicked);
-    }
-
     if let Some(predicate) = parse_spell_context_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -5295,9 +5117,23 @@ mod tests {
                 PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
             ),
             (
-                "If gift wasnt paid",
+                "If it was bargained",
+                PredicateAst::ThisSpellPaidLabel("Bargain".to_string()),
+            ),
+            (
+                "If gift was promised",
+                PredicateAst::ThisSpellPaidLabel("Gift".to_string()),
+            ),
+            (
+                "If gift was not promised",
                 PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
                     "Gift".to_string(),
+                ))),
+            ),
+            (
+                "If tribute was not paid",
+                PredicateAst::Not(Box::new(PredicateAst::ThisSpellPaidLabel(
+                    "Tribute".to_string(),
                 ))),
             ),
             ("If that was kicked", PredicateAst::TargetWasKicked),
