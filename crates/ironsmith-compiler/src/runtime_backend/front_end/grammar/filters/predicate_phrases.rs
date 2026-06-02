@@ -3660,24 +3660,37 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
 fn parse_object_on_battlefield_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let suffix_len = if word_slice_ends_with(&words, &["is", "on", "the", "battlefield"])
-        || word_slice_ends_with(&words, &["are", "on", "the", "battlefield"])
-    {
-        4
-    } else if word_slice_ends_with(&words, &["is", "on", "battlefield"])
-        || word_slice_ends_with(&words, &["are", "on", "battlefield"])
-    {
-        3
-    } else {
+    let clause = LexedClause::new(tokens);
+    let copula_phrases: &[&[&str]] = &[&["is", "on"], &["are", "on"]];
+    let atoms = [
+        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action("copula", LexCaptureKind::WordCount(2)),
+        LexPattern::modifier("location", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
     };
-    let object_token_end = tokens.len().saturating_sub(suffix_len);
-    if object_token_end == 0 {
+    let location = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing location in battlefield predicate".to_string())
+        })?;
+    if !matches!(
+        location.word_refs().as_slice(),
+        ["battlefield"] | ["the", "battlefield"]
+    ) {
         return Ok(None);
     }
 
-    let object_tokens = &tokens[..object_token_end];
+    let object_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in battlefield predicate".to_string())
+        })?;
+    let object_tokens = object_clause.tokens();
+    if object_tokens.is_empty() {
+        return Ok(None);
+    }
     let mut filter = parse_object_filter(object_tokens, false)?;
     if filter.name.is_some()
         && let Some(named_idx) = object_tokens
@@ -5202,6 +5215,38 @@ mod tests {
             let parsed = parse_predicate(&predicate_tokens)?;
 
             assert_eq!(parsed, expected, "{text}");
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_object_on_battlefield_uses_capture_parser() -> Result<(), CardTextError> {
+        for text in [
+            "If an artifact is on the battlefield",
+            "If creatures are on battlefield",
+        ] {
+            let tokens = lex_line(text, 0)?;
+            let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+            let parsed = parse_predicate(&predicate_tokens)?;
+
+            match parsed {
+                PredicateAst::ValueComparison {
+                    left,
+                    operator,
+                    right,
+                } => {
+                    assert_eq!(operator, ValueComparisonOperator::GreaterThan, "{text}");
+                    assert_eq!(right, Value::Fixed(0), "{text}");
+                    match left {
+                        Value::Count(filter) => {
+                            assert_eq!(filter.zone, Some(Zone::Battlefield), "{text}")
+                        }
+                        other => panic!("expected count for {text}, got {other:?}"),
+                    }
+                }
+                other => panic!("expected battlefield count predicate for {text}, got {other:?}"),
+            }
         }
         Ok(())
     }
