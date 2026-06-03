@@ -1278,7 +1278,7 @@ fn replace_named_source_aliases_for_trigger_normalization(
     alias: &str,
     replacement: &str,
 ) -> String {
-    replace_named_source_aliases_with_options(text, alias, replacement, false)
+    replace_named_source_aliases_with_options(text, alias, replacement, alias.contains('/'))
 }
 
 fn replace_named_source_aliases_with_options(
@@ -1448,7 +1448,7 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
 
     let mut full_names = Vec::new();
     push_unique_source_name_alias(&mut full_names, name);
-    if let Some((front_face, _)) = name.split_once("//") {
+    if let Some((front_face, _)) = name.split_once(" // ") {
         push_unique_source_name_alias(&mut full_names, front_face);
     }
     let existing_full_names = full_names.clone();

@@ -17332,6 +17332,9 @@ fn normalize_redundant_short_name_etb_surface(
         return line;
     };
     let rest = &line[start + prefix_len..];
+    if surface.contains('/') {
+        return format!("{}When {surface} enters,{rest}", &line[..start]);
+    }
     let rest_lower = rest.to_ascii_lowercase();
     if rest_lower.contains("behold ") {
         return line;

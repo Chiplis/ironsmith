@@ -13060,6 +13060,35 @@ fn parse_alchemy_prefixed_name_still_resolves_self_reference_triggers() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn slash_bearing_source_name_resolves_self_reference_triggers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "SP//dr, Piloted by Peni")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "Vigilance
+When SP//dr enters, put a +1/+1 counter on target creature.
+Whenever a modified creature you control deals combat damage to a player, draw a card.",
+        )
+        .expect("SP//dr should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("When SP//dr enters, put a +1/+1 counter on target creature."),
+        "slash-bearing source ETB should render as a self-reference, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a modified creature you control deals combat damage to a player, draw a card."
+        ),
+        "modified combat-damage draw trigger should render intact, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("When a creature enters"),
+        "slash-bearing source ETB should not degrade to a generic creature trigger: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Loran of the Third Path")
         .card_types(vec![CardType::Creature])
