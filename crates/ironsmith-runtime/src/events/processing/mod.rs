@@ -2584,6 +2584,7 @@ fn apply_prevention_for_damage_assignment(
                 }
             } else {
                 exec_ctx.targets = follow_up.targets;
+                exec_ctx.target_assignments = follow_up.target_assignments;
             }
             for effect in follow_up.effects {
                 if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {

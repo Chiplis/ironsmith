@@ -50,6 +50,7 @@ impl EffectExecutor for PreventAllCombatDamageFromEffect {
             filter,
             Vec::new(),
             Vec::new(),
+            Vec::new(),
         );
         Ok(EffectOutcome::resolved())
     }

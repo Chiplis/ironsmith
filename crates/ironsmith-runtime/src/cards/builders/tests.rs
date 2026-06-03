@@ -20756,7 +20756,7 @@ fn divine_deflection_strict_parser_compiled_text_and_shape_regression() {
         rendered.contains(
             "Prevent the next X damage that would be dealt to you and/or permanents you control this turn"
         ) && rendered.contains(
-            "If damage is prevented this way, this spell deals that much damage to any target"
+            "If damage is prevented this way, Divine Deflection deals that much damage to any target"
         ),
         "expected Divine Deflection prevention and conditional damage text, got {rendered}"
     );

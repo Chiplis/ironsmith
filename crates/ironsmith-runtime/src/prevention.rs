@@ -13,6 +13,7 @@
 use crate::color::Color;
 use crate::effect::{Effect, Until};
 use crate::effects::ResolvedTarget;
+use crate::game_state::TargetAssignment;
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 pub use ironsmith_core::{DamageFilter, PreventionTarget};
@@ -62,6 +63,9 @@ pub struct PreventionShield {
     /// Targets chosen when the prevention shield was created, for delayed follow-ups.
     pub follow_up_targets: Vec<ResolvedTarget>,
 
+    /// Target assignment ranges for delayed follow-ups.
+    pub follow_up_target_assignments: Vec<TargetAssignment>,
+
     /// Turn this shield was created (for end-of-turn cleanup)
     pub created_turn: u32,
 }
@@ -85,6 +89,7 @@ impl PreventionShield {
             damage_filter: DamageFilter::default(),
             follow_up_effects: Vec::new(),
             follow_up_targets: Vec::new(),
+            follow_up_target_assignments: Vec::new(),
             created_turn: 0, // Set when added to manager
         }
     }
@@ -104,6 +109,15 @@ impl PreventionShield {
     /// Store targets chosen for delayed follow-up effects.
     pub fn with_follow_up_targets(mut self, targets: Vec<ResolvedTarget>) -> Self {
         self.follow_up_targets = targets;
+        self
+    }
+
+    /// Store target assignment ranges for delayed follow-up effects.
+    pub fn with_follow_up_target_assignments(
+        mut self,
+        target_assignments: Vec<TargetAssignment>,
+    ) -> Self {
+        self.follow_up_target_assignments = target_assignments;
         self
     }
 
@@ -180,6 +194,7 @@ pub struct PreventionFollowUp {
     pub prevented: u32,
     pub effects: Vec<Effect>,
     pub targets: Vec<ResolvedTarget>,
+    pub target_assignments: Vec<TargetAssignment>,
 }
 
 /// Result of applying prevention to a single damage assignment.
@@ -375,6 +390,7 @@ impl PreventionEffectManager {
                         prevented,
                         effects: shield.follow_up_effects.clone(),
                         targets: shield.follow_up_targets.clone(),
+                        target_assignments: shield.follow_up_target_assignments.clone(),
                     });
                 }
             }
@@ -472,6 +488,7 @@ impl PreventionEffectManager {
                         prevented,
                         effects: shield.follow_up_effects.clone(),
                         targets: shield.follow_up_targets.clone(),
+                        target_assignments: shield.follow_up_target_assignments.clone(),
                     });
                 }
             }

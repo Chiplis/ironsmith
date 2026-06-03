@@ -163,6 +163,7 @@ impl EffectExecutor for PreventDamageEffect {
             damage_filter,
             self.follow_up_effects.clone(),
             ctx.targets.clone(),
+            ctx.target_assignments.clone(),
         );
 
         Ok(EffectOutcome::resolved())
@@ -290,5 +291,57 @@ mod tests {
         let effect = PreventDamageEffect::to_you(3, Until::EndOfTurn);
         let cloned = effect.clone_box();
         assert!(format!("{:?}", cloned).contains("PreventDamageEffect"));
+    }
+
+    #[test]
+    fn follow_up_effects_preserve_target_assignment_ranges() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell_source = game.new_object_id();
+        let damage_source = create_creature(&mut game, "Damage Source", bob);
+        let protected = create_creature(&mut game, "Protected", alice);
+        let protected_spec = ChooseSpec::target(ChooseSpec::Object(
+            crate::target::ObjectFilter::creature(),
+        ));
+        let follow_up_spec = ChooseSpec::AnyTarget;
+
+        let follow_up = Effect::deal_damage(
+            Value::EventValue(crate::effect::EventValueSpec::Amount),
+            follow_up_spec.clone(),
+        );
+        let effect = PreventDamageEffect::new(3, protected_spec.clone(), Until::EndOfTurn)
+            .with_follow_up_effects(vec![follow_up]);
+        let mut ctx = ExecutionContext::new_default(spell_source, alice)
+            .with_targets(vec![
+                ResolvedTarget::Object(protected),
+                ResolvedTarget::Player(bob),
+            ])
+            .with_target_assignments(vec![
+                crate::game_state::TargetAssignment {
+                    spec: protected_spec,
+                    range: 0..1,
+                },
+                crate::game_state::TargetAssignment {
+                    spec: follow_up_spec,
+                    range: 1..2,
+                },
+            ]);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("prevention shield should register");
+        let (remaining, _replaced) = crate::events::processing::process_damage_with_event(
+            &mut game,
+            damage_source,
+            crate::events::DamageTarget::Object(protected),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+
+        assert_eq!(remaining, 0);
+        assert_eq!(game.life_total(bob), 18);
+        assert_eq!(game.damage_on(protected), 0);
     }
 }
