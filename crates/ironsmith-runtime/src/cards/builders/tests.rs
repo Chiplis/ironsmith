@@ -180,6 +180,63 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn reprocess_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Reprocess");
+
+    let def = parse_oracle_card_definition("Reprocess");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(def.name(), "Reprocess");
+    assert_eq!(def.card.card_types, vec![CardType::Sorcery]);
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Reprocess should have spell effects")
+        .flattened_default_effects();
+    let [choose_effect, sacrifice_effect, draw_effect] = effects else {
+        panic!("Reprocess should lower to choose, sacrifice, and draw effects, got {effects:#?}");
+    };
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("Reprocess should choose permanents to sacrifice");
+    let sacrifice_with_id = sacrifice_effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .expect("Reprocess sacrifice should be effect-metric addressable");
+    let sacrifice = sacrifice_with_id
+        .effect
+        .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
+        .expect("Reprocess should sacrifice the chosen permanents");
+    let draw = draw_effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("Reprocess should draw from the sacrificed count");
+
+    assert_eq!(choose.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(
+        choose.filter.card_types,
+        vec![CardType::Artifact, CardType::Creature, CardType::Land]
+    );
+    assert_eq!(sacrifice.player, PlayerFilter::You);
+    assert!(
+        matches!(
+            draw.count,
+            Value::EffectMetric {
+                effect_id,
+                source: crate::effect::EffectMetricSource::AffectedObjects,
+                metric: crate::effect::EffectMetric::Count,
+            } if effect_id == sacrifice_with_id.id
+        ),
+        "Reprocess draw count should reference the sacrificed-object metric, got {:?}",
+        draw.count
+    );
+    assert!(
+        rendered.contains(
+            "Sacrifice any number of artifacts, creatures, and/or lands. Draw a card for each permanent sacrificed this way."
+        ),
+        "Reprocess should render its sacrificed-this-way draw clause, got {rendered}"
+    );
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

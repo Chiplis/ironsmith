@@ -68,6 +68,13 @@ fn token_copy_clause_first_is_word(clause: SubjectVerbPrimitiveClause<'_>, expec
     clause.first_is_word(expected)
 }
 
+fn sacrifice_choice_filter(mut filter: ObjectFilter) -> ObjectFilter {
+    if filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::You);
+    }
+    filter
+}
+
 pub(crate) const DESTROY_ALL_ATTACHED_TO_TARGET_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
     LexPattern::word("destroy"),
     LexPattern::any_word(ALL_OR_EACH_WORDS),
@@ -614,7 +621,7 @@ pub(crate) fn parse_sacrifice_any_number_sentence_matched(
         )));
     }
 
-    let filter = parse_object_filter(filter_clause.tokens(), false)?;
+    let filter = sacrifice_choice_filter(parse_object_filter(filter_clause.tokens(), false)?);
     let tag = TagKey::from(IT_TAG);
 
     let mut effects = vec![
@@ -693,7 +700,7 @@ pub(crate) fn parse_sacrifice_one_or_more_sentence_matched(
             clause.text()
         )));
     }
-    let filter = parse_object_filter(filter_clause.tokens(), false)?;
+    let filter = sacrifice_choice_filter(parse_object_filter(filter_clause.tokens(), false)?);
     let tag = TagKey::from(IT_TAG);
     Ok(Some(vec![
         EffectAst::ChooseObjects {
