@@ -17383,6 +17383,18 @@ fn apply_triggered_presentation_label(
         return line;
     };
     let label = label.trim();
+    if label == "__ironsmith_case_solved" {
+        return format!("Solved — {line}");
+    }
+    if label == "__ironsmith_case_to_solve" {
+        if let Some(condition) = triggered.intervening_if.as_ref() {
+            let condition = capitalize_first(&describe_condition(condition));
+            return format!(
+                "To solve — {condition}. (If unsolved, solve at the beginning of your end step.)"
+            );
+        }
+        return line;
+    }
     if label.is_empty() || label.starts_with("__ironsmith_") || line.starts_with(label) {
         return line;
     }
@@ -17395,6 +17407,19 @@ fn apply_triggered_presentation_label(
         label
     };
     format!("{label} — {line}")
+}
+
+fn describe_case_to_solve_triggered_ability(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<String> {
+    if triggered.presentation_label.as_deref()? != "__ironsmith_case_to_solve" {
+        return None;
+    }
+    let condition = triggered.intervening_if.as_ref()?;
+    Some(format!(
+        "To solve — {}. (If unsolved, solve at the beginning of your end step.)",
+        capitalize_first(&describe_condition(condition))
+    ))
 }
 
 pub(super) fn granted_ability_self_subject_for_filter(filter: &ObjectFilter) -> &'static str {
@@ -40129,6 +40154,9 @@ pub(super) fn describe_ability(
             )]
         }
         AbilityKind::Triggered(triggered) => {
+            if let Some(rendered) = describe_case_to_solve_triggered_ability(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
             if let Some(rendered) = describe_recover_keyword(triggered) {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }

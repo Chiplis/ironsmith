@@ -946,7 +946,7 @@ pub(crate) fn check_triggers_with_view(
                 continue;
             }
 
-            if !class_level_trigger_is_active(obj, trigger_ability) {
+            if !presentation_labeled_trigger_is_active(game, obj, trigger_ability) {
                 continue;
             }
 
@@ -1400,18 +1400,27 @@ pub(crate) fn check_triggers_with_view(
     triggered
 }
 
-fn class_level_trigger_is_active(
+fn presentation_labeled_trigger_is_active(
+    game: &GameState,
     source: &crate::object::Object,
     triggered: &crate::ability::TriggeredAbility,
 ) -> bool {
-    let Some(level) = triggered
-        .presentation_label
-        .as_deref()
-        .and_then(|label| label.strip_prefix("__ironsmith_class_level:"))
+    let Some(label) = triggered.presentation_label.as_deref() else {
+        return true;
+    };
+    if label == "__ironsmith_case_solved" {
+        return game.is_case_solved(source.id);
+    }
+    if label == "__ironsmith_case_to_solve" {
+        return !game.is_case_solved(source.id);
+    }
+    let Some(level) = label
+        .strip_prefix("__ironsmith_class_level:")
         .and_then(|level| level.parse::<u32>().ok())
     else {
         return true;
     };
+
     source
         .counters
         .get(&crate::CounterType::Level)

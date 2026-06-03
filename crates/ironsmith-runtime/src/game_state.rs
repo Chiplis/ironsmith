@@ -2066,6 +2066,9 @@ pub struct GameState {
     /// Permanents that are suspected.
     pub suspected: HashSet<ObjectId>,
 
+    /// Cases that have become solved.
+    pub solved_cases: HashSet<ObjectId>,
+
     /// Flipped permanents (for flip cards like Budoka Gardener).
     pub flipped: HashSet<ObjectId>,
 
@@ -2229,6 +2232,7 @@ impl GameState {
             renowned: HashSet::new(),
             devoured_counts: HashMap::new(),
             suspected: HashSet::new(),
+            solved_cases: HashSet::new(),
             flipped: HashSet::new(),
             face_down: HashSet::new(),
             manifested: HashSet::new(),
@@ -8434,6 +8438,20 @@ impl GameState {
         removed
     }
 
+    /// Check if a Case permanent has become solved.
+    pub fn is_case_solved(&self, id: ObjectId) -> bool {
+        self.solved_cases.contains(&id)
+    }
+
+    /// Mark a Case permanent solved. Returns true if this changed game state.
+    pub fn solve_case(&mut self, id: ObjectId) -> bool {
+        let changed = self.solved_cases.insert(id);
+        if changed {
+            self.mark_continuous_state_dirty();
+        }
+        changed
+    }
+
     /// Check if a permanent is saddled (until end of turn).
     pub fn is_saddled(&self, id: ObjectId) -> bool {
         self.saddled_until_end_of_turn.contains(&id)
@@ -8763,6 +8781,7 @@ impl GameState {
         self.renowned.remove(&id);
         self.devoured_counts.remove(&id);
         self.suspected.remove(&id);
+        self.solved_cases.remove(&id);
         self.flipped.remove(&id);
         self.face_down.remove(&id);
         self.manifested.remove(&id);

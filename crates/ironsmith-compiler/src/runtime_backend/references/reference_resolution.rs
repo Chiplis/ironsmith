@@ -1202,6 +1202,7 @@ fn advance_reference_frame_for_effect(
             advance_reference_frames(effects, id_gen, frame)?;
         }
         EffectAst::RepeatThisProcess
+        | EffectAst::SolveCase
         | EffectAst::RepeatThisProcessMay
         | EffectAst::RepeatThisProcessOnce
         | EffectAst::UnlessPays { .. }

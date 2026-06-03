@@ -4172,6 +4172,15 @@ impl RenownEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SolveCaseEffect;
+
+impl SolveCaseEffect {
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct BolsterEffect {
     pub amount: u32,

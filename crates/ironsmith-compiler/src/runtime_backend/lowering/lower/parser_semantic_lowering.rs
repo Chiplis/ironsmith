@@ -1015,6 +1015,15 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
 ) -> Result<Option<LineAst>, CardTextError> {
     let normalized = line.full_text.trim_end_matches('.');
 
+    if line.presentation_label.as_deref() == Some("__ironsmith_case_to_solve") {
+        let trigger = parse_trigger_clause_lexed(trigger_parse_tokens)?;
+        return Ok(Some(LineAst::Triggered {
+            trigger,
+            effects: vec![EffectAst::SolveCase],
+            max_triggers_per_turn: line.max_triggers_per_turn,
+        }));
+    }
+
     if normalized
         == "when the names of three or more nonland permanents begin with the same letter, sacrifice this creature. if you do, it deals 2 damage to each creature and each player"
     {
