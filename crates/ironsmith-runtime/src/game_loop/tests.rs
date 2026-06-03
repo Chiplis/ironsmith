@@ -9268,6 +9268,81 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn touch_of_the_eternal_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(278_197), "Touch of the Eternal")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, count the number of permanents you control. Your life total becomes that number.",
+        )
+        .expect("Touch of the Eternal should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_touch_counted_permanent(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    card_type: CardType,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn touch_of_the_eternal_upkeep_sets_life_to_current_permanents_you_control() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let touch = touch_of_the_eternal_definition();
+    let _touch_id = game.create_object_from_definition(&touch, alice, Zone::Battlefield);
+    create_touch_counted_permanent(&mut game, "Alice Relic", alice, CardType::Artifact);
+    create_touch_counted_permanent(&mut game, "Bob Relic", bob, CardType::Artifact);
+    game.player_mut(alice).expect("alice exists").life = 20;
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Touch of the Eternal should not trigger at the beginning of an opponent's upkeep"
+    );
+
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Touch of the Eternal should trigger at the beginning of your upkeep"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Touch of the Eternal upkeep trigger should go on the stack");
+
+    create_touch_counted_permanent(&mut game, "Alice Soldier", alice, CardType::Creature);
+    resolve_stack_entry(&mut game).expect("Touch of the Eternal trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        3,
+        "Touch of the Eternal should set life to the current number of permanents Alice controls and ignore Bob's permanent"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
     use crate::PriorityResponse;
