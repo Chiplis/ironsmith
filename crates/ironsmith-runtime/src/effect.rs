@@ -908,11 +908,19 @@ impl RestrictionExt for Restriction {
                                 if !chosen_name.is_empty() {
                                     let mut resolved_filter = spell_filter.clone();
                                     resolved_filter.name = Some(chosen_name.to_string());
-                                    tracker.add_cant_cast_filter(player.id, resolved_filter);
+                                    tracker.add_cant_cast_filter_from_source(
+                                        player.id,
+                                        resolved_filter,
+                                        Some(source),
+                                    );
                                 }
                             }
                         } else {
-                            tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                            tracker.add_cant_cast_filter_from_source(
+                                player.id,
+                                spell_filter.clone(),
+                                source,
+                            );
                         }
                     }
                 }

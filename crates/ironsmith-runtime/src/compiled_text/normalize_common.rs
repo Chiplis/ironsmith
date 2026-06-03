@@ -198,6 +198,9 @@ pub(super) fn describe_cast_ban_spell_filter(filter: &ObjectFilter) -> String {
     if filter == &ObjectFilter::default().with_type(CardType::Creature) {
         return "creature spells".to_string();
     }
+    if filter == &ObjectFilter::default().of_chosen_creature_type() {
+        return "spells of the chosen type".to_string();
+    }
 
     let singular = describe_cast_limit_spell_filter(filter);
     if singular.ends_with("spells") {

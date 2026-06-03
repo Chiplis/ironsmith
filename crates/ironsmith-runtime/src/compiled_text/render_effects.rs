@@ -3492,6 +3492,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_double_power_then_grant_same_filter(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
         return Some(compact);
     }
@@ -3543,6 +3547,87 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn keyword_label_from_static_ability_id(
+    ability: crate::static_abilities::StaticAbilityId,
+) -> Option<&'static str> {
+    Some(match ability {
+        crate::static_abilities::StaticAbilityId::Flying => "flying",
+        crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+        crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+        crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+        crate::static_abilities::StaticAbilityId::Haste => "haste",
+        crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+        crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+        crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+        crate::static_abilities::StaticAbilityId::Menace => "menace",
+        crate::static_abilities::StaticAbilityId::Reach => "reach",
+        crate::static_abilities::StaticAbilityId::Trample => "trample",
+        crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+        _ => return None,
+    })
+}
+
+fn describe_double_power_then_grant_same_filter(effects: &[Effect]) -> Option<String> {
+    let [for_each_effect, grant_effect] = effects else {
+        return None;
+    };
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let [pump_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let pump = pump_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if pump.until != Until::EndOfTurn
+        || pump.condition.is_some()
+        || pump.modification.is_some()
+        || !pump.additional_modifications.is_empty()
+        || !matches!(pump.target_spec.as_ref(), Some(ChooseSpec::Iterated))
+    {
+        return None;
+    }
+    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+        power,
+        toughness,
+    }] = pump.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    if !matches!(power, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Iterated))
+        || !matches!(toughness, Value::Fixed(0))
+    {
+        return None;
+    }
+
+    let grant = grant_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.until != Until::EndOfTurn
+        || grant.condition.is_some()
+        || !grant.runtime_modifications.is_empty()
+        || !grant.additional_modifications.is_empty()
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &grant.modification else {
+        return None;
+    };
+    let Some(ChooseSpec::Object(filter)) = grant.target_spec.as_ref() else {
+        return None;
+    };
+    if filter != &for_each.filter {
+        return None;
+    }
+
+    let ability_text = keyword_label_from_static_ability_id(ability.id())?;
+    let description = for_each.filter.description();
+    let filter_text = strip_indefinite_article(&description);
+    let pronoun = if for_each.filter.card_types.contains(&CardType::Creature) {
+        "Those creatures"
+    } else {
+        "Those objects"
+    };
+    Some(format!(
+        "Double the power of each {filter_text} until end of turn. {pronoun} gain {ability_text} until end of turn"
+    ))
 }
 
 fn describe_exile_target_and_attached_objects(effects: &[Effect]) -> Option<String> {
@@ -5097,6 +5182,66 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn tagged_reference_noun_from_target(spec: &ChooseSpec) -> Option<&'static str> {
+        let ChooseSpec::Target(inner) = spec else {
+            return None;
+        };
+        let ChooseSpec::Object(filter) = inner.as_ref() else {
+            return None;
+        };
+        if filter.card_types.contains(&CardType::Creature) {
+            Some("that creature")
+        } else if filter.card_types.contains(&CardType::Artifact) {
+            Some("that artifact")
+        } else if filter.card_types.contains(&CardType::Enchantment) {
+            Some("that enchantment")
+        } else if filter.card_types.contains(&CardType::Planeswalker) {
+            Some("that planeswalker")
+        } else if filter.card_types.contains(&CardType::Battle) {
+            Some("that battle")
+        } else if filter.card_types.contains(&CardType::Land) {
+            Some("that land")
+        } else {
+            Some("that permanent")
+        }
+    }
+
+    fn describe_tagged_effect_then_remove_all_counters(effects: &[&Effect]) -> Option<String> {
+        let effects = if let Some(first) = effects.first()
+            && first
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+        {
+            &effects[1..]
+        } else {
+            effects
+        };
+        let [target_effect, remove_effect] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        let apply = tagged_apply_continuous(target_effect)?;
+        let target_reference = tagged_reference_noun_from_target(apply.target_spec.as_ref()?)?;
+        let remove = unwrap_wrapped_effect(remove_effect)
+            .downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()?;
+        let removes_all_counters_from_tagged_target = match &remove.max_count {
+            Value::CountersOn(spec, None) => {
+                matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag == target_tag)
+            }
+            _ => false,
+        };
+        if !matches!(&remove.target, ChooseSpec::Tagged(tag) if tag == target_tag)
+            || !removes_all_counters_from_tagged_target
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{}. Remove all counters from {target_reference}",
+            describe_effect(target_effect).trim_end_matches('.')
+        ))
+    }
+
     fn conditional_tagged_subtype(
         conditional: &crate::effects::ConditionalEffect,
     ) -> Option<(&crate::TagKey, Subtype)> {
@@ -5178,6 +5323,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_choose_then_mount_vehicle_become(&raw_effects) {
         return compact;
     }
+    if let Some(compact) = describe_tagged_effect_then_remove_all_counters(&raw_effects) {
+        return compact;
+    }
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
         return compact;
     }
@@ -5186,26 +5334,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
     if let Some(compact) = describe_return_then_conditional_animation(effects) {
         return compact;
-    }
-
-    fn keyword_label_from_static_ability_id(
-        ability: crate::static_abilities::StaticAbilityId,
-    ) -> Option<&'static str> {
-        Some(match ability {
-            crate::static_abilities::StaticAbilityId::Flying => "flying",
-            crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
-            crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
-            crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
-            crate::static_abilities::StaticAbilityId::Haste => "haste",
-            crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
-            crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
-            crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
-            crate::static_abilities::StaticAbilityId::Menace => "menace",
-            crate::static_abilities::StaticAbilityId::Reach => "reach",
-            crate::static_abilities::StaticAbilityId::Trample => "trample",
-            crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
-            _ => return None,
-        })
     }
 
     fn describe_tagged_counter_then_color_subtype_keyword(effects: &[&Effect]) -> Option<String> {
@@ -17332,6 +17460,9 @@ fn normalize_redundant_short_name_etb_surface(
         return line;
     };
     let rest = &line[start + prefix_len..];
+    if surface.contains('/') {
+        return format!("{}When {surface} enters,{rest}", &line[..start]);
+    }
     let rest_lower = rest.to_ascii_lowercase();
     if rest_lower.contains("behold ") {
         return line;
@@ -31592,6 +31723,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_choose_spec(&remove_up_to_counters.target)
         );
     }
+    if let Some(remove_up_to_any_counters) =
+        effect.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
+    {
+        let target = describe_choose_spec(&remove_up_to_any_counters.target);
+        if let Value::CountersOn(counter_source, None) = &remove_up_to_any_counters.max_count
+            && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
+        {
+            return format!("Remove all counters from {target}");
+        }
+        return format!(
+            "Remove up to {} counters from {}",
+            describe_value(&remove_up_to_any_counters.max_count),
+            target
+        );
+    }
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
         let from_text = describe_choose_spec(&move_counters.from);
         if matches!(move_counters.from, ChooseSpec::Source) || from_text == "it" {
@@ -34192,15 +34338,6 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "{} {}",
             describe_restriction(&cant.restriction),
             describe_until(&cant.duration)
-        );
-    }
-    if let Some(remove_up_to_any) =
-        effect.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
-    {
-        return format!(
-            "Remove up to {} counters from {}",
-            describe_value(&remove_up_to_any.max_count),
-            describe_choose_spec(&remove_up_to_any.target)
         );
     }
     if let Some(surveil) = effect.downcast_ref::<crate::effects::SurveilEffect>() {

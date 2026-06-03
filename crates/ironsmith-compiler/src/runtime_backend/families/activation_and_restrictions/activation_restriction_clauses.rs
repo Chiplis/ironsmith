@@ -88,6 +88,15 @@ const CANT_CAST_CREATURE_SPELLS_TAIL_PATTERN: ClauseShape<'static> = clause_shap
             &["cast", "creature", "spells", "this", "turn"],
         ]
 );
+const CANT_CAST_SPELLS_OF_CHOSEN_TYPE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["cast", "spells", "of", "the", "chosen", "type"],
+            &[
+                "cast", "spells", "of", "the", "chosen", "type", "this", "turn",
+            ],
+        ]
+);
 const CANT_CAST_SPELLS_WITH_PARITY_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["cast", "spells", "with"]; suffix & ["mana", "values"]);
 const THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "turn"]);
@@ -1481,6 +1490,9 @@ pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<Objec
     }
     if CAST_SPELLS_PATTERN.matches_words(words) {
         return Some(ObjectFilter::default());
+    }
+    if CANT_CAST_SPELLS_OF_CHOSEN_TYPE_TAIL_PATTERN.matches_words(words) {
+        return Some(ObjectFilter::default().of_chosen_creature_type());
     }
     if words.first() != Some(&"cast") || words.last() != Some(&"spells") || words.len() < 3 {
         return None;

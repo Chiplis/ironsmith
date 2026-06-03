@@ -81,7 +81,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         && let Some(counter_idx) = find_index(tokens, |token: &OwnedLexToken| {
             COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
         })
-        && counter_idx > 1
+        && counter_idx > 0
     {
         let counter_descriptor = trim_commas(&tokens[1..counter_idx]);
         let counter_type = parse_counter_type_from_descriptor_tokens(&counter_descriptor);

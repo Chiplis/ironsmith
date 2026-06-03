@@ -4465,6 +4465,29 @@ pub(crate) fn parse_choose_named_options_as_enters_line(
         return Ok(None);
     }
 
+    let mut card_type_options = Vec::new();
+    for word in choice_words.iter().skip(1) {
+        if OR_WORD_PATTERN.matches_word(word) || *word == "," {
+            continue;
+        }
+        let Some(card_type) = parse_card_type(word.trim_end_matches('s')) else {
+            card_type_options.clear();
+            break;
+        };
+        if !card_type_options.contains(&card_type) {
+            card_type_options.push(card_type);
+        }
+    }
+    if card_type_options.len() >= 2 {
+        return Ok(Some(StaticAbility::choose_named_option_as_enters(
+            card_type_options
+                .iter()
+                .map(|card_type| card_type.name().to_string())
+                .collect(),
+            format!("As {display_subject} enters, {}.", choice_words.join(" ")),
+        )));
+    }
+
     let mut options = Vec::new();
     let mut current = Vec::new();
     for word in choice_words.iter().skip(1) {
