@@ -513,6 +513,14 @@ impl TurnCounterTracker {
 // - "Damage can't be prevented" (Leyline of Punishment)
 // - "This permanent can't be destroyed" (Indestructible)
 
+/// A per-player cast prohibition and the source object needed to evaluate
+/// source-dependent spell filters such as "of the chosen type".
+#[derive(Debug, Clone, PartialEq)]
+pub struct CastRestrictionFilter {
+    pub filter: crate::target::ObjectFilter,
+    pub source: Option<ObjectId>,
+}
+
 /// Tracks active "can't" effects in the game.
 ///
 /// Per Rule 614.17, "can't" effects are not replacement effects - they are
@@ -581,7 +589,7 @@ pub struct CantEffectTracker {
     /// Examples:
     /// - default filter => "can't cast spells"
     /// - creature filter => "can't cast creature spells"
-    pub cant_cast_filters: HashMap<PlayerId, Vec<crate::target::ObjectFilter>>,
+    pub cant_cast_filters: HashMap<PlayerId, Vec<CastRestrictionFilter>>,
 
     /// Players who can cast spells only any time they could cast a sorcery.
     pub cast_spells_only_as_sorcery: HashSet<PlayerId>,
@@ -864,8 +872,12 @@ impl CantEffectTracker {
         self.cant_be_regenerated.extend(other.cant_be_regenerated);
         self.cant_be_sacrificed.extend(other.cant_be_sacrificed);
         for (player, filters) in other.cant_cast_filters {
-            for filter in filters {
-                self.add_cant_cast_filter(player, filter);
+            for restriction in filters {
+                self.add_cant_cast_filter_from_source(
+                    player,
+                    restriction.filter,
+                    restriction.source,
+                );
             }
         }
         self.cast_spells_only_as_sorcery
@@ -1112,7 +1124,7 @@ impl CantEffectTracker {
         self.cast_filters_for_player(player).is_none_or(|filters| {
             !filters
                 .iter()
-                .any(|filter| filter == &crate::target::ObjectFilter::default())
+                .any(|restriction| restriction.filter == crate::target::ObjectFilter::default())
         })
     }
 
@@ -1139,9 +1151,9 @@ impl CantEffectTracker {
     /// Check if a player can cast creature spells.
     pub fn can_cast_creature_spells(&self, player: PlayerId) -> bool {
         self.cast_filters_for_player(player).is_none_or(|filters| {
-            !filters.iter().any(|filter| {
-                filter
-                    == &crate::target::ObjectFilter::default()
+            !filters.iter().any(|restriction| {
+                restriction.filter
+                    == crate::target::ObjectFilter::default()
                         .with_type(crate::types::CardType::Creature)
             })
         })
@@ -1153,9 +1165,22 @@ impl CantEffectTracker {
         player: PlayerId,
         spell_filter: crate::target::ObjectFilter,
     ) {
+        self.add_cant_cast_filter_from_source(player, spell_filter, None);
+    }
+
+    pub fn add_cant_cast_filter_from_source(
+        &mut self,
+        player: PlayerId,
+        spell_filter: crate::target::ObjectFilter,
+        source: Option<ObjectId>,
+    ) {
+        let restriction = CastRestrictionFilter {
+            filter: spell_filter,
+            source,
+        };
         let filters = self.cant_cast_filters.entry(player).or_default();
-        if !filters.iter().any(|existing| existing == &spell_filter) {
-            filters.push(spell_filter);
+        if !filters.iter().any(|existing| existing == &restriction) {
+            filters.push(restriction);
         }
     }
 
@@ -1163,7 +1188,7 @@ impl CantEffectTracker {
     pub fn cast_filters_for_player(
         &self,
         player: PlayerId,
-    ) -> Option<&[crate::target::ObjectFilter]> {
+    ) -> Option<&[CastRestrictionFilter]> {
         self.cant_cast_filters.get(&player).map(Vec::as_slice)
     }
 
@@ -4755,7 +4780,29 @@ impl GameState {
                         if let Some(chosen_idx) =
                             chosen.pop().filter(|idx| *idx < spec.options.len())
                         {
-                            self.set_chosen_named_option(new_id, spec.options[chosen_idx].clone());
+                            let option = spec.options[chosen_idx].clone();
+                            match option.as_str() {
+                                "artifact" => self
+                                    .set_chosen_card_type(new_id, crate::types::CardType::Artifact),
+                                "creature" => self
+                                    .set_chosen_card_type(new_id, crate::types::CardType::Creature),
+                                "enchantment" => self.set_chosen_card_type(
+                                    new_id,
+                                    crate::types::CardType::Enchantment,
+                                ),
+                                "instant" => self
+                                    .set_chosen_card_type(new_id, crate::types::CardType::Instant),
+                                "sorcery" => self
+                                    .set_chosen_card_type(new_id, crate::types::CardType::Sorcery),
+                                "planeswalker" => self.set_chosen_card_type(
+                                    new_id,
+                                    crate::types::CardType::Planeswalker,
+                                ),
+                                "land" => self
+                                    .set_chosen_card_type(new_id, crate::types::CardType::Land),
+                                _ => {}
+                            }
+                            self.set_chosen_named_option(new_id, option);
                         }
                     }
                     if static_ability.life_total_note_as_enters().is_some() {

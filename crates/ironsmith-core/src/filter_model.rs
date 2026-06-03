@@ -382,6 +382,7 @@ pub struct ObjectFilter {
     pub colors: Option<ColorSet>,
     pub chosen_color: bool,
     pub chosen_creature_type: bool,
+    pub chosen_card_type: bool,
     pub excluded_chosen_creature_type: bool,
     pub excluded_colors: ColorSet,
     pub colorless: bool,
@@ -486,6 +487,7 @@ impl ObjectFilter {
             || self.colors.is_some()
             || self.chosen_color
             || self.chosen_creature_type
+            || self.chosen_card_type
             || self.excluded_chosen_creature_type
             || !self.excluded_colors.is_empty()
             || self.colorless
@@ -937,6 +939,11 @@ impl ObjectFilter {
         self
     }
 
+    pub fn of_chosen_card_type(mut self) -> Self {
+        self.chosen_card_type = true;
+        self
+    }
+
     pub fn not_of_chosen_creature_type(mut self) -> Self {
         self.excluded_chosen_creature_type = true;
         self
@@ -1341,6 +1348,9 @@ impl ObjectFilter {
             post_noun_qualifiers.push("of the chosen color".to_string());
         }
         if self.chosen_creature_type {
+            post_noun_qualifiers.push("of the chosen type".to_string());
+        }
+        if self.chosen_card_type {
             post_noun_qualifiers.push("of the chosen type".to_string());
         }
         if self.excluded_chosen_creature_type {

@@ -2074,6 +2074,15 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if self.chosen_card_type {
+            let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_card_type(source))
+            else {
+                return false;
+            };
+            if !object.card_types.contains(&chosen_type) {
+                return false;
+            }
+        }
         if self.excluded_chosen_creature_type {
             let Some(source) = ctx.source else {
                 return false;
@@ -2680,6 +2689,15 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             }
         }
+        if self.chosen_card_type {
+            let Some(chosen_type) = ctx.source.and_then(|source| game.chosen_card_type(source))
+            else {
+                return false;
+            };
+            if !snapshot.card_types.contains(&chosen_type) {
+                return false;
+            }
+        }
         if self.excluded_chosen_creature_type {
             let Some(source) = ctx.source else {
                 return false;
@@ -3265,6 +3283,9 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push("of the chosen color".to_string());
         }
         if self.chosen_creature_type {
+            post_noun_qualifiers.push("of the chosen type".to_string());
+        }
+        if self.chosen_card_type {
             post_noun_qualifiers.push("of the chosen type".to_string());
         }
         if self.excluded_chosen_creature_type {

@@ -41598,6 +41598,111 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
     );
 }
 
+#[test]
+fn archon_of_valors_reach_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Archon of Valor's Reach");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(def.name(), "Archon of Valor's Reach");
+    assert!(
+        abilities_debug.contains("ChooseNamedOptionAsEnters")
+            && abilities_debug.contains("artifact")
+            && abilities_debug.contains("enchantment")
+            && abilities_debug.contains("instant")
+            && abilities_debug.contains("sorcery")
+            && abilities_debug.contains("planeswalker"),
+        "Archon should parse its enters card-type choice into individual options, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastSpellsMatching")
+            && abilities_debug.contains("chosen_card_type: true"),
+        "Archon should lower the chosen-type cast ban structurally, got {abilities_debug}"
+    );
+    assert!(
+        rendered.contains("Players can't cast spells of the chosen type"),
+        "Archon compiled text should preserve the chosen-type cast restriction, got {rendered}"
+    );
+}
+
+#[test]
+fn archon_of_valors_reach_blocks_only_spells_of_the_chosen_card_type() {
+    use crate::card::CardBuilder;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let archon = parse_oracle_card_definition("Archon of Valor's Reach");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.player_mut(bob)
+        .expect("Bob should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let archon_in_hand = game.create_object_from_definition(&archon, alice, Zone::Hand);
+    let archon_id = game
+        .move_object_with_etb_processing(archon_in_hand, Zone::Battlefield)
+        .expect("Archon should enter with its card-type choice")
+        .new_id;
+    assert_eq!(
+        game.chosen_card_type(archon_id),
+        Some(CardType::Artifact),
+        "Archon's enters choice should record the selected card type"
+    );
+
+    let instant = CardBuilder::new(CardId::from_raw(91_001), "Bob Instant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id = game.create_object_from_card(&instant, bob, Zone::Hand);
+    let sorcery = CardBuilder::new(CardId::from_raw(91_002), "Bob Sorcery")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let sorcery_id = game.create_object_from_card(&sorcery, bob, Zone::Hand);
+
+    let has_cast_action = |actions: &[LegalAction], spell_id| {
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: action_spell_id,
+                    from_zone: Zone::Hand,
+                    ..
+                } if *action_spell_id == spell_id
+            )
+        })
+    };
+
+    game.set_chosen_card_type(archon_id, CardType::Instant);
+    game.refresh_continuous_state();
+    let instant_banned_actions = compute_legal_actions(&game, bob);
+    assert!(
+        !has_cast_action(&instant_banned_actions, instant_id),
+        "Archon choosing instant should remove instant spell cast actions, got {instant_banned_actions:?}"
+    );
+    assert!(
+        has_cast_action(&instant_banned_actions, sorcery_id),
+        "Archon choosing instant should still allow nonchosen sorcery spells, got {instant_banned_actions:?}"
+    );
+
+    game.set_chosen_card_type(archon_id, CardType::Sorcery);
+    game.refresh_continuous_state();
+    let sorcery_banned_actions = compute_legal_actions(&game, bob);
+    assert!(
+        has_cast_action(&sorcery_banned_actions, instant_id),
+        "Archon choosing sorcery should still allow nonchosen instant spells, got {sorcery_banned_actions:?}"
+    );
+    assert!(
+        !has_cast_action(&sorcery_banned_actions, sorcery_id),
+        "Archon choosing sorcery should remove sorcery spell cast actions, got {sorcery_banned_actions:?}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_your_opponents_cant_cast_noncreature_spells_this_turn() {
