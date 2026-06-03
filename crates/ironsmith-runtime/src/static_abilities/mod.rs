@@ -327,6 +327,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         // Default: no restrictions
     }
 
+    /// Return the underlying rule restriction when this static ability is one.
+    fn rule_restriction(&self) -> Option<&crate::effect::Restriction> {
+        None
+    }
+
     /// Generate a replacement effect for this ability.
     ///
     /// Returns None if this ability doesn't create a replacement effect.
@@ -1127,6 +1132,10 @@ impl StaticAbility {
     /// Get the ability's unique identifier.
     pub fn id(&self) -> StaticAbilityId {
         self.0.id()
+    }
+
+    pub fn rule_restriction(&self) -> Option<&crate::effect::Restriction> {
+        self.0.rule_restriction()
     }
 
     pub fn color_choice_as_enters(&self) -> Option<ChooseColorAsEntersSpec> {

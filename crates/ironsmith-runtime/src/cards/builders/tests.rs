@@ -46451,6 +46451,139 @@ fn assert_oracle_card_parses_strict(name: &str) {
 }
 
 #[test]
+fn irresistible_prey_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Irresistible Prey");
+    let rendered = unprocessed_compiled_lines(&def);
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let compact_debug = spell_debug.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert_eq!(
+        rendered,
+        vec!["Target creature must be blocked this turn if able. Draw a card."],
+        "expected exact Irresistible Prey oracle-shaped compiled text"
+    );
+    assert!(
+        spell_debug.contains("ApplyContinuousEffect")
+            && spell_debug.contains("RuleRestriction")
+            && spell_debug.contains("MustBeBlocked")
+            && spell_debug.contains("DrawCardsEffect"),
+        "expected targeted must-be-blocked restriction plus card draw, got {spell_debug}"
+    );
+    assert!(
+        compact_debug.contains("Target( Object(")
+            && compact_debug.contains("card_types: [ Creature"),
+        "expected Irresistible Prey to require a target creature, got {spell_debug}"
+    );
+}
+
+fn resolve_irresistible_prey_targeting_attacker(
+    blocker_tapped: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
+    let prey = parse_oracle_card_definition("Irresistible Prey");
+    let attacker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Blocker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let draw_card = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Draw Card")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&prey, alice, Zone::Stack);
+    let attacker = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    game.create_object_from_definition(&draw_card, alice, Zone::Library);
+    let hand_size_before = game.objects_in_zone(Zone::Hand).len();
+    game.remove_summoning_sickness(attacker);
+    if blocker_tapped {
+        game.tap(blocker);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(attacker)]);
+    ctx.snapshot_targets(&game);
+    for effect in prey
+        .spell_effect
+        .as_ref()
+        .expect("Irresistible Prey should compile to spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Irresistible Prey spell effect should resolve");
+    }
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey should mark the targeted creature as must-be-blocked"
+    );
+    assert_eq!(
+        game.objects_in_zone(Zone::Hand).len(),
+        hand_size_before + 1,
+        "Irresistible Prey should draw a card as its second spell effect"
+    );
+
+    (game, alice, bob, attacker, blocker)
+}
+
+#[test]
+fn irresistible_prey_runtime_requires_available_blocker_and_honors_if_able() {
+    let (mut game, _alice, bob, attacker, blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack");
+
+    let missing_block =
+        crate::combat_state::declare_blockers(&mut game, &mut combat.clone(), vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should require a block while a blocker can block, got {missing_block:?}"
+    );
+
+    crate::combat_state::declare_blockers(&mut game, &mut combat, vec![(blocker, attacker)])
+        .expect("blocking the Irresistible Prey target should satisfy the requirement");
+
+    let (mut unable_game, _alice, unable_bob, unable_attacker, _tapped_blocker) =
+        resolve_irresistible_prey_targeting_attacker(true);
+    let mut unable_combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut unable_game,
+        &mut unable_combat,
+        vec![(unable_attacker, crate::combat_state::AttackTarget::Player(unable_bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack in tapped-blocker branch");
+    crate::combat_state::declare_blockers(&mut unable_game, &mut unable_combat, vec![])
+        .expect("Irresistible Prey should not require an impossible block");
+}
+
+#[test]
 fn departed_deckhand_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Departed Deckhand");
     let rendered = canonical_compiled_lines(&def).join("\n");

@@ -9785,6 +9785,7 @@ fn describe_attack_block_if_able_apply_continuous(
 
     let mut has_must_attack = false;
     let mut has_must_block = false;
+    let mut has_must_be_blocked = false;
     let mut saw_ability = false;
     let mut visit_modification = |modification: &crate::continuous::Modification| match modification
     {
@@ -9793,6 +9794,15 @@ fn describe_attack_block_if_able_apply_continuous(
             match ability.id() {
                 crate::static_abilities::StaticAbilityId::MustAttack => has_must_attack = true,
                 crate::static_abilities::StaticAbilityId::MustBlock => has_must_block = true,
+                crate::static_abilities::StaticAbilityId::RuleRestriction => {
+                    if !matches!(
+                        ability.rule_restriction(),
+                        Some(crate::effect::Restriction::MustBeBlocked(filter)) if filter.source
+                    ) {
+                        return false;
+                    }
+                    has_must_be_blocked = true;
+                }
                 _ => return false,
             }
             true
@@ -9814,11 +9824,12 @@ fn describe_attack_block_if_able_apply_continuous(
         return None;
     }
 
-    match (has_must_attack, has_must_block) {
-        (true, true) => Some(format!("{target} attacks or blocks this turn if able")),
-        (true, false) => Some(format!("{target} attacks this turn if able")),
-        (false, true) => Some(format!("{target} blocks this turn if able")),
-        (false, false) => None,
+    match (has_must_attack, has_must_block, has_must_be_blocked) {
+        (false, false, true) => Some(format!("{target} must be blocked this turn if able")),
+        (true, true, false) => Some(format!("{target} attacks or blocks this turn if able")),
+        (true, false, false) => Some(format!("{target} attacks this turn if able")),
+        (false, true, false) => Some(format!("{target} blocks this turn if able")),
+        _ => None,
     }
 }
 

@@ -619,4 +619,8 @@ impl StaticAbilityKind for RuleRestriction {
             .apply(game, &mut tracker, controller, Some(source), None);
         game.effect_store.cant_effects.merge(tracker);
     }
+
+    fn rule_restriction(&self) -> Option<&Restriction> {
+        Some(&self.restriction)
+    }
 }

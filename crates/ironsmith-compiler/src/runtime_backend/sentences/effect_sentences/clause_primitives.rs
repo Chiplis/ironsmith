@@ -756,9 +756,16 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
         return Ok(None);
     }
     if starts_with_target_indicator(subject_clause.tokens()) {
-        // We only support source/tagged subjects here; explicit "target ..." needs
-        // a target+restriction sequence that this single-clause parser cannot encode.
-        return Ok(None);
+        let attacker_target = parse_target_phrase(subject_clause.tokens())?;
+        let must_be_blocked = crate::static_abilities::StaticAbility::restriction(
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
+            "this creature must be blocked if able".to_string(),
+        );
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+            attacker_target,
+            vec![GrantedAbilityAst::StaticAbility(must_be_blocked)],
+            Until::EndOfTurn,
+        )));
     }
 
     let attacker_target = parse_target_phrase(subject_clause.tokens())?;
