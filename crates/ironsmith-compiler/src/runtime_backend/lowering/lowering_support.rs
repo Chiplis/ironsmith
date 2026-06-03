@@ -9,7 +9,7 @@ use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::runtime_backend::token_primitives::is_static_keyword_marker_text;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, PlayerFilter};
+use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 use super::compile_support::{
@@ -51,6 +51,86 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
         | TargetAst::PlayerOrPlaneswalker(_, _)
         | TargetAst::AttackedPlayerOrPlaneswalker(_)
         | TargetAst::Spell(_) => false,
+    }
+}
+
+fn object_filter_is_it_reference(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == IT_TAG
+            && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+    })
+}
+
+fn replace_it_target_with_filter(target: &mut TargetAst, filter: &ObjectFilter) -> bool {
+    match target {
+        TargetAst::Tagged(tag, span) if tag.as_str() == IT_TAG => {
+            *target = TargetAst::Object(filter.clone(), *span, None);
+            true
+        }
+        TargetAst::Object(target_filter, _, _) if object_filter_is_it_reference(target_filter) => {
+            *target_filter = filter.clone();
+            true
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            replace_it_target_with_filter(inner, filter)
+        }
+        _ => false,
+    }
+}
+
+fn replace_it_object_followup_filter(effect: &mut EffectAst, filter: &ObjectFilter) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::GrantAbilitiesAll {
+                filter: target_filter,
+                ..
+            }
+            | SubjectVerbActionAst::RemoveAbilitiesAll {
+                filter: target_filter,
+                ..
+            }
+            | SubjectVerbActionAst::PumpAll {
+                filter: target_filter,
+                ..
+            } if object_filter_is_it_reference(target_filter) => {
+                *target_filter = filter.clone();
+                true
+            }
+            SubjectVerbActionAst::GrantAbilitiesToTarget { target, .. }
+            | SubjectVerbActionAst::GrantToTarget { target, .. }
+            | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
+            | SubjectVerbActionAst::Pump { target, .. } => {
+                replace_it_target_with_filter(target, filter)
+            }
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn carry_all_object_sweep_filter_to_it_followups(effects: &mut [EffectAst]) {
+    let mut idx = 0usize;
+    while idx + 1 < effects.len() {
+        let filter = match &effects[idx] {
+            EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+                SubjectVerbActionAst::PumpAll { filter, .. }
+                | SubjectVerbActionAst::ScalePowerToughnessAll { filter, .. } => filter.clone(),
+                _ => {
+                    idx += 1;
+                    continue;
+                }
+            },
+            _ => {
+                idx += 1;
+                continue;
+            }
+        };
+
+        if replace_it_object_followup_filter(&mut effects[idx + 1], &filter) {
+            idx += 2;
+        } else {
+            idx += 1;
+        }
     }
 }
 
@@ -297,6 +377,7 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let mut normalized = normalize_effects_ast(effects);
+    carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let has_phase_step_it_prelude =
         has_local_target_prelude || has_prior_effect_before_it_reference(&normalized);
@@ -399,7 +480,8 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     let mut trigger = trigger;
     ensure_concrete_trigger_spec(&trigger)?;
 
-    let normalized = normalize_effects_ast(effects);
+    let mut normalized = normalize_effects_ast(effects);
+    carry_all_object_sweep_filter_to_it_followups(&mut normalized);
     let has_local_target_prelude = has_local_target_prelude_before_it_reference(&normalized);
     let has_phase_step_it_prelude =
         has_local_target_prelude || has_prior_effect_before_it_reference(&normalized);

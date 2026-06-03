@@ -2161,6 +2161,122 @@ fn scuttling_sentinel_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn blitz_leech_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(479_594), "Blitz Leech")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(5, 2))
+        .parse_text(
+            "Flash\nWhen this creature enters, target creature an opponent controls gets -2/-2 until end of turn. Remove all counters from that creature.",
+        )
+        .expect("Blitz Leech should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseBlitzLeechTarget {
+    chosen: ObjectId,
+    seen_legal_targets: Vec<Target>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseBlitzLeechTarget {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        self.seen_legal_targets = ctx
+            .requirements
+            .first()
+            .map(|requirement| requirement.legal_targets.clone())
+            .unwrap_or_default();
+        assert!(
+            self.seen_legal_targets.contains(&Target::Object(self.chosen)),
+            "chosen opponent creature should be a legal Blitz Leech target"
+        );
+        vec![Target::Object(self.chosen)]
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn blitz_leech_enter_trigger_removes_all_counters_from_opponent_creature_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let opponent_creature = create_creature(&mut game, "Bob's Countered Creature", bob, 4, 4);
+    let own_creature = create_creature(&mut game, "Alice's Countered Creature", alice, 4, 4);
+    game.add_counters(
+        opponent_creature,
+        crate::object::CounterType::PlusOnePlusOne,
+        2,
+    )
+    .expect("opponent creature should receive +1/+1 counters");
+    game.add_counters(opponent_creature, crate::object::CounterType::Charge, 3)
+        .expect("opponent creature should receive charge counters");
+    game.add_counters(own_creature, crate::object::CounterType::PlusOnePlusOne, 1)
+        .expect("own creature should receive a +1/+1 counter");
+
+    let blitz = blitz_leech_definition();
+    let blitz_id = game.create_object_from_definition(&blitz, alice, Zone::Hand);
+    game.move_object_by_effect(blitz_id, Zone::Battlefield)
+        .expect("Blitz Leech should enter the battlefield");
+
+    let mut trigger_queue = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Blitz Leech should queue exactly one enters trigger"
+    );
+
+    let mut dm = ChooseBlitzLeechTarget {
+        chosen: opponent_creature,
+        seen_legal_targets: Vec::new(),
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Blitz Leech trigger should go on the stack with its target");
+    assert!(
+        !dm.seen_legal_targets.contains(&Target::Object(own_creature)),
+        "Blitz Leech should not be able to target a creature its controller controls"
+    );
+
+    resolve_stack_entry(&mut game).expect("Blitz Leech trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(opponent_creature, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Blitz Leech should remove all +1/+1 counters from the targeted creature"
+    );
+    assert_eq!(
+        game.counter_count(opponent_creature, crate::object::CounterType::Charge),
+        0,
+        "Blitz Leech should remove all non-P/T counters from the targeted creature too"
+    );
+    assert_eq!(
+        game.counter_count(own_creature, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Blitz Leech should not remove counters from untargeted friendly creatures"
+    );
+    assert_eq!(game.calculated_power(opponent_creature), Some(2));
+    assert_eq!(game.calculated_toughness(opponent_creature), Some(2));
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        game.counter_count(opponent_creature, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "removed counters should stay removed after the turn ends"
+    );
+    assert_eq!(game.calculated_power(opponent_creature), Some(4));
+    assert_eq!(game.calculated_toughness(opponent_creature), Some(4));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn scuttling_sentinel_enter_trigger_buffs_only_another_creature_you_control_until_eot() {
     struct ChooseSpecificCreatureDecisionMaker {
@@ -18881,6 +18997,172 @@ fn firkraag_damage_trigger_does_not_fire_when_creature_did_not_have_to_attack() 
         crate::triggers::check_triggers(&game, &damage_event).is_empty(),
         "Firkraag should not trigger for a creature that did not have to attack"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sp_dr_piloted_by_peni_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1_001_337), "SP//dr, Piloted by Peni")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Spider, Subtype::Hero])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "Vigilance
+When SP//dr enters, put a +1/+1 counter on target creature.
+Whenever a modified creature you control deals combat damage to a player, draw a card. (Equipment, Auras you control, and counters are modifications.)",
+        )
+        .expect("SP//dr, Piloted by Peni should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sp_dr_enters_trigger_puts_counter_on_target_creature() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let target = create_creature(&mut game, "Counter Target", alice, 2, 2);
+    let sp_dr = game.create_object_from_definition(
+        &sp_dr_piloted_by_peni_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            sp_dr,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "SP//dr should trigger when it enters"
+    );
+
+    let mut dm = ChooseSpecificObjectDecisionMaker::new(target);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("SP//dr ETB trigger should go on the stack with a target");
+    resolve_stack_entry(&mut game).expect("SP//dr ETB trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "SP//dr should put a +1/+1 counter on the chosen target creature"
+    );
+    assert_eq!(
+        game.counter_count(sp_dr, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "the chosen target, not SP//dr by default, should get the counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sp_dr_draws_when_modified_creature_you_control_hits_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(
+        &sp_dr_piloted_by_peni_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let attacker = create_creature(&mut game, "Modified Attacker", alice, 2, 2);
+    game.add_counters(attacker, crate::object::CounterType::PlusOnePlusOne, 1)
+        .expect("attacker should get a +1/+1 counter");
+    let library_card = CardBuilder::new(CardId::from_raw(1_001_338), "Drawn Card").build();
+    game.create_object_from_card(&library_card, alice, Zone::Library);
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            attacker,
+            crate::events::DamageTarget::Player(bob),
+            2,
+            true,
+            crate::events::EventCause::from_combat_damage(attacker, alice),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "SP//dr should trigger for modified creatures its controller controls"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("SP//dr combat-damage trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("SP//dr combat-damage trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "SP//dr should draw Alice a card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sp_dr_combat_damage_trigger_requires_modified_creature_you_control() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.create_object_from_definition(
+        &sp_dr_piloted_by_peni_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let unmodified_alice_creature = create_creature(&mut game, "Unmodified Attacker", alice, 2, 2);
+    let modified_bob_creature = create_creature(&mut game, "Bob Modified Attacker", bob, 2, 2);
+    game.add_counters(
+        modified_bob_creature,
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+    )
+    .expect("Bob's creature should get a +1/+1 counter");
+
+    for (source, controller, message) in [
+        (
+            unmodified_alice_creature,
+            alice,
+            "unmodified creatures should not trigger SP//dr",
+        ),
+        (
+            modified_bob_creature,
+            bob,
+            "modified creatures controlled by an opponent should not trigger SP//dr",
+        ),
+    ] {
+        let damage_event = TriggerEvent::new_with_provenance(
+            crate::events::DamageEvent::with_cause(
+                source,
+                crate::events::DamageTarget::Player(bob),
+                2,
+                true,
+                crate::events::EventCause::from_combat_damage(source, controller),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_triggers(&game, &damage_event).is_empty(),
+            "{message}"
+        );
+    }
 }
 
 #[test]

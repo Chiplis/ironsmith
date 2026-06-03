@@ -391,6 +391,9 @@ impl ZoneChangeTrigger {
                     ZonePattern::Specific(Zone::Battlefield),
                     ZonePattern::Specific(Zone::Graveyard),
                 ) => format!("When {card_subject} is put into a graveyard from the battlefield"),
+                (ZonePattern::Specific(Zone::Battlefield), ZonePattern::Specific(Zone::Exile)) => {
+                    format!("When {battlefield_subject} is put into exile from the battlefield")
+                }
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
                     format!("When {battlefield_subject} enters the battlefield")
                 }

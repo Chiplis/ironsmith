@@ -223,6 +223,18 @@ fn rewrite_lexer_keeps_generic_slash_words_atomic_but_exposes_standalone_apostro
 }
 
 #[test]
+fn rewrite_lexer_keeps_double_slash_words_atomic_for_source_names() {
+    let tokens = lex_line("When SP//dr enters, draw a card.", 0)
+        .expect("rewrite lexer should classify double-slash source names");
+    let kinds = tokens
+        .iter()
+        .map(|token| (token.kind, token.slice.as_str(), token.parser_text()))
+        .collect::<Vec<_>>();
+
+    assert!(kinds.contains(&(super::lexer::TokenKind::Word, "SP//dr", "sp//dr")));
+}
+
+#[test]
 fn rewrite_lexer_distinguishes_structural_tokens() {
     let tokens =
         lex_line("(Mode 2) '", 0).expect("rewrite lexer should classify structural tokens");
@@ -9761,6 +9773,63 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         ),
         Ok(crate::cards::builders::TriggerSpec::ThisIsDealtCombatDamage)
     ));
+}
+
+#[test]
+fn rewrite_lexed_trigger_clause_resolves_double_slash_source_name_etb() {
+    let tokens = lex_line("When SP//dr enters", 0)
+        .expect("rewrite lexer should classify double-slash source trigger");
+
+    let parsed = super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(&tokens)
+    });
+
+    assert!(
+        matches!(
+            parsed,
+            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(
+                crate::target::SourceReferenceSurface::ShortName(ref surface)
+            )) if surface == "SP//dr"
+        ),
+        "expected SP//dr source ETB trigger with surface, got {parsed:?}"
+    );
+}
+
+#[test]
+fn rewrite_lexed_triggered_line_resolves_double_slash_source_name_etb() {
+    let tokens = lex_line("When SP//dr enters, put a +1/+1 counter on target creature.", 0)
+        .expect("rewrite lexer should classify double-slash source triggered line");
+
+    let parsed = super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
+        super::clause_support::parse_triggered_line_lexed(&tokens)
+    })
+    .expect("SP//dr triggered line should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("ThisEntersBattlefieldWithSurface") && debug.contains("SP//dr"),
+        "expected SP//dr source ETB trigger with surface, got {debug}"
+    );
+}
+
+#[test]
+fn rewrite_document_lowering_resolves_double_slash_source_name_etb() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "SP//dr, Piloted by Peni")
+        .card_types(vec![CardType::Artifact, CardType::Creature]);
+    let (definition, _) = super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
+        parse_text_with_annotations_lowered(
+            builder,
+            "When SP//dr enters, put a +1/+1 counter on target creature.".to_string(),
+            false,
+        )
+    })?;
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("this_surface") && debug.contains("SP//dr"),
+        "expected document lowering to preserve SP//dr source ETB surface, got {debug}"
+    );
+    Ok(())
 }
 
 #[test]

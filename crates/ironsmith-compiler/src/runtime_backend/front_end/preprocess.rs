@@ -1479,7 +1479,7 @@ pub(crate) fn preprocess_document(
 
     let card_name = builder.card_builder.name_ref().to_string();
     let front_face_name = card_name
-        .split("//")
+        .split(" // ")
         .next()
         .unwrap_or(card_name.as_str())
         .trim()

@@ -1228,6 +1228,11 @@ fn apply_leading_trigger_intro_surface(
 fn source_reference_surface_for_trigger_subject(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::target::SourceReferenceSurface> {
+    let tokens = if leading_trigger_intro_surface(tokens).is_some() {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     let word_view = ActivationRestrictionCompatWords::new(tokens);
     let subject_words = non_article_word_refs(&word_view.to_word_refs());
     source_reference_surface_for_words(&subject_words)

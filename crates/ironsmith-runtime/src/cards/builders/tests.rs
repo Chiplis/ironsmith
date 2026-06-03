@@ -13069,6 +13069,35 @@ fn parse_alchemy_prefixed_name_still_resolves_self_reference_triggers() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn slash_bearing_source_name_resolves_self_reference_triggers() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "SP//dr, Piloted by Peni")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "Vigilance
+When SP//dr enters, put a +1/+1 counter on target creature.
+Whenever a modified creature you control deals combat damage to a player, draw a card.",
+        )
+        .expect("SP//dr should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("When SP//dr enters, put a +1/+1 counter on target creature."),
+        "slash-bearing source ETB should render as a self-reference, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a modified creature you control deals combat damage to a player, draw a card."
+        ),
+        "modified combat-damage draw trigger should render intact, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("When a creature enters"),
+        "slash-bearing source ETB should not degrade to a generic creature trigger: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Loran of the Third Path")
         .card_types(vec![CardType::Creature])
@@ -23782,6 +23811,264 @@ fn parse_full_god_eternal_kefnet_oracle() {
     assert!(
         rendered.contains("third from the top"),
         "expected third-from-top library wording, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn god_eternal_rhonas_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("God-Eternal Rhonas")
+        .expect("God-Eternal Rhonas oracle text")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "God-Eternal Rhonas")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::God])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(oracle)
+        .expect("God-Eternal Rhonas should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vanilla_creature_definition(name: &str, power: i32, toughness: i32) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn god_eternal_rhonas_trigger_for_event(
+    game: &crate::game_state::GameState,
+    event: &crate::triggers::TriggerEvent,
+    source: ObjectId,
+) -> crate::triggers::TriggeredAbilityEntry {
+    let triggers = crate::triggers::check_triggers(game, event);
+    let matching = triggers
+        .into_iter()
+        .filter(|entry| entry.source == source)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matching.len(),
+        1,
+        "expected exactly one God-Eternal Rhonas trigger for event"
+    );
+    matching.into_iter().next().expect("checked one trigger")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_full_god_eternal_rhonas_oracle_and_compiled_text() {
+    assert_oracle_card_parses_strict("God-Eternal Rhonas");
+    let def = god_eternal_rhonas_definition();
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForEachObject")
+            && abilities_debug.contains("PowerOf")
+            && abilities_debug.contains("Vigilance")
+            && abilities_debug.contains("OrTrigger")
+            && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
+        "expected Rhonas ETB and dies/exile trigger structures, got {abilities_debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("double the power of each other creature you control until end of turn"),
+        "expected double-power clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Those creatures gain vigilance until end of turn"),
+        "expected same-creature vigilance clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("dies or") && rendered.contains("put into exile from the battlefield"),
+        "expected dies-or-exile marker in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("third from the top"),
+        "expected third-from-top library placement, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_etb_doubles_other_creatures_and_grants_vigilance() {
+    let rhonas = god_eternal_rhonas_definition();
+    let ally = vanilla_creature_definition("Allied Bear", 2, 2);
+    let second_ally = vanilla_creature_definition("Allied Soldier", 1, 3);
+    let enemy = vanilla_creature_definition("Enemy Bear", 4, 4);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+    let ally_id = game.create_object_from_definition(&ally, alice, Zone::Battlefield);
+    let second_ally_id = game.create_object_from_definition(&second_ally, alice, Zone::Battlefield);
+    let enemy_id = game.create_object_from_definition(&enemy, bob, Zone::Battlefield);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(rhonas_id).expect("Rhonas exists"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            rhonas_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Rhonas ETB trigger should resolve");
+    }
+
+    assert_eq!(game.calculated_power(ally_id), Some(4));
+    assert_eq!(game.calculated_toughness(ally_id), Some(2));
+    assert!(game.object_has_static_ability_id(ally_id, StaticAbilityId::Vigilance));
+    assert_eq!(game.calculated_power(second_ally_id), Some(2));
+    assert_eq!(game.calculated_toughness(second_ally_id), Some(3));
+    assert!(game.object_has_static_ability_id(
+        second_ally_id,
+        StaticAbilityId::Vigilance
+    ));
+    assert_eq!(game.calculated_power(rhonas_id), Some(5));
+    assert!(
+        !game.object_has_static_ability_id(rhonas_id, StaticAbilityId::Vigilance),
+        "Rhonas should not grant vigilance to itself"
+    );
+    assert_eq!(game.calculated_power(enemy_id), Some(4));
+    assert!(
+        !game.object_has_static_ability_id(enemy_id, StaticAbilityId::Vigilance),
+        "Rhonas should not affect opponents' creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_death_or_exile_trigger_may_put_third_from_top() {
+    struct AcceptMay;
+    impl crate::decision::DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    for destination in [Zone::Graveyard, Zone::Exile] {
+        let rhonas = god_eternal_rhonas_definition();
+        let filler = vanilla_creature_definition("Library Filler", 1, 1);
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        for _ in 0..4 {
+            game.create_object_from_definition(&filler, alice, Zone::Library);
+        }
+        let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(rhonas_id).expect("Rhonas exists before moving"),
+            &game,
+        );
+        let moved_id = game
+            .move_object_by_effect(rhonas_id, destination)
+            .expect("Rhonas should move zones");
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_results(
+                rhonas_id,
+                vec![moved_id],
+                Zone::Battlefield,
+                destination,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+        let mut dm = AcceptMay;
+        let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+            .with_triggering_event(entry.triggering_event.clone());
+        for effect in &entry.ability.effects {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Rhonas dies/exile trigger should resolve");
+        }
+
+        let third_from_top = game
+            .player(alice)
+            .expect("Alice exists")
+            .library
+            .iter()
+            .rev()
+            .nth(2)
+            .copied()
+            .expect("library should have a third card");
+        assert!(
+            game.object(third_from_top)
+                .is_some_and(|object| object.name == "God-Eternal Rhonas"),
+            "Rhonas should be third from the top after moving from {destination:?}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_optional_library_trigger_can_be_declined() {
+    let rhonas = god_eternal_rhonas_definition();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+        game.object(rhonas_id).expect("Rhonas exists before exile"),
+        &game,
+    );
+    let exile_id = game
+        .move_object_by_effect(rhonas_id, Zone::Exile)
+        .expect("Rhonas should move to exile");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_results(
+            rhonas_id,
+            vec![exile_id],
+            Zone::Battlefield,
+            Zone::Exile,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("declined Rhonas trigger should resolve");
+    }
+
+    assert!(
+        game.object(exile_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "declining the may ability should leave Rhonas in exile"
+    );
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .library
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "God-Eternal Rhonas")),
+        "declining the may ability should not put Rhonas into the library"
     );
 }
 
@@ -37028,6 +37315,33 @@ fn remove_all_named_counters_from_target_renders_generically() {
     );
 }
 
+#[test]
+fn blitz_leech_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Blitz Leech");
+
+    let def = parse_oracle_card_definition("Blitz Leech");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(def.name(), "Blitz Leech");
+    assert!(
+        rendered.contains("Flash"),
+        "Blitz Leech should keep flash in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, target creature an opponent controls gets -2/-2 until end of turn. Remove all counters from that creature"
+        ),
+        "Blitz Leech should render the target-relative all-counters clause, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ModifyPowerToughness")
+            && ability_debug.contains("RemoveUpToAnyCountersEffect")
+            && ability_debug.contains("CountersOn"),
+        "Blitz Leech should structurally model the -2/-2 and all-counters effects, got {ability_debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn fear_of_immobility_keeps_tap_target_and_conditional_stun_counter() {
@@ -41749,6 +42063,33 @@ fn academic_probation_strict_parser_text_and_structure_regression() {
 }
 
 #[test]
+fn archon_of_valors_reach_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Archon of Valor's Reach");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(def.name(), "Archon of Valor's Reach");
+    assert!(
+        abilities_debug.contains("ChooseNamedOptionAsEnters")
+            && abilities_debug.contains("artifact")
+            && abilities_debug.contains("enchantment")
+            && abilities_debug.contains("instant")
+            && abilities_debug.contains("sorcery")
+            && abilities_debug.contains("planeswalker"),
+        "Archon should parse its enters card-type choice into individual options, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("CastSpellsMatching")
+            && abilities_debug.contains("chosen_creature_type: true"),
+        "Archon should lower the chosen-type cast ban structurally, got {abilities_debug}"
+    );
+    assert!(
+        rendered.contains("Players can't cast spells of the chosen type"),
+        "Archon compiled text should preserve the chosen-type cast restriction, got {rendered}"
+    );
+}
+
+#[test]
 fn academic_probation_chosen_name_mode_restricts_only_opponents_matching_spell_name() {
     struct ChooseLightningBolt;
 
@@ -41784,13 +42125,13 @@ fn academic_probation_chosen_name_mode_restricts_only_opponents_matching_spell_n
     assert!(
         bob_filters
             .iter()
-            .any(|filter| filter.name.as_deref() == Some("Lightning Bolt")),
+            .any(|restriction| restriction.filter.name.as_deref() == Some("Lightning Bolt")),
         "chosen-name mode should restrict Bob from casting Lightning Bolt, got {bob_filters:#?}"
     );
     assert!(
         bob_filters
             .iter()
-            .all(|filter| filter.name.as_deref() != Some("Opt")),
+            .all(|restriction| restriction.filter.name.as_deref() != Some("Opt")),
         "chosen-name mode should not restrict Bob from casting a different spell, got {bob_filters:#?}"
     );
     assert!(
@@ -41899,6 +42240,84 @@ fn academic_probation_target_permanent_mode_restricts_only_chosen_permanent() {
     assert!(
         game.can_activate_abilities_of(other_id),
         "other creature's activated abilities should remain unrestricted"
+    );
+}
+
+#[test]
+fn archon_of_valors_reach_blocks_only_spells_of_the_chosen_card_type() {
+    use crate::card::CardBuilder;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let archon = parse_oracle_card_definition("Archon of Valor's Reach");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.player_mut(bob)
+        .expect("Bob should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    let archon_in_hand = game.create_object_from_definition(&archon, alice, Zone::Hand);
+    let archon_id = game
+        .move_object_with_etb_processing(archon_in_hand, Zone::Battlefield)
+        .expect("Archon should enter with its card-type choice")
+        .new_id;
+    assert_eq!(
+        game.chosen_card_type(archon_id),
+        Some(CardType::Artifact),
+        "Archon's enters choice should record the selected card type"
+    );
+
+    let instant = CardBuilder::new(CardId::from_raw(91_001), "Bob Instant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_id = game.create_object_from_card(&instant, bob, Zone::Hand);
+    let sorcery = CardBuilder::new(CardId::from_raw(91_002), "Bob Sorcery")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let sorcery_id = game.create_object_from_card(&sorcery, bob, Zone::Hand);
+
+    let has_cast_action = |actions: &[LegalAction], spell_id| {
+        actions.iter().any(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id: action_spell_id,
+                    from_zone: Zone::Hand,
+                    ..
+                } if *action_spell_id == spell_id
+            )
+        })
+    };
+
+    game.set_chosen_card_type(archon_id, CardType::Instant);
+    game.refresh_continuous_state();
+    let instant_banned_actions = compute_legal_actions(&game, bob);
+    assert!(
+        !has_cast_action(&instant_banned_actions, instant_id),
+        "Archon choosing instant should remove instant spell cast actions, got {instant_banned_actions:?}"
+    );
+    assert!(
+        has_cast_action(&instant_banned_actions, sorcery_id),
+        "Archon choosing instant should still allow nonchosen sorcery spells, got {instant_banned_actions:?}"
+    );
+
+    game.set_chosen_card_type(archon_id, CardType::Sorcery);
+    game.refresh_continuous_state();
+    let sorcery_banned_actions = compute_legal_actions(&game, bob);
+    assert!(
+        has_cast_action(&sorcery_banned_actions, instant_id),
+        "Archon choosing sorcery should still allow nonchosen instant spells, got {sorcery_banned_actions:?}"
+    );
+    assert!(
+        !has_cast_action(&sorcery_banned_actions, sorcery_id),
+        "Archon choosing sorcery should remove sorcery spell cast actions, got {sorcery_banned_actions:?}"
     );
 }
 

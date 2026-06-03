@@ -320,7 +320,7 @@ fn source_reference_aliases_for_name(name: &str) -> Vec<SourceReferenceAlias> {
 
     let mut full_names = Vec::new();
     push_unique_source_name_alias(&mut full_names, trimmed);
-    if let Some((front_face, _)) = str_split_once(trimmed, "//") {
+    if let Some((front_face, _)) = str_split_once(trimmed, " // ") {
         push_unique_source_name_alias(&mut full_names, front_face);
     }
     let existing_full_names = full_names.clone();
@@ -446,6 +446,15 @@ fn source_reference_words_from_text(text: &str) -> Vec<String> {
 
 fn source_reference_word_variants_from_text(text: &str) -> Vec<Vec<String>> {
     let parser_words = source_reference_words_from_text(text);
+    let lexed_words = lex_line(text, 0)
+        .ok()
+        .map(|tokens| {
+            parser_token_word_refs(&tokens)
+                .into_iter()
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let token_words = text
         .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '\'' || ch == '’' || ch == '-'))
         .filter(|word| !word.is_empty())
@@ -457,6 +466,9 @@ fn source_reference_word_variants_from_text(text: &str) -> Vec<Vec<String>> {
         })
         .collect::<Vec<_>>();
     let mut variants = vec![parser_words.clone()];
+    if !lexed_words.is_empty() && lexed_words != parser_words {
+        variants.push(lexed_words);
+    }
     if token_words != parser_words {
         variants.push(token_words);
     }

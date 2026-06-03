@@ -1936,6 +1936,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         .then_some(super::ChooseCreatureTypeAsEntersSpec)
     }
 
+    fn named_option_choice_as_enters(&self) -> Option<super::ChooseNamedOptionAsEntersSpec> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::ChooseNamedOptionAsEnters { options, .. } => {
+                Some(super::ChooseNamedOptionAsEntersSpec {
+                    options: options.clone(),
+                })
+            }
+            _ => None,
+        }
+    }
+
     fn power_toughness_choice_as_enters_or_turns_face_up(
         &self,
     ) -> Option<super::ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec> {

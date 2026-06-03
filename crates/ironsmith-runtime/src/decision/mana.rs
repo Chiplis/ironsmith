@@ -722,9 +722,13 @@ pub(crate) fn violates_any_cant_cast_restriction(
         .cant_effects
         .cast_filters_for_player(player)
         .is_some_and(|filters| {
-            filters
-                .iter()
-                .any(|spell_filter| spell_matches_cast_filter(game, spell, spell_filter))
+            filters.iter().any(|restriction| {
+                let mut ctx = crate::target::FilterContext::default();
+                if let Some(source) = restriction.source {
+                    ctx = ctx.with_source(source);
+                }
+                restriction.filter.matches(spell, &ctx, game)
+            })
         })
 }
 
