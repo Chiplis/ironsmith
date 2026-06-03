@@ -8189,6 +8189,7 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
 
     let jhoira_def = jhoira_of_the_ghitu_definition();
     let jhoira_id = game.create_object_from_definition(&jhoira_def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(jhoira_id);
     let land_def = CardDefinitionBuilder::new(CardId::from_raw(73_201), "Island Probe")
         .card_types(vec![CardType::Land])
         .build();
@@ -8214,26 +8215,113 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
         .power_toughness(PowerToughness::fixed(3, 3))
         .build();
     let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Hand);
-    let activate_action = crate::decision::compute_legal_actions(&game, alice)
-        .into_iter()
+    let ability_index = game
+        .object(jhoira_id)
+        .expect("Jhoira should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Jhoira should have an activated ability");
+    let AbilityKind::Activated(activated) = &game
+        .object(jhoira_id)
+        .expect("Jhoira should exist")
+        .abilities[ability_index]
+        .kind
+    else {
+        unreachable!("ability index should point at Jhoira's activation")
+    };
+    assert!(
+        crate::decision::can_activate_ability_with_restrictions(
+            &game,
+            jhoira_id,
+            ability_index,
+            activated,
+        ),
+        "Jhoira activation should pass direct activation checks"
+    );
+    let actions = crate::decision::compute_legal_actions(&game, alice);
+    let activate_action = actions
+        .iter()
         .find(|action| matches!(
             action,
             crate::decision::LegalAction::ActivateAbility { source, .. }
                 if *source == jhoira_id
         ))
-        .expect("Jhoira should be activatable with a nonland card in hand");
+        .cloned()
+        .unwrap_or_else(|| {
+            panic!(
+                "Jhoira should be activatable with a nonland card in hand; actions={actions:?}"
+            )
+        });
 
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = SelectFirstDecisionMaker;
-    apply_priority_response_with_dm(
+    let mut progress = apply_priority_response_with_dm(
         &mut game,
         &mut trigger_queue,
         &mut state,
         &PriorityResponse::PriorityAction(activate_action),
         &mut dm,
     )
-    .expect("Jhoira activation should be paid and put on the stack");
+    .expect("Jhoira activation should start cost payment");
+    let mut paid_exile_cost = false;
+    for _ in 0..8 {
+        progress = match progress {
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(_),
+            ) => {
+                paid_exile_cost = true;
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(spell_id),
+                    &mut dm,
+                )
+                .expect("choosing Jhoira's nonland exile cost should continue activation")
+            }
+            crate::decision::GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(cost_ctx),
+            ) if cost_ctx
+                .description
+                .to_ascii_lowercase()
+                .contains("choose the next cost") => {
+                let option = cost_ctx
+                    .options
+                    .iter()
+                    .find(|option| {
+                        option.legal
+                            && !paid_exile_cost
+                            && option.description.to_ascii_lowercase().contains("exile")
+                    })
+                    .or_else(|| cost_ctx.options.iter().find(|option| option.legal))
+                    .expect("Jhoira should have a payable remaining cost");
+                apply_priority_response_with_dm(
+                    &mut game,
+                    &mut trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(option.index),
+                    &mut dm,
+                )
+                .expect("choosing next Jhoira cost should continue activation")
+            }
+            other => {
+                progress = other;
+                break;
+            }
+        };
+    }
+    assert!(
+        matches!(
+            progress,
+            crate::decision::GameProgress::Continue
+                | crate::decision::GameProgress::NeedsDecisionCtx(
+                    crate::decisions::context::DecisionContext::Priority(_)
+                )
+        ),
+        "expected Jhoira activation to finish cost payment, got {progress:?}"
+    );
     resolve_stack_entry(&mut game).expect("Jhoira activation should resolve");
 
     assert!(

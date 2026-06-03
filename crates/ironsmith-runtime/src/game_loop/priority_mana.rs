@@ -63,10 +63,11 @@ fn pay_selected_cost(
         .with_pre_chosen_cards(vec![chosen_id])
         .with_provenance(provenance);
     cost_ctx.tagged_objects = tagged_objects.clone();
+    let chosen_snapshot = game
+        .object(chosen_id)
+        .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game));
     if let Some(tag) = effective_choice_tag.as_ref()
-        && let Some(snapshot) = game
-            .object(chosen_id)
-            .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game))
+        && let Some(snapshot) = chosen_snapshot.clone()
     {
         cost_ctx
             .tagged_objects
@@ -77,6 +78,16 @@ fn pay_selected_cost(
 
     match cost.pay(game, &mut cost_ctx) {
         Ok(crate::costs::CostPaymentResult::Paid) => {
+            if let Some(tag) = effective_choice_tag.as_ref()
+                && let Some(snapshot) = chosen_snapshot.as_ref()
+                && let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+                && let Some(current) = game.object(current_id)
+            {
+                let current_snapshot = crate::snapshot::ObjectSnapshot::from_object(current, game);
+                let tagged = cost_ctx.tagged_objects.entry(tag.clone()).or_default();
+                tagged.retain(|existing| existing.stable_id != snapshot.stable_id);
+                tagged.push(current_snapshot);
+            }
             *tagged_objects = cost_ctx.tagged_objects;
             Ok(())
         }

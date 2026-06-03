@@ -11439,7 +11439,8 @@ fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regression() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("ExileEffect")
-            && debug.contains("nonland")
+            && debug.contains("excluded_card_types")
+            && debug.contains("Land")
             && debug.contains("PutCountersEffect")
             && debug.contains("keyword:suspend")
             && debug.contains("AddAbilityGeneric"),
