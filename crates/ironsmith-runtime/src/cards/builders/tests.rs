@@ -20091,6 +20091,168 @@ fn fiery_emancipation_triples_only_damage_from_sources_you_control() {
     );
 }
 
+#[test]
+fn embermaw_hellion_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Embermaw Hellion");
+    let def = parse_oracle_card_definition("Embermaw Hellion");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Trample")
+            && rendered.contains(
+                "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead"
+            ),
+        "expected Embermaw Hellion trample and additive damage replacement wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("ModifyDamageAmountReplacement")
+            && debug.contains("other: true")
+            && debug.contains("colors: Some")
+            && debug.contains("controller: Some(You)")
+            && debug.contains("target_player_filter")
+            && debug.contains("target_object_filter")
+            && debug.contains("delta: 1"),
+        "expected Embermaw Hellion to compile to an other red source +1 damage replacement, got {debug}"
+    );
+}
+
+#[test]
+fn embermaw_hellion_adds_one_to_another_red_source_damage_to_players_and_permanents() {
+    let embermaw = parse_oracle_card_definition("Embermaw Hellion");
+    let red_source = CardDefinitionBuilder::new(CardId::from_raw(91_400), "Alice Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let red_spell = CardDefinitionBuilder::new(CardId::from_raw(91_404), "Alice Red Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target = CardDefinitionBuilder::new(CardId::from_raw(91_401), "Alice Target Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let embermaw_id = game.create_object_from_definition(&embermaw, alice, Zone::Battlefield);
+    let red_source_id = game.create_object_from_definition(&red_source, alice, Zone::Battlefield);
+    let red_spell_id = game.create_object_from_definition(&red_spell, alice, Zone::Stack);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+
+    game.update_replacement_effects();
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == embermaw_id
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Modify(
+                            crate::replacement::EventModification::Add(1)
+                        )
+                    )
+            }),
+        "Embermaw Hellion should register a +1 damage replacement"
+    );
+
+    let player_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_source_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(player_damage.assignments.len(), 1);
+    assert_eq!(player_damage.assignments[0].amount, 3);
+
+    let permanent_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_source_id,
+        crate::events::DamageTarget::Object(target_id),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(permanent_damage.assignments.len(), 1);
+    assert_eq!(permanent_damage.assignments[0].amount, 5);
+
+    let spell_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_spell_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(spell_damage.assignments.len(), 1);
+    assert_eq!(spell_damage.assignments[0].amount, 3);
+}
+
+#[test]
+fn embermaw_hellion_ignores_self_nonred_and_opposing_sources() {
+    let embermaw = parse_oracle_card_definition("Embermaw Hellion");
+    let colorless_source =
+        CardDefinitionBuilder::new(CardId::from_raw(91_402), "Alice Colorless Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+    let bob_red_source = CardDefinitionBuilder::new(CardId::from_raw(91_403), "Bob Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let embermaw_id = game.create_object_from_definition(&embermaw, alice, Zone::Battlefield);
+    let colorless_source_id =
+        game.create_object_from_definition(&colorless_source, alice, Zone::Battlefield);
+    let bob_red_source_id =
+        game.create_object_from_definition(&bob_red_source, bob, Zone::Battlefield);
+    game.update_replacement_effects();
+
+    let self_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        embermaw_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(self_damage.assignments.len(), 1);
+    assert_eq!(self_damage.assignments[0].amount, 2);
+
+    let nonred_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        colorless_source_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(nonred_damage.assignments.len(), 1);
+    assert_eq!(nonred_damage.assignments[0].amount, 2);
+
+    let opposing_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        bob_red_source_id,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(opposing_damage.assignments.len(), 1);
+    assert_eq!(opposing_damage.assignments[0].amount, 2);
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn sphere_of_truth_strict_parser_and_compiled_text_regression() {
