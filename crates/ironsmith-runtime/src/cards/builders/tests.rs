@@ -48726,6 +48726,28 @@ fn expert_level_safe_strict_parse_and_render_secret_choice_match() {
     );
 }
 
+#[test]
+fn pinnacle_starcage_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let lines = canonical_compiled_lines(&def);
+    let expected_enters = "When this artifact enters, exile all artifacts and creatures with mana value 2 or less until this artifact leaves the battlefield.";
+    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact.";
+
+    assert_eq!(lines, vec![expected_enters, expected_activated]);
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileUntilEffect")
+            && debug.contains("SourceLeavesBattlefield")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("AffectedObjects")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected Pinnacle Starcage to keep source-leaves exile, affected-object token count, and source sacrifice, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 struct ExpertLevelSafeDecisionMaker {
     votes: Vec<usize>,
@@ -48844,6 +48866,124 @@ fn resolve_expert_level_safe_with_votes(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pinnacle_starcage_enter_exiles_all_matching_permanents_until_source_leaves() {
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an enters trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let cheap_artifact = CardDefinitionBuilder::new(CardId::from_raw(91_197), "Cheap Artifact")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let cheap_creature = CardDefinitionBuilder::new(CardId::from_raw(91_198), "Cheap Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let expensive_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(91_199), "Expensive Creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+    game.create_object_from_definition(&cheap_artifact, alice, Zone::Battlefield);
+    game.create_object_from_definition(&cheap_creature, alice, Zone::Battlefield);
+    game.create_object_from_definition(&expensive_creature, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Pinnacle Starcage enters trigger should resolve");
+
+    let exile_names = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(exile_names.contains(&"Cheap Artifact"));
+    assert!(exile_names.contains(&"Cheap Creature"));
+    assert!(!exile_names.contains(&"Expensive Creature"));
+
+    game.move_object_by_effect(source, Zone::Graveyard);
+    game.return_exiled_for_source_leave(source);
+
+    let battlefield_names = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(battlefield_names.contains(&"Cheap Artifact"));
+    assert!(battlefield_names.contains(&"Cheap Creature"));
+    assert!(battlefield_names.contains(&"Expensive Creature"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_pinnacle_starcage_activation_with_exiled_cards(
+    exiled_count: usize,
+) -> crate::game_state::GameState {
+    use crate::effects::ExecutionContext;
+    use crate::object::ObjectKind;
+
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let exiled_card = CardDefinitionBuilder::new(CardId::from_raw(91_200), "Exiled Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    for _ in 0..exiled_count {
+        let exiled_id = game.create_object_from_definition(&exiled_card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source, exiled_id);
+    }
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pinnacle Starcage activation effect should resolve");
+    }
+
+    let robot_count = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+        .count();
+    assert_eq!(
+        robot_count, exiled_count,
+        "Pinnacle Starcage should create one Robot for each card put into a graveyard this way"
+    );
+
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn expert_level_safe_runtime_matching_choices_sacrifice_and_return_exiled_cards() {
     let (game, source) = resolve_expert_level_safe_with_votes(vec![0, 0]);
     let alice = PlayerId::from_index(0);
@@ -48863,6 +49003,44 @@ fn expert_level_safe_runtime_matching_choices_sacrifice_and_return_exiled_cards(
                 .is_some_and(|object| object.name == "Expert-Level Safe")
         }),
         "matching choices should sacrifice Expert-Level Safe"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_moves_exiled_cards_creates_robots_and_sacrifices_source() {
+    use crate::object::ObjectKind;
+
+    let game = resolve_pinnacle_starcage_activation_with_exiled_cards(2);
+    let alice = PlayerId::from_index(0);
+
+    let graveyard_names = game
+        .player(alice)
+        .expect("Alice should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        graveyard_names
+            .iter()
+            .filter(|name| **name == "Exiled Trinket")
+            .count(),
+        2,
+        "activation should put each exiled-with-source card into its owner's graveyard"
+    );
+    assert!(
+        graveyard_names.contains(&"Pinnacle Starcage"),
+        "activation should sacrifice Pinnacle Starcage after creating tokens"
+    );
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+            .count(),
+        2,
+        "expected two Robot tokens from two moved exiled cards"
     );
 }
 
@@ -48895,6 +49073,98 @@ fn expert_level_safe_runtime_nonmatching_choices_exile_another_card() {
             .into_iter()
             .any(|id| id == source),
         "nonmatching choices should leave Expert-Level Safe on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_returns_mixed_owner_cards_to_their_own_graveyards() {
+    use crate::effects::ExecutionContext;
+    use crate::object::ObjectKind;
+
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_card = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Alice Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_card = CardDefinitionBuilder::new(CardId::from_raw(91_202), "Bob Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_exiled = game.create_object_from_definition(&alice_card, alice, Zone::Exile);
+    let bob_exiled = game.create_object_from_definition(&bob_card, bob, Zone::Exile);
+    game.add_exiled_with_source_link(source, alice_exiled);
+    game.add_exiled_with_source_link(source, bob_exiled);
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pinnacle Starcage activation effect should resolve");
+    }
+
+    let alice_graveyard_names = game
+        .player(alice)
+        .expect("Alice should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    let bob_graveyard_names = game
+        .player(bob)
+        .expect("Bob should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+
+    assert!(alice_graveyard_names.contains(&"Alice Trinket"));
+    assert!(!alice_graveyard_names.contains(&"Bob Trinket"));
+    assert!(bob_graveyard_names.contains(&"Bob Trinket"));
+    assert!(!bob_graveyard_names.contains(&"Alice Trinket"));
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+            .count(),
+        2,
+        "expected one Robot for each card put into its owner's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_creates_no_robots_when_no_cards_are_moved_this_way() {
+    let game = resolve_pinnacle_starcage_activation_with_exiled_cards(0);
+    let alice = PlayerId::from_index(0);
+
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .iter()
+            .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+            .any(|name| name == "Pinnacle Starcage"),
+        "activation should still sacrifice Pinnacle Starcage when no exiled cards move"
+    );
+    assert!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .all(|object| object.name != "Robot"),
+        "activation should not create Robot tokens when no cards were put into a graveyard this way"
     );
 }
 

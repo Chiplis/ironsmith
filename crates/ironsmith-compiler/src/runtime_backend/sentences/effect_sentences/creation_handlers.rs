@@ -1373,6 +1373,42 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     if grammar::words_match_any_prefix(
         tokens,
         &[
+            &[
+                "card", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "cards", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "object", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "objects", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "permanent", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "permanents", "put", "into", "a", "graveyard", "this", "way",
+            ],
+            &[
+                "card", "put", "into", "graveyard", "this", "way",
+            ],
+            &[
+                "cards", "put", "into", "graveyard", "this", "way",
+            ],
+            &[
+                "object", "put", "into", "graveyard", "this", "way",
+            ],
+            &[
+                "objects", "put", "into", "graveyard", "this", "way",
+            ],
+            &[
+                "permanent", "put", "into", "graveyard", "this", "way",
+            ],
+            &[
+                "permanents", "put", "into", "graveyard", "this", "way",
+            ],
             &["card", "exiled", "from", "their", "hand", "this", "way"],
             &["cards", "exiled", "from", "their", "hand", "this", "way"],
             &[
@@ -1385,6 +1421,21 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     )
     .is_some()
     {
+        let words = token_word_refs(tokens);
+        if words.iter().any(|word| *word == "put")
+            && words
+                .windows(2)
+                .any(|window| window == ["this", "way"])
+        {
+            return Some(
+                Value::PendingEffectMetric {
+                    source: ironsmith_core::EffectMetricSource::AffectedObjects,
+                    metric: ironsmith_core::EffectMetric::Count,
+                }
+                .with_surface_hint(ValueSurfaceHint::ForEach),
+            );
+        }
+
         let mut filter = ObjectFilter::default().in_zone(Zone::Hand);
         filter.owner = Some(PlayerFilter::IteratedPlayer);
         filter

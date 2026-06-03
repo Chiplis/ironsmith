@@ -1133,6 +1133,7 @@ pub(crate) enum SubjectVerbActionAst {
     ExileUntilSourceLeaves {
         target: TargetAst,
         face_down: bool,
+        all: bool,
     },
     MoveToZone {
         target: TargetAst,
@@ -1143,6 +1144,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_attacking: bool,
         battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
+        all: bool,
     },
     MoveToLibraryTopOrBottomChoice {
         target: TargetAst,
@@ -2420,10 +2422,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("face_down", face_down)
                 .field("controller", controller)
                 .finish(),
-            Self::ExileUntilSourceLeaves { target, face_down } => f
+            Self::ExileUntilSourceLeaves { target, face_down, all } => f
                 .debug_struct("ExileUntilSourceLeaves")
                 .field("target", target)
                 .field("face_down", face_down)
+                .field("all", all)
                 .finish(),
             Self::MoveToZone {
                 target,
@@ -2434,6 +2437,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_attacking,
                 battlefield_face_down,
                 attached_to,
+                all,
             } => f
                 .debug_struct("MoveToZone")
                 .field("target", target)
@@ -2444,6 +2448,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_attacking", battlefield_attacking)
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
+                .field("all", all)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
                 .debug_struct("MoveToLibraryTopOrBottomChoice")
@@ -4084,7 +4089,26 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down },
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                face_down,
+                all: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_exile_all_until_source_leaves(
+        target: TargetAst,
+        face_down: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                face_down,
+                all: true,
+            },
         )
     }
 
@@ -4130,6 +4154,32 @@ impl EffectAst {
                 battlefield_attacking,
                 battlefield_face_down,
                 attached_to,
+                all: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_move_all_to_zone(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                zone,
+                to_top,
+                battlefield_controller,
+                battlefield_tapped,
+                battlefield_attacking: false,
+                battlefield_face_down: false,
+                attached_to,
+                all: true,
             },
         )
     }

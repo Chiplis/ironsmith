@@ -2313,9 +2313,12 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down } => {
-            let (spec, choices) =
+        SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down, all } => {
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all && let ChooseSpec::Object(filter) = spec {
+                spec = ChooseSpec::All(filter);
+            }
             let mut effect = Effect::new(
                 crate::effects::ExileUntilEffect::source_leaves(spec.clone())
                     .with_face_down(*face_down),
@@ -2497,9 +2500,13 @@ fn compile_subject_verb_effect(
             battlefield_attacking,
             battlefield_face_down,
             attached_to,
+            all,
         } => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all && let ChooseSpec::Object(filter) = spec {
+                spec = ChooseSpec::All(filter);
+            }
             if !ctx.iterated_player
                 && ctx.last_object_tag.as_deref() == Some(IT_TAG)
                 && (ctx.last_it_choice_is_set

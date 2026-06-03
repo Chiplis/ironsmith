@@ -553,6 +553,12 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     {
         return Ok(None);
     }
+    if matches!(verb, Verb::Exile)
+        && words.iter().any(|word| *word == "until")
+        && words.ends_with(&["leaves", "the", "battlefield"])
+    {
+        return Ok(None);
+    }
     if REPLACE_EXILE_ALL_CARDS_FROM_PREFIX_PATTERN.matches_words(&words)
         && REPLACE_HAND_MARKER_PATTERN.matches_words(&words)
         && REPLACE_GRAVEYARD_MARKER_PATTERN.matches_words(&words)

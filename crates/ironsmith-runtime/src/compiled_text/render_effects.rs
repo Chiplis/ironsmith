@@ -3548,7 +3548,8 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
-    describe_roll_choose_destroy_create_structural(effects)
+    describe_source_exiled_graveyard_token_sacrifice_structural(effects)
+        .or_else(|| describe_roll_choose_destroy_create_structural(effects))
         .or_else(|| describe_draw_discard_then_conditional_untap_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
@@ -3558,6 +3559,45 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_source_exiled_graveyard_token_sacrifice_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    let [move_effect, create_effect, sacrifice_effect] = effects else {
+        return None;
+    };
+    let with_id = move_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let move_to_zone = with_id
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Graveyard || move_to_zone.to_top {
+        return None;
+    }
+    let ChooseSpec::All(filter) = move_to_zone.target.base() else {
+        return None;
+    };
+    if !is_source_exiled_cards_filter(filter) {
+        return None;
+    }
+    let create = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if !is_effect_count_reference(&create.count, Some(with_id.id)) {
+        return None;
+    }
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+
+    let token_blueprint = describe_token_blueprint(&create.token);
+    let create_text = describe_create_token_action(
+        &format!("a {token_blueprint} for each card put into a graveyard this way"),
+        &create.controller,
+    );
+    Some(format!(
+        "Put each card exiled with this artifact into its owner's graveyard, then {}. Sacrifice this artifact.",
+        lowercase_first(&create_text)
+    ))
 }
 
 fn keyword_label_from_static_ability_id(
@@ -30863,6 +30903,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     && crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
                 {
                     "Return those cards to their owners' graveyards".to_string()
+                } else if let ChooseSpec::All(filter) = move_to_zone.target.base()
+                    && is_source_exiled_cards_filter(filter)
+                {
+                    "Put each card exiled with this artifact into its owner's graveyard".to_string()
                 } else {
                     format!("Put {target} into its owner's graveyard")
                 }
@@ -31058,10 +31102,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             ""
         };
-        return format!(
-            "Exile {}{face_down_suffix} {duration}",
-            describe_choose_spec(&exile_until.spec)
-        );
+        let mut target = describe_choose_spec(&exile_until.spec);
+        if matches!(&exile_until.spec, ChooseSpec::All(_)) {
+            target = target.replace("artifacts or creatures", "artifacts and creatures");
+        }
+        return format!("Exile {target}{face_down_suffix} {duration}");
     }
     if let Some(_haunt_exile) = effect.downcast_ref::<crate::effects::HauntExileEffect>() {
         return "Exile it haunting target creature".to_string();
