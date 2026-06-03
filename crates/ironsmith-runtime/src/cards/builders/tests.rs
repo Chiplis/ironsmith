@@ -23700,6 +23700,264 @@ fn parse_full_god_eternal_kefnet_oracle() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn god_eternal_rhonas_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("God-Eternal Rhonas")
+        .expect("God-Eternal Rhonas oracle text")
+        .clone();
+    CardDefinitionBuilder::new(CardId::new(), "God-Eternal Rhonas")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::God])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(oracle)
+        .expect("God-Eternal Rhonas should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn vanilla_creature_definition(name: &str, power: i32, toughness: i32) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, toughness))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn god_eternal_rhonas_trigger_for_event(
+    game: &crate::game_state::GameState,
+    event: &crate::triggers::TriggerEvent,
+    source: ObjectId,
+) -> crate::triggers::TriggeredAbilityEntry {
+    let triggers = crate::triggers::check_triggers(game, event);
+    let matching = triggers
+        .into_iter()
+        .filter(|entry| entry.source == source)
+        .collect::<Vec<_>>();
+    assert_eq!(
+        matching.len(),
+        1,
+        "expected exactly one God-Eternal Rhonas trigger for event"
+    );
+    matching.into_iter().next().expect("checked one trigger")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_full_god_eternal_rhonas_oracle_and_compiled_text() {
+    assert_oracle_card_parses_strict("God-Eternal Rhonas");
+    let def = god_eternal_rhonas_definition();
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("ForEachObject")
+            && abilities_debug.contains("PowerOf")
+            && abilities_debug.contains("Vigilance")
+            && abilities_debug.contains("OrTrigger")
+            && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
+        "expected Rhonas ETB and dies/exile trigger structures, got {abilities_debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("double the power of each other creature you control until end of turn"),
+        "expected double-power clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Those creatures gain vigilance until end of turn"),
+        "expected same-creature vigilance clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("dies or") && rendered.contains("put into exile from the battlefield"),
+        "expected dies-or-exile marker in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("third from the top"),
+        "expected third-from-top library placement, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_etb_doubles_other_creatures_and_grants_vigilance() {
+    let rhonas = god_eternal_rhonas_definition();
+    let ally = vanilla_creature_definition("Allied Bear", 2, 2);
+    let second_ally = vanilla_creature_definition("Allied Soldier", 1, 3);
+    let enemy = vanilla_creature_definition("Enemy Bear", 4, 4);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+    let ally_id = game.create_object_from_definition(&ally, alice, Zone::Battlefield);
+    let second_ally_id = game.create_object_from_definition(&second_ally, alice, Zone::Battlefield);
+    let enemy_id = game.create_object_from_definition(&enemy, bob, Zone::Battlefield);
+
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(rhonas_id).expect("Rhonas exists"),
+        &game,
+    );
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            rhonas_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Rhonas ETB trigger should resolve");
+    }
+
+    assert_eq!(game.calculated_power(ally_id), Some(4));
+    assert_eq!(game.calculated_toughness(ally_id), Some(2));
+    assert!(game.object_has_static_ability_id(ally_id, StaticAbilityId::Vigilance));
+    assert_eq!(game.calculated_power(second_ally_id), Some(2));
+    assert_eq!(game.calculated_toughness(second_ally_id), Some(3));
+    assert!(game.object_has_static_ability_id(
+        second_ally_id,
+        StaticAbilityId::Vigilance
+    ));
+    assert_eq!(game.calculated_power(rhonas_id), Some(5));
+    assert!(
+        !game.object_has_static_ability_id(rhonas_id, StaticAbilityId::Vigilance),
+        "Rhonas should not grant vigilance to itself"
+    );
+    assert_eq!(game.calculated_power(enemy_id), Some(4));
+    assert!(
+        !game.object_has_static_ability_id(enemy_id, StaticAbilityId::Vigilance),
+        "Rhonas should not affect opponents' creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_death_or_exile_trigger_may_put_third_from_top() {
+    struct AcceptMay;
+    impl crate::decision::DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    for destination in [Zone::Graveyard, Zone::Exile] {
+        let rhonas = god_eternal_rhonas_definition();
+        let filler = vanilla_creature_definition("Library Filler", 1, 1);
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        for _ in 0..4 {
+            game.create_object_from_definition(&filler, alice, Zone::Library);
+        }
+        let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(rhonas_id).expect("Rhonas exists before moving"),
+            &game,
+        );
+        let moved_id = game
+            .move_object_by_effect(rhonas_id, destination)
+            .expect("Rhonas should move zones");
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::zones::ZoneChangeEvent::with_results(
+                rhonas_id,
+                vec![moved_id],
+                Zone::Battlefield,
+                destination,
+                crate::events::cause::EventCause::effect(),
+                Some(snapshot),
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+        let mut dm = AcceptMay;
+        let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+            .with_triggering_event(entry.triggering_event.clone());
+        for effect in &entry.ability.effects {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Rhonas dies/exile trigger should resolve");
+        }
+
+        let third_from_top = game
+            .player(alice)
+            .expect("Alice exists")
+            .library
+            .iter()
+            .rev()
+            .nth(2)
+            .copied()
+            .expect("library should have a third card");
+        assert!(
+            game.object(third_from_top)
+                .is_some_and(|object| object.name == "God-Eternal Rhonas"),
+            "Rhonas should be third from the top after moving from {destination:?}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn god_eternal_rhonas_optional_library_trigger_can_be_declined() {
+    let rhonas = god_eternal_rhonas_definition();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let rhonas_id = game.create_object_from_definition(&rhonas, alice, Zone::Battlefield);
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+        game.object(rhonas_id).expect("Rhonas exists before exile"),
+        &game,
+    );
+    let exile_id = game
+        .move_object_by_effect(rhonas_id, Zone::Exile)
+        .expect("Rhonas should move to exile");
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_results(
+            rhonas_id,
+            vec![exile_id],
+            Zone::Battlefield,
+            Zone::Exile,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let entry = god_eternal_rhonas_trigger_for_event(&game, &event, rhonas_id);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(rhonas_id, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("declined Rhonas trigger should resolve");
+    }
+
+    assert!(
+        game.object(exile_id)
+            .is_some_and(|object| object.zone == Zone::Exile),
+        "declining the may ability should leave Rhonas in exile"
+    );
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice exists")
+            .library
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "God-Eternal Rhonas")),
+        "declining the may ability should not put Rhonas into the library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_long_term_plans_searches_then_puts_card_third_from_top() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Long-Term Plans")

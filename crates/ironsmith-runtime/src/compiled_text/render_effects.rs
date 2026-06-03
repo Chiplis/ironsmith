@@ -3492,6 +3492,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_double_power_then_grant_same_filter(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_council_dilemma_named_vote_sequence(effects) {
         return Some(compact);
     }
@@ -3543,6 +3547,87 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn keyword_label_from_static_ability_id(
+    ability: crate::static_abilities::StaticAbilityId,
+) -> Option<&'static str> {
+    Some(match ability {
+        crate::static_abilities::StaticAbilityId::Flying => "flying",
+        crate::static_abilities::StaticAbilityId::FirstStrike => "first strike",
+        crate::static_abilities::StaticAbilityId::DoubleStrike => "double strike",
+        crate::static_abilities::StaticAbilityId::Deathtouch => "deathtouch",
+        crate::static_abilities::StaticAbilityId::Haste => "haste",
+        crate::static_abilities::StaticAbilityId::Hexproof => "hexproof",
+        crate::static_abilities::StaticAbilityId::Indestructible => "indestructible",
+        crate::static_abilities::StaticAbilityId::Lifelink => "lifelink",
+        crate::static_abilities::StaticAbilityId::Menace => "menace",
+        crate::static_abilities::StaticAbilityId::Reach => "reach",
+        crate::static_abilities::StaticAbilityId::Trample => "trample",
+        crate::static_abilities::StaticAbilityId::Vigilance => "vigilance",
+        _ => return None,
+    })
+}
+
+fn describe_double_power_then_grant_same_filter(effects: &[Effect]) -> Option<String> {
+    let [for_each_effect, grant_effect] = effects else {
+        return None;
+    };
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let [pump_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let pump = pump_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if pump.until != Until::EndOfTurn
+        || pump.condition.is_some()
+        || pump.modification.is_some()
+        || !pump.additional_modifications.is_empty()
+        || !matches!(pump.target_spec.as_ref(), Some(ChooseSpec::Iterated))
+    {
+        return None;
+    }
+    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+        power,
+        toughness,
+    }] = pump.runtime_modifications.as_slice()
+    else {
+        return None;
+    };
+    if !matches!(power, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Iterated))
+        || !matches!(toughness, Value::Fixed(0))
+    {
+        return None;
+    }
+
+    let grant = grant_effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if grant.until != Until::EndOfTurn
+        || grant.condition.is_some()
+        || !grant.runtime_modifications.is_empty()
+        || !grant.additional_modifications.is_empty()
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &grant.modification else {
+        return None;
+    };
+    let Some(ChooseSpec::Object(filter)) = grant.target_spec.as_ref() else {
+        return None;
+    };
+    if filter != &for_each.filter {
+        return None;
+    }
+
+    let ability_text = keyword_label_from_static_ability_id(ability.id())?;
+    let description = for_each.filter.description();
+    let filter_text = strip_indefinite_article(&description);
+    let pronoun = if for_each.filter.card_types.contains(&CardType::Creature) {
+        "Those creatures"
+    } else {
+        "Those objects"
+    };
+    Some(format!(
+        "Double the power of each {filter_text} until end of turn. {pronoun} gain {ability_text} until end of turn"
+    ))
 }
 
 fn describe_exile_target_and_attached_objects(effects: &[Effect]) -> Option<String> {
