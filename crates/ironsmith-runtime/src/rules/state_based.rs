@@ -642,11 +642,10 @@ fn check_legend_rule_with_view(
 /// `get_legend_rule_decisions()` and `apply_legend_rule_choice()` to handle
 /// those interactively.
 ///
-/// Note: This convenience version resolves any replacement choices
-/// deterministically. Interactive callers should use
-/// [`apply_state_based_actions_with`] and provide their own decision maker.
+/// Note: This version uses the CLI decision maker for any interactive choices
+/// that arise while applying SBAs.
 pub fn apply_state_based_actions(game: &mut GameState) -> bool {
-    let mut auto_dm = crate::decision::SelectFirstDecisionMaker;
+    let mut auto_dm = crate::decision::CliDecisionMaker;
     apply_state_based_actions_with(game, &mut auto_dm)
 }
 

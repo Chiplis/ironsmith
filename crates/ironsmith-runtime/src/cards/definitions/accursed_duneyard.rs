@@ -66,6 +66,11 @@ mod tests {
         crate::tests::test_helpers::setup_two_player_game()
     }
 
+    fn apply_sbas_deterministically(game: &mut GameState) -> bool {
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        crate::rules::state_based::apply_state_based_actions_with(game, &mut dm)
+    }
+
     /// Helper to create an undead creature on the battlefield.
     fn create_undead_creature(
         game: &mut GameState,
@@ -308,7 +313,7 @@ mod tests {
         game.mark_damage(zombie_id, 2); // Lethal damage for a 2/2
 
         // Apply state-based actions
-        crate::rules::apply_state_based_actions(&mut game);
+        apply_sbas_deterministically(&mut game);
 
         // Zombie should still be on battlefield (regeneration prevented death)
         assert!(
@@ -353,7 +358,7 @@ mod tests {
 
         game.mark_damage(zombie_id, 2);
 
-        crate::rules::apply_state_based_actions(&mut game);
+        apply_sbas_deterministically(&mut game);
 
         assert!(game.battlefield.contains(&zombie_id));
         assert_eq!(game.damage_on(zombie_id), 0);
