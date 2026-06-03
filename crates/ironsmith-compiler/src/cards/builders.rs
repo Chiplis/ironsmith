@@ -1349,7 +1349,8 @@ impl CardDefinitionBuilder {
                     crate::effect::Effect::new(
                         crate::effects::CastSourceEffect::new()
                             .without_paying_mana_cost()
-                            .require_exile(),
+                            .require_exile()
+                            .cast_as_suspend(),
                     ),
                 ])]
                 .into(),

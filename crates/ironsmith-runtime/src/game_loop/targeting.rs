@@ -30,18 +30,25 @@ fn resolve_modal_count_value_for_source(
 
 /// Check if a ChooseSpec requires player selection.
 /// Check if a target spec requires the player to select a target.
+fn object_filter_is_tagged_reference(filter: &crate::filter::ObjectFilter) -> bool {
+    !filter.tagged_constraints.is_empty()
+        && filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+}
+
 pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
-        // Target wrapper - check the inner spec
-        ChooseSpec::Target(inner)
-        | ChooseSpec::WithCount(inner, _)
+        // Explicit target wrappers always require cast/activation-time selection.
+        ChooseSpec::Target(_) => true,
+        ChooseSpec::WithCount(inner, _)
         | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
         // These require target selection during casting
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget
         | ChooseSpec::PlayerOrPlaneswalker(_)
-        | ChooseSpec::Player(_)
-        | ChooseSpec::Object(_) => true,
+        | ChooseSpec::Player(_) => true,
+        ChooseSpec::Object(filter) => !object_filter_is_tagged_reference(filter),
         ChooseSpec::AttackedPlayerOrPlaneswalker => false,
         // These don't require selection - they're resolved at execution time
         _ => false,

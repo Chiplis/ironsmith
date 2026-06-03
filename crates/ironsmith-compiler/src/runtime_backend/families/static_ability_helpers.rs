@@ -320,6 +320,47 @@ pub(crate) fn myriad_triggered_ability() -> Ability {
     )
 }
 
+pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
+    vec![
+        Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::beginning_of_upkeep(PlayerFilter::You),
+                effects: ResolutionProgram::from_effects(vec![Effect::remove_counters(
+                    crate::object::CounterType::Time,
+                    1,
+                    crate::target::ChooseSpec::Source,
+                )]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::SourceHasCounterAtLeast {
+                    counter_type: crate::object::CounterType::Time,
+                    count: 1,
+                }),
+                presentation_label: Some("keyword:suspend".to_string()),
+            }),
+            functional_zones: vec![crate::zone::Zone::Exile],
+        },
+        Ability {
+            kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
+                trigger: Trigger::new(crate::triggers::CounterRemovedFromTrigger::new(
+                    ObjectFilter::source(),
+                )),
+                effects: ResolutionProgram::from_effects(vec![Effect::may(vec![Effect::new(
+                    crate::effects::CastSourceEffect::new()
+                        .without_paying_mana_cost()
+                        .require_exile()
+                        .cast_as_suspend(),
+                )])]),
+                choices: vec![],
+                intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(
+                    crate::object::CounterType::Time,
+                )),
+                presentation_label: Some("keyword:suspend".to_string()),
+            }),
+            functional_zones: vec![crate::zone::Zone::Exile],
+        },
+    ]
+}
+
 fn graveyard_return_counter_ability(
     counter_type: crate::object::CounterType,
     trigger_tag: &'static str,
@@ -448,6 +489,9 @@ pub(crate) fn lower_granted_abilities_ast_to_object_abilities(
             }
             GrantedAbilityAst::KeywordAction(KeywordAction::Myriad) => {
                 lowered.push(myriad_triggered_ability());
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Marker("suspend")) => {
+                lowered.extend(suspend_exile_triggered_abilities());
             }
             _ => lowered.push(lower_granted_ability_ast_to_object_ability(ability)?),
         }

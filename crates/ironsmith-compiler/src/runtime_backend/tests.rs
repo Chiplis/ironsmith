@@ -6,6 +6,7 @@ use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::static_abilities::StaticAbilityId;
 use crate::types::{CardType, Subtype, Supertype};
+use crate::zone::Zone;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -13099,8 +13100,10 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         [super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter_text,
+            source_zone,
         }] if *choice_count == ChoiceCount::at_least(1)
             && filter_text == "cards from your graveyard"
+            && *source_zone == Some(Zone::Graveyard)
     ));
 
     let single_graveyard_tokens = lex_line("Exile a card from a single graveyard", 0)
@@ -13112,9 +13115,28 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         [super::ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter_text,
+            source_zone,
         }] if *choice_count == ChoiceCount::exactly(1)
             && filter_text == "card from a graveyard"
+            && source_zone.is_none()
     ));
+
+    let exile_hand_tokens = lex_line("Exile a nonland card from your hand", 0)
+        .expect("lexer should classify exile-from-hand activation cost");
+    let lowered = super::parse_activation_cost(&exile_hand_tokens)
+        .expect("activation-cost parser should support exiling a filtered card from hand");
+    let hand_choice = lowered
+        .as_all()
+        .expect("exile-from-hand activation cost should lower to sequential costs")
+        .iter()
+        .find_map(|cost| {
+            cost.effect_ref()
+                .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        })
+        .expect("exile-from-hand activation cost should choose a card to exile");
+    assert_eq!(hand_choice.filter.zone, Some(Zone::Hand));
+    assert_eq!(hand_choice.filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(hand_choice.filter.excluded_card_types, vec![CardType::Land]);
 
     let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)
         .expect("lexer should classify exile-spell activation cost");

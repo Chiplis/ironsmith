@@ -11,6 +11,7 @@ use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
 use crate::types::{CardType, Subtype};
+use crate::zone::Zone;
 
 use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::effect_sentences::parse_subtype_word;
@@ -120,6 +121,7 @@ pub(crate) enum ActivationCostSegmentCst {
     ExileChosen {
         choice_count: ChoiceCount,
         filter_text: String,
+        source_zone: Option<Zone>,
     },
     ExileSelfAndNamedArtifacts {
         names: Vec<String>,
@@ -1072,18 +1074,41 @@ fn parse_exile_segment_tokens(
             idx += 1;
         }
 
-        if !subject
+        if subject
             .get(idx)
             .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+            && idx + 1 == subject.len()
         {
+            return Ok(ActivationCostSegmentCst::ExileFromHand {
+                count,
+                color_filter,
+            });
+        }
+
+        let Some(subject_tokens) =
+            token_slice_for_word_range(tokens, &words, 1, lowered.len().saturating_sub(3))
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite exile-from-hand parser found empty selector in '{raw}'"
+            )));
+        };
+        let (choice_count, filter_tokens) = parse_generic_choice_prefix_tokens(subject_tokens)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "rewrite exile-from-hand parser expected card selector in '{raw}'"
+                ))
+            })?;
+        let filter_text = render_lower_lexed_tokens(filter_tokens);
+        if filter_text.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "rewrite exile-from-hand parser expected card selector in '{raw}'"
             )));
         }
 
-        return Ok(ActivationCostSegmentCst::ExileFromHand {
-            count,
-            color_filter,
+        return Ok(ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter_text: format!("{filter_text} from your hand"),
+            source_zone: Some(Zone::Hand),
         });
     }
 
@@ -1105,6 +1130,7 @@ fn parse_exile_segment_tokens(
         return Ok(ActivationCostSegmentCst::ExileChosen {
             choice_count,
             filter_text: format!("{filter_text} from your graveyard"),
+            source_zone: Some(Zone::Graveyard),
         });
     }
 
@@ -1124,6 +1150,7 @@ fn parse_exile_segment_tokens(
     Ok(ActivationCostSegmentCst::ExileChosen {
         choice_count,
         filter_text: render_exile_filter_text(filter_tokens),
+        source_zone: None,
     })
 }
 
@@ -2251,6 +2278,7 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::ExileChosen {
                 choice_count,
                 filter_text,
+                source_zone,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = parse_filter_text(filter_text, false)?;
@@ -2258,6 +2286,11 @@ pub(crate) fn lower_activation_cost_cst(
                     filter.zone = Some(crate::zone::Zone::Stack);
                     filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
                     filter.has_mana_cost = true;
+                } else if let Some(zone) = source_zone {
+                    filter.zone = Some(*zone);
+                    if matches!(zone, Zone::Hand | Zone::Graveyard) && filter.owner.is_none() {
+                        filter.owner = Some(PlayerFilter::You);
+                    }
                 }
                 if filter.zone.is_none() {
                     filter.zone = Some(crate::zone::Zone::Battlefield);

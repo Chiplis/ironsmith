@@ -998,7 +998,8 @@ pub(super) fn resolve_stack_entry_full(
                         Some(crate::alternative_cast::AlternativeCastingMethod::Suspend { .. })
                     ),
                     _ => false,
-                };
+                } || entry.optional_costs_paid.was_paid_label("Suspend")
+                    || obj.optional_costs_paid.was_paid_label("Suspend");
                 if cast_with_dash {
                     let dash_haste = crate::effects::ApplyContinuousEffect::new(
                         crate::continuous::EffectTarget::Specific(result.new_id),
