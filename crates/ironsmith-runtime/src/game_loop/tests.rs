@@ -47525,6 +47525,67 @@ fn sleep_with_the_fishes_creates_unblockable_fish_token() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn gilded_light_shroud_blocks_all_player_targeting_until_end_of_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gilded_light = CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse");
+    let spell_id = game.create_object_from_definition(&gilded_light, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_source_info(
+            game.object(spell_id)
+                .expect("Gilded Light spell should exist")
+                .stable_id,
+            "Gilded Light".to_string(),
+        ),
+    );
+
+    let alice_source = create_creature(&mut game, "Friendly Source", alice, 2, 2);
+    let bob_source = create_creature(&mut game, "Opposing Source", bob, 2, 2);
+    assert!(game.can_target_player_from_source(alice, alice_source));
+    assert!(game.can_target_player_from_source(alice, bob_source));
+
+    resolve_stack_entry(&mut game).expect("Gilded Light should resolve");
+
+    assert!(
+        !game.can_target_player(alice),
+        "Gilded Light should make its controller untargetable"
+    );
+    assert!(
+        !game.can_target_player_from_source(alice, alice_source),
+        "shroud should stop the controller's own sources from targeting them"
+    );
+    assert!(
+        !game.can_target_player_from_source(alice, bob_source),
+        "shroud should stop opposing sources from targeting the controller"
+    );
+    assert!(
+        game.can_target_player_from_source(bob, bob_source),
+        "Gilded Light should not grant shroud to other players"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert!(
+        game.can_target_player_from_source(alice, alice_source)
+            && game.can_target_player_from_source(alice, bob_source),
+        "Gilded Light's shroud should expire at end of turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn absolute_virtue_blocks_opponent_controlled_sources_from_targeting_you() {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::ids::CardId;

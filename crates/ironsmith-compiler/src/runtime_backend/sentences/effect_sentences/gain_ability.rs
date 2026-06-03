@@ -260,13 +260,6 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     text
 }
 
-fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
-    matches!(
-        ability,
-        GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything)
-    )
-}
-
 fn append_shared_subject_pump_to_target(
     effects: &mut Vec<EffectAst>,
     target: &TargetAst,
@@ -482,6 +475,13 @@ fn player_gain_effects_for_abilities(
                         player_filter.clone(),
                         filter.clone().controlled_by(PlayerFilter::Opponent),
                     ),
+                    duration.clone(),
+                    None,
+                ));
+            }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Shroud) => {
+                effects.push(EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_targeted_player(player_filter.clone()),
                     duration.clone(),
                     None,
                 ));
@@ -1758,23 +1758,20 @@ pub(crate) fn parse_gain_ability_sentence(
     }
 
     if !losing && YOU_SUBJECT_PATTERN.matches_words(&real_subject_words) {
-        let has_protection_from_everything =
-            abilities.iter().any(grants_protection_from_everything);
-        if has_protection_from_everything {
-            let player_target =
-                TargetAst::Player(PlayerFilter::You, span_from_tokens(&real_subject_tokens));
-            effects.push(EffectAst::subject_verb_cant(
-                crate::effect::Restriction::be_targeted_player(PlayerFilter::You),
-                duration.clone(),
-                None,
-            ));
-            effects.push(EffectAst::subject_verb_prevent_all_damage_to_target(
-                player_target,
-                duration.clone(),
-            ));
-            effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
-            return Ok(Some(effects));
-        }
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            &real_subject_tokens,
+            PlayerFilter::You,
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported player gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
     }
 
     if !losing && YOU_AND_PERMANENTS_YOU_CONTROL_PATTERN.matches_words(&real_subject_words) {
@@ -2480,6 +2477,22 @@ mod tests {
                 && string_contains(&debug, "GrantAbilitiesAll")
                 && string_contains(&debug, "Hexproof"),
             "expected player hexproof restriction plus permanent hexproof grant, got {debug}"
+        );
+    }
+
+    #[test]
+    fn you_gain_shroud_lowers_to_unscoped_player_target_restriction() {
+        let tokens = tokenize_line("You gain shroud until end of turn.", 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("player shroud grant should parse")
+            .expect("player shroud grant should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "Cant")
+                && string_contains(&debug, "BeTargetedPlayer")
+                && !string_contains(&debug, "BeTargetedPlayerFrom"),
+            "expected shroud to prevent all targeting of the player, got {debug}"
         );
     }
 

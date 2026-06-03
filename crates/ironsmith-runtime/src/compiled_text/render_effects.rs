@@ -3515,6 +3515,11 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
+    let refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_player_protection_from_everything_pair(&refs) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_untap_attacking_then_additional_combat(effects) {
         return Some(compact);
     }
@@ -3544,7 +3549,6 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if effects.len() == 3 {
-        let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
             return Some(compact);
         }
@@ -4984,6 +4988,53 @@ fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
     cast_effect
         .downcast_ref::<crate::effects::CastTaggedEffect>()
         .is_some_and(|cast| cast.as_copy && cast.tag.as_str() == tag)
+}
+
+fn describe_player_gain_keyword(player: &PlayerFilter, keyword: &str, duration: &Until) -> String {
+    let subject = describe_player_set_filter(player);
+    let verb = match player {
+        PlayerFilter::You
+        | PlayerFilter::Any
+        | PlayerFilter::Opponent
+        | PlayerFilter::NotYou
+        | PlayerFilter::Teammate => "gain",
+        _ => "gains",
+    };
+    let duration_text = if *duration == Until::EndOfTurn {
+        "until end of turn".to_string()
+    } else {
+        describe_until(duration)
+    };
+    format!("{subject} {verb} {keyword} {duration_text}")
+}
+
+fn describe_player_protection_from_everything_pair(effects: &[&Effect]) -> Option<String> {
+    let [cant_effect, prevent_effect] = effects else {
+        return None;
+    };
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let prevent = prevent_effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()?;
+    let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction else {
+        return None;
+    };
+    let same_player = match prevent.target.base() {
+        ChooseSpec::Player(prevent_player) => prevent_player == player,
+        ChooseSpec::SourceController => player == &PlayerFilter::You,
+        _ => false,
+    };
+    if !same_player
+        || prevent.duration != cant.duration
+        || prevent.damage_filter != crate::prevention::DamageFilter::all()
+        || !prevent.follow_up_effects.is_empty()
+    {
+        return None;
+    }
+
+    Some(describe_player_gain_keyword(
+        player,
+        "protection from everything",
+        &cant.duration,
+    ))
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
@@ -6581,6 +6632,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_source_counter_and_create(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_player_protection_from_everything_pair(&filtered) {
         return compact;
     }
 
@@ -15752,6 +15806,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     }
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_player_protection_from_everything_pair(&effect_refs) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
         return Some(compact);
     }
@@ -34469,6 +34526,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 _ => capitalize_first(&description),
             };
             return format!("{subject} must be blocked this turn if able");
+        }
+        if let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction {
+            return describe_player_gain_keyword(player, "shroud", &cant.duration);
         }
         if cant.duration == Until::EndOfTurn {
             let restriction_text = describe_restriction(&cant.restriction);
