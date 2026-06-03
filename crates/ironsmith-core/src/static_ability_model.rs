@@ -1679,8 +1679,13 @@ impl<
             };
         }
         if let Some(payload) = label_any.downcast_ref::<ThisSpellCostReduction<Cond>>() {
+            let id = if payload.affinity_filter.is_some() {
+                StaticAbilityId::Affinity
+            } else {
+                StaticAbilityId::ThisSpellCostReduction
+            };
             return Self {
-                id: Some(StaticAbilityId::ThisSpellCostReduction),
+                id: Some(id),
                 label: "this spell cost reduction".to_string(),
                 payload: StaticAbilityPayload::ThisSpellCostReduction(payload.clone()),
             };

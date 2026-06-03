@@ -47024,6 +47024,18 @@ fn polliwallop_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Polliwallop");
     let rendered = compiled_text_lines(&def).join("\n");
     let debug = format!("{:#?}", def.spell_effect);
+    let affinity = def.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability) if static_ability.has_affinity() => {
+            Some(static_ability)
+        }
+        _ => None,
+    });
+
+    assert!(
+        affinity.is_some_and(|static_ability| static_ability.id() == StaticAbilityId::Affinity),
+        "expected Polliwallop to preserve affinity keyword identity, got {:#?}",
+        def.abilities
+    );
 
     assert!(
         rendered.contains("Affinity for Frogs"),

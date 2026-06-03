@@ -1872,6 +1872,9 @@ impl ThisSpellCostReduction {
 
 impl StaticAbilityKind for ThisSpellCostReduction {
     fn id(&self) -> StaticAbilityId {
+        if self.affinity_filter.is_some() {
+            return StaticAbilityId::Affinity;
+        }
         StaticAbilityId::ThisSpellCostReduction
     }
 
@@ -1903,6 +1906,10 @@ impl StaticAbilityKind for ThisSpellCostReduction {
 
     fn modifies_costs(&self) -> bool {
         true
+    }
+
+    fn has_affinity(&self) -> bool {
+        self.affinity_filter.is_some()
     }
 
     fn this_spell_cost_reduction(&self) -> Option<&ThisSpellCostReduction> {
