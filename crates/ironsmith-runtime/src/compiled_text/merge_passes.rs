@@ -919,6 +919,20 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             if is_trait(left_verb)
                 && is_trait(right_verb)
                 && left_verb.eq_ignore_ascii_case(right_verb)
+                && let (Some(left_quote), Some(right_quote)) = (
+                    trim_quoted_ability_sentence_end(&left_rest),
+                    quoted_ability_text(&right_rest),
+                )
+            {
+                merged.push(format!(
+                    "{left_subject} {left_verb} {left_quote} and {right_quote}"
+                ));
+                idx += 2;
+                continue;
+            }
+            if is_trait(left_verb)
+                && is_trait(right_verb)
+                && left_verb.eq_ignore_ascii_case(right_verb)
             {
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_rest}"
@@ -936,6 +950,23 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
     }
 
     merged
+}
+
+fn trim_quoted_ability_sentence_end(text: &str) -> Option<String> {
+    let inner = quoted_ability_inner_text(text)?;
+    Some(format!("\"{}\"", inner.trim_end_matches('.')))
+}
+
+fn quoted_ability_text(text: &str) -> Option<String> {
+    quoted_ability_inner_text(text).map(|inner| format!("\"{inner}\""))
+}
+
+fn quoted_ability_inner_text(text: &str) -> Option<&str> {
+    let inner = text.trim().strip_prefix('"')?.strip_suffix('"')?.trim();
+    if inner.is_empty() || !inner.contains(':') {
+        return None;
+    }
+    Some(inner)
 }
 
 pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {

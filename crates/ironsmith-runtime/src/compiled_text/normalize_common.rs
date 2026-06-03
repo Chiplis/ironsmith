@@ -6085,22 +6085,62 @@ pub(super) fn strip_square_bracketed_segments(text: &str) -> String {
     if !text.contains('[') {
         return text.to_string();
     }
+    let chars = text.chars().collect::<Vec<_>>();
     let mut out = String::with_capacity(text.len());
-    let mut depth = 0usize;
-    for ch in text.chars() {
-        if ch == '[' {
-            depth += 1;
+    let mut idx = 0usize;
+    while idx < chars.len() {
+        if chars[idx] == '[' {
+            let start = idx;
+            let mut end = idx + 1;
+            let mut depth = 1usize;
+            while end < chars.len() {
+                match chars[end] {
+                    '[' => depth += 1,
+                    ']' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                end += 1;
+            }
+            if depth != 0 {
+                break;
+            }
+            let content = chars[start + 1..end].iter().collect::<String>();
+            let mut after = end + 1;
+            while after < chars.len() && chars[after].is_whitespace() {
+                after += 1;
+            }
+            if after < chars.len()
+                && chars[after] == ':'
+                && is_bracketed_loyalty_activation_cost(&content)
+            {
+                out.extend(chars[start..=end].iter());
+            }
+            idx = end + 1;
             continue;
         }
-        if ch == ']' {
-            depth = depth.saturating_sub(1);
-            continue;
-        }
-        if depth == 0 {
-            out.push(ch);
-        }
+
+        out.push(chars[idx]);
+        idx += 1;
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_bracketed_loyalty_activation_cost(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed == "0" {
+        return true;
+    }
+    let amount = trimmed
+        .strip_prefix('+')
+        .or_else(|| trimmed.strip_prefix('-'))
+        .or_else(|| trimmed.strip_prefix('\u{2212}'))
+        .unwrap_or(trimmed);
+    !amount.is_empty() && (amount == "X" || amount.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 pub(super) fn strip_parenthetical_segments(text: &str) -> String {
@@ -12870,6 +12910,16 @@ mod tests {
         assert_eq!(
             describe_value(&Value::TotalPower(filter)),
             "the total power of the sacrificed creatures"
+        );
+    }
+
+    #[test]
+    fn square_bracket_cleanup_preserves_loyalty_activation_costs() {
+        assert_eq!(
+            strip_square_bracketed_segments(
+                "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\" [reminder]"
+            ),
+            "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\""
         );
     }
 

@@ -224,6 +224,12 @@ fn ichormoon_gauntlet_strict_parser_and_compiled_text_regression() {
         "additional-counter wording should not lower to a named 'additional' counter, got {ability_debug}"
     );
     assert!(
+        rendered.contains(
+            "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\""
+        ),
+        "expected compiled text to preserve granted bracketed loyalty abilities as one quoted line, got {rendered}"
+    );
+    assert!(
         rendered.contains("choose a counter on target permanent")
             || rendered.contains("Choose a counter on target permanent"),
         "expected compiled text to preserve choose-counter target clause, got {rendered}"

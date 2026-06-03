@@ -4405,7 +4405,7 @@ fn loyalty_activated_ability_display(
             && remove.counter_type == CounterType::Loyalty
             && let Value::Fixed(amount) = remove.count
         {
-            format!("-{amount}")
+            format!("−{amount}")
         } else if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
             && put.counter_type == CounterType::Loyalty
             && matches!(put.target, crate::target::ChooseSpec::Source)
@@ -4416,7 +4416,7 @@ fn loyalty_activated_ability_display(
             return None;
         }
     };
-    Some(format!("{cost}: {tail}"))
+    Some(format!("[{cost}]: {tail}"))
 }
 
 fn grant_subject_is_plural(subject: &str) -> bool {
