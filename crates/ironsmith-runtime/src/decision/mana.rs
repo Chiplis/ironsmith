@@ -4942,8 +4942,6 @@ pub fn calculate_improvise_artifacts_to_tap(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> Vec<crate::ids::ObjectId> {
-    use crate::ability::AbilityKind;
-
     if !has_improvise(spell) {
         return Vec::new();
     }
