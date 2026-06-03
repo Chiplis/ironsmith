@@ -1481,6 +1481,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     DealDamageEqualToPower {
         source: TargetAst,
+        amount: Value,
         target: TargetAst,
     },
     DealDistributedDamage {
@@ -2969,9 +2970,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("filter", filter)
                 .finish(),
-            Self::DealDamageEqualToPower { source, target } => f
+            Self::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            } => f
                 .debug_struct("DealDamageEqualToPower")
                 .field("source", source)
+                .field("amount", amount)
                 .field("target", target)
                 .finish(),
             Self::DealDistributedDamage { amount, target } => f
@@ -5251,10 +5257,26 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_damage_equal_to_power(source: TargetAst, target: TargetAst) -> Self {
+        Self::subject_verb_damage_with_source(
+            source.clone(),
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            target,
+        )
+    }
+
+    pub(crate) fn subject_verb_damage_with_source(
+        source: TargetAst,
+        amount: Value,
+        target: TargetAst,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DealDamageEqualToPower { source, target },
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            },
         )
     }
 

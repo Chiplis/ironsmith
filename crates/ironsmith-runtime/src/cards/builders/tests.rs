@@ -47005,6 +47005,199 @@ fn target_assignments_for_requirements(
         .collect()
 }
 
+fn polliwallop_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(669_103), "Polliwallop")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Affinity for Frogs (This spell costs {1} less to cast for each Frog you control.)\n\
+             Target creature you control deals damage equal to twice its power to target creature you don't control.",
+        )
+        .expect("Polliwallop should parse strictly")
+}
+
+#[test]
+fn polliwallop_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Polliwallop");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Affinity for Frogs"),
+        "expected Polliwallop affinity keyword text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("damage equal to twice its power"),
+        "expected Polliwallop scaled power damage text, got {rendered}"
+    );
+    assert!(
+        debug.contains("TargetOnlyEffect")
+            && debug.contains("ExecuteWithSourceEffect")
+            && debug.contains("Scaled")
+            && debug.contains("PowerOf"),
+        "expected Polliwallop to tag the source creature and deal twice its power, got {debug}"
+    );
+}
+
+#[test]
+fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
+    let def = polliwallop_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let spell = game.object(spell_id).expect("Polliwallop should be in hand");
+    let base_cost = spell
+        .mana_cost
+        .as_ref()
+        .expect("Polliwallop has a mana cost")
+        .clone();
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost).mana_value(),
+        4,
+        "Polliwallop should not be reduced with no Frogs you control"
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_104), "Alice Frog One")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_105), "Alice Frog Two")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_106), "Bob Frog")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_107), "Alice Rabbit")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Rabbit])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let spell = game.object(spell_id).expect("Polliwallop should still be in hand");
+    let reduced = crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost);
+    assert_eq!(
+        reduced.mana_value(),
+        2,
+        "Polliwallop should cost {{1}}{{G}} with exactly two Frogs you control"
+    );
+}
+
+#[test]
+fn polliwallop_targets_and_deals_twice_source_creature_power() {
+    let def = polliwallop_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let alice_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_108), "Alice Biter")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_109), "Bob Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(10, 10))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Polliwallop should have spell effects");
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        program,
+        alice,
+        Some(spell_id),
+        None,
+    );
+    assert_eq!(requirements.len(), 2, "Polliwallop should require two targets");
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(alice_creature)),
+        "first Polliwallop target should include a creature you control"
+    );
+    assert!(
+        !requirements[0]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(bob_creature)),
+        "first Polliwallop target must not include creatures you don't control"
+    );
+    assert!(
+        requirements[1]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(bob_creature)),
+        "second Polliwallop target should include a creature you don't control"
+    );
+    assert!(
+        !requirements[1]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(alice_creature)),
+        "second Polliwallop target must not include creatures you control"
+    );
+
+    let selected_targets = vec![
+        crate::game_state::Target::Object(alice_creature),
+        crate::game_state::Target::Object(bob_creature),
+    ];
+    let assignments = target_assignments_for_requirements(&requirements, &selected_targets);
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(alice_creature),
+            crate::effects::ResolvedTarget::Object(bob_creature),
+        ])
+        .with_target_assignments(assignments);
+    for effect in program.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Polliwallop spell effect should resolve");
+    }
+
+    assert_eq!(
+        game.damage_on(bob_creature),
+        6,
+        "Polliwallop should deal twice the 3-power source creature's power"
+    );
+    assert_eq!(
+        game.damage_on(alice_creature),
+        0,
+        "Polliwallop is one-sided damage, not fight"
+    );
+}
+
 #[test]
 fn season_of_the_burrow_strict_parser_and_weighted_modal_text_regression() {
     let def = parse_oracle_card_definition("Season of the Burrow");

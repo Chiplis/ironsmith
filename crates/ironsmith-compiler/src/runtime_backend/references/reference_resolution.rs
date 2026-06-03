@@ -1327,6 +1327,7 @@ pub(crate) fn preserves_existing_it_for_power_self_damage_followup(
             SubjectVerbActionAst::DealDamageEqualToPower {
                 source: TargetAst::Tagged(source_tag, _),
                 target: TargetAst::Tagged(target_tag, _),
+                ..
             },
         ..
     })) = next_effect
@@ -2626,8 +2627,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
-            SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            } => {
                 bind_unresolved_it_in_target(source, seed_tag)
+                    + bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Fight {

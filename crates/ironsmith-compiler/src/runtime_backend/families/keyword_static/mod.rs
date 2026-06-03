@@ -4055,9 +4055,10 @@ pub(crate) fn parse_affinity_cost_reduction_line(
 
     Ok(Some(StaticAbility::new(
         crate::static_abilities::ThisSpellCostReduction::new(
-            Value::Count(filter),
+            Value::Count(filter.clone()),
             crate::static_abilities::ThisSpellCostCondition::Always,
-        ),
+        )
+        .with_affinity_filter(filter),
     )))
 }
 

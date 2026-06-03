@@ -907,6 +907,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::DealDamageEqualToPower {
                 source: creature1,
                 target: creature2,
+                ..
             }
             | SubjectVerbActionAst::BecomeCopy {
                 target: creature1,

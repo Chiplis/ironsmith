@@ -334,9 +334,18 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             .as_ref()
             .is_some_and(|filter| filter_references_tag(filter, tag)),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::DealDamageEqualToPower { source, target },
+            action:
+                SubjectVerbActionAst::DealDamageEqualToPower {
+                    source,
+                    amount,
+                    target,
+                },
             ..
-        }) => target_references_tag(source, tag) || target_references_tag(target, tag),
+        }) => {
+            target_references_tag(source, tag)
+                || value_references_tag(amount, tag)
+                || target_references_tag(target, tag)
+        }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::CreateTokenCopy { object, .. },
             ..
@@ -1072,8 +1081,14 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. } => object_filter
                 .as_ref()
                 .is_some_and(|filter| filter_references_tag(filter, IT_TAG)),
-            SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
-                target_references_tag(source, IT_TAG) || target_references_tag(target, IT_TAG)
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            } => {
+                target_references_tag(source, IT_TAG)
+                    || value_references_tag(amount, IT_TAG)
+                    || target_references_tag(target, IT_TAG)
             }
             SubjectVerbActionAst::CastTagged { tag, .. } => tag.as_str() == IT_TAG,
             SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { tag, .. }

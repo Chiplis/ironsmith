@@ -2466,6 +2466,11 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         .abilities
         .iter()
         .any(ability_has_begin_on_battlefield_pregame);
+    let render_spell_cost_modifiers_before_spell = spell_like_card
+        && def
+            .abilities
+            .iter()
+            .any(ability_is_this_spell_cost_modifier);
     let push_abilities = |output: &mut Vec<String>| {
         let has_suspend = def
             .alternative_casts
@@ -2474,6 +2479,12 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         let mut ability_idx = 0usize;
         while ability_idx < def.abilities.len() {
             let ability = &def.abilities[ability_idx];
+            if render_spell_cost_modifiers_before_spell
+                && ability_is_this_spell_cost_modifier(ability)
+            {
+                ability_idx += 1;
+                continue;
+            }
             if has_suspend && is_suspend_helper_ability(ability) {
                 ability_idx += 1;
                 continue;
@@ -2650,6 +2661,23 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
     if !spell_like_card {
         push_abilities(&mut out);
     }
+    if render_spell_cost_modifiers_before_spell {
+        for (idx, ability) in def.abilities.iter().enumerate() {
+            if !ability_is_this_spell_cost_modifier(ability) {
+                continue;
+            }
+            let ability_subject = if ability_prefers_card_name_subject(ability) {
+                def.card.name.as_str()
+            } else {
+                subject
+            };
+            let mut ability_lines = describe_ability(idx + 1, ability, ability_subject, rewrite_it_deals);
+            for line in &mut ability_lines {
+                *line = substitute_legendary_source_reference(line, &def.card, subject);
+            }
+            out.extend(ability_lines);
+        }
+    }
     if let Some(spell_effects) = &def.spell_effect
         && !spell_effects.is_empty()
         && !(def.aura_attach_filter.is_some() && has_attach_only_spell_effect)
@@ -2807,6 +2835,14 @@ fn has_additional_creature_sacrifice_cost(def: &CardDefinition) -> bool {
             .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
             .is_some_and(|sacrifice| sacrifice.filter.card_types.contains(&CardType::Creature))
     })
+}
+
+fn ability_is_this_spell_cost_modifier(ability: &Ability) -> bool {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return false;
+    };
+    static_ability.this_spell_cost_reduction().is_some()
+        || static_ability.this_spell_cost_reduction_mana_cost().is_some()
 }
 
 fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -> bool {

@@ -714,6 +714,13 @@ impl StaticAbilityModelInterpreter {
                     reduction.amount.clone(),
                     reduction.condition.clone(),
                 ))
+                .map(|runtime| {
+                    if let Some(filter) = &reduction.affinity_filter {
+                        runtime.with_affinity_filter(filter.clone())
+                    } else {
+                        runtime
+                    }
+                })
             }
             ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } => {
                 Self::cached_this_spell_cost_reduction(ability)
