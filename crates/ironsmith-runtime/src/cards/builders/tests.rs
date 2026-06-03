@@ -36729,6 +36729,75 @@ fn pinnacle_starcage_activation_moves_exiled_cards_creates_robots_and_sacrifices
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pinnacle_starcage_activation_returns_mixed_owner_cards_to_their_own_graveyards() {
+    use crate::ability::AbilityKind;
+    use crate::effects::ExecutionContext;
+    use crate::object::ObjectKind;
+
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_card = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Alice Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_card = CardDefinitionBuilder::new(CardId::from_raw(91_202), "Bob Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_exiled = game.create_object_from_definition(&alice_card, alice, Zone::Exile);
+    let bob_exiled = game.create_object_from_definition(&bob_card, bob, Zone::Exile);
+    game.add_exiled_with_source_link(source, alice_exiled);
+    game.add_exiled_with_source_link(source, bob_exiled);
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pinnacle Starcage activation effect should resolve");
+    }
+
+    let alice_graveyard_names = game
+        .player(alice)
+        .expect("Alice should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    let bob_graveyard_names = game
+        .player(bob)
+        .expect("Bob should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+
+    assert!(alice_graveyard_names.contains(&"Alice Trinket"));
+    assert!(!alice_graveyard_names.contains(&"Bob Trinket"));
+    assert!(bob_graveyard_names.contains(&"Bob Trinket"));
+    assert!(!bob_graveyard_names.contains(&"Alice Trinket"));
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+            .count(),
+        2,
+        "expected one Robot for each card put into its owner's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn pinnacle_starcage_activation_creates_no_robots_when_no_cards_are_moved_this_way() {
     let game = resolve_pinnacle_starcage_activation_with_exiled_cards(0);
     let alice = PlayerId::from_index(0);

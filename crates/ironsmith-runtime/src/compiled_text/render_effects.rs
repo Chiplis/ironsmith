@@ -19616,11 +19616,6 @@ pub(super) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         Value::ColorsOfManaSpentToCastThisSpell => {
             Some("color of mana spent to cast this spell".to_string())
         }
-        Value::EffectMetric {
-            source: crate::effect::EffectMetricSource::AffectedObjects,
-            metric: crate::effect::EffectMetric::Count,
-            ..
-        } => Some("card put into a graveyard this way".to_string()),
         Value::CreaturesDiedThisTurn => Some("creature that died this turn".to_string()),
         Value::SourceRegeneratedThisTurnCount => Some("time it regenerated this turn".to_string()),
         _ => None,
