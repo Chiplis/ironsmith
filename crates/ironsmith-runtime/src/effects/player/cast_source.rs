@@ -36,7 +36,7 @@ impl EffectExecutor for CastSourceEffect {
         let mana_cost = source_obj.mana_cost.clone();
         let stable_id = source_obj.stable_id;
         let source_name = source_obj.name.clone();
-        let suspend_alternative_index = if from_zone == Zone::Exile {
+        let mut suspend_alternative_index = if from_zone == Zone::Exile {
             source_obj
                 .alternative_casts
                 .iter()
@@ -74,6 +74,19 @@ impl EffectExecutor for CastSourceEffect {
 
         if let Some(obj) = game.object_mut(new_id) {
             obj.x_value = x_value;
+            if self.cast_as_suspend && suspend_alternative_index.is_none() {
+                suspend_alternative_index = Some(obj.alternative_casts.len());
+                obj.alternative_casts
+                    .push(crate::alternative_cast::AlternativeCastingMethod::Suspend {
+                        cost: crate::mana::ManaCost::new(),
+                        time: 0,
+                    });
+            }
+        }
+
+        let mut optional_costs_paid = OptionalCostsPaid::default();
+        if self.cast_as_suspend {
+            optional_costs_paid.mark_label_paid("Suspend");
         }
 
         let stack_entry = StackEntry {
@@ -92,7 +105,7 @@ impl EffectExecutor for CastSourceEffect {
                 zone: from_zone,
                 use_alternative: suspend_alternative_index,
             },
-            optional_costs_paid: OptionalCostsPaid::default(),
+            optional_costs_paid,
             defending_player: None,
             chosen_player: None,
             chapter_ability_source: None,

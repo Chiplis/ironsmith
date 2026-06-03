@@ -4897,6 +4897,7 @@ impl WinTheGameEffect {
 pub struct CastSourceEffect {
     pub without_paying_mana_cost: bool,
     pub require_exile: bool,
+    pub cast_as_suspend: bool,
 }
 
 impl CastSourceEffect {
@@ -4904,6 +4905,7 @@ impl CastSourceEffect {
         Self {
             without_paying_mana_cost: false,
             require_exile: false,
+            cast_as_suspend: false,
         }
     }
 
@@ -4914,6 +4916,11 @@ impl CastSourceEffect {
 
     pub fn require_exile(mut self) -> Self {
         self.require_exile = true;
+        self
+    }
+
+    pub fn cast_as_suspend(mut self) -> Self {
+        self.cast_as_suspend = true;
         self
     }
 }

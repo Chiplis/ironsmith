@@ -347,7 +347,8 @@ pub(crate) fn suspend_exile_triggered_abilities() -> Vec<Ability> {
                 effects: ResolutionProgram::from_effects(vec![Effect::may(vec![Effect::new(
                     crate::effects::CastSourceEffect::new()
                         .without_paying_mana_cost()
-                        .require_exile(),
+                        .require_exile()
+                        .cast_as_suspend(),
                 )])]),
                 choices: vec![],
                 intervening_if: Some(crate::ConditionExpr::SourceHasNoCounter(

@@ -8181,6 +8181,7 @@ fn jhoira_of_the_ghitu_definition() -> crate::cards::CardDefinition {
 fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
 
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
@@ -8367,6 +8368,76 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
         game.counter_count(exiled_id, crate::object::CounterType::Time),
         3,
         "the granted suspend upkeep trigger should remove a time counter"
+    );
+
+    for expected_counters in [2, 1, 0] {
+        game.turn.turn_number += 1;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(crate::game_state::Step::Upkeep);
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+        generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+        assert_eq!(
+            trigger_queue.entries.len(),
+            1,
+            "Jhoira-granted suspend should keep queueing upkeep triggers while time counters remain"
+        );
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("granted suspend upkeep trigger should go on the stack");
+        resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+            .expect("granted suspend upkeep trigger should resolve");
+        assert_eq!(
+            game.counter_count(exiled_id, crate::object::CounterType::Time),
+            expected_counters,
+            "granted suspend upkeep trigger should remove the next time counter"
+        );
+    }
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Jhoira-granted suspend last-counter trigger should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Jhoira-granted suspend cast trigger should resolve");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Jhoira-granted suspend should cast the exiled creature when the last time counter is removed"
+    );
+
+    resolve_stack_entry(&mut game).expect("Jhoira-granted suspended creature should resolve");
+
+    let creature_id = *game
+        .battlefield
+        .iter()
+        .find(|&&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Suspend Gift Probe")
+        })
+        .expect("Jhoira-granted suspended creature should enter the battlefield");
+
+    let has_haste = game
+        .current_abilities(creature_id)
+        .expect("Jhoira-granted suspended creature should exist")
+        .iter()
+        .any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.has_haste())
+        });
+    assert!(
+        has_haste,
+        "Jhoira-granted suspended creature should gain suspend haste"
+    );
+
+    game.set_current_controller(creature_id, bob);
+
+    let has_haste_after_control_change = game
+        .current_abilities(creature_id)
+        .expect("Jhoira-granted suspended creature should still exist")
+        .iter()
+        .any(|ability| {
+            matches!(&ability.kind, AbilityKind::Static(static_ability) if static_ability.has_haste())
+        });
+    assert!(
+        !has_haste_after_control_change,
+        "Jhoira-granted suspend haste should end once its controller stops controlling it"
     );
 }
 
