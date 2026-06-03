@@ -9647,6 +9647,9 @@ pub(super) fn describe_apply_continuous_effect(
             [crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController]
         )
     {
+        if let Some(text) = describe_gain_control_target_player_creatures(effect) {
+            return Some(text);
+        }
         let mut text = format!("Gain control of {target}");
         if !matches!(effect.until, Until::Forever) {
             text.push(' ');
@@ -10131,6 +10134,28 @@ pub(super) fn describe_tag_attached_then_tap_or_untap(
         return Some(format!("Untap {attached_object}"));
     }
     None
+}
+
+fn describe_gain_control_target_player_creatures(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if !matches!(effect.until, Until::Forever) {
+        return None;
+    }
+    let crate::continuous::EffectTarget::Filter(filter) = &effect.target else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Battlefield)
+        || filter.card_types != [CardType::Creature]
+        || filter.controller.is_none()
+    {
+        return None;
+    }
+    let Some(PlayerFilter::Target(player)) = &filter.controller else {
+        return None;
+    };
+    let player = describe_player_filter(&PlayerFilter::Target(player.clone()));
+    Some(format!("Gain control of all creatures {player} controls"))
 }
 
 fn object_filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {

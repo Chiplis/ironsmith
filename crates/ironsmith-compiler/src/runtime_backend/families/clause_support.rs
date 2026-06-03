@@ -251,6 +251,17 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
+        if value == "spells" || value == "spell" {
+            return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
+        }
+        if matches!(value, "permanent" | "permanents")
+            && words.get(idx + 2..idx + 7)
+                == Some(&["that", "were", "cast", "this", "turn"][..])
+        {
+            let mut filter = ObjectFilter::permanent();
+            filter.cast_this_turn = true;
+            return Some(KeywordAction::ProtectionFromFilter(filter));
+        }
         if PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
             && words
                 .get(idx + 2)
@@ -605,6 +616,17 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
                 let filter_tokens = trim_commas(&tokens[filter_start..]);
                 let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
                 return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
+            }
+            if value == "spells" || value == "spell" {
+                return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
+            }
+            if matches!(value, "permanent" | "permanents")
+                && words.get(idx + 2..idx + 7)
+                    == Some(&["that", "were", "cast", "this", "turn"][..])
+            {
+                let mut filter = ObjectFilter::permanent();
+                filter.cast_this_turn = true;
+                return Some(KeywordAction::ProtectionFromFilter(filter));
             }
             if PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
                 && words

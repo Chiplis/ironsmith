@@ -136,6 +136,60 @@ pub(crate) fn infer_player_filter_from_object_filter(
         .find_map(infer_player_filter_from_object_filter)
 }
 
+fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<ChooseSpec>) {
+    match filter {
+        PlayerFilter::Target(inner) => {
+            let choice = ChooseSpec::target(ChooseSpec::Player((**inner).clone()));
+            if !choices.contains(&choice) {
+                choices.push(choice);
+            }
+        }
+        PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }
+        | PlayerFilter::MaxSpeed { base, .. } => {
+            push_target_player_filter_choices(base, choices);
+        }
+        PlayerFilter::Excluding { base, excluded } => {
+            push_target_player_filter_choices(base, choices);
+            push_target_player_filter_choices(excluded, choices);
+        }
+        PlayerFilter::Any
+        | PlayerFilter::You
+        | PlayerFilter::NotYou
+        | PlayerFilter::Opponent
+        | PlayerFilter::Teammate
+        | PlayerFilter::Active
+        | PlayerFilter::Defending
+        | PlayerFilter::Attacking
+        | PlayerFilter::DamagedPlayer
+        | PlayerFilter::EffectController
+        | PlayerFilter::Specific(_)
+        | PlayerFilter::MostLifeTied
+        | PlayerFilter::LowestLifeTied
+        | PlayerFilter::MostCardsInHand
+        | PlayerFilter::CastCardTypeThisTurn(_)
+        | PlayerFilter::ChosenPlayer
+        | PlayerFilter::TaggedPlayer(_)
+        | PlayerFilter::IteratedPlayer
+        | PlayerFilter::TargetPlayerOrControllerOfTarget
+        | PlayerFilter::ControllerOf(_)
+        | PlayerFilter::OwnerOf(_)
+        | PlayerFilter::AliasedOwnerOf(_)
+        | PlayerFilter::AliasedControllerOf(_) => {}
+    }
+}
+
+fn append_object_filter_target_player_choices(filter: &ObjectFilter, choices: &mut Vec<ChooseSpec>) {
+    if let Some(owner) = &filter.owner {
+        push_target_player_filter_choices(owner, choices);
+    }
+    if let Some(controller) = &filter.controller {
+        push_target_player_filter_choices(controller, choices);
+    }
+    for branch in &filter.any_of {
+        append_object_filter_target_player_choices(branch, choices);
+    }
+}
+
 fn resolve_object_ref(reference: &ObjectRef, refs: &ReferenceEnv) -> ObjectRef {
     match reference {
         ObjectRef::Tagged(tag) if tag.as_str() == IT_TAG => refs
@@ -788,11 +842,14 @@ pub(crate) fn resolve_target_spec_with_choices(
         }
     }
     let spec = resolve_choose_spec_it_tag(&spec, refs)?;
-    let choices = if spec.is_target() {
+    let mut choices = if spec.is_target() {
         vec![spec.clone()]
     } else {
         Vec::new()
     };
+    if let TargetAst::Object(filter, _, _) = target {
+        append_object_filter_target_player_choices(filter, &mut choices);
+    }
     Ok((spec, choices))
 }
 

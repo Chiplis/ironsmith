@@ -74,6 +74,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             )
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
+        TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(
+            crate::triggers::ZoneChangeTrigger::new()
+                .from(crate::zone::Zone::Battlefield)
+                .this()
+                .this_surface(surface.clone()),
+        ),
         TriggerSpec::ThisMutates => Trigger::this_mutates(),
         TriggerSpec::ThisBecomesMonstrous => Trigger::this_becomes_monstrous(),
         TriggerSpec::ThisBecomesTapped => Trigger::becomes_tapped(),

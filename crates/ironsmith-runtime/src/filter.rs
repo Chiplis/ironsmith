@@ -1976,6 +1976,16 @@ impl ObjectFilterExt for ObjectFilter {
             resolved_cast_player = Some(cast_player);
         }
 
+        if self.cast_this_turn
+            && game
+                .turn_store
+                .turn_history
+                .spell_cast_order(object.id)
+                .is_none()
+        {
+            return false;
+        }
+
         if self.first_spell_cast_each_turn
             && !first_matching_spell_cast_each_turn_matches(
                 self,
@@ -2596,6 +2606,17 @@ impl ObjectFilterExt for ObjectFilter {
             if !caster_filter.matches_player(cast_player, ctx) {
                 return false;
             }
+        }
+
+        if self.cast_this_turn
+            && snapshot.cast_order_this_turn.is_none()
+            && game
+                .turn_store
+                .turn_history
+                .spell_cast_order(snapshot.object_id)
+                .is_none()
+        {
+            return false;
         }
 
         if self.first_spell_cast_each_turn

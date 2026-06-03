@@ -148,6 +148,14 @@ fn pluralize_leading_subject(description: &str) -> Option<String> {
 }
 
 fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
+    if *filter == ObjectFilter::spell() {
+        return "spells".to_string();
+    }
+    let mut cast_this_turn_permanent_filter = ObjectFilter::permanent();
+    cast_this_turn_permanent_filter.cast_this_turn = true;
+    if *filter == cast_this_turn_permanent_filter {
+        return "permanents that were cast this turn".to_string();
+    }
     if filter.card_types.is_empty()
         && filter.all_card_types.is_empty()
         && filter.subtypes.len() == 1

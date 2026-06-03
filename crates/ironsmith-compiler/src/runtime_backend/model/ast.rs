@@ -145,6 +145,7 @@ pub(crate) enum TriggerSpec {
         marker: String,
     },
     ThisLeavesBattlefield,
+    ThisLeavesBattlefieldWithSurface(crate::target::SourceReferenceSurface),
     ThisMutates,
     ThisBecomesMonstrous,
     ThisBecomesTapped,

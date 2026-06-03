@@ -105,6 +105,17 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
+        if value == "spells" || value == "spell" {
+            return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
+        }
+        if matches!(value, "permanent" | "permanents")
+            && words.get(idx + 2..idx + 7)
+                == Some(&["that", "were", "cast", "this", "turn"][..])
+        {
+            let mut filter = ObjectFilter::permanent();
+            filter.cast_this_turn = true;
+            return Some(KeywordAction::ProtectionFromFilter(filter));
+        }
         if KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
             && KEYWORD_WITH_WORD_PATTERN.matches_word_at(words, idx + 2)
         {

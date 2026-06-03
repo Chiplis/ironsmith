@@ -63,6 +63,61 @@ fn player_filter_references_target_player(filter: &crate::target::PlayerFilter) 
     }
 }
 
+fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) -> bool {
+    [
+        filter.controller.as_ref(),
+        filter.cast_by.as_ref(),
+        filter.owner.as_ref(),
+        filter.targets_player.as_ref(),
+        filter.targets_only_player.as_ref(),
+        filter.attacking_player_or_planeswalker_controlled_by.as_ref(),
+        filter.attached_to_player.as_ref(),
+        filter.entered_battlefield_controller.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(player_filter_references_target_player)
+        || filter
+            .targets_object
+            .as_deref()
+            .is_some_and(object_filter_references_target_player)
+        || filter
+            .targets_only_object
+            .as_deref()
+            .is_some_and(object_filter_references_target_player)
+        || filter
+            .any_of
+            .iter()
+            .any(object_filter_references_target_player)
+}
+
+fn choose_spec_references_target_player(spec: &crate::target::ChooseSpec) -> bool {
+    use crate::target::ChooseSpec;
+
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => choose_spec_references_target_player(spec),
+        ChooseSpec::Player(filter)
+        | ChooseSpec::EachPlayer(filter)
+        | ChooseSpec::PlayerOrPlaneswalker(filter) => player_filter_references_target_player(filter),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            object_filter_references_target_player(filter)
+        }
+        ChooseSpec::SpecificObject(_)
+        | ChooseSpec::SpecificPlayer(_)
+        | ChooseSpec::AnyTarget
+        | ChooseSpec::AnyOtherTarget
+        | ChooseSpec::AttackedPlayerOrPlaneswalker
+        | ChooseSpec::Source
+        | ChooseSpec::SourceController
+        | ChooseSpec::SourceOwner
+        | ChooseSpec::Tagged(_)
+        | ChooseSpec::Iterated => false,
+    }
+}
+
 fn runtime_modification_references_target_player(
     modification: &crate::effects::continuous::RuntimeModification,
 ) -> bool {
@@ -75,10 +130,14 @@ fn runtime_modification_references_target_player(
 
 fn effect_references_prior_target_player(effect: &Effect) -> bool {
     if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
-        && apply
+        && (apply
             .runtime_modifications
             .iter()
             .any(runtime_modification_references_target_player)
+            || apply
+                .target_spec
+                .as_ref()
+                .is_some_and(choose_spec_references_target_player))
     {
         return true;
     }
@@ -433,13 +492,21 @@ pub(crate) fn execute_resolution_program(
             if is_modal_effect {
                 active_scope = None;
             } else if !effect_target_assignments.is_empty()
+                || effect_references_prior_target_player(effect)
                 || effect_references_prior_object_targets(effect)
             {
                 let scope_assignments = if effect_references_prior_target_player(effect) {
+                    let previous_assignment_end = if assignment_start == 0
+                        && effect_target_assignments.is_empty()
+                    {
+                        valid_target_assignments.len()
+                    } else {
+                        assignment_start
+                    };
                     let mut assignments = previous_player_target_assignments(
                         &ctx.targets,
                         valid_target_assignments,
-                        assignment_start,
+                        previous_assignment_end,
                     );
                     assignments.extend(effect_target_assignments.clone());
                     assignments
@@ -2043,6 +2110,64 @@ mod tests {
         .expect("modal program should resolve");
 
         assert_eq!(game.damage_on(damaged), 2);
+    }
+
+    #[test]
+    fn stack_resolution_preserves_explicit_player_target_for_filtered_continuous_effect() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+
+        let source_card = CardBuilder::new(CardId::from_raw(91_005), "Control Test")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let bob_creature = create_creature(&mut game, "Bob Creature", bob, 2, 2);
+        let bob_second_creature = create_creature(&mut game, "Bob Creature Two", bob, 2, 2);
+        let charlie_creature = create_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+        let mut filter = crate::filter::ObjectFilter::creature();
+        filter.controller = Some(crate::target::PlayerFilter::target_player());
+        let spec = crate::target::ChooseSpec::Object(filter);
+        let program = crate::resolution::ResolutionProgram::from_effects(vec![
+            Effect::new(crate::effects::TargetOnlyEffect::new(
+                crate::target::ChooseSpec::target_player(),
+            )),
+            Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
+                spec,
+                crate::effects::continuous::RuntimeModification::ChangeControllerToEffectController,
+                crate::effect::Until::Forever,
+            )),
+        ]);
+        let target_spec = crate::target::ChooseSpec::target_player();
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+            .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+            .with_target_assignments(vec![crate::game_state::TargetAssignment {
+                spec: target_spec,
+                range: 0..1,
+            }]);
+        let assignments = ctx.target_assignments.clone();
+
+        execute_resolution_program(
+            &mut game,
+            &mut ctx,
+            alice,
+            source,
+            &program,
+            None,
+            &assignments,
+        )
+        .expect("continuous effect should resolve");
+
+        assert_eq!(game.current_controller(bob_creature), Some(alice));
+        assert_eq!(game.current_controller(bob_second_creature), Some(alice));
+        assert_eq!(game.current_controller(charlie_creature), Some(charlie));
     }
 
     #[test]
