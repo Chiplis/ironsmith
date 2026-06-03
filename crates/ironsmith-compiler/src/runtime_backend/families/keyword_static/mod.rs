@@ -2685,6 +2685,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_damage_doubling_mana_value_marker_line),
         single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_affinity_cost_reduction_line),
         single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
         single_static_ability_ast_rule!(parse_pregame_mulligan_redraw_line),
         multi_static_ability_ast_rule!(parse_combined_pregame_choose_color_line),
@@ -4027,6 +4028,37 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     None
+}
+
+pub(crate) fn parse_affinity_cost_reduction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let core_tokens = if let Some(paren_idx) = find_token_kind(tokens, TokenKind::LParen) {
+        trim_commas(&tokens[..paren_idx])
+    } else {
+        trim_commas(tokens)
+    };
+    let words = parser_token_word_refs(&core_tokens);
+    if !word_slice_starts_with(&words, &["affinity", "for"]) || words.len() < 3 {
+        return Ok(None);
+    }
+
+    if word_slice_eq(&words, &["affinity", "for", "artifacts"]) {
+        return Ok(None);
+    }
+
+    let filter_tokens = trim_commas(&core_tokens[2..]);
+    let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    if filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::You);
+    }
+
+    Ok(Some(StaticAbility::new(
+        crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Count(filter),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        ),
+    )))
 }
 
 pub(crate) fn parse_filter_dont_untap_during_controllers_untap_steps_line(
