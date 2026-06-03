@@ -95,6 +95,7 @@ pub(crate) struct RewriteModalBlock {
 pub(crate) struct RewriteModalMode {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
+    pub(crate) point_cost: Option<u32>,
     pub(crate) effects_ast: Vec<EffectAst>,
 }
 

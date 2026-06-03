@@ -8,8 +8,8 @@ use crate::runtime_backend::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut,
 };
 use crate::runtime_backend::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word_sequence_span,
-    lex_line, parser_token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase,
+    OwnedLexToken, TokenKind, find_token_word_sequence_span, lex_line, parser_token_word_refs,
+    word_slice_contains_any_word,
 };
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
@@ -33,6 +33,37 @@ struct LineChunkLoweringInput<'a> {
 
 const THIS_SPELL_COST_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any THIS_SPELL_COST_PREFIXES);
+const CREATURE_TYPE_OF_YOUR_CHOICE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["creature", "type", "of", "your", "choice"]]);
+const IF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
+const MORBID_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[
+        PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
+        CREATURE_DIED_THIS_TURN_PHRASE,
+    ]);
+const BARGAINED_RETURN_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[
+        IF_THIS_SPELL_WAS_BARGAINED_PHRASE,
+        ONE_OF_THOSE_CARDS_MV_FOUR_OR_LESS_PHRASE,
+        ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
+    ]);
+const KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[
+        PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE,
+        PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE,
+    ]);
+const KICKED_MULTI_ZONE_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[
+        SEARCH_LIBRARY_OR_GRAVEYARD_FOR_DOCTORS_PHRASE,
+        IF_THIS_SPELL_WAS_KICKED_PHRASE,
+        PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
+    ]);
+const CLASH_WIN_TOP_REPLACEMENT_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[
+        CLASH_WITH_AN_OPPONENT_PHRASE,
+        IF_YOU_WIN_PHRASE,
+        ON_TOP_OF_OWNERS_LIBRARY_INSTEAD_PHRASE,
+    ]);
 
 fn conditional_self_replacement_followup(
     effect: &crate::effect::Effect,
@@ -298,8 +329,7 @@ fn creature_type_choice_program(
     compiled: &crate::resolution::ResolutionProgram,
 ) -> Option<crate::resolution::ResolutionProgram> {
     let words = parser_token_word_refs(tokens);
-    let has_choice_phrase =
-        word_slice_contains_phrase(&words, &["creature", "type", "of", "your", "choice"]);
+    let has_choice_phrase = CREATURE_TYPE_OF_YOUR_CHOICE_PATTERN.matches_words(&words);
     let has_get = word_slice_contains_any_word(&words, &["get", "gets"]);
     if !has_choice_phrase || !has_get {
         return None;
@@ -655,38 +685,28 @@ fn clash_win_optional_top_replacement_program(
 }
 
 fn tokens_mention_morbid_search_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(
-        tokens,
-        PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
-    ) && contains_token_word_sequence(tokens, CREATURE_DIED_THIS_TURN_PHRASE)
+    MORBID_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
 fn tokens_mention_bargained_return_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, IF_THIS_SPELL_WAS_BARGAINED_PHRASE)
-        && contains_token_word_sequence(tokens, ONE_OF_THOSE_CARDS_MV_FOUR_OR_LESS_PHRASE)
-        && contains_token_word_sequence(tokens, ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE)
+    BARGAINED_RETURN_TO_BATTLEFIELD_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(
+        tokens,
+    ))
 }
 
 fn tokens_mention_kicked_count_override_replacement(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE)
-        && contains_token_word_sequence(tokens, PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE)
+    KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
 fn tokens_mention_kicked_multi_zone_search_to_battlefield_replacement(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    contains_token_word_sequence(tokens, SEARCH_LIBRARY_OR_GRAVEYARD_FOR_DOCTORS_PHRASE)
-        && contains_token_word_sequence(tokens, IF_THIS_SPELL_WAS_KICKED_PHRASE)
-        && contains_token_word_sequence(
-            tokens,
-            PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
-        )
+    KICKED_MULTI_ZONE_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN
+        .matches_words(&parser_token_word_refs(tokens))
 }
 
 fn tokens_mention_clash_win_top_replacement(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, CLASH_WITH_AN_OPPONENT_PHRASE)
-        && contains_token_word_sequence(tokens, IF_YOU_WIN_PHRASE)
-        && contains_token_word_sequence(tokens, ON_TOP_OF_OWNERS_LIBRARY_INSTEAD_PHRASE)
+    CLASH_WIN_TOP_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
 pub(super) fn rewrite_apply_line_ast(
@@ -1424,7 +1444,7 @@ fn lower_statement_chunk(
 }
 
 fn tokens_start_with_if(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, &["if"])
+    IF_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
 fn lower_additional_cost_chunk(

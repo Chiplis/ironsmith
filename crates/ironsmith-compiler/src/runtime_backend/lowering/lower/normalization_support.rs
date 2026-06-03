@@ -474,6 +474,7 @@ fn normalize_rewrite_modal_ast(modal: ParsedModalAst) -> Result<NormalizedModalA
         modes.push(NormalizedModalModeAst {
             info: mode.info,
             description: mode.description,
+            point_cost: mode.point_cost,
             prepared,
         });
     }

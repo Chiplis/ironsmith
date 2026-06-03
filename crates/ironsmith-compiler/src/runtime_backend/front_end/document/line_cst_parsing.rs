@@ -12,6 +12,26 @@ const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = 
         ]
 );
 const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
+const FIRST_EQUIP_COST_ALTERNATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["you", "may", "pay"];
+    suffix_any & [&["each", "turn"], &["during", "each", "of", "your", "turns"]];
+    contains_phrases & [&[
+        "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
+        "ability", "you", "activate"
+    ]]
+);
+const CAN_BLOCK_ADDITIONAL_CREATURES_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "this",
+            "creature",
+            "can",
+            "block",
+            "an",
+            "additional"
+        ];
+    suffix_any & [&["each", "combat"], &["this", "turn"]]
+);
 
 fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if tokens
@@ -392,16 +412,7 @@ fn is_any_number_named_deck_construction_line(tokens: &[OwnedLexToken]) -> bool 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
 fn is_first_equip_cost_alternative_line(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, &["you", "may", "pay"])
-        && contains_token_word_sequence(
-            tokens,
-            &[
-                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-                "ability", "you", "activate",
-            ],
-        )
-        && (token_slice_ends_with(tokens, &["each", "turn"])
-            || token_slice_ends_with(tokens, &["during", "each", "of", "your", "turns"]))
+    FIRST_EQUIP_COST_ALTERNATIVE_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
@@ -427,14 +438,7 @@ fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
-    if !token_slice_starts_with(
-        tokens,
-        &["this", "creature", "can", "block", "an", "additional"],
-    ) {
-        return false;
-    }
-    token_slice_ends_with(tokens, &["each", "combat"])
-        || token_slice_ends_with(tokens, &["this", "turn"])
+    CAN_BLOCK_ADDITIONAL_CREATURES_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {
@@ -506,6 +510,7 @@ pub(super) fn parse_level_item_cst(
 }
 
 pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeCst, CardTextError> {
+    let point_cost = leading_modal_point_cost_tokens(&line.tokens);
     let parse_tokens =
         strip_non_keyword_label_prefix_lexed(strip_modal_bullet_prefix_tokens(&line.tokens));
     let mode_text = render_original_text_for_token_slice(line, parse_tokens)
@@ -516,8 +521,47 @@ pub(super) fn parse_modal_mode_cst(line: &PreprocessedLine) -> Result<ModalModeC
     Ok(ModalModeCst {
         info: line.info.clone(),
         text: mode_text,
+        point_cost,
         effects_ast,
     })
+}
+
+fn leading_modal_point_cost_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
+    let mut count = 0u32;
+    let mut idx = 0usize;
+    if tokens
+        .get(idx)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
+    {
+        idx += 1;
+    }
+    while let Some(point_count) = tokens.get(idx).and_then(pawprint_modal_label_count) {
+        count += point_count;
+        idx += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    tokens
+        .get(idx)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        .then_some(count)
+}
+
+fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
+    match token.kind {
+        TokenKind::ManaGroup => {
+            let mut rest = token.parser_text();
+            let mut count = 0u32;
+            while let Some(stripped) = rest.strip_prefix("{p}") {
+                count += 1;
+                rest = stripped;
+            }
+            (count > 0 && rest.is_empty()).then_some(count)
+        }
+        TokenKind::Word if token.parser_text() == "p" => Some(1),
+        _ => None,
+    }
 }
 
 fn strip_modal_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {

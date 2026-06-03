@@ -1,4 +1,6 @@
 use super::*;
+use crate::runtime_backend::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use crate::runtime_backend::lexer::LexedClause;
 
 const THIS_DESTINATION_TRIGGER_NAME_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
 const THIS_OR_IT_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["this"], &["it"]]);
@@ -447,6 +449,10 @@ const ATTACKS_OPPONENT_OR_PLANESWALKER_TAIL_PATTERN: ClauseShape<'static> = clau
 );
 const ATTACKS_PLANESWALKER_OR_BATTLE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["a", "planeswalker"], &["a", "battle"]]);
+const PLAYERS_ARE_ATTACKED_TRIGGER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("player", LexCaptureKind::UntilPhrase(&["are", "attacked"])),
+    LexPattern::phrase(&["are", "attacked"]),
+]);
 const THIS_BLOCKS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["this", "creature", "blocks"], &["this", "blocks"]]);
 const THIS_BLOCKS_OR_BECOMES_BLOCKED_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -3911,9 +3917,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         .copied()
         .ok_or_else(|| CardTextError::ParseError("empty trigger clause".to_string()))?;
 
-    if word_slice_ends_with(&words, &["are", "attacked"]) && words.len() > 2 {
-        let attacked_player_words = &words[..words.len() - 2];
-        if let Some(player_filter) = parse_trigger_subject_player_filter(attacked_player_words) {
+    let clause = LexedClause::new(tokens);
+    if let Some(matched) = PLAYERS_ARE_ATTACKED_TRIGGER_PATTERN.match_clause(clause)
+        && let Some(attacked_player_clause) =
+            matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+    {
+        let attacked_player_words = attacked_player_clause.word_refs();
+        if let Some(player_filter) = parse_trigger_subject_player_filter(&attacked_player_words) {
             return Ok(TriggerSpec::PlayersAttackedOneOrMore(player_filter));
         }
     }

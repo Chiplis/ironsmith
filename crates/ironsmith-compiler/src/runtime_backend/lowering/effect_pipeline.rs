@@ -72,6 +72,7 @@ pub(crate) struct NormalizedAdditionalCostChoiceOptionAst {
 pub(crate) struct NormalizedModalModeAst {
     pub(crate) info: LineInfo,
     pub(crate) description: String,
+    pub(crate) point_cost: Option<u32>,
     pub(crate) prepared: PreparedEffectsForLowering,
 }
 

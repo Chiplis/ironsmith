@@ -153,6 +153,7 @@ fn lower_modal_block(
             .map(|mode| RewriteModalMode {
                 info: mode.info,
                 text: mode.text,
+                point_cost: mode.point_cost,
                 effects_ast: mode.effects_ast,
             })
             .collect(),

@@ -7,11 +7,15 @@ use winnow::prelude::*;
 use super::activation_and_restrictions::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
+use super::effect_sentences::clause_pattern_helpers::ClauseShape;
 use super::grammar::primitives as grammar;
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
-    render_token_slice, split_lexed_sentences,
+    LexStream, OwnedLexToken, TokenKind, lex_line, render_token_slice, split_lexed_sentences,
+    token_word_refs,
 };
+
+const THIS_WAY_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[&["this", "way"]]);
 
 pub(crate) fn split_text_for_parse(
     raw_text: &str,
@@ -188,8 +192,8 @@ fn parse_when_one_or_more_followup_head_inner<'a>(
 
 fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
-        .map(|(before, _after)| contains_token_word_sequence(before, &["this", "way"]))
-        .unwrap_or_else(|| contains_token_word_sequence(tokens, &["this", "way"]));
+        .map(|(before, _after)| THIS_WAY_PATTERN.matches_words(&token_word_refs(before)))
+        .unwrap_or_else(|| THIS_WAY_PATTERN.matches_words(&token_word_refs(tokens)));
     starts_with_lexed_parser(tokens, 0, parse_when_one_or_more_followup_head_inner)
         && this_way_in_prefix
 }

@@ -90,6 +90,7 @@ use super::effect_pipeline::{
     NormalizedLineAst, NormalizedLineChunk, NormalizedModalAst, NormalizedModalModeAst,
     NormalizedParsedAbility, NormalizedPreparedAbility, ParsedCardAst,
 };
+use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed;
 use super::ir::{
     RewriteKeywordLine, RewriteKeywordLineKind, RewriteLevelHeader, RewriteModalBlock,
@@ -153,9 +154,15 @@ use super::util::{
 
 const BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE: &[&str] =
     &["becomes", "tapped", "during", "your", "turn"];
+const BECOMES_TAPPED_DURING_YOUR_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE]);
 const DO_THIS_ONLY_ONCE_EACH_TURN_PHRASE: &[&str] = &["do", "this", "only", "once", "each", "turn"];
 const DO_THIS_ONLY_TWICE_EACH_TURN_PHRASE: &[&str] =
     &["do", "this", "only", "twice", "each", "turn"];
+const DO_THIS_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[DO_THIS_ONLY_ONCE_EACH_TURN_PHRASE]);
+const DO_THIS_ONLY_TWICE_EACH_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_phrases(&[DO_THIS_ONLY_TWICE_EACH_TURN_PHRASE]);
 const PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE: &[&str] = &[
     "put",
     "that",
@@ -250,6 +257,9 @@ const AS_THIS_ENTERS_PHRASES: &[&[&str]] = &[
     &["as", "this", "permanent", "enters"],
     &["as", "this", "object", "enters"],
 ];
+const DAY_NIGHT_STARTS_DAY_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[NEITHER_DAY_NOR_NIGHT_PHRASE, BECOMES_DAY_PHRASE])
+    .contains_any_phrases(&[AS_THIS_ENTERS_PHRASES]);
 const THIS_SPELL_COST_PREFIXES: &[&[&str]] =
     &[&["this", "spell", "costs"], &["this", "spell", "cost"]];
 const YOU_MAY_PAY_PREFIX: &[&str] = &["you", "may", "pay"];
@@ -406,8 +416,8 @@ const UNTIL_END_OF_TURN_INSTEAD_PHRASE: &[&str] = &["until", "end", "of", "turn"
 const IF_YOU_DO_PHRASE: &[&str] = &["if", "you", "do"];
 const IF_YOU_DONT_PHRASES: &[&[&str]] = &[&["if", "you", "don't"], &["if", "you", "dont"]];
 const WHEN_IT_ENTERS_PHRASE: &[&str] = &["when", "it", "enters"];
-const REMOVE_PREFIX: &[&str] = &["remove"];
-const LEVEL_UP_PREFIX: &[&str] = &["level", "up"];
+const REMOVE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["remove"]);
+const LEVEL_UP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["level", "up"]);
 const DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES: &[&[&str]] = &[
     &[
         "damage", "to", "each", "player", "and", "each", "creature", "they", "control",
@@ -439,12 +449,35 @@ const DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES: &[&[&str]] = &[
         "controls",
     ],
 ];
-const BLOCKS_OR_BECOMES_BLOCKED_PREFIX: &[&str] = &[
-    "whenever", "this", "creature", "blocks", "or", "becomes", "blocked", "by", "a", "creature",
-];
-const THAT_CREATURE_FIRST_STRIKE_SUFFIX: &[&str] = &[
-    "that", "creature", "gains", "first", "strike", "until", "end", "of", "turn",
-];
+const DAMAGE_TO_EACH_PLAYER_CREATURES_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES]);
+const BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "whenever",
+            "this",
+            "creature",
+            "blocks",
+            "or",
+            "becomes",
+            "blocked",
+            "by",
+            "a",
+            "creature"
+        ];
+    suffix
+        & [
+            "that",
+            "creature",
+            "gains",
+            "first",
+            "strike",
+            "until",
+            "end",
+            "of",
+            "turn"
+        ]
+);
 const ATTACK_ACTION_SUFFIXES: &[&[&str]] = &[&["attack"], &["attacks"]];
 
 fn token_is_trigger_intro_surface(token: &OwnedLexToken) -> bool {
@@ -456,13 +489,14 @@ fn tokens_start_with_trigger_intro_surface(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn tokens_mention_becomes_tapped_during_your_turn(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE)
+    BECOMES_TAPPED_DURING_YOUR_TURN_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn do_this_frequency_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
-    if contains_token_word_sequence(tokens, DO_THIS_ONLY_ONCE_EACH_TURN_PHRASE) {
+    let words = token_word_refs(tokens);
+    if DO_THIS_ONLY_ONCE_EACH_TURN_PATTERN.matches_words(&words) {
         Some(1)
-    } else if contains_token_word_sequence(tokens, DO_THIS_ONLY_TWICE_EACH_TURN_PHRASE) {
+    } else if DO_THIS_ONLY_TWICE_EACH_TURN_PATTERN.matches_words(&words) {
         Some(2)
     } else {
         None
@@ -470,22 +504,19 @@ fn do_this_frequency_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32
 }
 
 fn tokens_start_with_remove(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, REMOVE_PREFIX)
+    REMOVE_PREFIX_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn tokens_start_with_level_up(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, LEVEL_UP_PREFIX)
+    LEVEL_UP_PREFIX_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn tokens_match_each_player_and_their_creatures_damage(tokens: &[OwnedLexToken]) -> bool {
-    DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES
-        .iter()
-        .any(|phrase| contains_token_word_sequence(tokens, phrase))
+    DAMAGE_TO_EACH_PLAYER_CREATURES_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn tokens_match_blocks_or_blocked_first_strike(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_starts_with(tokens, BLOCKS_OR_BECOMES_BLOCKED_PREFIX)
-        && token_slice_ends_with(tokens, THAT_CREATURE_FIRST_STRIKE_SUFFIX)
+    BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PATTERN.matches_words(&token_word_refs(tokens))
 }
 
 fn tokens_start_with_partner_dash_label(tokens: &[OwnedLexToken]) -> bool {
@@ -496,9 +527,5 @@ fn tokens_start_with_partner_dash_label(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn tokens_mention_day_night_starts_day(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, NEITHER_DAY_NOR_NIGHT_PHRASE)
-        && contains_token_word_sequence(tokens, BECOMES_DAY_PHRASE)
-        && AS_THIS_ENTERS_PHRASES
-            .iter()
-            .any(|phrase| contains_token_word_sequence(tokens, phrase))
+    DAY_NIGHT_STARTS_DAY_PATTERN.matches_words(&token_word_refs(tokens))
 }

@@ -2,9 +2,9 @@ use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape}
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_word, contains_token_word_sequence,
-    find_token_word_sequence_span, token_slice_starts_with_at, token_word_refs, trim_lexed_commas,
-    word_slice_starts_with, word_slice_starts_with_any,
+    OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
+    token_slice_starts_with_at, token_word_refs, trim_lexed_commas, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
@@ -19,6 +19,8 @@ use crate::zone::Zone;
 
 const FROM_THE_TOP_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from", "the", "top"]);
 const SEARCH_SUPPORT_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const FOR_AS_LONG_AS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SearchLibraryManaConstraint {
@@ -54,7 +56,7 @@ fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
+    FOR_AS_LONG_AS_PATTERN.matches_words(&token_word_refs(tokens))
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)

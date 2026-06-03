@@ -254,6 +254,7 @@ pub(crate) struct ParsedModalActivatedHeader {
 pub(crate) struct ParsedModalModeAst {
     pub(crate) info: LineInfo,
     pub(crate) description: String,
+    pub(crate) point_cost: Option<u32>,
     pub(crate) effects_ast: Vec<EffectAst>,
 }
 

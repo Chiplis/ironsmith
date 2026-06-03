@@ -195,7 +195,9 @@ pub(crate) fn rewrite_lower_parsed_modal(
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
     for mode in modes {
-        let point_cost = parse_leading_modal_point_cost_lexed(mode.info.raw_line.as_str())
+        let point_cost = mode
+            .point_cost
+            .or_else(|| parse_leading_modal_point_cost_lexed(mode.info.raw_line.as_str()))
             .or_else(|| parse_leading_modal_point_cost(mode.info.raw_line.as_str()))
             .unwrap_or(1);
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {

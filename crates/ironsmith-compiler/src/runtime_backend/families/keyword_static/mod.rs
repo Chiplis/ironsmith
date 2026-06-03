@@ -80,13 +80,13 @@ use super::lexer::{
     split_lexed_sentences, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
     token_slice_first_is_any, token_slice_starts_with, trim_lexed_commas, word_slice_at_is,
     word_slice_at_is_any, word_slice_contains_all_words, word_slice_contains_any_phrase,
-    word_slice_contains_any_word, word_slice_contains_no_words, word_slice_contains_phrase,
+    word_slice_contains_any_word, word_slice_contains_no_words,
     word_slice_contains_word, word_slice_ends_with, word_slice_ends_with_any, word_slice_eq,
     word_slice_eq_any, word_slice_eq_any_at, word_slice_eq_at, word_slice_find_any_phrase_span,
     word_slice_find_any_phrase_start, word_slice_find_phrase_start,
     word_slice_find_phrase_start_or_zero, word_slice_find_word, word_slice_find_word_where,
     word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
-    word_slice_starts_with, word_slice_starts_with_any, word_slice_starts_with_at,
+    word_slice_starts_with_any, word_slice_starts_with_at,
     word_slice_strip_any_prefix,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
@@ -159,6 +159,27 @@ const BLOCK_ADDITIONAL_DURATION_TAIL_PATTERN: ClauseShape<'static> =
 const BLOCK_ADDITIONAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["additional"]);
 const BLOCK_CREATURE_OR_CREATURES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["creature"], &["creatures"]]);
+const AFFINITY_FOR_FILTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["affinity", "for"]),
+    LexPattern::object("filter", LexCaptureKind::OneOrMoreWords),
+]);
+const AFFINITY_FOR_ARTIFACTS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["affinity", "for", "artifacts"]);
+const SPELL_OR_SPELLS_PHRASES: &[&[&str]] = &[&["spell"], &["spells"]];
+const ADDITIONAL_COST_TO_CAST_SPELL_FILTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["as", "an", "additional", "cost", "to", "cast"]),
+    LexPattern::object(
+        "spell_filter",
+        LexCaptureKind::UntilAnyPhrase(SPELL_OR_SPELLS_PHRASES),
+    ),
+    LexPattern::any_phrase(SPELL_OR_SPELLS_PHRASES),
+]);
+const THOSE_SPELLS_PAID_LIFE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["those", "spells"];
+    contains_phrases & [&["paid", "life", "this", "way"]]
+);
+const SKIP_YOUR_UPKEEP_STEP_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["skip", "your", "upkeep", "step"]);
 const DAY_NIGHT_AS_ENTERS_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -4016,16 +4037,20 @@ pub(crate) fn parse_affinity_cost_reduction_line(
     } else {
         trim_commas(tokens)
     };
+    let clause = LexedClause::new(&core_tokens);
+    let Some(matched) = AFFINITY_FOR_FILTER_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+
     let words = parser_token_word_refs(&core_tokens);
-    if !word_slice_starts_with(&words, &["affinity", "for"]) || words.len() < 3 {
+    if AFFINITY_FOR_ARTIFACTS_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 
-    if word_slice_eq(&words, &["affinity", "for", "artifacts"]) {
-        return Ok(None);
-    }
-
-    let filter_tokens = trim_commas(&core_tokens[2..]);
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| CardTextError::ParseError("missing affinity filter".to_string()))?;
+    let filter_tokens = trim_commas(filter_clause.tokens());
     let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
     if filter.controller.is_none() {
         filter.controller = Some(PlayerFilter::You);
@@ -6840,27 +6865,15 @@ fn parse_optional_life_additional_cost_reduction_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let additional_words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_starts_with(
-        &additional_words,
-        &["as", "an", "additional", "cost", "to", "cast"],
-    ) {
-        return Ok(None);
-    }
-
-    let Some(additional_spells_word_idx) = find_index(&additional_words, |word| {
-        *word == "spell" || *word == "spells"
-    }) else {
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = ADDITIONAL_COST_TO_CAST_SPELL_FILTER_PATTERN.match_prefix(clause) else {
         return Ok(None);
     };
-    let Some(cost_subject_start) = token_index_for_word_index(tokens, 6) else {
-        return Ok(None);
-    };
-    let Some(additional_spells_idx) =
-        token_index_for_word_index(tokens, additional_spells_word_idx)
+    let Some(spell_filter_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
     else {
         return Ok(None);
     };
-    let subject_tokens = trim_commas(&tokens[cost_subject_start..additional_spells_idx]);
+    let subject_tokens = trim_commas(spell_filter_clause.tokens());
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -6892,10 +6905,8 @@ fn parse_optional_life_additional_cost_reduction_line(
     else {
         return Ok(None);
     };
-    if !word_slice_contains_phrase(
-        &additional_words[those_spells_idx..],
-        &["paid", "life", "this", "way"],
-    ) {
+    if !THOSE_SPELLS_PAID_LIFE_THIS_WAY_PATTERN.matches_words(&additional_words[those_spells_idx..])
+    {
         return Ok(None);
     }
     let Some(costs_word_idx) = find_index(&additional_words[those_spells_idx..], |word| {
@@ -7981,7 +7992,7 @@ pub(crate) fn parse_players_skip_upkeep_line(
     let tokens =
         super::grammar::effects::split_labeled_effect_prefix_lexed(&tokens).unwrap_or(&tokens);
     let words = parser_token_word_refs(tokens);
-    if token_slice_starts_with(tokens, &["skip", "your", "upkeep", "step"]) {
+    if SKIP_YOUR_UPKEEP_STEP_PATTERN.matches_words(&words) {
         let mut ability = StaticAbility::player_skips_upkeep(crate::target::PlayerFilter::You);
         if words.len() > 4 {
             if words.get(4) != Some(&"if") || tokens.len() <= 5 {

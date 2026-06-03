@@ -3,10 +3,10 @@ use super::grammar::effects::{
     preserve_labeled_ability_prefix_for_parse_text, should_strip_labeled_ability_prefix_text,
 };
 use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::lexer::{
-    TokenKind, TokenWordView, lex_line, parser_token_word_refs, render_token_slice,
-    token_slice_starts_with, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_ends_with, word_slice_eq, word_slice_find_phrase_start, word_slice_starts_with,
+    LexedClause, TokenKind, TokenWordView, lex_line, parser_token_word_refs, render_token_slice,
+    word_slice_eq, word_slice_find_phrase_start,
 };
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
@@ -19,21 +19,25 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::types::CardType;
 
 const MULTI_WORD_KEYWORD_ABILITY_NAMES: &[&str] = &["first strike", "double strike", "ward"];
 const LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE: &str = "at the beginning of your upkeep, the player with the lowest life total gains control of this creature";
 const LOWEST_LIFE_CONTROL_TIE_SENTENCE: &str = "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature";
-const ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX: &[&str] = &[
-    "as",
-    "an",
-    "additional",
-    "cost",
-    "to",
-    "cast",
-    "this",
-    "spell",
-];
+const ADDITIONAL_COST_TO_CAST_THIS_SPELL_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "as",
+            "an",
+            "additional",
+            "cost",
+            "to",
+            "cast",
+            "this",
+            "spell"
+        ]
+);
 const RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX: &[&str] = &[
     "return",
     "that",
@@ -49,7 +53,8 @@ const RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX: &[&str] = &[
     "this",
 ];
 const LEAVES_THE_BATTLEFIELD_SUFFIX: &[&str] = &["leaves", "the", "battlefield"];
-const UNTIL_THIS_PHRASE: &[&str] = &["until", "this"];
+const UNTIL_THIS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["until", "this"]]);
 const TRUTH_VOTE_DRAW_SENTENCE: &[&str] = &[
     "you", "draw", "cards", "equal", "to", "the", "number", "of", "truth", "votes",
 ];
@@ -71,10 +76,14 @@ const CONSEQUENCES_VOTE_DAMAGE_SENTENCE: &[&str] = &[
 const FOR_EACH_DEATH_VOTE_AND_PHRASE: &[&str] = &["for", "each", "death", "vote", "and"];
 const FOR_EACH_TAXES_VOTE_PHRASE: &[&str] = &["for", "each", "taxes", "vote"];
 const FOR_EACH_PHRASE: &[&str] = &["for", "each"];
-const VOTE_FOR_PHRASE: &[&str] = &["vote", "for"];
-const VOTES_FOR_PHRASE: &[&str] = &["votes", "for"];
-const ITS_AN_ENCHANTMENT_PHRASE: &[&str] = &["its", "an", "enchantment"];
+const VOTE_CHOICE_CLAUSE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["vote", "for"], &["votes", "for"]]]);
+const ITS_AN_ENCHANTMENT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["its", "an", "enchantment"]]);
 const ITS_NOT_A_CREATURE_PHRASE: &[&str] = &["its", "not", "a", "creature"];
+const AS_LONG_AS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["as", "long", "as"]);
+const EXILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["exile"]);
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
@@ -140,7 +149,7 @@ fn strip_parenthetical_segments(line: &str) -> String {
             .iter()
             .map(|(_, word)| *word)
             .collect::<Vec<_>>();
-        if !word_slice_contains_phrase(&words, ITS_AN_ENCHANTMENT_PHRASE) {
+        if !ITS_AN_ENCHANTMENT_PATTERN.matches_words(&words) {
             return false;
         }
         let Some(not_creature_idx) =
@@ -186,15 +195,15 @@ fn strip_parenthetical_segments(line: &str) -> String {
     collapse_whitespace_runs(out.as_str())
 }
 
-fn line_starts_with_words(line: &str, expected: &[&str]) -> bool {
+fn line_matches_shape(line: &str, shape: &ClauseShape<'_>) -> bool {
     lex_line(line.trim_start(), 0)
         .ok()
-        .is_some_and(|tokens| word_slice_starts_with(&parser_token_word_refs(&tokens), expected))
+        .is_some_and(|tokens| shape.matches_words(&parser_token_word_refs(&tokens)))
 }
 
 fn split_parse_line_variants(line: &str) -> Vec<String> {
     let lower = line.to_ascii_lowercase();
-    if line_starts_with_words(line, ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX)
+    if line_matches_shape(line, &ADDITIONAL_COST_TO_CAST_THIS_SPELL_PATTERN)
         && let Some(period_idx) = str_find_char(line, '.')
     {
         let first = line[..=period_idx].trim();
@@ -447,8 +456,7 @@ fn replace_names_with_map(
             return false;
         };
         let words = parser_token_word_refs(&tokens);
-        word_slice_contains_phrase(&words, VOTE_FOR_PHRASE)
-            || word_slice_contains_phrase(&words, VOTES_FOR_PHRASE)
+        VOTE_CHOICE_CLAUSE_PATTERN.matches_words(&words)
     }
 
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -971,7 +979,7 @@ fn rewrite_borrow_static_sentence(sentence: &str) -> String {
     };
     let words = TokenWordView::new(&tokens);
 
-    if token_slice_starts_with(&tokens, &["as", "long", "as"]) {
+    if AS_LONG_AS_PREFIX_PATTERN.matches_words(&parser_token_word_refs(&tokens)) {
         let Some(condition_start) = words.token_index_after_words(3) else {
             return sentence.to_string();
         };
@@ -1176,22 +1184,23 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
 
 fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
     fn source_leaves_subject(sentence: &str) -> Option<String> {
-        let tokens = lex_line(sentence.trim(), 0).ok()?;
-        let words = parser_token_word_refs(&tokens);
-        if !word_slice_starts_with(
-            &words,
-            RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX,
-        ) || !word_slice_ends_with(&words, LEAVES_THE_BATTLEFIELD_SUFFIX)
-        {
-            return None;
-        }
+        const RETURN_SOURCE_LEAVES_PATTERN: LexPattern<'static> = LexPattern::new(&[
+            LexPattern::phrase(RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX),
+            LexPattern::subject(
+                "source",
+                LexCaptureKind::UntilPhrase(LEAVES_THE_BATTLEFIELD_SUFFIX),
+            ),
+            LexPattern::phrase(LEAVES_THE_BATTLEFIELD_SUFFIX),
+        ]);
 
-        let start = RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX.len();
-        let end = words
-            .len()
-            .saturating_sub(LEAVES_THE_BATTLEFIELD_SUFFIX.len());
-        let subject_words = words.get(start..end)?;
-        (!subject_words.is_empty()).then(|| subject_words.join(" "))
+        let tokens = lex_line(sentence.trim(), 0).ok()?;
+        let clause = LexedClause::new(&tokens);
+        let matched = RETURN_SOURCE_LEAVES_PATTERN.match_clause(clause)?;
+        let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        let subject = render_token_slice(source_clause.tokens())
+            .trim()
+            .to_string();
+        (!subject.is_empty()).then_some(subject)
     }
 
     fn previous_sentence_has_exile_without_until_this(previous: &str) -> bool {
@@ -1199,8 +1208,7 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
             return false;
         };
         let words = parser_token_word_refs(&tokens);
-        word_slice_contains_word(&words, "exile")
-            && !word_slice_contains_phrase(&words, UNTIL_THIS_PHRASE)
+        EXILE_WORD_PATTERN.matches_words(&words) && !UNTIL_THIS_PATTERN.matches_words(&words)
     }
 
     let sentences = split_period_sentences(text);

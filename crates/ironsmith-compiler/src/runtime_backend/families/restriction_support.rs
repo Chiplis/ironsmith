@@ -6,8 +6,9 @@ use super::activation_and_restrictions::{
     parse_activation_condition_lexed, parse_mana_spend_bonus_sentence_lexed,
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
+use super::effect_sentences::clause_pattern_helpers::ClauseShape;
 use super::lexer::{
-    OwnedLexToken, TokenWordView, contains_token_word_sequence, lex_line, render_token_slice,
+    OwnedLexToken, TokenWordView, lex_line, render_token_slice, token_word_refs,
 };
 
 const ACTIVATE_ONLY_ONCE_EACH_TURN_PHRASE: &[&str] = &["activate", "only", "once", "each", "turn"];
@@ -19,11 +20,15 @@ const DID_NOT_ATTACK_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["did", "not", "attack", "this", "turn"],
     &["has", "not", "attacked", "this", "turn"],
 ];
+const DID_NOT_ATTACK_THIS_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[DID_NOT_ATTACK_THIS_TURN_PHRASES]);
 const SOURCE_ATTACKED_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["this", "creature", "attacked", "this", "turn"],
     &["it", "attacked", "this", "turn"],
     &["that", "creature", "attacked", "this", "turn"],
 ];
+const SOURCE_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[SOURCE_ATTACKED_THIS_TURN_PHRASES]);
 
 pub(crate) fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
@@ -90,19 +95,14 @@ pub(crate) fn apply_pending_activation_restriction(
     fn parse_text_only_activation_restriction_condition_tokens(
         tokens: &[OwnedLexToken],
     ) -> Option<crate::ConditionExpr> {
-        if DID_NOT_ATTACK_THIS_TURN_PHRASES
-            .iter()
-            .any(|phrase| contains_token_word_sequence(tokens, phrase))
-        {
+        let words = token_word_refs(tokens);
+        if DID_NOT_ATTACK_THIS_TURN_PATTERN.matches_words(&words) {
             return Some(crate::ConditionExpr::Not(Box::new(
                 crate::ConditionExpr::SourceAttackedThisTurn,
             )));
         }
 
-        if SOURCE_ATTACKED_THIS_TURN_PHRASES
-            .iter()
-            .any(|phrase| contains_token_word_sequence(tokens, phrase))
-        {
+        if SOURCE_ATTACKED_THIS_TURN_PATTERN.matches_words(&words) {
             return Some(crate::ConditionExpr::SourceAttackedThisTurn);
         }
 

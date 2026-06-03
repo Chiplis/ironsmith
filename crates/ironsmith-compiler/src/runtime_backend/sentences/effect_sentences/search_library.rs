@@ -1,9 +1,8 @@
 use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, contains_token_word, contains_token_word_sequence,
-    find_token_word_sequence_span, lex_line, token_slice_starts_with_at, token_word_refs,
-    trim_lexed_commas,
+    LexedClause, OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
+    lex_line, token_slice_starts_with_at, token_word_refs, trim_lexed_commas,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
@@ -43,6 +42,10 @@ pub(crate) enum SearchLibraryManaConstraint {
 const SEARCH_FROM_THE_TOP_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["from", "the", "top"]);
 const SEARCH_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const SEARCH_FOR_AS_LONG_AS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]);
+const SEARCH_THIS_TURN_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "turn"]]);
 const SEARCH_SHUFFLE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["shuffle"], &["shuffles"]]);
 const SEARCH_MAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["may"]);
@@ -187,14 +190,14 @@ fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
+    SEARCH_FOR_AS_LONG_AS_PATTERN.matches_words(&token_word_refs(tokens))
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
 }
 
 fn is_source_remains_battlefield_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    contains_token_word_sequence(tokens, &["for", "as", "long", "as"])
+    SEARCH_FOR_AS_LONG_AS_PATTERN.matches_words(&token_word_refs(tokens))
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "battlefield")
         && is_source_reference_duration_tokens(tokens)
@@ -313,7 +316,7 @@ pub(crate) fn parse_restriction_duration_lexed(
         }
     }
 
-    if contains_token_word_sequence(tokens, &["this", "turn"]) {
+    if SEARCH_THIS_TURN_PATTERN.matches_words(&token_word_refs(tokens)) {
         let cleaned = remove_this_turn_tokens(tokens);
         let remainder = trim_lexed_commas(&cleaned).to_vec();
         if !remainder.is_empty() {

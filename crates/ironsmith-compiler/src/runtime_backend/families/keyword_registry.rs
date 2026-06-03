@@ -22,8 +22,7 @@ use super::keyword_families::{
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
 use super::lexer::{
     OwnedLexToken, TokenKind, lex_line, parser_token_word_refs, render_token_slice,
-    token_slice_at_is, token_slice_first_is, token_slice_starts_with, token_slice_starts_with_any,
-    trim_lexed_commas,
+    token_slice_at_is, token_slice_first_is, token_slice_starts_with_any, trim_lexed_commas,
 };
 use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
@@ -52,6 +51,7 @@ const SURGE_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix 
 const FREERUNNING_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["freerunning"]);
 const SNEAK_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["sneak"]);
+const EXPLOIT_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["exploit"]);
 const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases
         & [
@@ -961,7 +961,7 @@ pub(super) fn matches_exploit(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    Ok(token_slice_starts_with(tokens, &["exploit"]))
+    Ok(EXPLOIT_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)))
 }
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
