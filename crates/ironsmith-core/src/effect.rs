@@ -3586,6 +3586,7 @@ pub struct PreventDamageEffect<E> {
     pub until: Until,
     pub follow_up_effects: Vec<E>,
     pub source_of_your_choice: bool,
+    pub protect_you_and_permanents_you_control: bool,
 }
 
 impl<E> PreventDamageEffect<E> {
@@ -3596,6 +3597,7 @@ impl<E> PreventDamageEffect<E> {
             until,
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
+            protect_you_and_permanents_you_control: false,
         }
     }
 
@@ -3606,6 +3608,11 @@ impl<E> PreventDamageEffect<E> {
 
     pub fn with_source_of_your_choice(mut self) -> Self {
         self.source_of_your_choice = true;
+        self
+    }
+
+    pub fn protecting_you_and_permanents_you_control(mut self) -> Self {
+        self.protect_you_and_permanents_you_control = true;
         self
     }
 }

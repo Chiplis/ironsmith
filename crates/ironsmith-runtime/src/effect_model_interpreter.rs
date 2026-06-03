@@ -615,6 +615,8 @@ where
             hooks,
         )?);
         prevent.source_of_your_choice = payload.source_of_your_choice;
+        prevent.protect_you_and_permanents_you_control =
+            payload.protect_you_and_permanents_you_control;
         return Ok(Effect::new(prevent));
     }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::LoseTheGameEffect>(&effect) {

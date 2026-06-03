@@ -1693,8 +1693,37 @@ fn compile_subject_verb_effect(
             target,
             duration,
             source_of_your_choice,
+            protect_you_and_permanents_you_control,
+            follow_up_effects,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
+                (Vec::new(), Vec::new())
+            } else {
+                let mut follow_up_ctx = EffectLoweringContext::from_parts(
+                    ctx.id_gen_context(),
+                    ctx.lowering_frame(),
+                );
+                follow_up_ctx.allow_life_event_value = true;
+                let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+                ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+                compiled
+            };
+            if *protect_you_and_permanents_you_control {
+                let mut prevent = crate::effects::PreventDamageEffect::new(
+                    amount,
+                    ChooseSpec::SourceController,
+                    duration.clone(),
+                )
+                .protecting_you_and_permanents_you_control();
+                if *source_of_your_choice {
+                    prevent = prevent.with_source_of_your_choice();
+                }
+                if !follow_up_effects.is_empty() {
+                    prevent = prevent.with_follow_up_effects(follow_up_effects);
+                }
+                return Ok((vec![Effect::new(prevent)], follow_up_choices));
+            }
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
@@ -1707,19 +1736,41 @@ fn compile_subject_verb_effect(
                         duration.clone(),
                     )],
                 );
-                Ok((vec![effect], Vec::new()))
+                Ok((vec![effect], follow_up_choices))
             } else {
-                compile_effect_for_target(target, ctx, |spec| {
+                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
                     if *source_of_your_choice {
-                        Effect::prevent_damage_with_source_choice(
+                        let mut prevent = crate::effects::PreventDamageEffect::new(
                             amount.clone(),
                             spec,
                             duration.clone(),
                         )
+                        .with_source_of_your_choice();
+                        if !follow_up_effects.is_empty() {
+                            prevent = prevent.with_follow_up_effects(follow_up_effects.clone());
+                        }
+                        Effect::new(prevent)
+                    } else if !follow_up_effects.is_empty() {
+                        Effect::new(
+                            crate::effects::PreventDamageEffect::new(
+                                amount.clone(),
+                                spec,
+                                duration.clone(),
+                            )
+                            .with_follow_up_effects(follow_up_effects.clone()),
+                        )
                     } else {
-                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
+                        Effect::prevent_damage(
+                            amount.clone(),
+                            spec,
+                            duration.clone(),
+                        )
                     }
-                })
+                })?;
+                if !follow_up_effects.is_empty() {
+                    choices.extend(follow_up_choices);
+                }
+                Ok((effects, choices))
             }
         }
         SubjectVerbActionAst::PreventAllDamageToTarget { target, duration } => {

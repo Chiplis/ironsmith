@@ -974,6 +974,8 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
         return rendered.to_string();
     }
     let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
+        .replace("This spell deals ", &format!("{} deals ", def.card.name))
+        .replace("this spell deals ", &format!("{} deals ", def.card.name))
         .replace("Exile this source", &format!("Exile {}", def.card.name));
     let rendered = rewrite_standalone_spell_self_exile(&rendered, &def.card.name);
     rewrite_inline_spell_self_exile(&rendered, &def.card.name)

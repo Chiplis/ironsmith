@@ -70,6 +70,8 @@ impl EffectExecutor for PreventAllDamageToTargetEffect {
             self.duration.clone(),
             self.damage_filter.clone(),
             self.follow_up_effects.clone(),
+            ctx.targets.clone(),
+            ctx.target_assignments.clone(),
         );
 
         Ok(EffectOutcome::resolved())

@@ -1031,6 +1031,8 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         source_of_your_choice: bool,
+        protect_you_and_permanents_you_control: bool,
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -2221,12 +2223,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 amount,
                 target,
                 duration,
+                follow_up_effects,
                 ..
             } => f
                 .debug_struct("PreventDamage")
                 .field("amount", amount)
                 .field("target", target)
                 .field("duration", duration)
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::PreventAllDamageToTarget { target, duration } => f
                 .debug_struct("PreventAllDamageToTarget")
@@ -3717,6 +3721,24 @@ impl EffectAst {
         duration: Until,
         source_of_your_choice: bool,
     ) -> Self {
+        Self::subject_verb_prevent_damage_with_options(
+            amount,
+            target,
+            duration,
+            source_of_your_choice,
+            false,
+            Vec::new(),
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_damage_with_options(
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+        protect_you_and_permanents_you_control: bool,
+        follow_up_effects: Vec<EffectAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3725,6 +3747,8 @@ impl EffectAst {
                 target,
                 duration,
                 source_of_your_choice,
+                protect_you_and_permanents_you_control,
+                follow_up_effects,
             },
         )
     }
