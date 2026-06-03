@@ -4059,6 +4059,67 @@ impl StaticAbilityKind for ReduceMaximumHandSize {
     }
 }
 
+/// "Your/Each opponent's maximum hand size is increased by N."
+#[derive(Debug, Clone, PartialEq)]
+pub struct IncreaseMaximumHandSize {
+    pub player: PlayerFilter,
+    pub amount: u32,
+}
+
+impl IncreaseMaximumHandSize {
+    pub fn new(player: PlayerFilter, amount: u32) -> Self {
+        Self { player, amount }
+    }
+}
+
+impl StaticAbilityKind for IncreaseMaximumHandSize {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::IncreaseMaximumHandSize
+    }
+
+    fn display(&self) -> String {
+        let amount = number_word_u32(self.amount).unwrap_or_else(|| self.amount.to_string());
+        match self.player {
+            PlayerFilter::You => format!("Your maximum hand size is increased by {amount}."),
+            PlayerFilter::Opponent => {
+                format!("Each opponent's maximum hand size is increased by {amount}.")
+            }
+            PlayerFilter::Any => {
+                format!("Each player's maximum hand size is increased by {amount}.")
+            }
+            _ => format!("Maximum hand size is increased by {amount}."),
+        }
+    }
+
+    fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
+        use crate::game_loop::player_matches_filter_with_combat;
+
+        let combat = game.combat.as_ref();
+        let affected: Vec<PlayerId> = game
+            .players
+            .iter()
+            .filter(|player| {
+                player.is_in_game()
+                    && player_matches_filter_with_combat(
+                        player.id,
+                        &self.player,
+                        game,
+                        controller,
+                        combat,
+                    )
+            })
+            .map(|player| player.id)
+            .collect();
+
+        let increase = self.amount as i32;
+        for player_id in affected {
+            if let Some(player) = game.player_mut(player_id) {
+                player.max_hand_size = player.max_hand_size.saturating_add(increase);
+            }
+        }
+    }
+}
+
 fn player_ids_for_filter(
     game: &GameState,
     player_filter: PlayerFilter,
@@ -5626,6 +5687,30 @@ mod tests {
             7
         );
         assert_eq!(game.player(bob).expect("bob should exist").max_hand_size, 3);
+    }
+
+    #[test]
+    fn test_increase_maximum_hand_size_for_you() {
+        let ability = IncreaseMaximumHandSize::new(PlayerFilter::You, 2);
+        assert_eq!(ability.id(), StaticAbilityId::IncreaseMaximumHandSize);
+        assert_eq!(
+            ability.display(),
+            "Your maximum hand size is increased by two."
+        );
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(44);
+        ability.apply_restrictions(&mut game, source, alice);
+
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .max_hand_size,
+            9
+        );
+        assert_eq!(game.player(bob).expect("bob should exist").max_hand_size, 7);
     }
 
     #[test]

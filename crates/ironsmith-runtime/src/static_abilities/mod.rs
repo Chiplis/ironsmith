@@ -2671,6 +2671,10 @@ impl StaticAbility {
         Self::new(ReduceMaximumHandSize::new(player, amount))
     }
 
+    pub fn increase_maximum_hand_size(player: crate::target::PlayerFilter, amount: u32) -> Self {
+        Self::new(IncreaseMaximumHandSize::new(player, amount))
+    }
+
     pub fn max_hand_size_seven_minus_your_graveyard_card_types(
         player: crate::target::PlayerFilter,
         minimum_types: u32,

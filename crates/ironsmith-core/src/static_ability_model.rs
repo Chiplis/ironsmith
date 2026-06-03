@@ -296,6 +296,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         player: PlayerFilter,
         by: u32,
     },
+    IncreaseMaximumHandSize {
+        player: PlayerFilter,
+        by: u32,
+    },
     MaximumHandSizeSevenMinusYourGraveyardCardTypes {
         player: PlayerFilter,
         min_card_types: u32,
@@ -1034,6 +1038,9 @@ where
             }
             StaticAbilityPayload::ReduceMaximumHandSize { player, by } => {
                 StaticAbilityPayload::ReduceMaximumHandSize { player, by }
+            }
+            StaticAbilityPayload::IncreaseMaximumHandSize { player, by } => {
+                StaticAbilityPayload::IncreaseMaximumHandSize { player, by }
             }
             StaticAbilityPayload::MaximumHandSizeSevenMinusYourGraveyardCardTypes {
                 player,
@@ -2667,6 +2674,13 @@ impl<
             id: Some(StaticAbilityId::ReduceMaximumHandSize),
             label: "reduce maximum hand size".into(),
             payload: StaticAbilityPayload::ReduceMaximumHandSize { player, by },
+        }
+    }
+    pub fn increase_maximum_hand_size(player: PlayerFilter, by: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::IncreaseMaximumHandSize),
+            label: "increase maximum hand size".into(),
+            payload: StaticAbilityPayload::IncreaseMaximumHandSize { player, by },
         }
     }
     pub fn set_maximum_hand_size(player: PlayerFilter, amount: u32) -> Self {

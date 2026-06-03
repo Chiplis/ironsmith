@@ -216,6 +216,7 @@ pub enum StaticAbilityId {
     NoMaximumHandSize,
     SetMaximumHandSize,
     ReduceMaximumHandSize,
+    IncreaseMaximumHandSize,
     MaximumHandSizeSevenMinusYourGraveyardCardTypes,
     RevealFirstCardYouDrawEachTurn,
     LookAtTopCardOfLibrary,
@@ -480,6 +481,7 @@ impl StaticAbilityId {
             | NoMaximumHandSize
             | SetMaximumHandSize
             | ReduceMaximumHandSize
+            | IncreaseMaximumHandSize
             | MaximumHandSizeSevenMinusYourGraveyardCardTypes
             | RevealFirstCardYouDrawEachTurn
             | LookAtTopCardOfLibrary
