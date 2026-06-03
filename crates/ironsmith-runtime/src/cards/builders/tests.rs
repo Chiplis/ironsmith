@@ -17629,6 +17629,37 @@ Double strike",
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_kargan_dragonlord_level_tier_activation() {
+    assert_oracle_card_parses_strict("Kargan Dragonlord");
+    let def = parse_oracle_card_definition("Kargan Dragonlord");
+    let debug = format!("{:?}", def.abilities);
+
+    assert!(
+        debug.contains("__ironsmith_level_range:8:+")
+            && debug.contains("SourceHasCounterAtLeast")
+            && debug.contains("ModifyPowerToughness"),
+        "Kargan Dragonlord should lower its level-8 pump as a level-gated activated ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn compiled_text_kargan_dragonlord_keeps_pump_in_level_block() {
+    let def = parse_oracle_card_definition("Kargan Dragonlord");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Level up {R}")
+            && rendered.contains(
+                "Level 8+.\n8/8.\nFlying, trample\n{R}: This creature gets +1/+0 until end of turn."
+            )
+            && !rendered.contains("Activated ability"),
+        "Kargan Dragonlord compiled text should render the level-up line and level-8 pump block, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_standalone_may_effect_does_not_emit_with_id_wrapper() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Slayer Probe")
         .card_types(vec![CardType::Creature])

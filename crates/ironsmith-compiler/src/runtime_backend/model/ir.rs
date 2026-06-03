@@ -110,6 +110,7 @@ pub(crate) struct RewriteLevelHeader {
 pub(crate) enum RewriteLevelItemKind {
     KeywordActions,
     StaticAbilities,
+    ActivatedAbility,
 }
 
 #[derive(Debug, Clone)]

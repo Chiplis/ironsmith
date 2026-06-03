@@ -22,8 +22,9 @@ pub use crate::payload::{IfResultPredicate, KeywordAction};
 use crate::resolution::ResolutionProgram;
 pub(crate) use crate::runtime_backend::semantic::{
     GiftTimingAst, LineAst, ParsedAbility, ParsedCardItem, ParsedLevelAbilityAst,
-    ParsedLevelAbilityItemAst, ParsedLineAst, ParsedModalActivatedHeader, ParsedModalAst,
-    ParsedModalGate, ParsedModalHeader, ParsedModalModeAst, ParsedRestrictions,
+    ParsedLevelAbilityItemAst, ParsedLevelActivatedAbilityAst, ParsedLineAst,
+    ParsedModalActivatedHeader, ParsedModalAst, ParsedModalGate, ParsedModalHeader,
+    ParsedModalModeAst, ParsedRestrictions,
 };
 pub(crate) use crate::runtime_backend::util::SubjectAst;
 pub(crate) use crate::runtime_backend::{

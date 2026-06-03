@@ -175,6 +175,7 @@ fn lower_level_header(
                 kind: match item.kind {
                     LevelItemKindCst::KeywordActions => RewriteLevelItemKind::KeywordActions,
                     LevelItemKindCst::StaticAbilities => RewriteLevelItemKind::StaticAbilities,
+                    LevelItemKindCst::ActivatedAbility => RewriteLevelItemKind::ActivatedAbility,
                 },
                 parsed: item.parsed,
             })

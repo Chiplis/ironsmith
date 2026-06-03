@@ -329,6 +329,15 @@ fn normalize_rewrite_line_ast(
     })
 }
 
+pub(super) fn normalize_rewrite_line_ast_standalone(
+    info: crate::cards::builders::LineInfo,
+    chunks: Vec<LineAst>,
+    restrictions: ParsedRestrictions,
+) -> Result<NormalizedLineAst, CardTextError> {
+    let mut state = RewriteNormalizationState::default();
+    normalize_rewrite_line_ast(info, chunks, restrictions, &mut state)
+}
+
 fn normalize_rewrite_line_chunk(
     chunk: LineAst,
     state: &mut RewriteNormalizationState,

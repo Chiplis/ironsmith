@@ -2,7 +2,7 @@ use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    PredicateAst, TextSpan,
+    ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
 };
 use crate::parse_trace;
 use winnow::Parser;
@@ -2009,9 +2009,12 @@ mod tests {
 
     #[test]
     fn level_item_cst_stores_parsed_payload() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Document Parser Test")
+            .card_types(vec![CardType::Creature]);
         let line = single_preprocessed_line("Flying");
 
-        let parsed = parse_level_item_cst(&line)?.expect("expected flying to parse as level item");
+        let parsed =
+            parse_level_item_cst(&builder, &line)?.expect("expected flying to parse as level item");
 
         assert_eq!(parsed.text, "flying");
         match &parsed.parsed {

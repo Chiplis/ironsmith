@@ -16981,6 +16981,9 @@ pub(super) fn describe_inline_ability_with_self_subject(
             }
         }
         AbilityKind::Activated(activated) => {
+            if let Some(level_up) = describe_level_up_activation(activated) {
+                return level_up;
+            }
             if let Some(level) = activated
                 .additional_restrictions
                 .iter()
@@ -17080,6 +17083,11 @@ pub(super) fn describe_inline_ability_with_self_subject(
             } else {
                 normalize_ability_self_reference_surface(&line, self_subject)
             };
+            let line = if let Some(prefix) = level_range_activation_prefix(activated) {
+                format!("{prefix}. {line}")
+            } else {
+                line
+            };
             if let Some(label) = activated_presentation_label(activated)
                 && !line.starts_with(label)
             {
@@ -17097,6 +17105,23 @@ fn activated_presentation_label(activated: &crate::ability::ActivatedAbility) ->
         .iter()
         .find_map(|restriction| restriction.strip_prefix("__ironsmith_activation_label:"))
         .or_else(|| inferred_throw_activation_label(activated))
+}
+
+pub(super) fn level_range_activation_prefix(
+    activated: &crate::ability::ActivatedAbility,
+) -> Option<String> {
+    let range = activated
+        .additional_restrictions
+        .iter()
+        .find_map(|restriction| restriction.strip_prefix("__ironsmith_level_range:"))?;
+    let (min, max) = range.split_once(':')?;
+    if max == "+" {
+        Some(format!("Level {min}+"))
+    } else if min == max {
+        Some(format!("Level {min}"))
+    } else {
+        Some(format!("Level {min}-{max}"))
+    }
 }
 
 fn inferred_throw_activation_label(
@@ -38024,6 +38049,9 @@ pub(super) fn collect_activation_restriction_clauses(
         if raw.starts_with("__ironsmith_class_level:") {
             continue;
         }
+        if raw.starts_with("__ironsmith_level_range:") {
+            continue;
+        }
         if raw.starts_with(STATION_THRESHOLD_RESTRICTION_PREFIX) {
             continue;
         }
@@ -40780,6 +40808,28 @@ fn describe_class_level_activation(activated: &crate::ability::ActivatedAbility)
     ))
 }
 
+fn describe_level_up_activation(activated: &crate::ability::ActivatedAbility) -> Option<String> {
+    if !matches!(activated.timing, ActivationTiming::SorcerySpeed)
+        || !activated.choices.is_empty()
+        || !activated.additional_restrictions.is_empty()
+        || !activated.activation_restrictions.is_empty()
+        || activated.activation_condition.is_some()
+    {
+        return None;
+    }
+    let [effect] = activated.effects.flattened_default_effects() else {
+        return None;
+    };
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != crate::CounterType::Level || !matches!(put.target, ChooseSpec::Source) {
+        return None;
+    }
+    Some(format!(
+        "Level up {}",
+        describe_cost_list(activated.mana_cost.costs())
+    ))
+}
+
 pub(super) fn describe_ability(
     index: usize,
     ability: &Ability,
@@ -41124,6 +41174,9 @@ pub(super) fn describe_ability(
             vec![line]
         }
         AbilityKind::Activated(activated) => {
+            if let Some(level_up) = describe_level_up_activation(activated) {
+                return vec![level_up];
+            }
             if let Some(level_text) = describe_class_level_activation(activated) {
                 return vec![level_text];
             }
@@ -41200,7 +41253,10 @@ pub(super) fn describe_ability(
             let is_grandeur = is_grandeur_activation_cost(activated);
             let is_exhaust = activated.is_exhaust_ability();
             let has_presentation_label = activated_presentation_label(activated).is_some();
-            let mut line = if is_grandeur || is_exhaust || has_presentation_label {
+            let has_level_range = level_range_activation_prefix(activated).is_some();
+            let omit_debug_prefix =
+                is_grandeur || is_exhaust || has_presentation_label || has_level_range;
+            let mut line = if omit_debug_prefix {
                 String::new()
             } else {
                 format!("Activated ability {index}")
@@ -41277,6 +41333,9 @@ pub(super) fn describe_ability(
             }
             if is_grandeur_activation_cost(activated) {
                 line = format!("Grandeur — {line}");
+            }
+            if let Some(prefix) = level_range_activation_prefix(activated) {
+                line = format!("{prefix}. {line}");
             }
             if is_exhaust {
                 line = format!("Exhaust — {line}");

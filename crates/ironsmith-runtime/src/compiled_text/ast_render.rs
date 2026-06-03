@@ -233,6 +233,83 @@ fn render_color_conditional_keyword_grants(
     format!("{label}{subject} {}", join_english_list(&clauses))
 }
 
+fn ability_level_range_prefix(ability: &Ability) -> Option<String> {
+    let AbilityKind::Activated(activated) = &ability.kind else {
+        return None;
+    };
+    level_range_activation_prefix(activated)
+}
+
+fn ability_has_level_tiers(ability: &Ability) -> bool {
+    matches!(
+        &ability.kind,
+        AbilityKind::Static(static_ability)
+            if static_ability.level_abilities().is_some_and(|levels| !levels.is_empty())
+    )
+}
+
+fn level_tier_header_range(line: &str) -> Option<String> {
+    let (_, text) = line.split_once(": ")?;
+    let range = text.trim().trim_end_matches('.');
+    range.starts_with("Level ").then(|| range.to_string())
+}
+
+fn interleave_level_range_activations(
+    lines: Vec<String>,
+    abilities: &[Ability],
+    subject: &str,
+    rewrite_it_deals: bool,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut active_range: Option<String> = None;
+    for line in lines {
+        if let Some(next_range) = level_tier_header_range(&line) {
+            flush_level_range_activations(
+                &mut out,
+                active_range.as_deref(),
+                abilities,
+                subject,
+                rewrite_it_deals,
+            );
+            active_range = Some(next_range);
+        }
+        out.push(line);
+    }
+    flush_level_range_activations(
+        &mut out,
+        active_range.as_deref(),
+        abilities,
+        subject,
+        rewrite_it_deals,
+    );
+    out
+}
+
+fn flush_level_range_activations(
+    out: &mut Vec<String>,
+    range: Option<&str>,
+    abilities: &[Ability],
+    subject: &str,
+    rewrite_it_deals: bool,
+) {
+    let Some(range) = range else {
+        return;
+    };
+    let range_prefix = format!("{range}. ");
+    for (idx, ability) in abilities.iter().enumerate() {
+        if ability_level_range_prefix(ability).as_deref() != Some(range) {
+            continue;
+        }
+        for line in describe_ability(idx + 1, ability, subject, rewrite_it_deals) {
+            out.push(
+                line.strip_prefix(&range_prefix)
+                    .unwrap_or(line.as_str())
+                    .to_string(),
+            );
+        }
+    }
+}
+
 fn is_mergeable_keyword_surface(keyword: &str) -> bool {
     let keyword = keyword.trim_end_matches('.');
     let lower = keyword.to_ascii_lowercase();
@@ -2500,6 +2577,10 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += 1;
                 continue;
             }
+            if ability_level_range_prefix(ability).is_some() {
+                ability_idx += 1;
+                continue;
+            }
             if let Some(keyword) = describe_structural_ascend_ability(ability) {
                 output.push(format!("Keyword ability {}: {keyword}", ability_idx + 1));
                 ability_idx += 1;
@@ -2628,6 +2709,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             };
             let mut ability_lines =
                 describe_ability(ability_idx + 1, ability, ability_subject, rewrite_it_deals);
+            if ability_has_level_tiers(ability) {
+                ability_lines = interleave_level_range_activations(
+                    ability_lines,
+                    &def.abilities,
+                    ability_subject,
+                    rewrite_it_deals,
+                );
+            }
             if ability_has_begin_on_battlefield_pregame(ability) {
                 for line in &mut ability_lines {
                     *line = substitute_pregame_self_reference(line, &def.card.name);
