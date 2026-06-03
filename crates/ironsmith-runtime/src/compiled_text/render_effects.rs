@@ -1845,6 +1845,80 @@ fn sacrifice_view_unwrapped(effect: &Effect) -> Option<SacrificeView<'_>> {
     }
 }
 
+fn filter_is_exactly_tagged(filter: &ObjectFilter, tag: &crate::TagKey) -> bool {
+    filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == *tag
+        })
+        && filter.zone.is_none()
+        && filter.controller.is_none()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.excluded_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.excluded_subtypes.is_empty()
+}
+
+fn describe_choose_sacrifice_then_draw_for_sacrificed(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, sacrifice_effect, draw_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let with_id = sacrifice_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let sacrifice = sacrifice_view(&with_id.effect)?;
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+
+    if choose.is_search
+        || choose.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose.count.min != 0
+        || choose.count.max.is_some()
+        || choose.count.dynamic_x
+        || choose.count.up_to_x
+        || choose.count.random
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || sacrifice.player != &PlayerFilter::You
+        || draw.player != PlayerFilter::You
+        || !filter_is_exactly_tagged(sacrifice.filter, &choose.tag)
+    {
+        return None;
+    }
+
+    let Value::Count(count_filter) = sacrifice.count else {
+        return None;
+    };
+    if !filter_is_exactly_tagged(count_filter, &choose.tag) {
+        return None;
+    }
+    if !matches!(
+        &draw.count,
+        Value::EffectMetric {
+            effect_id,
+            source: crate::effect::EffectMetricSource::AffectedObjects,
+            metric:
+                crate::effect::EffectMetric::Count | crate::effect::EffectMetric::AffectedCount,
+        } if *effect_id == with_id.id
+    ) {
+        return None;
+    }
+
+    let mut selection = describe_choose_selection(choose);
+    if let Some(rest) = selection.strip_prefix("any number ") {
+        selection = format!("any number of {rest}");
+    }
+    if let Some(rest) = selection.strip_suffix(" you control") {
+        selection = rest.to_string();
+    }
+    if choose.filter.card_types.len() > 1 {
+        selection = selection.replace(", or ", ", and/or ");
+    }
+
+    Some(format!(
+        "Sacrifice {selection}. Draw a card for each permanent sacrificed this way"
+    ))
+}
+
 fn tagged_target_only_effect(
     effect: &Effect,
 ) -> Option<(&crate::TagKey, &crate::effects::TargetOnlyEffect)> {
@@ -3549,6 +3623,9 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if effects.len() == 3 {
+        if let Some(compact) = describe_choose_sacrifice_then_draw_for_sacrificed(&refs) {
+            return Some(compact);
+        }
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
             return Some(compact);
         }
@@ -15468,6 +15545,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(compact);
             idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) =
+                describe_choose_sacrifice_then_draw_for_sacrificed(&filtered[idx..idx + 3])
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()

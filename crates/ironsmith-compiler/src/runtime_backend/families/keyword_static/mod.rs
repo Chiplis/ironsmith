@@ -1836,6 +1836,8 @@ const COUNTERS_REMOVED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const DESTROYED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["destroyed"]);
+const SACRIFICED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["sacrificed"]);
 const DISCARDED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["discarded"]);
 const REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> =
@@ -7898,6 +7900,12 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         return Ok(Some(Value::X));
     }
     if DESTROYED_THIS_WAY_PATTERN.matches_words(&filter_words) {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: EffectMetricSource::AffectedObjects,
+            metric: EffectMetric::Count,
+        }));
+    }
+    if SACRIFICED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::PendingEffectMetric {
             source: EffectMetricSource::AffectedObjects,
             metric: EffectMetric::Count,

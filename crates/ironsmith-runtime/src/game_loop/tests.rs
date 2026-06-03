@@ -39,6 +39,178 @@ fn setup_three_player_game() -> GameState {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn reprocess_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(646_813), "Reprocess")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice any number of artifacts, creatures, and/or lands. Draw a card for each \
+             permanent sacrificed this way.",
+        )
+        .expect("Reprocess should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_reprocess_permanent(
+    game: &mut GameState,
+    name: &str,
+    card_types: Vec<CardType>,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_reprocess_library_cards(game: &mut GameState, owner: PlayerId, count: usize) {
+    for idx in 0..count {
+        let card = CardBuilder::new(CardId::new(), &format!("Reprocess Draw Card {}", idx + 1))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ReprocessDecisionMaker {
+    selected: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ReprocessDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal && self.selected.contains(&candidate.id))
+            .map(|candidate| candidate.id)
+            .take(ctx.max.unwrap_or(self.selected.len()))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_reprocess_with_selection(
+    game: &mut GameState,
+    controller: PlayerId,
+    selected: Vec<ObjectId>,
+) {
+    let reprocess = reprocess_definition();
+    let source = game.create_object_from_definition(&reprocess, controller, Zone::Stack);
+    let mut dm = ReprocessDecisionMaker { selected };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_decision_maker(&mut dm);
+
+    for effect in reprocess
+        .spell_effect
+        .as_ref()
+        .expect("Reprocess should have spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Reprocess effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reprocess_sacrifices_selected_controlled_permanents_and_draws_that_many() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_reprocess_library_cards(&mut game, alice, 3);
+
+    let artifact = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Artifact",
+        vec![CardType::Artifact],
+        alice,
+    );
+    let land = create_reprocess_permanent(&mut game, "Reprocess Land", vec![CardType::Land], alice);
+    let creature = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Creature",
+        vec![CardType::Creature],
+        alice,
+    );
+    let bob_artifact = create_reprocess_permanent(
+        &mut game,
+        "Bob's Artifact",
+        vec![CardType::Artifact],
+        bob,
+    );
+
+    resolve_reprocess_with_selection(&mut game, alice, vec![artifact, land, bob_artifact]);
+
+    let graveyard_names = game
+        .objects_in_zone(Zone::Graveyard)
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+
+    assert!(
+        graveyard_names.iter().any(|name| name == "Reprocess Artifact"),
+        "selected artifact should be sacrificed into a graveyard, got {graveyard_names:?}"
+    );
+    assert!(
+        graveyard_names.iter().any(|name| name == "Reprocess Land"),
+        "selected land should be sacrificed into a graveyard, got {graveyard_names:?}"
+    );
+    assert_eq!(
+        game.object(creature).expect("unselected creature").zone,
+        Zone::Battlefield,
+        "unselected controlled permanents should remain on the battlefield"
+    );
+    assert_eq!(
+        game.object(bob_artifact).expect("opponent artifact").zone,
+        Zone::Battlefield,
+        "Reprocess should not choose or sacrifice permanents controlled by another player"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice").hand.len(),
+        2,
+        "Reprocess should draw one card for each permanent sacrificed this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reprocess_can_choose_zero_and_draws_no_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    add_reprocess_library_cards(&mut game, alice, 2);
+
+    let artifact = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Artifact",
+        vec![CardType::Artifact],
+        alice,
+    );
+
+    resolve_reprocess_with_selection(&mut game, alice, Vec::new());
+
+    assert_eq!(
+        game.object(artifact).expect("artifact").zone,
+        Zone::Battlefield,
+        "choosing zero permanents should leave available permanents untouched"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice").hand.len(),
+        0,
+        "choosing zero permanents should not draw cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn tide_of_war_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")
         .mana_cost(ManaCost::from_pips(vec![
