@@ -3082,7 +3082,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         )
     }) {
         let subject_words = &words[..crew_word_idx];
-        let source_filter = if is_source_reference_words(subject_words) {
+        let source_becomes_crewed = subject_words
+            .last()
+            .is_some_and(|word| *word == "becomes")
+            && is_source_reference_words(&subject_words[..subject_words.len().saturating_sub(1)]);
+        let source_filter = if source_becomes_crewed {
+            Some(ObjectFilter::default())
+        } else if is_source_reference_words(subject_words) {
             Some(ObjectFilter::source())
         } else {
             let subject_end = word_view
@@ -3095,18 +3101,19 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_after_words(crew_word_idx + 1)
                 .unwrap_or(tokens.len());
             let tail_words = &words[crew_word_idx + 1..];
-            let object_filter =
-                if tail_words.is_empty() || CREW_VEHICLE_TAIL_PATTERN.matches_words(tail_words) {
-                    ObjectFilter::default().with_subtype(Subtype::Vehicle)
-                } else {
-                    let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
-                    parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
-                        CardTextError::ParseError(format!(
-                            "unsupported crew object filter in trigger clause (clause: '{}')",
-                            words.join(" ")
-                        ))
-                    })?
-                };
+            let object_filter = if source_becomes_crewed {
+                ObjectFilter::source().with_subtype(Subtype::Vehicle)
+            } else if tail_words.is_empty() || CREW_VEHICLE_TAIL_PATTERN.matches_words(tail_words) {
+                ObjectFilter::default().with_subtype(Subtype::Vehicle)
+            } else {
+                let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
+                parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported crew object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
             return Ok(TriggerSpec::KeywordActionTaggedObject {
                 action: crate::events::KeywordActionKind::Crew,
                 player: PlayerFilter::Any,

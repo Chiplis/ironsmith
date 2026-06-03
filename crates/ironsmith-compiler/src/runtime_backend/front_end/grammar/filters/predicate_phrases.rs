@@ -702,6 +702,43 @@ fn parse_source_simple_state_predicate(words: &[&str]) -> Option<PredicateAst> {
     parse_source_bare_state_shape(&tokens).or_else(|| parse_source_copula_state_shape(&tokens))
 }
 
+fn parse_source_crewed_by_exactly_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    let Some(was_idx) = find_index(words, |word| *word == "was") else {
+        return Ok(None);
+    };
+    let subject_words = &words[..was_idx];
+    if !(is_source_reference_words(subject_words) || word_slice_eq_any(subject_words, &[&["it"]])) {
+        return Ok(None);
+    }
+    let tail = &words[was_idx + 1..];
+    if tail.len() < 5 || !word_slice_starts_with(tail, &["crewed", "by", "exactly"]) {
+        return Ok(None);
+    }
+    let Some(count) = tail.get(3).and_then(|word| parse_number_word_u32(word)) else {
+        return Err(CardTextError::ParseError(format!(
+            "missing crew-count predicate quantity (predicate: '{}')",
+            words.join(" ")
+        )));
+    };
+    let filter_words = &tail[4..];
+    if filter_words.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing crew-count predicate filter (predicate: '{}')",
+            words.join(" ")
+        )));
+    }
+    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filter_words);
+    let filter = parse_object_filter(&filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported crew-count predicate filter (predicate: '{}')",
+            words.join(" ")
+        ))
+    })?;
+    Ok(Some(PredicateAst::SourceCrewedByExactly { count, filter }))
+}
+
 fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let state_phrases: &[&[&str]] = &[&["tapped"], &["untapped"]];
@@ -5062,6 +5099,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_source_simple_state_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_source_crewed_by_exactly_predicate(&filtered)? {
         return Ok(predicate);
     }
 

@@ -237,7 +237,12 @@ pub(crate) fn trigger_frequency_condition(
 ) -> Option<crate::ConditionExpr> {
     max_triggers_per_turn.map(|limit| {
         let text = text.unwrap_or_default();
-        if limit == 1 && text_uses_first_time_each_turn(text) {
+        if limit == 1
+            && text_uses_first_time_each_turn(text)
+            && text.to_ascii_lowercase().contains("becomes crewed")
+        {
+            crate::ConditionExpr::SourceFirstCrewedThisTurn
+        } else if limit == 1 && text_uses_first_time_each_turn(text) {
             crate::ConditionExpr::FirstTimeThisTurn
         } else if text_uses_do_this_only_each_turn(text) {
             crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)

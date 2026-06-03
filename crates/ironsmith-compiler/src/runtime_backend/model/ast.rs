@@ -552,6 +552,10 @@ pub(crate) enum PredicateAst {
     },
     SourceIsTapped,
     SourceIsSaddled,
+    SourceCrewedByExactly {
+        count: u32,
+        filter: ObjectFilter,
+    },
     SourceMatches(ObjectFilter),
     TriggeringObjectHadToAttackThisCombat,
 
@@ -635,6 +639,7 @@ impl PredicateAst {
             PredicateAst::SourceChosenOption(_)
             | PredicateAst::SourceIsTapped
             | PredicateAst::SourceIsSaddled
+            | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)
             | PredicateAst::SourceHasNoCounter(_)
             | PredicateAst::SourceHasCounterAtLeast { .. }

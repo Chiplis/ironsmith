@@ -31,7 +31,7 @@ use super::super::util::{
     parse_counter_type_word, parse_filter_counter_constraint_words,
     parse_filter_keyword_constraint_words, parse_greater_than_or_equal_quantity_prefix,
     parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible, parse_non_color,
-    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number,
+    parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_number_word_u32,
     parse_quantity_comparison_prefix, parse_subtype_flexible, parse_subtype_word,
     parse_supertype_word, parse_unsigned_pt_word, parse_zone_word, push_outlaw_subtypes,
     strip_leading_article_word_refs, trim_commas, word_refs_except,

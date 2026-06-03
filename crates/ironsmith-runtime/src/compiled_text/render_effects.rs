@@ -40234,6 +40234,9 @@ pub(super) fn split_trigger_intervening_if(
             crate::ConditionExpr::FirstTimeThisTurn => {
                 first_time_this_turn = true;
             }
+            crate::ConditionExpr::SourceFirstCrewedThisTurn => {
+                first_time_this_turn = true;
+            }
             crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => {
                 do_this_max_times_each_turn = Some(match do_this_max_times_each_turn {
                     Some(existing) => existing.min(limit),
