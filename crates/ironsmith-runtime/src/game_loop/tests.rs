@@ -1246,6 +1246,246 @@ fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn sarulf_realm_eater_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(792_240), "Sarulf, Realm Eater")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wolf])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Whenever a permanent an opponent controls is put into a graveyard from the battlefield, put a +1/+1 counter on Sarulf.\n\
+             At the beginning of your upkeep, if Sarulf has one or more +1/+1 counters on it, you may remove all of them. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.",
+        )
+        .expect("Sarulf, Realm Eater should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sarulf_test_permanent_definition(
+    card_id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+    mana_value: u8,
+) -> crate::cards::CardDefinition {
+    let mut builder = CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(card_types.clone());
+    if mana_value > 0 {
+        builder = builder.mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]));
+    }
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    builder.build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SarulfUpkeepDecisionMaker {
+    remove_counters: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SarulfUpkeepDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.remove_counters
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_sarulf_upkeep_trigger(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(game, trigger_queue);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_death_trigger_adds_plus_one_counter_for_opponent_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    let opponent_permanent = sarulf_test_permanent_definition(
+        792_241,
+        "Opponent Relic",
+        vec![CardType::Artifact],
+        2,
+    );
+    let own_permanent =
+        sarulf_test_permanent_definition(792_242, "Own Relic", vec![CardType::Artifact], 2);
+    let opponent_id =
+        game.create_object_from_definition(&opponent_permanent, bob, Zone::Battlefield);
+    let own_id = game.create_object_from_definition(&own_permanent, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.move_object_by_effect(own_id, Zone::Graveyard)
+        .expect("own permanent should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sarulf should not trigger for its controller's permanent"
+    );
+
+    game.move_object_by_effect(opponent_id, Zone::Graveyard)
+        .expect("opponent permanent should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sarulf should trigger for an opponent-controlled permanent"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf death trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Sarulf death trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Sarulf death trigger should add a +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_upkeep_without_plus_one_counters_does_not_trigger() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sarulf = sarulf_realm_eater_definition();
+    game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sarulf upkeep ability has an intervening-if condition and should not trigger without +1/+1 counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_upkeep_removes_all_plus_one_counters_and_exiles_by_removed_count() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    game.add_counters(sarulf_id, crate::object::CounterType::PlusOnePlusOne, 3);
+    game.add_counters(sarulf_id, crate::object::CounterType::Charge, 1);
+
+    let low =
+        sarulf_test_permanent_definition(792_243, "Low Permanent", vec![CardType::Artifact], 3);
+    let high = sarulf_test_permanent_definition(
+        792_244,
+        "High Permanent",
+        vec![CardType::Artifact],
+        4,
+    );
+    let land = sarulf_test_permanent_definition(792_245, "Low Land", vec![CardType::Land], 0);
+    game.create_object_from_definition(&low, bob, Zone::Battlefield);
+    let high_id = game.create_object_from_definition(&high, bob, Zone::Battlefield);
+    let land_id = game.create_object_from_definition(&land, bob, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sarulf upkeep ability should trigger while it has +1/+1 counters"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf upkeep trigger should go on the stack");
+    let mut dm = SarulfUpkeepDecisionMaker {
+        remove_counters: true,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Sarulf upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "accepting the upkeep choice should remove all +1/+1 counters"
+    );
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::Charge),
+        1,
+        "all of them should refer to the +1/+1 counters from the intervening condition, not unrelated counters"
+    );
+    assert_eq!(
+        game.object(sarulf_id).expect("Sarulf exists").zone,
+        Zone::Battlefield,
+        "Sarulf should not exile itself because the effect exiles each other permanent"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Low Permanent"),
+        1,
+        "permanents with mana value equal to the removed counter count should be exiled"
+    );
+    assert_eq!(
+        game.object(high_id).expect("high permanent exists").zone,
+        Zone::Battlefield,
+        "permanents with mana value greater than the removed counter count should remain"
+    );
+    assert_eq!(
+        game.object(land_id).expect("land exists").zone,
+        Zone::Battlefield,
+        "lands should remain even when their mana value is low enough"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_declining_upkeep_removal_skips_exile_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    game.add_counters(sarulf_id, crate::object::CounterType::PlusOnePlusOne, 2);
+    let low = sarulf_test_permanent_definition(
+        792_246,
+        "Decline Low Permanent",
+        vec![CardType::Artifact],
+        1,
+    );
+    let low_id = game.create_object_from_definition(&low, bob, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf upkeep trigger should go on the stack");
+    let mut dm = SarulfUpkeepDecisionMaker {
+        remove_counters: false,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("declined Sarulf upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "declining the optional removal should leave Sarulf's +1/+1 counters"
+    );
+    assert_eq!(
+        game.object(low_id).expect("low permanent exists").zone,
+        Zone::Battlefield,
+        "if no counters are removed, the if-you-do exile branch should not happen"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn assaultron_dominator_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_260), "Assaultron Dominator")
         .mana_cost(ManaCost::from_pips(vec![

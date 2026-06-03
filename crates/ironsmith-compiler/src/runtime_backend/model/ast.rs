@@ -8,7 +8,7 @@ use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -1595,6 +1595,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         counter_type: Option<CounterType>,
         up_to: bool,
+        all_of_them: bool,
     },
     MoveAllCounters {
         from: TargetAst,
@@ -3112,12 +3113,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 counter_type,
                 up_to,
+                all_of_them,
             } => f
                 .debug_struct("RemoveUpToAnyCounters")
                 .field("amount", amount)
                 .field("target", target)
                 .field("counter_type", counter_type)
                 .field("up_to", up_to)
+                .field("all_of_them", all_of_them)
                 .finish(),
             Self::MoveAllCounters { from, to } => f
                 .debug_struct("MoveAllCounters")
@@ -6262,6 +6265,21 @@ impl EffectAst {
                 target,
                 counter_type,
                 up_to,
+                all_of_them: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_remove_all_of_them_counters_from_source() -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RemoveUpToAnyCounters {
+                amount: Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                target: TargetAst::Source(None),
+                counter_type: None,
+                up_to: false,
+                all_of_them: true,
             },
         )
     }

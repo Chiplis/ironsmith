@@ -5079,7 +5079,13 @@ fn compile_subject_verb_effect(
             target,
             counter_type,
             up_to,
+            all_of_them,
         } => {
+            if *all_of_them {
+                return Err(CardTextError::ParseError(
+                    "unable to resolve 'all of them' counter reference".to_string(),
+                ));
+            }
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);

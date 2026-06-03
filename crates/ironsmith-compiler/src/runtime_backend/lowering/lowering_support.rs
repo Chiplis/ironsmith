@@ -22,7 +22,8 @@ use super::compile_support::{
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    predicate_contains_source_match, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects, predicate_contains_source_match,
+    predicate_object_filter_antecedent, predicate_source_counter_antecedent,
     retarget_it_animations_to_source,
 };
 use super::effect_ast_normalization::normalize_effects_ast;
@@ -532,6 +533,12 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             &antecedent,
             ConditionAntecedentBinding::TaggedItOnly,
         );
+    }
+    if let Some(counter_type) = intervening_if
+        .as_ref()
+        .and_then(predicate_source_counter_antecedent)
+    {
+        bind_condition_counter_antecedent_in_effects(&mut body_effects, counter_type);
     }
     if phase_step_trigger_has_no_object_reference(&trigger) && !has_phase_step_it_prelude {
         retarget_phase_step_it_targets_to_source(&mut body_effects);

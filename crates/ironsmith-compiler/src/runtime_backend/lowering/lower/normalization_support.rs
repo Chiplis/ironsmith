@@ -2,7 +2,8 @@ use super::*;
 use crate::runtime_backend::ast::TriggerIntroSurfaceAst;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    predicate_contains_source_match, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects, predicate_contains_source_match,
+    predicate_object_filter_antecedent, predicate_source_counter_antecedent,
     retarget_it_animations_to_source,
 };
 use crate::runtime_backend::front_end::lexer::{TokenKind, lex_line};
@@ -648,6 +649,9 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                     ConditionAntecedentBinding::TaggedItOnly,
                 );
             }
+            if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
+                bind_condition_counter_antecedent_in_effects(&mut effects, counter_type);
+            }
             if predicate_contains_source_match(&predicate) {
                 retarget_it_animations_to_source(&mut effects);
             }
@@ -682,6 +686,9 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                         &antecedent,
                         ConditionAntecedentBinding::TaggedItOnly,
                     );
+                }
+                if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
+                    bind_condition_counter_antecedent_in_effects(&mut effects_ast, counter_type);
                 }
                 if predicate_contains_source_match(&predicate) {
                     retarget_it_animations_to_source(&mut effects_ast);

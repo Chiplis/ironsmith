@@ -27669,6 +27669,9 @@ fn describe_with_id_if_clause(
     if let Some(compact) = describe_declined_may_mill_then_damage(with_id, if_effect) {
         return Some(compact);
     }
+    if let Some(compact) = describe_removed_counters_then_exile_by_mana_value(with_id, if_effect) {
+        return Some(compact);
+    }
 
     let then_text = describe_effect_list(&if_effect.then);
     let else_text = describe_effect_list(&if_effect.else_);
@@ -27854,6 +27857,56 @@ fn describe_with_id_if_clause(
             lowercase_first(&else_text)
         ))
     }
+}
+
+fn describe_removed_counters_then_exile_by_mana_value(
+    with_id: &crate::effects::WithIdEffect,
+    if_effect: &crate::effects::IfEffect,
+) -> Option<String> {
+    if if_effect.condition != with_id.id
+        || if_effect.predicate != EffectPredicate::Happened
+        || !if_effect.else_.is_empty()
+        || if_effect.then.len() != 1
+    {
+        return None;
+    }
+
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let removed_counters = may.effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .is_some_and(|nested| {
+                nested.id == with_id.id
+                    && nested
+                        .effect
+                        .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                        .is_some()
+            })
+            || effect
+                .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                .is_some()
+    });
+    if !removed_counters {
+        return None;
+    }
+
+    let exile = if_effect.then[0].downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::All(filter) = &exile.spec else {
+        return None;
+    };
+    if !is_nonland_permanent_filter(filter) || !filter.other {
+        return None;
+    }
+    let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.mana_value.as_ref()
+    else {
+        return None;
+    };
+    if !matches!(value.as_ref(), Value::EffectValue(id) if *id == with_id.id) {
+        return None;
+    }
+
+    let text = "If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way";
+    Some(text.to_string())
 }
 
 fn describe_declined_may_mill_then_damage(
