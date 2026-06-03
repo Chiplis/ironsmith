@@ -70,6 +70,7 @@ pub enum Until {
     ControllersNextUntapStep,
     EndOfCombat,
     ThisLeavesTheBattlefield,
+    SourceUntaps,
     YouStopControllingThis,
     TurnsPass(crate::value_model::Value),
 }

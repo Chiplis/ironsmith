@@ -8986,6 +8986,13 @@ pub(super) fn describe_apply_continuous_clauses(
     let has = if plural_target { "have" } else { "has" };
     let gains = if plural_target { "gain" } else { "gains" };
     let loses = if plural_target { "lose" } else { "loses" };
+    let add_ability_verb = if effect.condition == Some(Condition::SourceIsTapped)
+        && matches!(effect.until, Until::SourceUntaps)
+    {
+        has
+    } else {
+        gains
+    };
     let self_subject = granted_ability_self_subject_for_apply_continuous(effect);
 
     let mut clauses = Vec::new();
@@ -9144,11 +9151,14 @@ pub(super) fn describe_apply_continuous_clauses(
         crate::continuous::Modification::AddAbility(ability) => {
             if let Some(inline) = ability.granted_inline_ability() {
                 clauses.push(format!(
-                    "{gains} {}",
+                    "{add_ability_verb} {}",
                     describe_inline_ability_with_self_subject(inline, self_subject)
                 ));
             } else {
-                clauses.push(format!("{gains} {}", lowercase_first(&ability.display())));
+                clauses.push(format!(
+                    "{add_ability_verb} {}",
+                    lowercase_first(&ability.display())
+                ));
             }
         }
         crate::continuous::Modification::RemoveAbility(ability) => {
@@ -9279,6 +9289,12 @@ pub(super) fn describe_apply_continuous_clauses(
 pub(super) fn describe_apply_continuous_tail(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
+    if effect.condition == Some(Condition::SourceIsTapped)
+        && matches!(effect.until, Until::SourceUntaps)
+    {
+        return Some("for as long as this source remains tapped".to_string());
+    }
+
     let mut tail_parts = Vec::new();
     if let Some(condition) = &effect.condition
         && matches!(effect.until, Until::ThisLeavesTheBattlefield)
@@ -10312,6 +10328,7 @@ pub(super) fn describe_until(until: &Until) -> String {
         Until::ThisLeavesTheBattlefield => {
             "for as long as this source remains on the battlefield".to_string()
         }
+        Until::SourceUntaps => "for as long as this source remains tapped".to_string(),
         Until::YouStopControllingThis => "while you control this source".to_string(),
         Until::TurnsPass(turns) => format!("for {} turn(s)", describe_value(turns)),
     }

@@ -662,6 +662,55 @@ pub(crate) fn parse_simple_ability_duration(
     None
 }
 
+fn parse_source_tapped_ability_duration(
+    words_after_verb: &[&str],
+) -> Option<(usize, usize, Until, crate::ConditionExpr)> {
+    let idx = words_after_verb.windows(4).position(|window| {
+        window == ["for", "as", "long", "as"]
+    })?;
+    let tail = &words_after_verb[idx..];
+    if tail.contains(&"this") && tail.contains(&"remains") && tail.contains(&"tapped") {
+        Some((
+            idx,
+            words_after_verb.len().saturating_sub(idx),
+            Until::SourceUntaps,
+            crate::ConditionExpr::SourceIsTapped,
+        ))
+    } else {
+        None
+    }
+}
+
+fn parse_ability_duration_with_condition(
+    words_after_verb: &[&str],
+) -> (Option<(usize, usize, Until)>, Option<crate::ConditionExpr>) {
+    if let Some((idx, len, duration, condition)) =
+        parse_source_tapped_ability_duration(words_after_verb)
+    {
+        (Some((idx, len, duration)), Some(condition))
+    } else {
+        (parse_simple_ability_duration(words_after_verb), None)
+    }
+}
+
+fn subject_verb_grant_abilities_to_target_with_optional_condition(
+    target: TargetAst,
+    abilities: Vec<GrantedAbilityAst>,
+    duration: Until,
+    condition: &Option<crate::ConditionExpr>,
+) -> EffectAst {
+    if let Some(condition) = condition {
+        EffectAst::subject_verb_grant_abilities_to_target_with_condition(
+            target,
+            abilities,
+            duration,
+            condition.clone(),
+        )
+    } else {
+        EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+    }
+}
+
 fn words_start_nested_triggered_ability(words_after_verb: &[&str]) -> bool {
     matches!(
         words_after_verb,
@@ -1313,10 +1362,10 @@ pub(crate) fn parse_gain_ability_sentence(
     } else {
         None
     };
-    let duration_phrase = if words_start_nested_triggered_ability(after_gain) {
-        None
+    let (duration_phrase, duration_condition) = if words_start_nested_triggered_ability(after_gain) {
+        (None, None)
     } else {
-        parse_simple_ability_duration(after_gain)
+        parse_ability_duration_with_condition(after_gain)
     };
     let duration = duration_phrase
         .as_ref()
@@ -1515,6 +1564,11 @@ pub(crate) fn parse_gain_ability_sentence(
                 } else {
                     local_duration
                 };
+                let condition = if has_local_duration {
+                    condition
+                } else {
+                    condition.or_else(|| duration_condition.clone())
+                };
                 Some((
                     power,
                     toughness,
@@ -1679,10 +1733,11 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
                 target.clone(),
                 abilities,
                 duration,
+                &duration_condition,
             ));
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -1710,10 +1765,11 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
                 target.clone(),
                 abilities,
                 duration,
+                &duration_condition,
             ));
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -1745,10 +1801,11 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
                 target.clone(),
                 abilities,
                 duration,
+                &duration_condition,
             ));
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -1786,10 +1843,11 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(EffectAst::subject_verb_grant_abilities_to_target(
+            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
                 grant_target,
                 abilities,
                 duration,
+                &duration_condition,
             ));
         }
         let following_pump_target =

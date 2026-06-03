@@ -672,6 +672,13 @@ impl ContinuousEffectManager {
         self.revision += 1;
     }
 
+    /// Remove effects from a specific source with the given duration.
+    pub fn remove_effects_from_source_with_duration(&mut self, source: ObjectId, duration: Until) {
+        self.effects
+            .retain(|e| !(e.source == source && e.duration == duration));
+        self.revision += 1;
+    }
+
     /// Remove all effects with duration UntilEndOfTurn.
     pub fn cleanup_end_of_turn(&mut self) {
         self.effects
@@ -2200,6 +2207,9 @@ fn continuous_effect_duration_is_active(
         Until::ThisLeavesTheBattlefield => game
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
+        Until::SourceUntaps => game.object(effect.source).is_some_and(|obj| {
+            obj.zone == Zone::Battlefield && game.is_tapped(effect.source)
+        }),
         Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
                 && game

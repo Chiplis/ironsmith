@@ -752,6 +752,9 @@ impl RestrictionEffectInstance {
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
+            crate::effect::Until::SourceUntaps => game.object(self.source).is_some_and(|obj| {
+                obj.zone == Zone::Battlefield && game.is_tapped(self.source)
+            }),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
@@ -791,6 +794,9 @@ impl GoadEffectInstance {
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
+            crate::effect::Until::SourceUntaps => game.object(self.source).is_some_and(|obj| {
+                obj.zone == Zone::Battlefield && game.is_tapped(self.source)
+            }),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.goaded_by
@@ -8313,6 +8319,16 @@ impl GameState {
     pub fn untap(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
         self.tapped_permanents.remove(&id);
+        self.effect_store
+            .continuous_effects
+            .remove_effects_from_source_with_duration(id, crate::effect::Until::SourceUntaps);
+        self.effect_store.restriction_effects.retain(|effect| {
+            !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
+        });
+        self.effect_store.goad_effects.retain(|effect| {
+            !(effect.source == id && effect.duration == crate::effect::Until::SourceUntaps)
+        });
+        self.update_cant_effects();
     }
 
     /// Check if a creature has summoning sickness.
