@@ -391,6 +391,15 @@ pub(crate) fn parse_you_choose_objects_clause(
     {
         choose_words = choose_words[1..].to_vec();
     }
+    let mut idx = 0usize;
+    while idx + 1 < choose_words.len() {
+        if choose_words[idx] == "at" && choose_words[idx + 1] == "random" {
+            count = count.at_random();
+            choose_words.drain(idx..idx + 2);
+            continue;
+        }
+        idx += 1;
+    }
 
     if choose_words.is_empty() {
         return Err(CardTextError::ParseError(format!(

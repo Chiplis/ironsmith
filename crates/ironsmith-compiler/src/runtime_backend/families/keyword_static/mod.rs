@@ -1861,6 +1861,8 @@ const SACRIFICED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["sacrificed"]);
 const DISCARDED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["discarded"]);
+const EXILED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["exiled"]);
 const REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["revealed"]);
 const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["this", "way"]]);
@@ -7929,6 +7931,11 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             source: EffectMetricSource::Outcome,
             metric: EffectMetric::Count,
         }));
+    }
+    if EXILED_THIS_WAY_PATTERN.matches_words(&filter_words) {
+        return Ok(Some(Value::Count(
+            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+        )));
     }
     if REVEALED_THIS_WAY_PATTERN.matches_words(&filter_words)
         && let Some((value, used_words)) = parse_for_each_count_value_words(&words_all)

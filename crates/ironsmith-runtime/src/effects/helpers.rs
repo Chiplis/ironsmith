@@ -428,6 +428,32 @@ fn count_as_card_named_for_spell_effect_bonus(
         .count()
 }
 
+fn source_exiled_link_count(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    ctx: &ExecutionContext<'_>,
+    filter_ctx: &crate::target::FilterContext,
+) -> Option<i32> {
+    let uses_source_exiled_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+    });
+    if !uses_source_exiled_tag {
+        return None;
+    }
+    if ctx.get_tagged_all(crate::tag::SOURCE_EXILED_TAG).is_some() {
+        return None;
+    }
+
+    Some(
+        game.get_exiled_with_source_links(ctx.source)
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| filter.matches(object, filter_ctx, game))
+            .count() as i32,
+    )
+}
+
 /// Resolve a Value to a concrete i32.
 pub fn resolve_value(
     game: &GameState,
@@ -471,6 +497,11 @@ pub fn resolve_value(
                     .iter()
                     .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
                     .count();
+                if count == 0
+                    && let Some(count) = source_exiled_link_count(game, filter, ctx, &filter_ctx)
+                {
+                    return Ok(count);
+                }
                 return Ok(count as i32);
             }
             let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
@@ -502,6 +533,11 @@ pub fn resolve_value(
                     .iter()
                     .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
                     .count() as i32;
+                if count == 0
+                    && let Some(count) = source_exiled_link_count(game, filter, ctx, &filter_ctx)
+                {
+                    return Ok(count * *multiplier);
+                }
                 return Ok(count * *multiplier);
             }
             let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);

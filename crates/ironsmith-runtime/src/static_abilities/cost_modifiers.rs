@@ -248,6 +248,13 @@ fn describe_types_among_scope(filter: &ObjectFilter) -> String {
     description
 }
 
+fn is_source_exiled_count_filter(filter: &ObjectFilter) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+    })
+}
+
 fn describe_spell_cast_count_tail(
     player: &PlayerFilter,
     filter: &ObjectFilter,
@@ -303,11 +310,19 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
         Value::X => ("{X}".to_string(), None),
         Value::Count(filter) => (
             "{1}".to_string(),
-            Some(format!("for each {}", filter.description())),
+            Some(if is_source_exiled_count_filter(filter) {
+                "for each card exiled this way".to_string()
+            } else {
+                format!("for each {}", filter.description())
+            }),
         ),
         Value::CountScaled(filter, multiplier) => (
             format!("{{{multiplier}}}"),
-            Some(format!("for each {}", filter.description())),
+            Some(if is_source_exiled_count_filter(filter) {
+                "for each card exiled this way".to_string()
+            } else {
+                format!("for each {}", filter.description())
+            }),
         ),
         Value::GreatestCount(filter) => (
             "{X}".to_string(),
