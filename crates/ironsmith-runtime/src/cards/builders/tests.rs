@@ -49267,6 +49267,92 @@ fn living_conundrum_nonempty_library_does_not_skip_or_gain_bonus() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_sages_of_the_anima_strict_regression() {
+    assert_oracle_card_parses_strict("Sages of the Anima");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sages_of_the_anima_compiled_text_keeps_draw_replacement_clause() {
+    let def = parse_oracle_card_definition("Sages of the Anima");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    assert!(
+        static_ids.contains(&StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom),
+        "expected Sages of the Anima draw-replacement static ability, got {static_ids:?}"
+    );
+    assert!(
+        rendered.contains("If you would draw a card, instead reveal the top three cards of your library"),
+        "Sages of the Anima compiled text should keep the draw replacement and instead marker, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order"
+        ),
+        "Sages of the Anima compiled text should keep the creature/rest split, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sages_of_the_anima_draw_replacement_moves_creatures_and_bottoms_rest() {
+    let def = parse_oracle_card_definition("Sages of the Anima");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    for (name, card_types) in [
+        ("Library Creature One", vec![CardType::Creature]),
+        ("Library Instant", vec![CardType::Instant]),
+        ("Library Creature Two", vec![CardType::Creature]),
+    ] {
+        let card = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build();
+        game.create_object_from_definition(&card, alice, Zone::Library);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source_id, alice);
+    crate::effects::DrawCardsEffect::you(1)
+        .execute(&mut game, &mut ctx)
+        .expect("Sages of the Anima draw replacement should resolve");
+
+    let player = game.player(alice).expect("alice should exist");
+    let hand_names = player
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        hand_names.len(),
+        2,
+        "only revealed creature cards should move to hand, got {hand_names:?}"
+    );
+    assert!(hand_names.contains(&"Library Creature One"), "{hand_names:?}");
+    assert!(hand_names.contains(&"Library Creature Two"), "{hand_names:?}");
+
+    let library_names = player
+        .library
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        library_names,
+        vec!["Library Instant"],
+        "noncreature revealed cards should stay in the library on bottom"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_wave_of_rats_strict_regression() {
     assert_oracle_card_parses_strict("Wave of Rats");
 }

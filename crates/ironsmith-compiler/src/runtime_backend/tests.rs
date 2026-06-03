@@ -8349,6 +8349,42 @@ fn rewrite_grammar_living_conundrum_empty_library_draw_skip_matches_static_shape
 }
 
 #[test]
+fn parse_sages_of_the_anima_draw_replacement_static_line() {
+    let tokens = lex_line(
+        "If you would draw a card, instead reveal the top three cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.",
+        0,
+    )
+    .expect("Sages of the Anima draw replacement line should lex");
+
+    let direct =
+        super::keyword_static::parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(
+            &tokens,
+        )
+        .expect("direct Sages draw replacement parser should not error");
+    assert!(
+        matches!(
+            direct,
+            Some(ref ability)
+                if ability.id()
+                    == crate::static_abilities::StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom
+        ),
+        "expected direct draw replacement static ability, got {direct:?}"
+    );
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Sages of the Anima draw replacement line should parse");
+    assert!(
+        matches!(
+            parsed.as_deref(),
+            Some([
+                crate::cards::builders::StaticAbilityAst::Static(ability)
+            ]) if ability.id() == crate::static_abilities::StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom
+        ),
+        "expected draw replacement static ability, got {parsed:?}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_replacement_static_probes_match_keyword_static_shapes() {
     let library_tokens = lex_line(
         "If an effect causes you to discard a card, you may discard it to the top of your library instead of into your graveyard.",

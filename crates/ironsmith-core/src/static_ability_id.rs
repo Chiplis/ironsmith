@@ -229,6 +229,7 @@ pub enum StaticAbilityId {
     OpponentEffectDiscardThisToBattlefieldReplacement,
     DrawReplacementExileTopFaceDown,
     DrawReplacementExileTopAndPlay,
+    DrawReplacementRevealTopMatchingToHandRestBottom,
     DrawReplacementDouble,
     DrawReplacementSkipEmptyLibrary,
     ConditionalDrawReplacement,
@@ -492,6 +493,7 @@ impl StaticAbilityId {
             | OpponentEffectDiscardThisToBattlefieldReplacement
             | DrawReplacementExileTopFaceDown
             | DrawReplacementExileTopAndPlay
+            | DrawReplacementRevealTopMatchingToHandRestBottom
             | DrawReplacementDouble
             | DrawReplacementSkipEmptyLibrary
             | ConditionalDrawReplacement

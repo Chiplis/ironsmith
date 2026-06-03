@@ -1510,6 +1510,7 @@ pub(super) fn run_statement_probe_line_family(
             &ctx.line.tokens,
         ))
         && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
+        && !is_draw_replacement_reveal_top_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
         return Ok(Some(LineDispatchResult::single(
@@ -1518,6 +1519,13 @@ pub(super) fn run_statement_probe_line_family(
         )));
     }
     Ok(None)
+}
+
+fn is_draw_replacement_reveal_top_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    words.starts_with(&[
+        "if", "you", "would", "draw", "a", "card", "instead", "reveal", "the", "top",
+    ])
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {

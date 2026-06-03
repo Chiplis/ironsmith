@@ -48,10 +48,12 @@ use crate::replacement::{
     EventModification, RedirectTarget, RedirectWhich, ReplacementAction, ReplacementEffect,
     ZoneReplacementSpec,
 };
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
+use crate::target::{
+    ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
+};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
-use ironsmith_core::{DamagedBySource, ValueSurfaceHint};
+use ironsmith_core::{DamagedBySource, TagKey, ValueSurfaceHint};
 
 fn card_type_word(card_type: crate::types::CardType) -> &'static str {
     card_type.name()
@@ -4610,6 +4612,89 @@ impl StaticAbilityKind for DrawReplacementExileTopAndPlay {
                     true,
                     false,
                 )),
+            ]),
+        ))
+    }
+}
+
+/// "If you would draw a card, instead reveal the top N cards of your library. Put all matching
+/// cards revealed this way into your hand and the rest on the bottom of your library."
+#[derive(Debug, Clone, PartialEq)]
+pub struct DrawReplacementRevealTopMatchingToHandRestBottom {
+    pub count: u32,
+    pub filter: ObjectFilter,
+    pub order: crate::effects::consult_helpers::LibraryBottomOrder,
+    pub display: String,
+}
+
+impl DrawReplacementRevealTopMatchingToHandRestBottom {
+    pub fn new(
+        count: u32,
+        filter: ObjectFilter,
+        order: crate::effects::consult_helpers::LibraryBottomOrder,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            count,
+            filter,
+            order,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DrawReplacementRevealTopMatchingToHandRestBottom {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        const REVEALED_TAG: &str = "draw_replacement_revealed";
+        const MATCHED_TAG: &str = "draw_replacement_matched";
+
+        let mut matching_filter = self.filter.clone();
+        matching_filter.zone = None;
+        matching_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(REVEALED_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldDrawCardMatcher::you(),
+            ReplacementAction::Instead(vec![
+                Effect::reveal_top_cards(
+                    PlayerFilter::You,
+                    Value::Fixed(self.count as i32),
+                    TagKey::from(REVEALED_TAG),
+                ),
+                Effect::new(
+                    crate::effects::TagMatchingObjectsEffect::new(matching_filter, MATCHED_TAG)
+                        .in_zones(vec![Zone::Library]),
+                ),
+                Effect::for_each_tagged(
+                    MATCHED_TAG,
+                    vec![Effect::move_to_zone(
+                        ChooseSpec::Iterated,
+                        Zone::Hand,
+                        false,
+                    )],
+                ),
+                Effect::put_tagged_remainder_on_library_bottom(
+                    TagKey::from(REVEALED_TAG),
+                    Some(TagKey::from(MATCHED_TAG)),
+                    self.order,
+                    PlayerFilter::You,
+                ),
             ]),
         ))
     }

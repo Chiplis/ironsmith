@@ -237,6 +237,12 @@ impl StaticAbility {
                     Self::parse_draw_replacement_exile_top_and_play_count(&label).unwrap_or(2),
                 )
             }
+            Some(StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "draw replacement reveal-top matcher needs its structured payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::DrawReplacementDouble) => Self::draw_replacement_double(),
             Some(StaticAbilityId::DrawReplacementSkipEmptyLibrary) => {
                 Self::draw_replacement_skip_empty_library()

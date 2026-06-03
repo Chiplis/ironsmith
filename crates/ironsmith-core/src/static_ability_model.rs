@@ -485,6 +485,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         replacement_effects: Vec<E>,
         display: String,
     },
+    DrawReplacementRevealTopMatchingToHandRestBottom {
+        count: u32,
+        filter: ObjectFilter,
+        order: crate::LibraryBottomOrder,
+        display: String,
+    },
     CharacteristicDefiningPt {
         power: Value,
         toughness: Value,
@@ -1426,6 +1432,17 @@ where
                     .into_iter()
                     .map(map_effect)
                     .collect::<Result<Vec<_>, _>>()?,
+                display,
+            },
+            StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
+                count,
+                filter,
+                order,
+                display,
+            } => StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
+                count,
+                filter,
+                order,
                 display,
             },
             StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } => {
@@ -3624,6 +3641,25 @@ impl<
             id: Some(StaticAbilityId::DrawReplacementExileTopAndPlay),
             label: format!("draw replacement exile top {count} and play"),
             payload: StaticAbilityPayload::None,
+        }
+    }
+
+    pub fn draw_replacement_reveal_top_matching_to_hand_rest_bottom(
+        count: u32,
+        filter: ObjectFilter,
+        order: crate::LibraryBottomOrder,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DrawReplacementRevealTopMatchingToHandRestBottom),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
+                count,
+                filter,
+                order,
+                display,
+            },
         }
     }
 

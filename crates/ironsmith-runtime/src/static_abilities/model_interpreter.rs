@@ -1397,6 +1397,17 @@ impl StaticAbilityModelInterpreter {
                 replacement_effects.clone(),
                 display.clone(),
             ),
+            ironsmith_core::StaticAbilityPayload::DrawReplacementRevealTopMatchingToHandRestBottom {
+                count,
+                filter,
+                order,
+                display,
+            } => StaticAbility::draw_replacement_reveal_top_matching_to_hand_rest_bottom(
+                *count,
+                filter.clone(),
+                *order,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
                 power,
                 toughness,
