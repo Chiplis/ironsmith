@@ -45,6 +45,8 @@ impl EffectExecutor for PreventAllDamageEffect {
             self.until.clone(),
             self.damage_filter.clone(),
             Vec::new(),
+            Vec::new(),
+            Vec::new(),
         );
 
         Ok(EffectOutcome::resolved())

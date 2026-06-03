@@ -782,14 +782,30 @@ pub(crate) fn parse_prevent_next_damage_clause(
             clause_text
         )));
     }
-    let target = parse_target_phrase(target_clause.tokens())?;
+    let target_words = target_clause.word_refs();
+    let protects_you_and_permanents_you_control = matches!(
+        target_words.as_slice(),
+        ["you", "and/or", "permanents", "you", "control"]
+            | ["you", "and/or", "permanent", "you", "control"]
+            | ["you", "and", "or", "permanents", "you", "control"]
+            | ["you", "and", "or", "permanent", "you", "control"]
+            | ["you", "and", "permanents", "you", "control"]
+            | ["you", "and", "permanent", "you", "control"]
+    );
+    let target = if protects_you_and_permanents_you_control {
+        TargetAst::Player(PlayerFilter::You, span_from_tokens(target_clause.tokens()))
+    } else {
+        parse_target_phrase(target_clause.tokens())?
+    };
 
     Ok(Some(
-        EffectAst::subject_verb_prevent_damage_with_source_choice(
+        EffectAst::subject_verb_prevent_damage_with_options(
             amount,
             target,
             Until::EndOfTurn,
             source_of_your_choice,
+            protects_you_and_permanents_you_control,
+            Vec::new(),
         ),
     ))
 }

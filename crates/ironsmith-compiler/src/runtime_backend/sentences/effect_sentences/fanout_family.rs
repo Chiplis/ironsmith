@@ -368,7 +368,7 @@ pub(crate) fn parse_same_name_target_fanout_sentence(
         "destroy" => EffectAst::subject_verb_destroy_all(filter),
         "exile" => {
             if until_source_leaves {
-                EffectAst::subject_verb_exile_until_source_leaves(
+                EffectAst::subject_verb_exile_all_until_source_leaves(
                     TargetAst::Object(filter, None, None),
                     false,
                 )

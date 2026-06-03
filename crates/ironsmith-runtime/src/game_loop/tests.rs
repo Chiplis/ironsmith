@@ -2793,6 +2793,80 @@ fn create_vanilla_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn mighty_servant_of_leuk_o_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(274_545), "Mighty Servant of Leuk-o")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .power_toughness(PowerToughness::fixed(6, 6))
+        .parse_text(
+            "Trample\n\
+             Ward—Discard a card.\n\
+             Whenever this Vehicle becomes crewed for the first time each turn, if it was crewed by exactly two creatures, it gains \"Whenever this creature deals combat damage to a player, draw two cards\" until end of turn.\n\
+             Crew 4",
+        )
+        .expect("Mighty Servant of Leuk-o should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseCrewByNameDecisionMaker {
+    names: Vec<&'static str>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseCrewByNameDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx.description.to_ascii_lowercase().contains("crew") {
+            return ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .filter_map(|candidate| {
+                    game.object(candidate.id).and_then(|object| {
+                        self.names
+                            .contains(&object.name.as_str())
+                            .then_some(candidate.id)
+                    })
+                })
+                .collect();
+        }
+        AutoPassDecisionMaker.decide_objects(game, ctx)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_mighty_servant_crew(
+    game: &mut GameState,
+    vehicle_id: ObjectId,
+    controller: PlayerId,
+    crew_names: Vec<&'static str>,
+) -> TriggerQueue {
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = ChooseCrewByNameDecisionMaker { names: crew_names };
+    let provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: vehicle_id,
+            controller,
+        },
+    );
+    let mut ctx = crate::effects::ExecutionContext::new(vehicle_id, controller, &mut dm)
+        .with_provenance(provenance);
+    let crew = crate::effects::CrewCostEffect::new(4);
+    let outcome = crate::effects::EffectExecutor::execute(&crew, game, &mut ctx)
+        .expect("Mighty Servant of Leuk-o crew cost should be payable");
+    for event in outcome.events {
+        game.queue_trigger_event(provenance, event);
+    }
+    drain_pending_trigger_events(game, &mut trigger_queue);
+
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn vastwood_animist_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_956), "Vastwood Animist")
         .mana_cost(ManaCost::from_pips(vec![
@@ -2818,11 +2892,168 @@ fn create_test_land(game: &mut GameState, name: &str, controller: PlayerId) -> O
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn mighty_servant_two_creature_crew_grants_damage_draw_until_cleanup() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mighty = mighty_servant_of_leuk_o_definition();
+    let vehicle_id = game.create_object_from_definition(&mighty, alice, Zone::Battlefield);
+    let crew_one = create_vanilla_creature(&mut game, "Crew One", alice, 2, 2);
+    let crew_two = create_vanilla_creature(&mut game, "Crew Two", alice, 2, 2);
+    for idx in 0..2 {
+        let card = CardBuilder::new(CardId::from_raw(274_600 + idx), format!("Draw Fodder {idx}"))
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+
+    let mut trigger_queue =
+        activate_mighty_servant_crew(&mut game, vehicle_id, alice, vec!["Crew One", "Crew Two"]);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Mighty Servant should trigger when first crewed by exactly two creatures"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Mighty Servant crew-count trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Mighty Servant crew-count trigger should resolve");
+
+    game.untap(crew_one);
+    game.untap(crew_two);
+    let repeated_trigger_queue =
+        activate_mighty_servant_crew(&mut game, vehicle_id, alice, vec!["Crew One", "Crew Two"]);
+    assert!(
+        repeated_trigger_queue.entries.is_empty(),
+        "Mighty Servant should not retrigger when the same two creatures crew it again that turn"
+    );
+
+    let combat_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            vehicle_id,
+            crate::events::DamageTarget::Player(bob),
+            6,
+            true,
+            crate::events::cause::EventCause::combat_damage(vehicle_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut damage_trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &combat_damage) {
+        damage_trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        damage_trigger_queue.entries.len(),
+        1,
+        "granted combat-damage trigger should be present after exact two-creature crew"
+    );
+
+    let defending_creature = create_vanilla_creature(&mut game, "Defending Creature", bob, 2, 2);
+    let creature_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            vehicle_id,
+            crate::events::DamageTarget::Object(defending_creature),
+            6,
+            true,
+            crate::events::cause::EventCause::combat_damage(vehicle_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &creature_damage).is_empty(),
+        "Mighty Servant's granted trigger should only trigger on combat damage to a player"
+    );
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+    put_triggers_on_stack(&mut game, &mut damage_trigger_queue)
+        .expect("granted combat-damage trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("granted combat-damage trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 2,
+        "Mighty Servant's granted trigger should draw two cards"
+    );
+
+    execute_cleanup_step(&mut game);
+    let expired_triggers = crate::triggers::check_triggers(&game, &combat_damage);
+    assert!(
+        expired_triggers.is_empty(),
+        "Mighty Servant's granted combat-damage trigger should expire at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mighty_servant_crew_condition_requires_exactly_two_on_first_crew() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mighty = mighty_servant_of_leuk_o_definition();
+    let vehicle_id = game.create_object_from_definition(&mighty, alice, Zone::Battlefield);
+    create_vanilla_creature(&mut game, "Solo Crew", alice, 4, 4);
+    create_vanilla_creature(&mut game, "Later Crew One", alice, 2, 2);
+    create_vanilla_creature(&mut game, "Later Crew Two", alice, 2, 2);
+
+    let solo_trigger_queue =
+        activate_mighty_servant_crew(&mut game, vehicle_id, alice, vec!["Solo Crew"]);
+    assert!(
+        solo_trigger_queue.entries.is_empty(),
+        "Mighty Servant should not trigger when first crewed by one creature"
+    );
+
+    let later_trigger_queue = activate_mighty_servant_crew(
+        &mut game,
+        vehicle_id,
+        alice,
+        vec!["Later Crew One", "Later Crew Two"],
+    );
+    assert!(
+        later_trigger_queue.entries.is_empty(),
+        "Mighty Servant should not trigger on a later crew activation even if that activation used exactly two creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mighty_servant_first_crew_by_three_creatures_does_not_grant_damage_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mighty = mighty_servant_of_leuk_o_definition();
+    let vehicle_id = game.create_object_from_definition(&mighty, alice, Zone::Battlefield);
+    create_vanilla_creature(&mut game, "Crew One", alice, 2, 2);
+    create_vanilla_creature(&mut game, "Crew Two", alice, 1, 1);
+    create_vanilla_creature(&mut game, "Crew Three", alice, 1, 1);
+
+    let trigger_queue = activate_mighty_servant_crew(
+        &mut game,
+        vehicle_id,
+        alice,
+        vec!["Crew One", "Crew Two", "Crew Three"],
+    );
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Mighty Servant should not trigger when first crewed by three creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn vastwood_animist_activation_animates_only_your_land_using_ally_count_until_end_of_turn() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-
     game.turn.phase = Phase::FirstMain;
     game.turn.step = None;
     game.turn.active_player = alice;
@@ -47520,6 +47751,67 @@ fn sleep_with_the_fishes_creates_unblockable_fish_token() {
             &game,
         ),
         "opponent creature should not be able to block Sleep with the Fishes Fish token"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gilded_light_shroud_blocks_all_player_targeting_until_end_of_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let gilded_light = CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse");
+    let spell_id = game.create_object_from_definition(&gilded_light, alice, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_source_info(
+            game.object(spell_id)
+                .expect("Gilded Light spell should exist")
+                .stable_id,
+            "Gilded Light".to_string(),
+        ),
+    );
+
+    let alice_source = create_creature(&mut game, "Friendly Source", alice, 2, 2);
+    let bob_source = create_creature(&mut game, "Opposing Source", bob, 2, 2);
+    assert!(game.can_target_player_from_source(alice, alice_source));
+    assert!(game.can_target_player_from_source(alice, bob_source));
+
+    resolve_stack_entry(&mut game).expect("Gilded Light should resolve");
+
+    assert!(
+        !game.can_target_player(alice),
+        "Gilded Light should make its controller untargetable"
+    );
+    assert!(
+        !game.can_target_player_from_source(alice, alice_source),
+        "shroud should stop the controller's own sources from targeting them"
+    );
+    assert!(
+        !game.can_target_player_from_source(alice, bob_source),
+        "shroud should stop opposing sources from targeting the controller"
+    );
+    assert!(
+        game.can_target_player_from_source(bob, bob_source),
+        "Gilded Light should not grant shroud to other players"
+    );
+
+    execute_cleanup_step(&mut game);
+    game.refresh_continuous_state();
+
+    assert!(
+        game.can_target_player_from_source(alice, alice_source)
+            && game.can_target_player_from_source(alice, bob_source),
+        "Gilded Light's shroud should expire at end of turn"
     );
 }
 

@@ -146,7 +146,7 @@ pub(crate) fn parse_exile(
         let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
         apply_exile_subject_owner_context(&mut filter, subject);
         return Ok(if until_source_leaves {
-            EffectAst::subject_verb_exile_until_source_leaves(
+            EffectAst::subject_verb_exile_all_until_source_leaves(
                 TargetAst::Object(filter, None, None),
                 face_down,
             )

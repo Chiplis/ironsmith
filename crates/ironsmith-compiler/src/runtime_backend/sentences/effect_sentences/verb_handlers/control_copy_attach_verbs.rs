@@ -1131,14 +1131,29 @@ pub(crate) fn parse_put_into_hand(
                 }
             }
 
-            let effect = EffectAst::subject_verb_move_to_zone(
-                parse_target_phrase(&target_tokens)?,
-                zone,
-                false,
-                ReturnControllerAst::Preserve,
-                false,
-                None,
-            );
+            let target = parse_target_phrase(&target_tokens)?;
+            let moves_all = target_words
+                .first()
+                .is_some_and(|word| matches!(*word, "all" | "each"));
+            let effect = if moves_all {
+                EffectAst::subject_verb_move_all_to_zone(
+                    target,
+                    zone,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )
+            } else {
+                EffectAst::subject_verb_move_to_zone(
+                    target,
+                    zone,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )
+            };
             return Ok(if zone == Zone::Hand {
                 wrap_return_with_delayed_timing(effect, delayed_hand_timing)
             } else {

@@ -134,6 +134,7 @@ pub enum StaticAbilityId {
     CostIncreaseManaCost,
     CostIncreasePerAdditionalTarget,
     CostIncreaseManaCostPerAdditionalTarget,
+    Affinity,
     AffinityForArtifacts,
     Delve,
     Convoke,
@@ -397,6 +398,7 @@ impl StaticAbilityId {
             | CostIncreaseManaCost
             | CostIncreasePerAdditionalTarget
             | CostIncreaseManaCostPerAdditionalTarget
+            | Affinity
             | AffinityForArtifacts
             | Delve
             | Convoke

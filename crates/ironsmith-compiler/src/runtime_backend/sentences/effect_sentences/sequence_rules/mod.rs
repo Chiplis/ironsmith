@@ -496,6 +496,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::pairs::parse_gain_life_then_self_animate_source,
     },
     SequenceRuleDef {
+        name: "damage-prevention-then-damage-any-target",
+        feature_tag: Some("damage-prevention-followup"),
+        priority: 241,
+        consumed_sentences: 2,
+        predicate: first_word_prevent,
+        parser: generic_subject_verb_sequences::parse_damage_prevention_reflect_to_any_target_sequence,
+    },
+    SequenceRuleDef {
         name: "damage-prevention-then-put-counters",
         feature_tag: Some("damage-prevention-followup"),
         priority: 240,

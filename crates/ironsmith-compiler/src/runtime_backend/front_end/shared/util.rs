@@ -2708,6 +2708,11 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::XTimes(2), 2));
     }
 
+    if words.first().is_some_and(|word| *word == "twice") {
+        let (value, used) = parse_value_expr_term_words(&words[1..])?;
+        return Some((Value::Scaled(Box::new(value), 2), used + 1));
+    }
+
     if X_WORD_PATTERN.matches_word(words[0]) {
         return Some((Value::X, 1));
     }

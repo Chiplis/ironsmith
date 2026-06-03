@@ -7008,6 +7008,45 @@ fn everybody_lives_compiled_text_includes_player_hexproof_and_life_lock_clauses(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn gilded_light_parses_strictly_with_player_shroud_and_cycling() {
+    CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse strictly");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gilded_light_compiled_text_includes_player_shroud_and_cycling() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "You gain shroud until end of turn.".to_string(),
+            "Cycling {2}".to_string(),
+        ],
+        "expected Gilded Light compiled text to preserve player shroud and cycling"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_characteristic_pt_constant_plus_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aysen Crusader")
         .parse_text(
@@ -20091,6 +20130,168 @@ fn fiery_emancipation_triples_only_damage_from_sources_you_control() {
     );
 }
 
+#[test]
+fn embermaw_hellion_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Embermaw Hellion");
+    let def = parse_oracle_card_definition("Embermaw Hellion");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Trample")
+            && rendered.contains(
+                "If another red source you control would deal damage to a permanent or player, it deals that much damage plus 1 to that permanent or player instead"
+            ),
+        "expected Embermaw Hellion trample and additive damage replacement wording, got {rendered}"
+    );
+    assert!(
+        debug.contains("ModifyDamageAmountReplacement")
+            && debug.contains("other: true")
+            && debug.contains("colors: Some")
+            && debug.contains("controller: Some(You)")
+            && debug.contains("target_player_filter")
+            && debug.contains("target_object_filter")
+            && debug.contains("delta: 1"),
+        "expected Embermaw Hellion to compile to an other red source +1 damage replacement, got {debug}"
+    );
+}
+
+#[test]
+fn embermaw_hellion_adds_one_to_another_red_source_damage_to_players_and_permanents() {
+    let embermaw = parse_oracle_card_definition("Embermaw Hellion");
+    let red_source = CardDefinitionBuilder::new(CardId::from_raw(91_400), "Alice Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let red_spell = CardDefinitionBuilder::new(CardId::from_raw(91_404), "Alice Red Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Instant])
+        .build();
+    let target = CardDefinitionBuilder::new(CardId::from_raw(91_401), "Alice Target Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let embermaw_id = game.create_object_from_definition(&embermaw, alice, Zone::Battlefield);
+    let red_source_id = game.create_object_from_definition(&red_source, alice, Zone::Battlefield);
+    let red_spell_id = game.create_object_from_definition(&red_spell, alice, Zone::Stack);
+    let target_id = game.create_object_from_definition(&target, alice, Zone::Battlefield);
+
+    game.update_replacement_effects();
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == embermaw_id
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Modify(
+                            crate::replacement::EventModification::Add(1)
+                        )
+                    )
+            }),
+        "Embermaw Hellion should register a +1 damage replacement"
+    );
+
+    let player_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_source_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(player_damage.assignments.len(), 1);
+    assert_eq!(player_damage.assignments[0].amount, 3);
+
+    let permanent_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_source_id,
+        crate::events::DamageTarget::Object(target_id),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(permanent_damage.assignments.len(), 1);
+    assert_eq!(permanent_damage.assignments[0].amount, 5);
+
+    let spell_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        red_spell_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(spell_damage.assignments.len(), 1);
+    assert_eq!(spell_damage.assignments[0].amount, 3);
+}
+
+#[test]
+fn embermaw_hellion_ignores_self_nonred_and_opposing_sources() {
+    let embermaw = parse_oracle_card_definition("Embermaw Hellion");
+    let colorless_source =
+        CardDefinitionBuilder::new(CardId::from_raw(91_402), "Alice Colorless Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+    let bob_red_source = CardDefinitionBuilder::new(CardId::from_raw(91_403), "Bob Red Source")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let embermaw_id = game.create_object_from_definition(&embermaw, alice, Zone::Battlefield);
+    let colorless_source_id =
+        game.create_object_from_definition(&colorless_source, alice, Zone::Battlefield);
+    let bob_red_source_id =
+        game.create_object_from_definition(&bob_red_source, bob, Zone::Battlefield);
+    game.update_replacement_effects();
+
+    let self_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        embermaw_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(self_damage.assignments.len(), 1);
+    assert_eq!(self_damage.assignments[0].amount, 2);
+
+    let nonred_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        colorless_source_id,
+        crate::events::DamageTarget::Player(bob),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(nonred_damage.assignments.len(), 1);
+    assert_eq!(nonred_damage.assignments[0].amount, 2);
+
+    let opposing_damage = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        bob_red_source_id,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(opposing_damage.assignments.len(), 1);
+    assert_eq!(opposing_damage.assignments[0].amount, 2);
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn sphere_of_truth_strict_parser_and_compiled_text_regression() {
@@ -20741,6 +20942,194 @@ fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life
         game.life_total(alice),
         24,
         "Alice should gain life equal to the damage prevented this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn divine_deflection_strict_parser_compiled_text_and_shape_regression() {
+    assert_oracle_card_parses_strict("Divine Deflection");
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains(
+            "Prevent the next X damage that would be dealt to you and/or permanents you control this turn"
+        ) && rendered.contains(
+            "If damage is prevented this way, Divine Deflection deals that much damage to any target"
+        ),
+        "expected Divine Deflection prevention and conditional damage text, got {rendered}"
+    );
+    assert!(
+        debug.contains("PreventDamageEffect")
+            && debug.contains("protect_you_and_permanents_you_control: true")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("EventValue")
+            && debug.contains("Amount")
+            && debug.contains("target: AnyTarget"),
+        "expected Divine Deflection to compile to a shared prevention shield with prevented-damage follow-up, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_target() {
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Divine Deflection should produce spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_105), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let alice_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_106), "Alice Permanent")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_x(5)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Divine Deflection should resolve");
+
+    let (alice_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(alice_damage, 0, "damage to Alice should be prevented");
+    assert_eq!(
+        game.life_total(bob),
+        17,
+        "prevented damage should be dealt to the chosen any-target player"
+    );
+
+    let (permanent_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Object(alice_permanent),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        permanent_damage, 2,
+        "the shared prevention pool should have only 2 damage remaining"
+    );
+    assert_eq!(
+        game.life_total(bob),
+        15,
+        "the follow-up should deal only the amount actually prevented"
+    );
+
+    let (bob_damage, bob_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(bob_damage, 3, "damage to Bob should not be protected");
+    assert!(!bob_prevented, "unprotected damage should not trigger prevention");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn divine_deflection_runtime_does_not_damage_target_when_damage_cannot_be_prevented() {
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Divine Deflection should produce spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_107), "Unpreventable Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let no_prevention = CardDefinitionBuilder::new(CardId::from_raw(91_108), "No Prevention")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::damage_cant_be_prevented(),
+        ))
+        .build();
+    game.create_object_from_definition(&no_prevention, bob, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_x(5)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Divine Deflection should resolve");
+
+    let (damage, prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(damage, 3, "unpreventable damage should not be reduced");
+    assert!(!prevented, "unpreventable damage should not count as prevented");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "the conditional follow-up should not happen when no damage was prevented"
     );
 }
 
@@ -46641,6 +47030,34 @@ fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
 }
 
+fn blood_tyrant_game() -> (crate::game_state::GameState, PlayerId, PlayerId, ObjectId) {
+    let def = parse_oracle_card_definition("Blood Tyrant");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tyrant_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    (game, alice, bob, tyrant_id)
+}
+
+fn resolve_triggers_for_source(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    event: &crate::triggers::TriggerEvent,
+) -> usize {
+    let triggers = crate::triggers::check_triggers(game, event);
+    let matching_count = triggers.iter().filter(|entry| entry.source == source).count();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers.into_iter().filter(|entry| entry.source == source) {
+        trigger_queue.add(trigger);
+    }
+    if matching_count > 0 {
+        crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+            .expect("trigger should go on the stack");
+        crate::game_loop::resolve_stack_entry(game).expect("trigger should resolve");
+    }
+    matching_count
+}
+
 fn assert_oracle_card_parses_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)
@@ -46652,6 +47069,269 @@ fn assert_oracle_card_parses_strict(name: &str) {
         "strict parser regression failed for '{name}': {:?}\nOracle text:\n{}",
         result.err(),
         oracle
+    );
+}
+
+#[test]
+fn irresistible_prey_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Irresistible Prey");
+    let rendered = unprocessed_compiled_lines(&def);
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let compact_debug = spell_debug.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert_eq!(
+        rendered,
+        vec!["Target creature must be blocked this turn if able. Draw a card."],
+        "expected exact Irresistible Prey oracle-shaped compiled text"
+    );
+    assert!(
+        spell_debug.contains("TargetOnlyEffect")
+            && spell_debug.contains("CantEffect")
+            && spell_debug.contains("MustBeBlocked")
+            && spell_debug.contains("DrawCardsEffect"),
+        "expected direct targeted must-be-blocked restriction plus card draw, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("AddAbility") && !spell_debug.contains("RuleRestriction"),
+        "Irresistible Prey must not grant a removable ability, got {spell_debug}"
+    );
+    assert!(
+        compact_debug.contains("Target( Object(")
+            && compact_debug.contains("card_types: [ Creature"),
+        "expected Irresistible Prey to require a target creature, got {spell_debug}"
+    );
+}
+
+fn resolve_irresistible_prey_targeting_attacker(
+    blocker_tapped: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
+    let prey = parse_oracle_card_definition("Irresistible Prey");
+    let attacker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Blocker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let draw_card = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Draw Card")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&prey, alice, Zone::Stack);
+    let attacker = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    game.create_object_from_definition(&draw_card, alice, Zone::Library);
+    let hand_size_before = game.objects_in_zone(Zone::Hand).len();
+    game.remove_summoning_sickness(attacker);
+    if blocker_tapped {
+        game.tap(blocker);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(attacker)]);
+    ctx.snapshot_targets(&game);
+    for effect in prey
+        .spell_effect
+        .as_ref()
+        .expect("Irresistible Prey should compile to spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Irresistible Prey spell effect should resolve");
+    }
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey should mark the targeted creature as must-be-blocked"
+    );
+    assert_eq!(
+        game.objects_in_zone(Zone::Hand).len(),
+        hand_size_before + 1,
+        "Irresistible Prey should draw a card as its second spell effect"
+    );
+
+    (game, alice, bob, attacker, blocker)
+}
+
+#[test]
+fn irresistible_prey_runtime_requirement_survives_ability_removal() {
+    let (mut game, alice, bob, attacker, _blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+
+    let remove_abilities = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(crate::target::ObjectFilter::specific(attacker)),
+        crate::continuous::Modification::RemoveAllAbilities,
+        crate::effect::Until::EndOfTurn,
+    ));
+    let mut removal_ctx = crate::effects::ExecutionContext::new_default(attacker, alice);
+    crate::effects::execute_effect(&mut game, &remove_abilities, &mut removal_ctx)
+        .expect("remove all abilities effect should resolve");
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey's direct restriction should survive effects that remove abilities"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should still be able to attack after ability removal");
+
+    let missing_block = crate::combat_state::declare_blockers(&mut game, &mut combat, vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should still require a block after ability removal, got {missing_block:?}"
+    );
+}
+
+#[test]
+fn irresistible_prey_runtime_requires_available_blocker_and_honors_if_able() {
+    let (mut game, _alice, bob, attacker, blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack");
+
+    let missing_block =
+        crate::combat_state::declare_blockers(&mut game, &mut combat.clone(), vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should require a block while a blocker can block, got {missing_block:?}"
+    );
+
+    crate::combat_state::declare_blockers(&mut game, &mut combat, vec![(blocker, attacker)])
+        .expect("blocking the Irresistible Prey target should satisfy the requirement");
+
+    let (mut unable_game, _alice, unable_bob, unable_attacker, _tapped_blocker) =
+        resolve_irresistible_prey_targeting_attacker(true);
+    let mut unable_combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut unable_game,
+        &mut unable_combat,
+        vec![(unable_attacker, crate::combat_state::AttackTarget::Player(unable_bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack in tapped-blocker branch");
+    crate::combat_state::declare_blockers(&mut unable_game, &mut unable_combat, vec![])
+        .expect("Irresistible Prey should not require an impossible block");
+}
+
+#[test]
+fn blood_tyrant_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Blood Tyrant");
+    let def = parse_oracle_card_definition("Blood Tyrant");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "At the beginning of your upkeep, each player loses 1 life, then put a +1/+1 counter on this creature for each 1 life lost this way"
+        ),
+        "Blood Tyrant should render the life-lost counter clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a player loses the game, put five +1/+1 counters on this creature"
+        ),
+        "Blood Tyrant should render the player-loses-game trigger, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("EffectMetric")
+            && abilities_debug.contains("LifeLost")
+            && abilities_debug.contains("PlayerLostGameTrigger"),
+        "Blood Tyrant should lower to life-lost metrics and a player-lost-game trigger, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn blood_tyrant_upkeep_life_loss_adds_counter_for_each_life_lost() {
+    let (mut game, alice, bob, tyrant_id) = blood_tyrant_game();
+    game.turn.active_player = alice;
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(resolve_triggers_for_source(&mut game, tyrant_id, &event), 1);
+    assert_eq!(game.life_total(alice), 19, "controller should lose 1 life");
+    assert_eq!(game.life_total(bob), 19, "opponent should lose 1 life");
+    assert_eq!(
+        game.counter_count(tyrant_id, CounterType::PlusOnePlusOne),
+        2,
+        "Blood Tyrant should get one counter for each 1 life lost this way"
+    );
+}
+
+#[test]
+fn blood_tyrant_player_loses_game_trigger_adds_five_counters_from_sba() {
+    let (mut game, _alice, bob, tyrant_id) = blood_tyrant_game();
+    game.player_mut(bob).expect("bob exists").life = 0;
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("state-based player loss should apply");
+    assert!(
+        game.player(bob).expect("bob exists").has_lost,
+        "Bob should lose the game at 0 life"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Blood Tyrant player-loss trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Blood Tyrant player-loss trigger should resolve");
+    assert_eq!(
+        game.counter_count(tyrant_id, CounterType::PlusOnePlusOne),
+        5,
+        "Blood Tyrant should get five counters when a player loses the game"
+    );
+}
+
+#[test]
+fn blood_tyrant_does_not_treat_life_loss_as_losing_the_game() {
+    let (game, _alice, bob, tyrant_id) = blood_tyrant_game();
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::life::LifeLossEvent::from_effect(bob, 3),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggers.iter().all(|entry| entry.source != tyrant_id),
+        "Blood Tyrant should trigger on losing the game, not on life-loss events"
     );
 }
 
@@ -47012,6 +47692,235 @@ fn target_assignments_for_requirements(
             range,
         })
         .collect()
+}
+
+fn polliwallop_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(669_103), "Polliwallop")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Affinity for Frogs (This spell costs {1} less to cast for each Frog you control.)\n\
+             Target creature you control deals damage equal to twice its power to target creature you don't control.",
+        )
+        .expect("Polliwallop should parse strictly")
+}
+
+#[test]
+fn polliwallop_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Polliwallop");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let debug = format!("{:#?}", def.spell_effect);
+    let affinity = def.abilities.iter().find_map(|ability| match &ability.kind {
+        AbilityKind::Static(static_ability) if static_ability.has_affinity() => {
+            Some(static_ability)
+        }
+        _ => None,
+    });
+
+    assert!(
+        affinity.is_some_and(|static_ability| static_ability.id() == StaticAbilityId::Affinity),
+        "expected Polliwallop to preserve affinity keyword identity, got {:#?}",
+        def.abilities
+    );
+
+    assert!(
+        rendered.contains("Affinity for Frogs"),
+        "expected Polliwallop affinity keyword text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("damage equal to twice its power"),
+        "expected Polliwallop scaled power damage text, got {rendered}"
+    );
+    assert!(
+        debug.contains("TargetOnlyEffect")
+            && debug.contains("ExecuteWithSourceEffect")
+            && debug.contains("Scaled")
+            && debug.contains("PowerOf"),
+        "expected Polliwallop to tag the source creature and deal twice its power, got {debug}"
+    );
+}
+
+#[test]
+fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
+    let def = polliwallop_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let spell = game.object(spell_id).expect("Polliwallop should be in hand");
+    let base_cost = spell
+        .mana_cost
+        .as_ref()
+        .expect("Polliwallop has a mana cost")
+        .clone();
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost).mana_value(),
+        4,
+        "Polliwallop should not be reduced with no Frogs you control"
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_110), "Alice Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_111), "Alice Frog in Hand")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Hand,
+    );
+
+    let spell = game.object(spell_id).expect("Polliwallop should still be in hand");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost).mana_value(),
+        4,
+        "Polliwallop affinity for Frogs should ignore artifacts and Frogs outside the battlefield"
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_104), "Alice Frog One")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_105), "Alice Frog Two")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_106), "Bob Frog")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Frog])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_107), "Alice Rabbit")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Rabbit])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let spell = game.object(spell_id).expect("Polliwallop should still be in hand");
+    let reduced = crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost);
+    assert_eq!(
+        reduced.mana_value(),
+        2,
+        "Polliwallop should cost {{1}}{{G}} with exactly two Frogs you control"
+    );
+}
+
+#[test]
+fn polliwallop_targets_and_deals_twice_source_creature_power() {
+    let def = polliwallop_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let alice_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_108), "Alice Biter")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let bob_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(669_109), "Bob Target")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(10, 10))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Polliwallop should have spell effects");
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        program,
+        alice,
+        Some(spell_id),
+        None,
+    );
+    assert_eq!(requirements.len(), 2, "Polliwallop should require two targets");
+    assert!(
+        requirements[0]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(alice_creature)),
+        "first Polliwallop target should include a creature you control"
+    );
+    assert!(
+        !requirements[0]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(bob_creature)),
+        "first Polliwallop target must not include creatures you don't control"
+    );
+    assert!(
+        requirements[1]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(bob_creature)),
+        "second Polliwallop target should include a creature you don't control"
+    );
+    assert!(
+        !requirements[1]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(alice_creature)),
+        "second Polliwallop target must not include creatures you control"
+    );
+
+    let selected_targets = vec![
+        crate::game_state::Target::Object(alice_creature),
+        crate::game_state::Target::Object(bob_creature),
+    ];
+    let assignments = target_assignments_for_requirements(&requirements, &selected_targets);
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![
+            crate::effects::ResolvedTarget::Object(alice_creature),
+            crate::effects::ResolvedTarget::Object(bob_creature),
+        ])
+        .with_target_assignments(assignments);
+    for effect in program.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Polliwallop spell effect should resolve");
+    }
+
+    assert_eq!(
+        game.damage_on(bob_creature),
+        6,
+        "Polliwallop should deal twice the 3-power source creature's power"
+    );
+    assert_eq!(
+        game.damage_on(alice_creature),
+        0,
+        "Polliwallop is one-sided damage, not fight"
+    );
 }
 
 #[test]
@@ -48735,6 +49644,28 @@ fn expert_level_safe_strict_parse_and_render_secret_choice_match() {
     );
 }
 
+#[test]
+fn pinnacle_starcage_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let lines = canonical_compiled_lines(&def);
+    let expected_enters = "When this artifact enters, exile all artifacts and creatures with mana value 2 or less until this artifact leaves the battlefield.";
+    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact.";
+
+    assert_eq!(lines, vec![expected_enters, expected_activated]);
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileUntilEffect")
+            && debug.contains("SourceLeavesBattlefield")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("AffectedObjects")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("SacrificeTargetEffect"),
+        "expected Pinnacle Starcage to keep source-leaves exile, affected-object token count, and source sacrifice, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 struct ExpertLevelSafeDecisionMaker {
     votes: Vec<usize>,
@@ -48853,6 +49784,124 @@ fn resolve_expert_level_safe_with_votes(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn pinnacle_starcage_enter_exiles_all_matching_permanents_until_source_leaves() {
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an enters trigger");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let cheap_artifact = CardDefinitionBuilder::new(CardId::from_raw(91_197), "Cheap Artifact")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let cheap_creature = CardDefinitionBuilder::new(CardId::from_raw(91_198), "Cheap Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let expensive_creature =
+        CardDefinitionBuilder::new(CardId::from_raw(91_199), "Expensive Creature")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+    game.create_object_from_definition(&cheap_artifact, alice, Zone::Battlefield);
+    game.create_object_from_definition(&cheap_creature, alice, Zone::Battlefield);
+    game.create_object_from_definition(&expensive_creature, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Pinnacle Starcage enters trigger should resolve");
+
+    let exile_names = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(exile_names.contains(&"Cheap Artifact"));
+    assert!(exile_names.contains(&"Cheap Creature"));
+    assert!(!exile_names.contains(&"Expensive Creature"));
+
+    game.move_object_by_effect(source, Zone::Graveyard);
+    game.return_exiled_for_source_leave(source);
+
+    let battlefield_names = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert!(battlefield_names.contains(&"Cheap Artifact"));
+    assert!(battlefield_names.contains(&"Cheap Creature"));
+    assert!(battlefield_names.contains(&"Expensive Creature"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_pinnacle_starcage_activation_with_exiled_cards(
+    exiled_count: usize,
+) -> crate::game_state::GameState {
+    use crate::effects::ExecutionContext;
+    use crate::object::ObjectKind;
+
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let exiled_card = CardDefinitionBuilder::new(CardId::from_raw(91_200), "Exiled Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    for _ in 0..exiled_count {
+        let exiled_id = game.create_object_from_definition(&exiled_card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source, exiled_id);
+    }
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pinnacle Starcage activation effect should resolve");
+    }
+
+    let robot_count = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+        .count();
+    assert_eq!(
+        robot_count, exiled_count,
+        "Pinnacle Starcage should create one Robot for each card put into a graveyard this way"
+    );
+
+    game
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn expert_level_safe_runtime_matching_choices_sacrifice_and_return_exiled_cards() {
     let (game, source) = resolve_expert_level_safe_with_votes(vec![0, 0]);
     let alice = PlayerId::from_index(0);
@@ -48872,6 +49921,44 @@ fn expert_level_safe_runtime_matching_choices_sacrifice_and_return_exiled_cards(
                 .is_some_and(|object| object.name == "Expert-Level Safe")
         }),
         "matching choices should sacrifice Expert-Level Safe"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_moves_exiled_cards_creates_robots_and_sacrifices_source() {
+    use crate::object::ObjectKind;
+
+    let game = resolve_pinnacle_starcage_activation_with_exiled_cards(2);
+    let alice = PlayerId::from_index(0);
+
+    let graveyard_names = game
+        .player(alice)
+        .expect("Alice should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        graveyard_names
+            .iter()
+            .filter(|name| **name == "Exiled Trinket")
+            .count(),
+        2,
+        "activation should put each exiled-with-source card into its owner's graveyard"
+    );
+    assert!(
+        graveyard_names.contains(&"Pinnacle Starcage"),
+        "activation should sacrifice Pinnacle Starcage after creating tokens"
+    );
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+            .count(),
+        2,
+        "expected two Robot tokens from two moved exiled cards"
     );
 }
 
@@ -48904,6 +49991,98 @@ fn expert_level_safe_runtime_nonmatching_choices_exile_another_card() {
             .into_iter()
             .any(|id| id == source),
         "nonmatching choices should leave Expert-Level Safe on the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_returns_mixed_owner_cards_to_their_own_graveyards() {
+    use crate::effects::ExecutionContext;
+    use crate::object::ObjectKind;
+
+    let def = parse_oracle_card_definition("Pinnacle Starcage");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Pinnacle Starcage should have an activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_card = CardDefinitionBuilder::new(CardId::from_raw(91_201), "Alice Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let bob_card = CardDefinitionBuilder::new(CardId::from_raw(91_202), "Bob Trinket")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice_exiled = game.create_object_from_definition(&alice_card, alice, Zone::Exile);
+    let bob_exiled = game.create_object_from_definition(&bob_card, bob, Zone::Exile);
+    game.add_exiled_with_source_link(source, alice_exiled);
+    game.add_exiled_with_source_link(source, bob_exiled);
+
+    let mut ctx = ExecutionContext::new_default(source, alice);
+    for effect in &activated.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Pinnacle Starcage activation effect should resolve");
+    }
+
+    let alice_graveyard_names = game
+        .player(alice)
+        .expect("Alice should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+    let bob_graveyard_names = game
+        .player(bob)
+        .expect("Bob should exist")
+        .graveyard
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+        .collect::<Vec<_>>();
+
+    assert!(alice_graveyard_names.contains(&"Alice Trinket"));
+    assert!(!alice_graveyard_names.contains(&"Bob Trinket"));
+    assert!(bob_graveyard_names.contains(&"Bob Trinket"));
+    assert!(!bob_graveyard_names.contains(&"Alice Trinket"));
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.kind == ObjectKind::Token && object.name == "Robot")
+            .count(),
+        2,
+        "expected one Robot for each card put into its owner's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn pinnacle_starcage_activation_creates_no_robots_when_no_cards_are_moved_this_way() {
+    let game = resolve_pinnacle_starcage_activation_with_exiled_cards(0);
+    let alice = PlayerId::from_index(0);
+
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .graveyard
+            .iter()
+            .filter_map(|&id| game.object(id).map(|object| object.name.as_str()))
+            .any(|name| name == "Pinnacle Starcage"),
+        "activation should still sacrifice Pinnacle Starcage when no exiled cards move"
+    );
+    assert!(
+        game.battlefield
+            .iter()
+            .filter_map(|&id| game.object(id))
+            .all(|object| object.name != "Robot"),
+        "activation should not create Robot tokens when no cards were put into a graveyard this way"
     );
 }
 
@@ -52518,6 +53697,7 @@ strict_parse_card_expected_fail_test!(
 );
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
+strict_parse_card_test!(strict_parse_mighty_servant_of_leuk_o, "Mighty Servant of Leuk-o");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nesting_grounds, "Nesting Grounds");
 strict_parse_card_test!(strict_parse_nine_lives_familiar, "Nine-Lives Familiar");
@@ -52583,6 +53763,32 @@ fn skeleton_crew_compiled_text_keeps_graveyard_leave_trigger() {
             && rendered.contains("Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token")
             && rendered.contains("{5}{B}: Return this card from your graveyard to the battlefield tapped"),
         "expected Skeleton Crew compiled text to preserve anthem, graveyard-leave trigger, and graveyard activation, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mighty_servant_of_leuk_o_compiled_text_keeps_crew_count_granted_trigger() {
+    let def = parse_oracle_card_definition("Mighty Servant of Leuk-o");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Whenever this Vehicle becomes crewed for the first time each turn")
+            && rendered.contains("crewed by exactly two creatures")
+            && rendered.contains("Whenever this creature deals combat damage to a player")
+            && rendered.contains("Draw two cards")
+            && rendered.contains("until end of turn")
+            && rendered.contains("Crew 4"),
+        "expected Mighty Servant of Leuk-o compiled text to preserve crew-count trigger and temporary combat-damage draw grant, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("SourceFirstCrewedThisTurn")
+            && abilities_debug.contains("SourceCrewedByExactly")
+            && abilities_debug.contains("AddAbilityGeneric")
+            && abilities_debug.contains("ThisDealsCombatDamageToPlayerTrigger")
+            && abilities_debug.contains("CrewCostEffect"),
+        "expected Mighty Servant of Leuk-o structure to include first-crew, exact crew count, granted damage trigger, and Crew 4, got {abilities_debug}"
     );
 }
 

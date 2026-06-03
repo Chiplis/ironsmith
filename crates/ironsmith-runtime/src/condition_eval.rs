@@ -11,6 +11,9 @@ use crate::zone::Zone;
 
 use crate::triggers::{TriggerEvent, TriggerIdentity};
 
+const CREWERS_TAG: &str = "crewed_it_this_turn";
+const FIRST_CREWED_THIS_TURN_TAG: &str = "__first_crewed_this_turn";
+
 fn source_is_face_down_or_alternate_face(game: &GameState, source: ObjectId) -> bool {
     // `SourceIsFaceDown` is also used by daybound/nightbound lowering to mean
     // "this DFC is currently showing its alternate face."
@@ -731,6 +734,104 @@ fn creature_card_was_put_into_your_graveyard_this_turn(game: &GameState, player:
     })
 }
 
+fn source_crewed_by_exactly(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    filter_source: Option<ObjectId>,
+    triggering_event: Option<&TriggerEvent>,
+    count: u32,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    if let Some(event) = triggering_event
+        && let Some(keyword_action) = event.downcast::<crate::events::KeywordActionEvent>()
+        && keyword_action.action == crate::events::KeywordActionKind::Crew
+    {
+        let filter_ctx = game.filter_context_for(controller, filter_source);
+        return keyword_action
+            .object_tags
+            .get(&crate::TagKey::from(CREWERS_TAG))
+            .map(|crewers| {
+                crewers
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .count() as u32
+            })
+            .unwrap_or(0)
+            == count;
+    }
+
+    let filter_ctx = game.filter_context_for(controller, filter_source);
+    game.turn_store
+        .turn_history
+        .crewed_this_turn
+        .get(&source)
+        .map(|crewers| {
+            crewers
+                .iter()
+                .filter(|id| {
+                    game.object(**id)
+                        .is_some_and(|obj| filter.matches(obj, &filter_ctx, game))
+                })
+                .count() as u32
+        })
+        .unwrap_or(0)
+        == count
+}
+
+fn source_first_crewed_this_turn(
+    _game: &GameState,
+    source: ObjectId,
+    triggering_event: Option<&TriggerEvent>,
+) -> bool {
+    if let Some(event) = triggering_event
+        && let Some(keyword_action) = event.downcast::<crate::events::KeywordActionEvent>()
+        && keyword_action.action == crate::events::KeywordActionKind::Crew
+    {
+        return keyword_action
+            .object_tags
+            .get(&crate::TagKey::from(FIRST_CREWED_THIS_TURN_TAG))
+            .is_some_and(|snapshots| {
+                snapshots
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == source)
+            });
+    }
+
+    false
+}
+
+fn source_crewed_by_exactly_from_resolution_tags(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    count: u32,
+    filter: &crate::target::ObjectFilter,
+) -> bool {
+    let Some(crewers) = ctx.get_tagged_all("crewed_it_this_turn") else {
+        return source_crewed_by_exactly(
+            game,
+            ctx.controller,
+            ctx.source,
+            Some(ctx.source),
+            ctx.triggering_event.as_ref(),
+            count,
+            filter,
+        );
+    };
+    let filter_ctx = ctx.filter_context(game);
+    crewers
+        .iter()
+        .filter(|snapshot| {
+            if let Some(obj) = game.object(snapshot.object_id) {
+                filter.matches(obj, &filter_ctx, game)
+            } else {
+                filter.matches_snapshot(snapshot, &filter_ctx, game)
+            }
+        })
+        .count() as u32
+        == count
+}
+
 fn object_matching_entered_battlefield_this_turn(
     game: &GameState,
     ctx: SharedConditionContext<'_>,
@@ -1139,6 +1240,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::TargetManaValueLteColorsSpentToCastThisSpell => {}
         Condition::SourceIsTapped => {}
         Condition::SourceIsSaddled => {}
+        Condition::SourceCrewedByExactly { .. } => {}
         Condition::SourceDevouredCreaturesOrMore(..) => {}
         Condition::SourceIsMonstrous => {}
         Condition::SourceIsFaceDown => {}
@@ -1168,6 +1270,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PlayerOwnsCardNamedInZones { .. } => {}
         Condition::ThisAbilityResolvedThisTurnExactly(..) => {}
         Condition::FirstTimeThisTurn => {}
+        Condition::SourceFirstCrewedThisTurn => {}
         Condition::MaxTimesEachTurn(..) => {}
         Condition::DoThisMaxTimesEachTurn(..) => {}
         Condition::TriggeringObjectWasEnchanted => {}
@@ -1541,6 +1644,11 @@ pub fn evaluate_condition_external(
             .trigger_identity
             .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) == 0)
             .unwrap_or(true),
+        Condition::SourceFirstCrewedThisTurn => source_first_crewed_this_turn(
+            game,
+            ctx.source,
+            ctx.triggering_event,
+        ),
         Condition::MaxTimesEachTurn(limit) | Condition::DoThisMaxTimesEachTurn(limit) => ctx
             .trigger_identity
             .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)
@@ -1931,6 +2039,15 @@ pub fn evaluate_condition_external(
         }
         Condition::SourceIsTapped => game.is_tapped(ctx.source),
         Condition::SourceIsSaddled => game.is_saddled(ctx.source),
+        Condition::SourceCrewedByExactly { count, filter } => source_crewed_by_exactly(
+            game,
+            ctx.controller,
+            ctx.source,
+            ctx.filter_source,
+            ctx.triggering_event,
+            *count,
+            filter,
+        ),
         Condition::SourceDevouredCreaturesOrMore(count) => {
             game.devoured_count(ctx.source) >= *count
         }
@@ -2671,6 +2788,7 @@ fn evaluate_condition_simple(
             player_had_land_enter_battlefield_this_turn(game, player_id)
         }
         Condition::FirstTimeThisTurn
+        | Condition::SourceFirstCrewedThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => true,
         Condition::TriggeringObjectWasEnchanted
@@ -2736,6 +2854,7 @@ fn evaluate_condition_simple(
         | Condition::TargetManaValueLteColorsSpentToCastThisSpell
         | Condition::SourceIsTapped
         | Condition::SourceIsSaddled
+        | Condition::SourceCrewedByExactly { .. }
         | Condition::SourceDevouredCreaturesOrMore(_)
         | Condition::SourceIsMonstrous
         | Condition::SourceIsFaceDown
@@ -3509,6 +3628,9 @@ fn evaluate_condition(
         }
         Condition::SourceIsTapped => Ok(game.is_tapped(ctx.source)),
         Condition::SourceIsSaddled => Ok(game.is_saddled(ctx.source)),
+        Condition::SourceCrewedByExactly { count, filter } => Ok(
+            source_crewed_by_exactly_from_resolution_tags(game, ctx, *count, filter),
+        ),
         Condition::SourceDevouredCreaturesOrMore(count) => {
             Ok(game.devoured_count(ctx.source) >= *count)
         }
@@ -3697,6 +3819,7 @@ fn evaluate_condition(
             }))
         }
         Condition::FirstTimeThisTurn
+        | Condition::SourceFirstCrewedThisTurn
         | Condition::MaxTimesEachTurn(_)
         | Condition::DoThisMaxTimesEachTurn(_) => Ok(true),
         Condition::TriggeringObjectWasEnchanted => Ok(ctx

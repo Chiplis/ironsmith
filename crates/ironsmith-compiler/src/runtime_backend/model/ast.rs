@@ -222,6 +222,7 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         during_turn: PlayerFilter,
     },
+    PlayerLostGame(PlayerFilter),
     YouDrawCard,
     PlayerDrawsCard(PlayerFilter),
     PlayerDrawsCardNotDuringTurn {
@@ -551,6 +552,10 @@ pub(crate) enum PredicateAst {
     },
     SourceIsTapped,
     SourceIsSaddled,
+    SourceCrewedByExactly {
+        count: u32,
+        filter: ObjectFilter,
+    },
     SourceMatches(ObjectFilter),
     TriggeringObjectHadToAttackThisCombat,
 
@@ -634,6 +639,7 @@ impl PredicateAst {
             PredicateAst::SourceChosenOption(_)
             | PredicateAst::SourceIsTapped
             | PredicateAst::SourceIsSaddled
+            | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)
             | PredicateAst::SourceHasNoCounter(_)
             | PredicateAst::SourceHasCounterAtLeast { .. }
@@ -1030,6 +1036,8 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         source_of_your_choice: bool,
+        protect_you_and_permanents_you_control: bool,
+        follow_up_effects: Vec<EffectAst>,
     },
     PreventAllDamageToTarget {
         target: TargetAst,
@@ -1133,6 +1141,7 @@ pub(crate) enum SubjectVerbActionAst {
     ExileUntilSourceLeaves {
         target: TargetAst,
         face_down: bool,
+        all: bool,
     },
     MoveToZone {
         target: TargetAst,
@@ -1143,6 +1152,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_attacking: bool,
         battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
+        all: bool,
     },
     MoveToLibraryTopOrBottomChoice {
         target: TargetAst,
@@ -1479,6 +1489,7 @@ pub(crate) enum SubjectVerbActionAst {
     },
     DealDamageEqualToPower {
         source: TargetAst,
+        amount: Value,
         target: TargetAst,
     },
     DealDistributedDamage {
@@ -2218,12 +2229,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 amount,
                 target,
                 duration,
+                follow_up_effects,
                 ..
             } => f
                 .debug_struct("PreventDamage")
                 .field("amount", amount)
                 .field("target", target)
                 .field("duration", duration)
+                .field("follow_up_effects", follow_up_effects)
                 .finish(),
             Self::PreventAllDamageToTarget { target, duration } => f
                 .debug_struct("PreventAllDamageToTarget")
@@ -2420,10 +2433,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("face_down", face_down)
                 .field("controller", controller)
                 .finish(),
-            Self::ExileUntilSourceLeaves { target, face_down } => f
+            Self::ExileUntilSourceLeaves { target, face_down, all } => f
                 .debug_struct("ExileUntilSourceLeaves")
                 .field("target", target)
                 .field("face_down", face_down)
+                .field("all", all)
                 .finish(),
             Self::MoveToZone {
                 target,
@@ -2434,6 +2448,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_attacking,
                 battlefield_face_down,
                 attached_to,
+                all,
             } => f
                 .debug_struct("MoveToZone")
                 .field("target", target)
@@ -2444,6 +2459,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_attacking", battlefield_attacking)
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
+                .field("all", all)
                 .finish(),
             Self::MoveToLibraryTopOrBottomChoice { target } => f
                 .debug_struct("MoveToLibraryTopOrBottomChoice")
@@ -2964,9 +2980,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("amount", amount)
                 .field("filter", filter)
                 .finish(),
-            Self::DealDamageEqualToPower { source, target } => f
+            Self::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            } => f
                 .debug_struct("DealDamageEqualToPower")
                 .field("source", source)
+                .field("amount", amount)
                 .field("target", target)
                 .finish(),
             Self::DealDistributedDamage { amount, target } => f
@@ -3711,6 +3732,24 @@ impl EffectAst {
         duration: Until,
         source_of_your_choice: bool,
     ) -> Self {
+        Self::subject_verb_prevent_damage_with_options(
+            amount,
+            target,
+            duration,
+            source_of_your_choice,
+            false,
+            Vec::new(),
+        )
+    }
+
+    pub(crate) fn subject_verb_prevent_damage_with_options(
+        amount: Value,
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+        protect_you_and_permanents_you_control: bool,
+        follow_up_effects: Vec<EffectAst>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
@@ -3719,6 +3758,8 @@ impl EffectAst {
                 target,
                 duration,
                 source_of_your_choice,
+                protect_you_and_permanents_you_control,
+                follow_up_effects,
             },
         )
     }
@@ -4084,7 +4125,26 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down },
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                face_down,
+                all: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_exile_all_until_source_leaves(
+        target: TargetAst,
+        face_down: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                face_down,
+                all: true,
+            },
         )
     }
 
@@ -4130,6 +4190,32 @@ impl EffectAst {
                 battlefield_attacking,
                 battlefield_face_down,
                 attached_to,
+                all: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_move_all_to_zone(
+        target: TargetAst,
+        zone: Zone,
+        to_top: bool,
+        battlefield_controller: ReturnControllerAst,
+        battlefield_tapped: bool,
+        attached_to: Option<TargetAst>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::MoveToZone {
+                target,
+                zone,
+                to_top,
+                battlefield_controller,
+                battlefield_tapped,
+                battlefield_attacking: false,
+                battlefield_face_down: false,
+                attached_to,
+                all: true,
             },
         )
     }
@@ -5201,10 +5287,26 @@ impl EffectAst {
     }
 
     pub(crate) fn subject_verb_damage_equal_to_power(source: TargetAst, target: TargetAst) -> Self {
+        Self::subject_verb_damage_with_source(
+            source.clone(),
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            target,
+        )
+    }
+
+    pub(crate) fn subject_verb_damage_with_source(
+        source: TargetAst,
+        amount: Value,
+        target: TargetAst,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DealDamageEqualToPower { source, target },
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            },
         )
     }
 

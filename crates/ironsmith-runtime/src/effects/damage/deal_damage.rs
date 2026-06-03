@@ -312,6 +312,66 @@ impl EffectExecutor for DealDamageEffect {
             ));
         }
 
+        if matches!(
+            self.target.base(),
+            ChooseSpec::AnyTarget
+                | ChooseSpec::AnyOtherTarget
+                | ChooseSpec::PlayerOrPlaneswalker(_)
+        ) {
+            let mut found_assignment = false;
+            for assignment in &ctx.target_assignments {
+                if assignment.spec == self.target || assignment.spec.base() == self.target.base() {
+                    found_assignment = true;
+                    let Some(assigned_targets) = ctx.targets.get(assignment.range.clone()) else {
+                        continue;
+                    };
+                    for target in assigned_targets {
+                        match target {
+                            ResolvedTarget::Player(player_id) => {
+                                if !game
+                                    .player(*player_id)
+                                    .is_some_and(|player| player.is_in_game())
+                                {
+                                    continue;
+                                }
+                                return Ok(apply_processed_damage_outcome(
+                                    game,
+                                    ctx.source,
+                                    ctx.source_snapshot.as_ref(),
+                                    DamageTarget::Player(*player_id),
+                                    amount,
+                                    self.source_is_combat,
+                                    ctx.provenance,
+                                    ctx.cause.clone(),
+                                ));
+                            }
+                            ResolvedTarget::Object(object_id) => {
+                                if !game.object(*object_id).is_some_and(|obj| {
+                                    obj.has_card_type(CardType::Creature)
+                                        || obj.has_card_type(CardType::Planeswalker)
+                                }) {
+                                    continue;
+                                }
+                                return Ok(apply_processed_damage_outcome(
+                                    game,
+                                    ctx.source,
+                                    ctx.source_snapshot.as_ref(),
+                                    DamageTarget::Object(*object_id),
+                                    amount,
+                                    self.source_is_combat,
+                                    ctx.provenance,
+                                    ctx.cause.clone(),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+            if found_assignment {
+                return Ok(EffectOutcome::target_invalid());
+            }
+        }
+
         let controller_of_tagged = match &self.target {
             ChooseSpec::Player(
                 PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))

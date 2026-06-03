@@ -866,6 +866,22 @@ fn prevention_gain_life_follow_up(
     Some(gain)
 }
 
+fn prevention_damage_any_target_follow_up(
+    follow_up_effects: &[Effect],
+) -> Option<&crate::effects::DealDamageEffect> {
+    let [effect] = follow_up_effects else {
+        return None;
+    };
+    let damage = unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(damage.amount.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+        return None;
+    }
+    if !matches!(damage.target, ChooseSpec::AnyTarget) {
+        return None;
+    }
+    Some(damage)
+}
+
 fn describe_assigns_no_combat_damage(source: &ChooseSpec, until: &Until) -> Option<String> {
     if !matches!(until, Until::EndOfTurn) {
         return None;
@@ -3499,6 +3515,11 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
+    let refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_player_protection_from_everything_pair(&refs) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_untap_attacking_then_additional_combat(effects) {
         return Some(compact);
     }
@@ -3528,7 +3549,6 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if effects.len() == 3 {
-        let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
             return Some(compact);
         }
@@ -3548,7 +3568,8 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
-    describe_roll_choose_destroy_create_structural(effects)
+    describe_source_exiled_graveyard_token_sacrifice_structural(effects)
+        .or_else(|| describe_roll_choose_destroy_create_structural(effects))
         .or_else(|| describe_draw_discard_then_conditional_untap_structural(effects))
         .or_else(|| describe_draw_discard_then_create_structural(effects))
         .or_else(|| describe_reveal_top_choice_to_hand_rest_graveyard_structural(effects))
@@ -3558,6 +3579,45 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         .or_else(|| describe_choose_top_exile_then_play_structural(effects))
         .or_else(|| describe_choose_name_target_mills_conditional_draw(effects))
         .or_else(|| describe_each_creature_and_player_damage_cant_regenerate_structural(effects))
+}
+
+fn describe_source_exiled_graveyard_token_sacrifice_structural(
+    effects: &[Effect],
+) -> Option<String> {
+    let [move_effect, create_effect, sacrifice_effect] = effects else {
+        return None;
+    };
+    let with_id = move_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let move_to_zone = with_id
+        .effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Graveyard || move_to_zone.to_top {
+        return None;
+    }
+    let ChooseSpec::All(filter) = move_to_zone.target.base() else {
+        return None;
+    };
+    if !is_source_exiled_cards_filter(filter) {
+        return None;
+    }
+    let create = create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    if !is_effect_count_reference(&create.count, Some(with_id.id)) {
+        return None;
+    }
+    let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
+    if !matches!(sacrifice.target, ChooseSpec::Source) {
+        return None;
+    }
+
+    let token_blueprint = describe_token_blueprint(&create.token);
+    let create_text = describe_create_token_action(
+        &format!("a {token_blueprint} for each card put into a graveyard this way"),
+        &create.controller,
+    );
+    Some(format!(
+        "Put each card exiled with this artifact into its owner's graveyard, then {}. Sacrifice this artifact.",
+        lowercase_first(&create_text)
+    ))
 }
 
 fn keyword_label_from_static_ability_id(
@@ -4930,7 +4990,61 @@ fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
         .is_some_and(|cast| cast.as_copy && cast.tag.as_str() == tag)
 }
 
+fn describe_player_gain_keyword(player: &PlayerFilter, keyword: &str, duration: &Until) -> String {
+    let subject = describe_player_set_filter(player);
+    let verb = match player {
+        PlayerFilter::You
+        | PlayerFilter::Any
+        | PlayerFilter::Opponent
+        | PlayerFilter::NotYou
+        | PlayerFilter::Teammate => "gain",
+        _ => "gains",
+    };
+    let duration_text = if *duration == Until::EndOfTurn {
+        "until end of turn".to_string()
+    } else {
+        describe_until(duration)
+    };
+    format!("{subject} {verb} {keyword} {duration_text}")
+}
+
+fn describe_player_protection_from_everything_pair(effects: &[&Effect]) -> Option<String> {
+    let [cant_effect, prevent_effect] = effects else {
+        return None;
+    };
+    let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
+    let prevent = prevent_effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()?;
+    let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction else {
+        return None;
+    };
+    let same_player = match prevent.target.base() {
+        ChooseSpec::Player(prevent_player) => prevent_player == player,
+        ChooseSpec::SourceController => player == &PlayerFilter::You,
+        _ => false,
+    };
+    if !same_player
+        || prevent.duration != cant.duration
+        || prevent.damage_filter != crate::prevention::DamageFilter::all()
+        || !prevent.follow_up_effects.is_empty()
+    {
+        return None;
+    }
+
+    Some(describe_player_gain_keyword(
+        player,
+        "protection from everything",
+        &cant.duration,
+    ))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let [first, second] = effects
+        && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
+        && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
@@ -6518,6 +6632,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_source_counter_and_create(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_player_protection_from_everything_pair(&filtered) {
         return compact;
     }
 
@@ -15689,6 +15806,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     }
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_player_protection_from_everything_pair(&effect_refs) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
         return Some(compact);
     }
@@ -16383,6 +16503,7 @@ fn describe_damage_amount_clause(amount: &Value) -> (String, Option<String>) {
         return (amount_text, Some(where_x));
     }
     if value_prefers_equal_to(amount)
+        || power_damage_prefers_equal_to(amount)
         || (!value_prefers_where_x(amount) && count_damage_prefers_equal_to(amount))
     {
         return (format!("damage equal to {}", describe_value(amount)), None);
@@ -16398,6 +16519,19 @@ fn count_damage_prefers_equal_to(amount: &Value) -> bool {
         Value::Count(_) | Value::CountScaled(_, _) => true,
         Value::CountersOnSource(_) | Value::CountersOn(_, _) => true,
         Value::Scaled(inner, _) => count_damage_prefers_equal_to(inner),
+        _ => false,
+    }
+}
+
+fn power_damage_prefers_equal_to(amount: &Value) -> bool {
+    match amount.unhinted() {
+        Value::SourcePower | Value::SourceToughness | Value::PowerOf(_) | Value::ToughnessOf(_) => {
+            true
+        }
+        Value::Scaled(inner, _) => power_damage_prefers_equal_to(inner),
+        Value::Add(left, right) => {
+            power_damage_prefers_equal_to(left) || power_damage_prefers_equal_to(right)
+        }
         _ => false,
     }
 }
@@ -18392,6 +18526,30 @@ mod tests {
     }
 
     #[test]
+    fn target_then_must_be_blocked_renders_single_target_sentence() {
+        let target_tag = TagKey::from("targeted_0");
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(ObjectFilter::creature()),
+        )))
+        .tag(target_tag.clone());
+
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: target_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::cant_until(
+            crate::effect::Restriction::must_be_blocked(filter),
+            Until::EndOfTurn,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[target, cant]),
+            "Target creature must be blocked this turn if able"
+        );
+    }
+
+    #[test]
     fn tap_it_then_cant_untap_keeps_it_reference() {
         let tag = TagKey::from("__it__");
         let tap = Effect::tap(ChooseSpec::Tagged(tag.clone()));
@@ -20074,6 +20232,24 @@ fn loyalty_cost_amount_text(text: &str) -> Option<String> {
 fn loyalty_cost_amount_word(text: &str) -> Option<i32> {
     let text = text.trim();
     ironsmith_core::parse_cardinal_word(text).and_then(|value| value.try_into().ok())
+}
+
+fn life_lost_this_way_group_size(value: &Value) -> Option<i32> {
+    match value.unhinted() {
+        Value::EffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::EventValue(EventValueSpec::LifeAmount) => Some(1),
+        Value::DividedRoundedDown(inner, divisor) if *divisor > 1 => {
+            life_lost_this_way_group_size(inner).map(|_| *divisor)
+        }
+        _ => None,
+    }
 }
 
 fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Option<String> {
@@ -22349,6 +22525,9 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
     let (filter, restriction_text) = match &cant.restriction {
         crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),
         crate::effect::Restriction::BeBlocked(filter) => (filter, "can't be blocked this turn"),
+        crate::effect::Restriction::MustBeBlocked(filter) => {
+            (filter, "must be blocked this turn if able")
+        }
         _ => return None,
     };
     if !filter.tagged_constraints.iter().any(|constraint| {
@@ -30863,6 +31042,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     && crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
                 {
                     "Return those cards to their owners' graveyards".to_string()
+                } else if let ChooseSpec::All(filter) = move_to_zone.target.base()
+                    && is_source_exiled_cards_filter(filter)
+                {
+                    "Put each card exiled with this artifact into its owner's graveyard".to_string()
                 } else {
                     format!("Put {target} into its owner's graveyard")
                 }
@@ -31058,10 +31241,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         } else {
             ""
         };
-        return format!(
-            "Exile {}{face_down_suffix} {duration}",
-            describe_choose_spec(&exile_until.spec)
-        );
+        let mut target = describe_choose_spec(&exile_until.spec);
+        if matches!(&exile_until.spec, ChooseSpec::All(_)) {
+            target = target.replace("artifacts or creatures", "artifacts and creatures");
+        }
+        return format!("Exile {target}{face_down_suffix} {duration}");
     }
     if let Some(_haunt_exile) = effect.downcast_ref::<crate::effects::HauntExileEffect>() {
         return "Exile it haunting target creature".to_string();
@@ -31630,6 +31814,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_for_each_count_filter(&filter)
             );
         }
+        if let Some(group_size) = life_lost_this_way_group_size(&put_counters.amount) {
+            return format!(
+                "Put {} on {target} for each {group_size} life lost this way",
+                describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+            );
+        }
         if let Some((counter_text, where_x)) =
             describe_counter_count_with_where_x(&put_counters.amount, put_counters.counter_type)
         {
@@ -31671,6 +31861,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         }
                         crate::effect::EffectMetric::ChosenCount => {
                             Some("object chosen this way".to_string())
+                        }
+                        crate::effect::EffectMetric::LifeLost => {
+                            Some("1 life lost this way".to_string())
                         }
                         _ => None,
                     }
@@ -34334,6 +34527,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             };
             return format!("{subject} must be blocked this turn if able");
         }
+        if let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction {
+            return describe_player_gain_keyword(player, "shroud", &cant.duration);
+        }
         if cant.duration == Until::EndOfTurn {
             let restriction_text = describe_restriction(&cant.restriction);
             if restriction_text.to_ascii_lowercase().contains(" each turn") {
@@ -35256,22 +35452,42 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ""
         };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
+            let protected = if prevent_damage.protect_you_and_permanents_you_control {
+                "you and/or permanents you control".to_string()
+            } else {
+                describe_choose_spec(&prevent_damage.target)
+            };
             return format!(
                 "Prevent the next {} {} that would be dealt to {} {}{}. For each 1 damage prevented this way, put a {} counter on {}",
                 describe_value(&prevent_damage.amount),
                 damage_text,
-                describe_choose_spec(&prevent_damage.target),
+                protected,
                 timing,
                 source_text,
                 describe_counter_type(put.counter_type),
                 describe_prevention_follow_up_target(&prevent_damage.target)
             );
         }
+        let protected = if prevent_damage.protect_you_and_permanents_you_control {
+            "you and/or permanents you control".to_string()
+        } else {
+            describe_choose_spec(&prevent_damage.target)
+        };
+        if prevention_damage_any_target_follow_up(&prevent_damage.follow_up_effects).is_some() {
+            return format!(
+                "Prevent the next {} {} that would be dealt to {} {}{}. If damage is prevented this way, this spell deals that much damage to any target",
+                describe_value(&prevent_damage.amount),
+                damage_text,
+                protected,
+                timing,
+                source_text
+            );
+        }
         return format!(
             "Prevent the next {} {} that would be dealt to {} {}{}",
             describe_value(&prevent_damage.amount),
             damage_text,
-            describe_choose_spec(&prevent_damage.target),
+            protected,
             timing,
             source_text
         );
@@ -40019,6 +40235,9 @@ pub(super) fn split_trigger_intervening_if(
     for item in flat {
         match item {
             crate::ConditionExpr::FirstTimeThisTurn => {
+                first_time_this_turn = true;
+            }
+            crate::ConditionExpr::SourceFirstCrewedThisTurn => {
                 first_time_this_turn = true;
             }
             crate::ConditionExpr::DoThisMaxTimesEachTurn(limit) => {

@@ -966,12 +966,32 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceIsMonstrous => {
             "as long as this creature is monstrous".to_string()
         }
+        crate::ConditionExpr::SourceCrewedByExactly { count, filter } => {
+            let count_text = ironsmith_core::cardinal_word(*count)
+                .unwrap_or_else(|| count.to_string());
+            let filter_text = if *count == 1 {
+                filter.description()
+            } else {
+                let desc = filter.description();
+                if desc.ends_with('s') {
+                    desc
+                } else {
+                    format!("{desc}s")
+                }
+            };
+            format!(
+                "if it was crewed by exactly {count_text} {filter_text}"
+            )
+        }
         crate::ConditionExpr::SourceDevouredCreaturesOrMore(count) => {
             if *count == 1 {
                 "if it devoured a creature".to_string()
             } else {
                 format!("if it devoured {count} or more creatures")
             }
+        }
+        crate::ConditionExpr::SourceFirstCrewedThisTurn => {
+            "if it was crewed for the first time this turn".to_string()
         }
         crate::ConditionExpr::EnchantedPermanentIsCreature => {
             "as long as enchanted permanent is a creature".to_string()

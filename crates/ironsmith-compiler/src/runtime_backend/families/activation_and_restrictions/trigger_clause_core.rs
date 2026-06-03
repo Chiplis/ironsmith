@@ -640,6 +640,8 @@ const YOU_GAIN_LIFE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "gain", "life"]);
 const LOSE_LIFE_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["lose", "life"], &["loses", "life"]]);
+const LOSE_GAME_TRIGGER_SUFFIX: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["lose", "the", "game"], &["loses", "the", "game"]]);
 const DRAW_A_CARD_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["draw", "a", "card"], &["draws", "a", "card"]]);
 const OPPONENT_EFFECT_DISCARDS_THIS_CARD_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -3079,7 +3081,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         )
     }) {
         let subject_words = &words[..crew_word_idx];
-        let source_filter = if is_source_reference_words(subject_words) {
+        let source_becomes_crewed = subject_words
+            .last()
+            .is_some_and(|word| *word == "becomes")
+            && is_source_reference_words(&subject_words[..subject_words.len().saturating_sub(1)]);
+        let source_filter = if source_becomes_crewed {
+            Some(ObjectFilter::default())
+        } else if is_source_reference_words(subject_words) {
             Some(ObjectFilter::source())
         } else {
             let subject_end = word_view
@@ -3092,18 +3100,19 @@ pub(crate) fn parse_trigger_clause_lexed(
                 .token_index_after_words(crew_word_idx + 1)
                 .unwrap_or(tokens.len());
             let tail_words = &words[crew_word_idx + 1..];
-            let object_filter =
-                if tail_words.is_empty() || CREW_VEHICLE_TAIL_PATTERN.matches_words(tail_words) {
-                    ObjectFilter::default().with_subtype(Subtype::Vehicle)
-                } else {
-                    let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
-                    parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
-                        CardTextError::ParseError(format!(
-                            "unsupported crew object filter in trigger clause (clause: '{}')",
-                            words.join(" ")
-                        ))
-                    })?
-                };
+            let object_filter = if source_becomes_crewed {
+                ObjectFilter::source().with_subtype(Subtype::Vehicle)
+            } else if tail_words.is_empty() || CREW_VEHICLE_TAIL_PATTERN.matches_words(tail_words) {
+                ObjectFilter::default().with_subtype(Subtype::Vehicle)
+            } else {
+                let tail_tokens = trim_commas(tokens.get(tail_start..).unwrap_or_default());
+                parse_object_filter_lexed(&tail_tokens, false).map_err(|_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported crew object filter in trigger clause (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?
+            };
             return Ok(TriggerSpec::KeywordActionTaggedObject {
                 action: crate::events::KeywordActionKind::Crew,
                 player: PlayerFilter::Any,
@@ -3486,6 +3495,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject = &words[..words.len().saturating_sub(2)];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             return Ok(TriggerSpec::PlayerLosesLife(player));
+        }
+    }
+
+    if LOSE_GAME_TRIGGER_SUFFIX.matches_words(&words) {
+        let subject = &words[..words.len().saturating_sub(3)];
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            return Ok(TriggerSpec::PlayerLostGame(player));
         }
     }
 

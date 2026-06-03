@@ -282,35 +282,6 @@ const DAMAGE_DOUBLING_TO_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
             &["would", "deal", "damage", "to", "target"],
         ]]
 );
-const DAMAGE_PLUS_REPLACEMENT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "if",
-            "a",
-            "source",
-            "you",
-            "control",
-            "would",
-            "deal",
-            "damage",
-            "to",
-            "an",
-            "opponent",
-            "or",
-            "a",
-            "permanent",
-            "an",
-            "opponent",
-            "controls",
-            "it",
-            "deals",
-            "that",
-            "much",
-            "damage",
-            "plus",
-        ];
-    suffix & ["instead"]
-);
 const WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to"]);
 const WOULD_DEAL_DAMAGE_TO_YOU_PHRASE_PATTERN: ClauseShape<'static> =
@@ -322,6 +293,8 @@ const IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> = cl
             &["it", "deals", "triple", "that", "damage", "to"],
         ]
 );
+const IT_DEALS_THAT_MUCH_DAMAGE_PLUS_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["it", "deals", "that", "much", "damage", "plus"]);
 const THAT_SOURCE_DEALS_DAMAGE_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "source", "deals", "damage", "equal", "to"]);
 const DAMAGE_REDIRECT_TO_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2697,6 +2670,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_damage_doubling_mana_value_marker_line),
         single_static_ability_ast_rule!(parse_conditional_source_spell_keyword_line),
+        single_static_ability_ast_rule!(parse_affinity_cost_reduction_line),
         single_static_ability_ast_rule!(parse_pregame_begin_on_battlefield_line),
         single_static_ability_ast_rule!(parse_pregame_mulligan_redraw_line),
         multi_static_ability_ast_rule!(parse_combined_pregame_choose_color_line),
@@ -4034,6 +4008,41 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     None
 }
 
+pub(crate) fn parse_affinity_cost_reduction_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let core_tokens = if let Some(paren_idx) = find_token_kind(tokens, TokenKind::LParen) {
+        trim_commas(&tokens[..paren_idx])
+    } else {
+        trim_commas(tokens)
+    };
+    let words = parser_token_word_refs(&core_tokens);
+    if !word_slice_starts_with(&words, &["affinity", "for"]) || words.len() < 3 {
+        return Ok(None);
+    }
+
+    if word_slice_eq(&words, &["affinity", "for", "artifacts"]) {
+        return Ok(None);
+    }
+
+    let filter_tokens = trim_commas(&core_tokens[2..]);
+    let mut filter = parse_object_filter_lexed(&filter_tokens, false)?;
+    if filter.controller.is_none() {
+        filter.controller = Some(PlayerFilter::You);
+    }
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+
+    Ok(Some(StaticAbility::new(
+        crate::static_abilities::ThisSpellCostReduction::new(
+            Value::Count(filter.clone()),
+            crate::static_abilities::ThisSpellCostCondition::Always,
+        )
+        .with_affinity_filter(filter),
+    )))
+}
+
 pub(crate) fn parse_filter_dont_untap_during_controllers_untap_steps_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -4846,30 +4855,106 @@ pub(crate) fn parse_damage_amount_replacement_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
     let words = parser_token_word_refs(&tokens);
-    const DAMAGE_PLUS_REPLACEMENT_PREFIX_LEN: usize = 23;
-    if !DAMAGE_PLUS_REPLACEMENT_PREFIX_PATTERN.matches_words(&words) {
+    if !IF_PREFIX_PATTERN.matches_words(&words) {
         return Ok(None);
     }
-    let Some(delta_word) = words.get(DAMAGE_PLUS_REPLACEMENT_PREFIX_LEN) else {
+
+    let Some(would_idx) = find_window_by(&words, 4, |window| {
+        WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+    }) else {
+        return Ok(None);
+    };
+    let Some(source_idx) = SOURCE_WORD_PATTERN.find_word(&words[..would_idx]) else {
+        return Ok(None);
+    };
+    if source_idx <= 1 {
+        return Ok(None);
+    }
+
+    let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
+        IT_DEALS_THAT_MUCH_DAMAGE_PLUS_PHRASE_PATTERN.matches_words(window)
+    }) else {
+        return Ok(None);
+    };
+    let replacement_start = would_idx + 4 + tail_idx;
+    let Some(delta_word) = words.get(replacement_start + 6) else {
         return Ok(None);
     };
     let Some(delta) = parse_number_word_i32(delta_word) else {
         return Ok(None);
     };
-    if words.len() != DAMAGE_PLUS_REPLACEMENT_PREFIX_LEN + 2 {
+
+    let damaged_words = &words[would_idx + 4..replacement_start];
+    let replacement_target_words = &words[replacement_start + 7..];
+    let (target_player_filter, target_object_filter) =
+        parse_damage_amount_replacement_target_filters(damaged_words)?;
+    if target_player_filter.is_none() && target_object_filter.is_none() {
+        return Ok(None);
+    }
+    if !damage_amount_plus_tail_matches_target(
+        replacement_target_words,
+        target_player_filter.as_ref(),
+        target_object_filter.as_ref(),
+    )? {
         return Ok(None);
     }
 
-    let display = format!(
-        "If a source you control would deal damage to an opponent or a permanent an opponent controls, it deals that much damage plus {delta} instead."
+    let source_tokens = trim_lexed_commas(
+        LexedClause::new(&tokens)
+            .between_word_range(1, source_idx)
+            .unwrap_or_else(|| LexedClause::new(&tokens).between(tokens.len(), tokens.len()))
+            .tokens(),
     );
+    let source_words = parser_token_word_refs(source_tokens);
+    let mut source_filter =
+        if source_tokens.is_empty() || ARTICLE_WORD_PATTERN.matches_words(&source_words) {
+            ObjectFilter::default()
+        } else {
+            parse_object_filter_lexed(source_tokens, false)?
+        };
+
+    match &words[source_idx + 1..would_idx] {
+        ["you", "control"] => source_filter = source_filter.you_control(),
+        ["an", "opponent", "controls"] | ["opponent", "controls"] => {
+            source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
+        }
+        [] => {}
+        _ => return Ok(None),
+    }
+
+    let mut display = render_token_slice(&tokens).trim().to_string();
+    if !display.ends_with('.') {
+        display.push('.');
+    }
     Ok(Some(StaticAbility::modify_damage_amount_replacement(
-        ObjectFilter::default().you_control(),
-        Some(PlayerFilter::Opponent),
-        Some(ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent)),
+        source_filter,
+        target_player_filter,
+        target_object_filter,
         delta,
         display,
     )))
+}
+
+fn damage_amount_plus_tail_matches_target(
+    words: &[&str],
+    target_player_filter: Option<&PlayerFilter>,
+    target_object_filter: Option<&ObjectFilter>,
+) -> Result<bool, CardTextError> {
+    if words == ["instead"] {
+        return Ok(true);
+    }
+    if words.len() < 4
+        || !TO_WORD_PATTERN.matches_word(words[0])
+        || !THAT_WORD_PATTERN.matches_word(words[1])
+        || !INSTEAD_WORD_PATTERN.matches_last_word(words)
+    {
+        return Ok(false);
+    }
+
+    let (tail_player_filter, tail_object_filter) =
+        parse_damage_amount_replacement_target_filters(&words[2..words.len() - 1])?;
+    Ok(tail_player_filter.as_ref() == target_player_filter
+        && tail_object_filter.as_ref() == target_object_filter)
 }
 
 pub(crate) fn parse_double_damage_amount_replacement_line(

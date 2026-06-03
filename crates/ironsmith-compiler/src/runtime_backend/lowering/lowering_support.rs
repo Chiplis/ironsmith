@@ -158,6 +158,13 @@ fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&'static str
     }
     if matches!(
         trigger,
+        TriggerSpec::KeywordActionTaggedObject { object_tag, .. }
+            if object_tag.as_str() == IT_TAG
+    ) {
+        return Some(IT_TAG);
+    }
+    if matches!(
+        trigger,
         TriggerSpec::ThisDealsDamageTo(_)
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsCombatDamageTo { .. }
@@ -296,15 +303,15 @@ fn rewrite_prepare_effects_from_normalized(
     if include_trigger_prelude {
         let needs_triggering_prelude = default_last_object_tag
             .as_ref()
-            .is_some_and(|tag| tag.as_str() == "triggering")
+            .is_some_and(|tag| matches!(tag.as_str(), "triggering" | IT_TAG))
             || effects_reference_tag(reference_effects, "triggering");
         if needs_triggering_prelude {
-            prelude.insert(
-                0,
-                EffectPreludeTag::TriggeringObject(crate::cards::builders::TagKey::from(
-                    "triggering",
-                )),
-            );
+            let tag = default_last_object_tag
+                .as_ref()
+                .filter(|tag| tag.as_str() == IT_TAG)
+                .cloned()
+                .unwrap_or_else(|| crate::cards::builders::TagKey::from("triggering"));
+            prelude.insert(0, EffectPreludeTag::TriggeringObject(tag));
         }
         if effects_reference_tag(reference_effects, "triggering_source") {
             prelude.insert(

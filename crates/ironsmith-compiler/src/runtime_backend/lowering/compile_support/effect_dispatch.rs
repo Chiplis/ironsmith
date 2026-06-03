@@ -19,6 +19,32 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Value {
+    match value {
+        Value::SourcePower => Value::PowerOf(Box::new(source.clone())),
+        Value::SourceToughness => Value::ToughnessOf(Box::new(source.clone())),
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::PowerOf(Box::new(source.clone()))
+        }
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::ToughnessOf(Box::new(source.clone()))
+        }
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_source_value_to_damage_source(left, source)),
+            Box::new(bind_source_value_to_damage_source(right, source)),
+        ),
+        Value::Scaled(inner, multiplier) => Value::Scaled(
+            Box::new(bind_source_value_to_damage_source(inner, source)),
+            *multiplier,
+        ),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_source_value_to_damage_source(value, source)),
+            hints: hints.clone(),
+        },
+        _ => value.clone(),
+    }
+}
+
 fn prevention_target_from_non_choice_target(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
@@ -1693,8 +1719,37 @@ fn compile_subject_verb_effect(
             target,
             duration,
             source_of_your_choice,
+            protect_you_and_permanents_you_control,
+            follow_up_effects,
         } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
+            let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
+                (Vec::new(), Vec::new())
+            } else {
+                let mut follow_up_ctx = EffectLoweringContext::from_parts(
+                    ctx.id_gen_context(),
+                    ctx.lowering_frame(),
+                );
+                follow_up_ctx.allow_life_event_value = true;
+                let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
+                ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
+                compiled
+            };
+            if *protect_you_and_permanents_you_control {
+                let mut prevent = crate::effects::PreventDamageEffect::new(
+                    amount,
+                    ChooseSpec::SourceController,
+                    duration.clone(),
+                )
+                .protecting_you_and_permanents_you_control();
+                if *source_of_your_choice {
+                    prevent = prevent.with_source_of_your_choice();
+                }
+                if !follow_up_effects.is_empty() {
+                    prevent = prevent.with_follow_up_effects(follow_up_effects);
+                }
+                return Ok((vec![Effect::new(prevent)], follow_up_choices));
+            }
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
@@ -1707,19 +1762,41 @@ fn compile_subject_verb_effect(
                         duration.clone(),
                     )],
                 );
-                Ok((vec![effect], Vec::new()))
+                Ok((vec![effect], follow_up_choices))
             } else {
-                compile_effect_for_target(target, ctx, |spec| {
+                let (effects, mut choices) = compile_effect_for_target(target, ctx, |spec| {
                     if *source_of_your_choice {
-                        Effect::prevent_damage_with_source_choice(
+                        let mut prevent = crate::effects::PreventDamageEffect::new(
                             amount.clone(),
                             spec,
                             duration.clone(),
                         )
+                        .with_source_of_your_choice();
+                        if !follow_up_effects.is_empty() {
+                            prevent = prevent.with_follow_up_effects(follow_up_effects.clone());
+                        }
+                        Effect::new(prevent)
+                    } else if !follow_up_effects.is_empty() {
+                        Effect::new(
+                            crate::effects::PreventDamageEffect::new(
+                                amount.clone(),
+                                spec,
+                                duration.clone(),
+                            )
+                            .with_follow_up_effects(follow_up_effects.clone()),
+                        )
                     } else {
-                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
+                        Effect::prevent_damage(
+                            amount.clone(),
+                            spec,
+                            duration.clone(),
+                        )
                     }
-                })
+                })?;
+                if !follow_up_effects.is_empty() {
+                    choices.extend(follow_up_choices);
+                }
+                Ok((effects, choices))
             }
         }
         SubjectVerbActionAst::PreventAllDamageToTarget { target, duration } => {
@@ -2313,9 +2390,12 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down } => {
-            let (spec, choices) =
+        SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down, all } => {
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all && let ChooseSpec::Object(filter) = spec {
+                spec = ChooseSpec::All(filter);
+            }
             let mut effect = Effect::new(
                 crate::effects::ExileUntilEffect::source_leaves(spec.clone())
                     .with_face_down(*face_down),
@@ -2497,9 +2577,13 @@ fn compile_subject_verb_effect(
             battlefield_attacking,
             battlefield_face_down,
             attached_to,
+            all,
         } => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *all && let ChooseSpec::Object(filter) = spec {
+                spec = ChooseSpec::All(filter);
+            }
             if !ctx.iterated_player
                 && ctx.last_object_tag.as_deref() == Some(IT_TAG)
                 && (ctx.last_it_choice_is_set
@@ -4498,9 +4582,14 @@ fn compile_subject_verb_effect(
             }
             Ok((effects, choices))
         }
-        SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
+        SubjectVerbActionAst::DealDamageEqualToPower {
+            source,
+            amount,
+            target,
+        } => {
             let (source_spec, mut choices) =
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut damage_target_spec = if source == target {
                 source_spec.clone()
             } else {
@@ -4519,6 +4608,7 @@ fn compile_subject_verb_effect(
             } else {
                 source_spec.clone()
             };
+            let mut damage_amount = bind_source_value_to_damage_source(&amount, &source_spec);
 
             if source_spec.is_target() {
                 let source_tag = ctx.next_tag("damage_source");
@@ -4527,6 +4617,7 @@ fn compile_subject_verb_effect(
                         .tag(source_tag.clone()),
                 );
                 damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
+                damage_amount = bind_source_value_to_damage_source(&amount, &damage_source_spec);
                 if source == target {
                     damage_target_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 }
@@ -4540,7 +4631,7 @@ fn compile_subject_verb_effect(
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         per_target_source_spec.clone(),
                         Effect::deal_damage(
-                            Value::PowerOf(Box::new(per_target_source_spec.clone())),
+                            bind_source_value_to_damage_source(&amount, &per_target_source_spec),
                             ChooseSpec::Iterated,
                         ),
                     ));
@@ -4554,10 +4645,7 @@ fn compile_subject_verb_effect(
                 let damage_effect = tag_object_target_effect(
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         damage_source_spec.clone(),
-                        Effect::deal_damage(
-                            Value::PowerOf(Box::new(damage_source_spec.clone())),
-                            damage_target_spec.clone(),
-                        ),
+                        Effect::deal_damage(damage_amount.clone(), damage_target_spec.clone()),
                     )),
                     &damage_target_spec,
                     ctx,

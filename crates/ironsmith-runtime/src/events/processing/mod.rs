@@ -2546,17 +2546,17 @@ fn apply_prevention_for_damage_assignment(
     };
 
     if can_prevent && !result.follow_ups.is_empty() {
-        let prevented_event = crate::events::RawEvent::new(
-            DamageEvent::with_cause(
-                source,
-                target,
-                amount - result.remaining,
-                is_combat,
-                cause.clone(),
-            ),
-            provenance,
-        );
         for follow_up in result.follow_ups {
+            let prevented_event = crate::events::RawEvent::new(
+                DamageEvent::with_cause(
+                    source,
+                    target,
+                    follow_up.prevented,
+                    is_combat,
+                    cause.clone(),
+                ),
+                provenance,
+            );
             let mut dm = crate::decision::AutoPassDecisionMaker;
             let mut exec_ctx = crate::effects::ExecutionContext::new(
                 follow_up.source,
@@ -2569,17 +2569,22 @@ fn apply_prevention_for_damage_assignment(
                 follow_up.controller,
             ))
             .with_provenance(provenance);
-            match target {
-                DamageTarget::Player(player_id) => {
-                    exec_ctx
-                        .targets
-                        .push(crate::effects::ResolvedTarget::Player(player_id));
+            if follow_up.targets.is_empty() {
+                match target {
+                    DamageTarget::Player(player_id) => {
+                        exec_ctx
+                            .targets
+                            .push(crate::effects::ResolvedTarget::Player(player_id));
+                    }
+                    DamageTarget::Object(object_id) => {
+                        exec_ctx
+                            .targets
+                            .push(crate::effects::ResolvedTarget::Object(object_id));
+                    }
                 }
-                DamageTarget::Object(object_id) => {
-                    exec_ctx
-                        .targets
-                        .push(crate::effects::ResolvedTarget::Object(object_id));
-                }
+            } else {
+                exec_ctx.targets = follow_up.targets;
+                exec_ctx.target_assignments = follow_up.target_assignments;
             }
             for effect in follow_up.effects {
                 if let Ok(outcome) = crate::effects::execute_effect(game, &effect, &mut exec_ctx) {

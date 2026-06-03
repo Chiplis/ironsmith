@@ -95,6 +95,15 @@ impl EffectExecutor for TagTriggeringObjectEffect {
             return Ok(EffectOutcome::count(0));
         }
 
+        if let Some(keyword_action) = event.downcast::<crate::events::KeywordActionEvent>()
+            && let Some(snapshots) = keyword_action.object_tags.get(&self.tag)
+        {
+            let tagged = snapshots.clone();
+            let count = tagged.len() as i32;
+            set_triggering_object_tags(ctx, self.tag.as_str(), tagged);
+            return Ok(EffectOutcome::count(count));
+        }
+
         let object_id = event.object_id().ok_or_else(|| {
             ExecutionError::UnresolvableValue("triggering event missing object".to_string())
         })?;
