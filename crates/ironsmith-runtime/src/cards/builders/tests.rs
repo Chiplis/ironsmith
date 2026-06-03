@@ -144,6 +144,138 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn hydra_omnivore_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Hydra Omnivore");
+
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(def.name(), "Hydra Omnivore");
+    assert!(
+        ability_debug.contains("ThisDealsCombatDamageToPlayerTrigger")
+            && ability_debug.contains("player: Opponent")
+            && ability_debug.contains("ForPlayersEffect")
+            && ability_debug.contains("Excluding")
+            && ability_debug.contains("Opponent")
+            && ability_debug.contains("DamagedPlayer")
+            && ability_debug.contains("DealDamageEffect")
+            && ability_debug.contains("EventValue")
+            && ability_debug.contains("Amount"),
+        "Hydra Omnivore should compile to damage each opponent except the damaged player, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever this creature deals combat damage to an opponent, it deals that much damage to each other opponent."
+        ),
+        "Hydra Omnivore should render the each-other-opponent damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn hydra_omnivore_runtime_damages_each_other_opponent_only() {
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Dana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let dana = PlayerId::from_index(3);
+    let hydra = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let noncombat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &noncombat),
+        0,
+        "Hydra Omnivore should not trigger from noncombat damage"
+    );
+
+    let hits_controller = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(alice),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &hits_controller),
+        0,
+        "Hydra Omnivore should not trigger from combat damage to its controller"
+    );
+
+    let combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &combat),
+        1,
+        "Hydra Omnivore should trigger once from its combat damage to an opponent"
+    );
+
+    assert_eq!(game.life_total(alice), 20, "controller is not an opponent");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "the damaged opponent should be excluded from each other opponent"
+    );
+    assert_eq!(game.life_total(charlie), 12, "first other opponent should take 8");
+    assert_eq!(game.life_total(dana), 12, "second other opponent should take 8");
+}
+
+#[test]
+fn hydra_omnivore_runtime_has_no_extra_damage_without_other_opponents() {
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let hydra = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(resolve_triggers_for_source(&mut game, hydra, &combat), 1);
+    assert_eq!(game.life_total(alice), 20, "controller should not be damaged");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "with no other opponent, the damaged opponent should not take extra damage"
+    );
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 

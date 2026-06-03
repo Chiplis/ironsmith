@@ -1011,7 +1011,9 @@ impl EffectExecutor for CipherEffect {
 
         game.imprint_card(chosen_creature, exiled_id);
         let ability = crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                crate::target::PlayerFilter::Any,
+            ),
             vec![crate::effect::Effect::cast_encoded_card_copy(
                 exiled_stable_id,
             )],
@@ -2569,7 +2571,9 @@ mod tests {
         let source = create_creature(&mut game, alice, 22, "Backup Source", 2, 2);
         let target = create_creature(&mut game, alice, 23, "Backup Target", 1, 1);
         let granted = Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                crate::target::PlayerFilter::Any,
+            ),
             vec![],
         );
         let mut ctx = ExecutionContext::new_default(source, alice)

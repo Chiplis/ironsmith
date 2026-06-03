@@ -32,6 +32,14 @@ const COMBAT_EACH_OPPONENT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
             &["each", "other", "players"],
         ]
 );
+const COMBAT_EACH_OTHER_OPPONENT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["each", "other", "opponent"],
+            &["each", "other", "opponents"],
+            &["all", "other", "opponents"],
+        ]
+);
 const COMBAT_EACH_OR_ALL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["each"], &["all"]]);
 const COMBAT_DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
@@ -88,6 +96,16 @@ fn is_divided_damage_clause(words: &[&str]) -> bool {
         return false;
     };
     words[divided_idx + 1..].iter().any(|word| *word == "among")
+}
+
+fn damage_each_other_opponent(amount: Value) -> EffectAst {
+    EffectAst::ForEachPlayersFiltered {
+        filter: PlayerFilter::excluding(PlayerFilter::Opponent, PlayerFilter::DamagedPlayer),
+        effects: vec![EffectAst::subject_verb_damage(
+            amount,
+            TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+        )],
+    }
 }
 
 pub(crate) fn parse_attach_object_phrase(
@@ -392,6 +410,9 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             )],
         }));
     }
+    if COMBAT_EACH_OTHER_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
+        return Ok(Some(damage_each_other_opponent(amount.clone())));
+    }
     if COMBAT_EACH_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
         return Ok(Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
@@ -519,6 +540,11 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         }));
+    }
+    if COMBAT_EACH_OTHER_OPPONENT_TARGET_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(normalized_target_tokens))
+    {
+        return Ok(Some(damage_each_other_opponent(amount.clone())));
     }
     if grammar::words_match_any_prefix(
         normalized_target_tokens,
@@ -846,6 +872,9 @@ pub(crate) fn parse_deal_damage_with_amount(
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         });
+    }
+    if COMBAT_EACH_OTHER_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
+        return Ok(damage_each_other_opponent(amount.clone()));
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_WHO_PREFIXES).is_some()
         && grammar::words_find_phrase(target_tokens, &["this", "way"]).is_some()

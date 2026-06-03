@@ -17210,6 +17210,10 @@ fn describe_triggered_resolution_text(
     subject: &str,
     rewrite_it_deals: bool,
 ) -> Option<String> {
+    if triggered_deals_same_damage_to_each_other_opponent(triggered) {
+        return Some("it deals that much damage to each other opponent".to_string());
+    }
+
     if let Some(keyword) = triggered
         .trigger
         .downcast_ref::<crate::triggers::KeywordActionTrigger>()
@@ -17261,6 +17265,49 @@ fn describe_triggered_resolution_text(
     ))
 }
 
+fn triggered_deals_same_damage_to_each_other_opponent(
+    triggered: &crate::ability::TriggeredAbility,
+) -> bool {
+    if !triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
+        .is_some_and(|trigger| trigger.player == PlayerFilter::Opponent)
+    {
+        return false;
+    }
+    let [segment] = triggered.effects.segments.as_slice() else {
+        return false;
+    };
+    if !segment.self_replacements.is_empty() {
+        return false;
+    }
+    let [effect] = segment.default_effects.as_slice() else {
+        return false;
+    };
+    let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() else {
+        return false;
+    };
+    if !matches!(
+        &for_players.filter,
+        PlayerFilter::Excluding { base, excluded }
+            if matches!(base.as_ref(), PlayerFilter::Opponent)
+                && matches!(excluded.as_ref(), PlayerFilter::DamagedPlayer)
+    ) {
+        return false;
+    }
+    let [inner] = for_players.effects.as_slice() else {
+        return false;
+    };
+    let Some(deal_damage) = inner.downcast_ref::<crate::effects::DealDamageEffect>() else {
+        return false;
+    };
+    matches!(
+        deal_damage.amount,
+        Value::EventValue(EventValueSpec::Amount)
+    ) && matches!(deal_damage.target, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
+        && !deal_damage.source_is_combat
+}
+
 fn rewrite_damaged_player_reference_for_damage_trigger(
     triggered: &crate::ability::TriggeredAbility,
     effects: String,
@@ -17303,6 +17350,9 @@ fn describe_triggered_inline_ability(
         intervening_condition
     };
     let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
+    if triggered_deals_same_damage_to_each_other_opponent(triggered) {
+        line = line.replace("combat damage to a player", "combat damage to an opponent");
+    }
     if matches!(intervening_condition, Some(Condition::YourTurn))
         && line.to_ascii_lowercase().ends_with("becomes tapped")
     {
@@ -17388,6 +17438,9 @@ fn describe_triggered_inline_ability(
     line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
     line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
+    if triggered_deals_same_damage_to_each_other_opponent(triggered) {
+        line = line.replace("combat damage to a player", "combat damage to an opponent");
+    }
     if triggered.presentation_label.is_none()
         && line.starts_with("Whenever you cast a spell that targets this creature")
     {
@@ -40526,6 +40579,10 @@ pub(super) fn describe_ability(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
             );
+            if triggered_deals_same_damage_to_each_other_opponent(triggered) {
+                trigger_surface = trigger_surface
+                    .replace("combat damage to a player", "combat damage to an opponent");
+            }
             if triggered.presentation_label.is_none()
                 && trigger_surface
                     .starts_with("Whenever you cast a spell that targets this creature")

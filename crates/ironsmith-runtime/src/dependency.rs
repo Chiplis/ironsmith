@@ -1225,7 +1225,9 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
         | Modification::CopyTriggeredAbilities { .. } => {}
         Modification::AddCombatDamageDrawAbility => {
             chars.abilities.push(crate::ability::Ability::triggered(
-                crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
                 vec![crate::effect::Effect::draw(1)],
             ));
         }

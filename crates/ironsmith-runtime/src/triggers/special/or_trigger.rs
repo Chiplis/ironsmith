@@ -16,7 +16,7 @@ use crate::zone::Zone;
 /// ```ignore
 /// let trigger = Trigger::or(vec![
 ///     Trigger::this_enters_battlefield(),
-///     Trigger::this_deals_combat_damage_to_player(),
+///     Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
 /// ]);
 /// ```
 #[derive(Debug, Clone)]
@@ -276,7 +276,9 @@ mod tests {
 
         let trigger = OrTrigger::two(
             Trigger::this_enters_battlefield(),
-            Trigger::new(ThisDealsCombatDamageToPlayerTrigger),
+            Trigger::new(ThisDealsCombatDamageToPlayerTrigger::new(
+                crate::target::PlayerFilter::Any,
+            )),
         );
         let ctx = TriggerContext::for_source(source_id, alice, &game);
 
@@ -297,7 +299,9 @@ mod tests {
 
         let trigger = OrTrigger::two(
             Trigger::this_enters_battlefield(),
-            Trigger::new(ThisDealsCombatDamageToPlayerTrigger),
+            Trigger::new(ThisDealsCombatDamageToPlayerTrigger::new(
+                crate::target::PlayerFilter::Any,
+            )),
         );
         let ctx = TriggerContext::for_source(source_id, alice, &game);
 
@@ -325,7 +329,9 @@ mod tests {
 
         let trigger = OrTrigger::two(
             Trigger::this_enters_battlefield(),
-            Trigger::new(ThisDealsCombatDamageToPlayerTrigger),
+            Trigger::new(ThisDealsCombatDamageToPlayerTrigger::new(
+                crate::target::PlayerFilter::Any,
+            )),
         );
         let ctx = TriggerContext::for_source(source_id, alice, &game);
 
@@ -354,7 +360,9 @@ mod tests {
     fn test_or_trigger_display() {
         let trigger = OrTrigger::two(
             Trigger::this_enters_battlefield(),
-            Trigger::new(ThisDealsCombatDamageToPlayerTrigger),
+            Trigger::new(ThisDealsCombatDamageToPlayerTrigger::new(
+                crate::target::PlayerFilter::Any,
+            )),
         );
 
         let display = trigger.display();

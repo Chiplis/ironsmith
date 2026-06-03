@@ -2014,7 +2014,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                                     TriggerSpec::DealsCombatDamageToPlayer { source, player }
                                 }
                             }
-                            None => TriggerSpec::ThisDealsCombatDamageToPlayer,
+                            None => TriggerSpec::ThisDealsCombatDamageToPlayer { player },
                         });
                     }
 
@@ -2033,7 +2033,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                                 }
                             }
                             None if player == PlayerFilter::Any => {
-                                TriggerSpec::ThisDealsCombatDamageToPlayer
+                                TriggerSpec::ThisDealsCombatDamageToPlayer { player }
                             }
                             None => {
                                 return Err(CardTextError::ParseError(format!(
