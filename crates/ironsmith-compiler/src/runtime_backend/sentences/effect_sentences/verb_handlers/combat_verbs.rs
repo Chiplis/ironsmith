@@ -16,6 +16,7 @@ const DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN: ClauseShape<'static> = clause_shap
 );
 const DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["number", "cards", "hand"]);
+const COMBAT_EQUAL_TO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal", "to"]);
 const COMBAT_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["target"]);
 const COMBAT_IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["them"]]);
@@ -34,6 +35,15 @@ const COMBAT_EACH_OPPONENT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const COMBAT_EACH_OR_ALL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["each"], &["all"]]);
+const COMBAT_THIS_WAY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]);
+const COMBAT_ITERATED_PLAYER_CONTROL_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["they", "control"],
+            &["that", "player", "controls"],
+        ]]
+);
 const COMBAT_DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
 const COMBAT_AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
 const COMBAT_TARGET_OR_TARGETS_PATTERN: ClauseShape<'static> =
@@ -345,7 +355,8 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         return Ok(None);
     }
 
-    let Some(equal_word_idx) = grammar::words_find_phrase(tokens, &["equal", "to"]) else {
+    let Some(equal_word_idx) = combat_find_exact_window(&clause_words, 2, COMBAT_EQUAL_TO_PATTERN)
+    else {
         return Ok(None);
     };
     let Some(equal_token_idx) = token_index_for_word_index(tokens, equal_word_idx) else {
@@ -848,7 +859,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_WHO_PREFIXES).is_some()
-        && grammar::words_find_phrase(target_tokens, &["this", "way"]).is_some()
+        && COMBAT_THIS_WAY_MARKER_PATTERN.matches_words(&target_words)
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachOpponentDid {
@@ -860,7 +871,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_PLAYER_WHO_PREFIXES).is_some()
-        && grammar::words_find_phrase(target_tokens, &["this", "way"]).is_some()
+        && COMBAT_THIS_WAY_MARKER_PATTERN.matches_words(&target_words)
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachPlayerDid {
@@ -900,8 +911,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_AND_EACH_PREFIXES).is_some()
         && grammar::contains_word(target_tokens, "creature")
         && grammar::contains_word(target_tokens, "planeswalker")
-        && (grammar::words_find_phrase(target_tokens, &["they", "control"]).is_some()
-            || grammar::words_find_phrase(target_tokens, &["that", "player", "controls"]).is_some())
+        && COMBAT_ITERATED_PLAYER_CONTROL_MARKER_PATTERN.matches_words(&target_words)
     {
         let mut filter = ObjectFilter::default();
         filter.card_types = vec![CardType::Creature, CardType::Planeswalker];

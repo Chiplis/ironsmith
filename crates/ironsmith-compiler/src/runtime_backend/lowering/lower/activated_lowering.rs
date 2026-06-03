@@ -3,8 +3,19 @@ use super::super::ir::RewriteActivatedLine;
 use super::*;
 use crate::effect::Effect;
 use crate::object::CounterType;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::util::find_first_unattach_cost_choice_tag;
 use ironsmith_core::TotalCostKind;
+
+const WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["where", "x", "is"]);
+const X_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["x", "is"]);
+const SPEND_THIS_MANA_ONLY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["spend", "this", "mana", "only"]);
+const WHEN_YOU_SPEND_THIS_MANA_TO_CAST_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["when", "you", "spend", "this", "mana", "to", "cast"]);
+const ACTIVATION_MANA_SOURCE_RESTRICTION_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["spend", "only", "mana"]; suffix & ["to", "activate", "this", "ability"]);
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     let line_words = token_word_refs(tokens);
@@ -248,10 +259,10 @@ struct SplitRewriteActivatedEffectText {
 
 fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate::effect::Value> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    let value_tokens = if word_slice_starts_with(&words, &["where", "x", "is"]) {
+    let value_tokens = if WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
         tokens.to_vec()
-    } else if word_slice_starts_with(&words, &["x", "is"]) {
-        let tail_start = token_index_for_word_index(tokens, 2)?;
+    } else if let Some(prefix_len) = X_IS_PREFIX_PATTERN.matched_prefix_len(&words) {
+        let tail_start = token_index_for_word_index(tokens, prefix_len)?;
         let mut synthetic = vec![
             OwnedLexToken::word("where".to_string(), TextSpan::synthetic()),
             OwnedLexToken::word("x".to_string(), TextSpan::synthetic()),
@@ -335,14 +346,9 @@ fn finalize_rewrite_activated_effect_sentences(
             restrictions.activation.push(sentence);
         } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
-            || word_slice_starts_with(
-                sentence_words.as_slice(),
-                &["spend", "this", "mana", "only"],
-            )
-            || word_slice_starts_with(
-                sentence_words.as_slice(),
-                &["when", "you", "spend", "this", "mana", "to", "cast"],
-            )
+            || SPEND_THIS_MANA_ONLY_PREFIX_PATTERN.matches_words(sentence_words.as_slice())
+            || WHEN_YOU_SPEND_THIS_MANA_TO_CAST_PREFIX_PATTERN
+                .matches_words(sentence_words.as_slice())
         {
             mana_restrictions.push(sentence);
         } else if is_standalone_x_definition_sentence(&tokens) {
@@ -464,14 +470,9 @@ fn split_rewrite_activated_effect_text_fallback(
             restrictions.activation.push(sentence);
         } else if parse_mana_usage_restriction_sentence_lexed(&tokens).is_some()
             || parse_mana_spend_bonus_sentence_lexed(&tokens).is_some()
-            || word_slice_starts_with(
-                sentence_words.as_slice(),
-                &["spend", "this", "mana", "only"],
-            )
-            || word_slice_starts_with(
-                sentence_words.as_slice(),
-                &["when", "you", "spend", "this", "mana", "to", "cast"],
-            )
+            || SPEND_THIS_MANA_ONLY_PREFIX_PATTERN.matches_words(sentence_words.as_slice())
+            || WHEN_YOU_SPEND_THIS_MANA_TO_CAST_PREFIX_PATTERN
+                .matches_words(sentence_words.as_slice())
         {
             mana_restrictions.push(sentence);
         } else if is_standalone_x_definition_sentence(&tokens) {
@@ -492,8 +493,7 @@ fn split_rewrite_activated_effect_text_fallback(
 }
 
 fn is_activation_mana_source_restriction_sentence(words: &[&str]) -> bool {
-    word_slice_starts_with(words, &["spend", "only", "mana"])
-        && word_slice_ends_with(words, &["to", "activate", "this", "ability"])
+    ACTIVATION_MANA_SOURCE_RESTRICTION_PATTERN.matches_words(words)
 }
 
 fn parse_activated_effects_lexed(

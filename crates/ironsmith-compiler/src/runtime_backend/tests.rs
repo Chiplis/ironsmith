@@ -9797,8 +9797,11 @@ fn rewrite_lexed_trigger_clause_resolves_double_slash_source_name_etb() {
 
 #[test]
 fn rewrite_lexed_triggered_line_resolves_double_slash_source_name_etb() {
-    let tokens = lex_line("When SP//dr enters, put a +1/+1 counter on target creature.", 0)
-        .expect("rewrite lexer should classify double-slash source triggered line");
+    let tokens = lex_line(
+        "When SP//dr enters, put a +1/+1 counter on target creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify double-slash source triggered line");
 
     let parsed = super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
         super::clause_support::parse_triggered_line_lexed(&tokens)
@@ -9816,13 +9819,14 @@ fn rewrite_lexed_triggered_line_resolves_double_slash_source_name_etb() {
 fn rewrite_document_lowering_resolves_double_slash_source_name_etb() -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "SP//dr, Piloted by Peni")
         .card_types(vec![CardType::Artifact, CardType::Creature]);
-    let (definition, _) = super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
-        parse_text_with_annotations_lowered(
-            builder,
-            "When SP//dr enters, put a +1/+1 counter on target creature.".to_string(),
-            false,
-        )
-    })?;
+    let (definition, _) =
+        super::util::with_source_reference_context("SP//dr, Piloted by Peni", || {
+            parse_text_with_annotations_lowered(
+                builder,
+                "When SP//dr enters, put a +1/+1 counter on target creature.".to_string(),
+                false,
+            )
+        })?;
     let debug = format!("{definition:#?}");
 
     assert!(

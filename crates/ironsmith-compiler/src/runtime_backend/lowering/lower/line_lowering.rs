@@ -10,7 +10,9 @@ use crate::runtime_backend::effect_ast_traversal::{
 use crate::runtime_backend::lexer::{
     OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word_sequence_span,
     lex_line, parser_token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase,
-    word_slice_starts_with,
+};
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
 };
 use crate::target::{ChooseSpec, PlayerFilter};
 use crate::zone::Zone;
@@ -28,6 +30,9 @@ struct LineChunkLoweringInput<'a> {
     allow_unsupported: bool,
     annotations: &'a mut ParseAnnotations,
 }
+
+const THIS_SPELL_COST_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any THIS_SPELL_COST_PREFIXES);
 
 fn conditional_self_replacement_followup(
     effect: &crate::effect::Effect,
@@ -927,9 +932,7 @@ fn rewrite_self_spell_cost_modifier(
 
 fn tokens_start_with_this_spell_cost(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    THIS_SPELL_COST_PREFIXES
-        .iter()
-        .any(|prefix| word_slice_starts_with(&words, prefix))
+    THIS_SPELL_COST_PREFIX_PATTERN.matches_words(&words)
 }
 
 fn extract_cost_reduction_cap_from_tokens(tokens: &[OwnedLexToken]) -> Option<i32> {

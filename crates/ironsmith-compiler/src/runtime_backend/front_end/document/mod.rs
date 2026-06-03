@@ -218,17 +218,34 @@ fn is_bullet_line(line: &PreprocessedLine) -> bool {
 fn starts_with_pawprint_modal_label(tokens: &[OwnedLexToken]) -> bool {
     let mut seen_pawprint = false;
     let mut idx = 0;
-    while tokens.get(idx).is_some_and(|token| {
-        (token.kind == TokenKind::ManaGroup && token.parser_text() == "{p}")
-            || (token.kind == TokenKind::Word && token.parser_text() == "p")
-    }) {
+    while tokens
+        .get(idx)
+        .and_then(pawprint_modal_label_count)
+        .is_some()
+    {
         seen_pawprint = true;
         idx += 1;
     }
     seen_pawprint
         && tokens
             .get(idx)
-            .is_some_and(|token| token.kind == TokenKind::EmDash)
+            .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+}
+
+fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
+    match token.kind {
+        TokenKind::ManaGroup => {
+            let mut rest = token.parser_text();
+            let mut count = 0u32;
+            while let Some(stripped) = rest.strip_prefix("{p}") {
+                count += 1;
+                rest = stripped;
+            }
+            (count > 0 && rest.is_empty()).then_some(count)
+        }
+        TokenKind::Word if token.parser_text() == "p" => Some(1),
+        _ => None,
+    }
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {

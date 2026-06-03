@@ -47,10 +47,6 @@ const CREATURE_OR_CREATURES_PATTERN: ClauseShape<'static> =
 const WALL_OR_WALLS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["wall"], &["walls"]]);
 const ARTIFACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["artifact"]);
-const CONTROL_OR_CONTROLS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["control"], &["controls"]]);
-const ARTICLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"], &["the"]]);
 const SELF_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["this", "creature"], &["this"]]);
 const BLOCK_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["block"]);
@@ -252,33 +248,6 @@ const THIS_CREATURE_CANT_ATTACK_UNLESS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "creature", "cant", "attack", "unless"]);
 const THIS_SELF_CANT_ATTACK_UNLESS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "cant", "attack", "unless"]);
-const CANT_ATTACK_UNLESS_DEFENDING_PLAYER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "this",
-                "creature",
-                "cant",
-                "attack",
-                "unless",
-                "defending",
-                "player",
-            ],
-            &["this", "cant", "attack", "unless", "defending", "player"],
-        ]
-);
-const THIS_CREATURE_CANT_ATTACK_UNLESS_DEFENDING_PLAYER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "this",
-            "creature",
-            "cant",
-            "attack",
-            "unless",
-            "defending",
-            "player",
-        ]
-);
 const CAST_CREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     suffix_any
         & [
@@ -425,29 +394,6 @@ const CONTROL_MORE_LANDS_THAN_DEFENDING_PLAYER_PATTERN: ClauseShape<'static> = c
             "player",
         ]
 );
-const CONTROL_ANOTHER_ARTIFACT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "control", "another", "artifact"]);
-const CONTROL_ARTIFACT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "control", "an", "artifact"],
-            &["you", "control", "artifact"],
-        ]
-);
-const CONTROL_KNIGHT_OR_SOLDIER_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "control", "a", "knight", "or", "a", "soldier"],
-            &["you", "control", "knight", "or", "soldier"],
-        ]
-);
-const CONTROL_ONE_ONE_CREATURE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "control", "a", "1/1", "creature"],
-            &["you", "control", "1/1", "creature"],
-        ]
-);
 const CONTROL_ANOTHER_CREATURE_WITH_POWER_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "control", "another", "creature", "with", "power"]);
 const CONTROL_A_CREATURE_WITH_POWER_PREFIX_PATTERN: ClauseShape<'static> =
@@ -499,42 +445,6 @@ const DEFENDING_PLAYER_CONTROLS_ENCHANTMENT_PATTERN: ClauseShape<'static> = clau
                 "enchanted",
                 "permanent",
             ],
-        ]
-);
-const DEFENDING_PLAYER_CONTROLS_SNOW_LAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["defending", "player", "controls", "a", "snow", "land"],
-            &["defending", "player", "controls", "snow", "land"],
-        ]
-);
-const DEFENDING_PLAYER_CONTROLS_FLYING_CREATURE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "defending",
-                "player",
-                "controls",
-                "a",
-                "creature",
-                "with",
-                "flying",
-            ],
-            &[
-                "defending",
-                "player",
-                "controls",
-                "creature",
-                "with",
-                "flying",
-            ],
-        ]
-);
-const DEFENDING_PLAYER_CONTROLS_BLUE_PERMANENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["defending", "player", "controls", "a", "blue", "permanent"],
-            &["defending", "player", "controls", "blue", "permanent"],
         ]
 );
 const OTHER_CREATURES_ATTACK_TAIL_PATTERN: ClauseShape<'static> =
@@ -652,6 +562,7 @@ fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::
         crate::runtime_backend::grammar::conditions::ControlConditionOptions {
             allow_that_player: false,
             allow_opponent_players: false,
+            allow_defending_player: false,
             bind_filter_controller_to_subject: true,
             allow_different_powers_tail: false,
             default_filter_zone: Some(Zone::Battlefield),
@@ -666,6 +577,51 @@ fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::
         filter: control_condition.filter,
         count,
     })
+}
+
+fn source_control_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionExpr> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
+    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
+        &tokens,
+        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            allow_defending_player: false,
+            bind_filter_controller_to_subject: true,
+            allow_different_powers_tail: false,
+            default_filter_zone: Some(Zone::Battlefield),
+        },
+    )?;
+    let count = control_condition.at_least_count()?;
+    if count > 1 {
+        return Some(crate::ConditionExpr::PlayerHasAtLeast {
+            player: control_condition.player_filter?,
+            filter: control_condition.filter,
+            count,
+        });
+    }
+    Some(crate::ConditionExpr::YouControl(control_condition.filter))
+}
+
+fn defending_player_controls_filter_from_tail(tail: &[&str]) -> Option<ObjectFilter> {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
+    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
+        &tokens,
+        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            allow_defending_player: true,
+            bind_filter_controller_to_subject: false,
+            allow_different_powers_tail: false,
+            default_filter_zone: Some(Zone::Battlefield),
+        },
+    )?;
+    if control_condition.player_filter != Some(crate::target::PlayerFilter::Defending)
+        || control_condition.at_least_count()? > 1
+    {
+        return None;
+    }
+    Some(control_condition.filter)
 }
 
 fn control_creature_with_power_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionExpr> {
@@ -1200,8 +1156,6 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    let starts_with_cant_attack_unless_defending_player =
-        CANT_ATTACK_UNLESS_DEFENDING_PLAYER_PREFIX_PATTERN.matches_words(&normalized);
     let cant_attack_unless_cast_creature_spell_tail =
         CAST_CREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN.matches_words(&normalized);
     let cant_attack_unless_cast_noncreature_spell_tail =
@@ -1252,50 +1206,9 @@ pub(crate) fn parse_cant_clause(
                 crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition),
             );
         }
-        if CONTROL_ANOTHER_ARTIFACT_PATTERN.matches_words(tail) {
+        if let Some(condition) = source_control_condition_from_tail(tail) {
             return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
-                    crate::ConditionExpr::YouControl(
-                        ObjectFilter::artifact().you_control().other(),
-                    ),
-                ),
-            );
-        }
-        if CONTROL_ARTIFACT_PATTERN.matches_words(tail) {
-            return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
-                    crate::ConditionExpr::YouControl(ObjectFilter::artifact().you_control()),
-                ),
-            );
-        }
-        if CONTROL_KNIGHT_OR_SOLDIER_PATTERN.matches_words(tail) {
-            return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
-                    crate::ConditionExpr::Or(
-                        Box::new(crate::ConditionExpr::YouControl(
-                            ObjectFilter::creature()
-                                .you_control()
-                                .with_subtype(Subtype::Knight),
-                        )),
-                        Box::new(crate::ConditionExpr::YouControl(
-                            ObjectFilter::creature()
-                                .you_control()
-                                .with_subtype(Subtype::Soldier),
-                        )),
-                    ),
-                ),
-            );
-        }
-        if CONTROL_ONE_ONE_CREATURE_PATTERN.matches_words(tail) {
-            return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(
-                    crate::ConditionExpr::YouControl(
-                        ObjectFilter::creature()
-                            .you_control()
-                            .with_power(crate::filter::Comparison::Equal(1))
-                            .with_toughness(crate::filter::Comparison::Equal(1)),
-                    ),
-                ),
+                crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition),
             );
         }
         if MOUNTAIN_ON_BATTLEFIELD_PATTERN.matches_words(tail) {
@@ -1357,36 +1270,10 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if DEFENDING_PLAYER_CONTROLS_SNOW_LAND_PATTERN.matches_words(tail) {
+        if let Some(filter) = defending_player_controls_filter_from_tail(tail) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
-                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
-                        ObjectFilter::default()
-                            .with_type(crate::types::CardType::Land)
-                            .with_supertype(crate::types::Supertype::Snow),
-                    ),
-                ),
-            );
-        }
-        if DEFENDING_PLAYER_CONTROLS_FLYING_CREATURE_PATTERN.matches_words(tail) {
-            return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
-                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
-                        ObjectFilter::default()
-                            .with_type(crate::types::CardType::Creature)
-                            .with_static_ability(crate::static_abilities::StaticAbilityId::Flying),
-                    ),
-                ),
-            );
-        }
-        if DEFENDING_PLAYER_CONTROLS_BLUE_PERMANENT_PATTERN.matches_words(tail) {
-            return static_with(
-                crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
-                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(
-                        ObjectFilter::default().with_colors(crate::color::ColorSet::from_color(
-                            crate::color::Color::Blue,
-                        )),
-                    ),
+                    crate::static_abilities::DefendingPlayerAttackCondition::Controls(filter),
                 ),
             );
         }
@@ -1482,63 +1369,6 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-    }
-
-    if starts_with_cant_attack_unless_defending_player {
-        let mut idx = if THIS_CREATURE_CANT_ATTACK_UNLESS_DEFENDING_PLAYER_PREFIX_PATTERN
-            .matches_words(&normalized)
-        {
-            7
-        } else {
-            6
-        };
-
-        if !normalized
-            .get(idx)
-            .is_some_and(|word| CONTROL_OR_CONTROLS_PATTERN.matches_word(word))
-        {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported cant-attack unless clause tail (clause: '{}')",
-                normalized.join(" ")
-            )));
-        }
-        idx += 1;
-
-        if normalized
-            .get(idx)
-            .is_some_and(|word| ARTICLE_WORD_PATTERN.matches_word(word))
-        {
-            idx += 1;
-        }
-
-        let subtype_word = normalized.get(idx).copied().ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing land subtype in cant-attack unless clause (clause: '{}')",
-                normalized.join(" ")
-            ))
-        })?;
-        let subtype = parse_subtype_flexible(subtype_word).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported land subtype in cant-attack unless clause (clause: '{}')",
-                normalized.join(" ")
-            ))
-        })?;
-
-        if idx + 1 != normalized.len() {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing cant-attack unless clause (clause: '{}')",
-                normalized.join(" ")
-            )));
-        }
-
-        return Ok(Some(StaticAbility::cant_attack_unless_condition(
-            crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
-                crate::static_abilities::DefendingPlayerAttackCondition::Controls(
-                    ObjectFilter::land().with_subtype(subtype),
-                ),
-            ),
-            "",
-        )));
     }
 
     if let Some((neg_start, neg_end)) = find_negation_span(tokens) {
@@ -1775,6 +1605,146 @@ mod tests {
                     .contains("cant attack or block unless there are seven or more cards in exile"),
             "expected original conditional attack/block restriction text, got {display}"
         );
+    }
+
+    #[test]
+    fn cant_attack_unless_control_tails_use_shared_capture_condition_shape() {
+        let simple = source_control_condition_from_tail(&["you", "control", "an", "artifact"])
+            .expect("simple control condition should parse");
+        let debug = format!("{simple:?}");
+        assert!(debug.contains("YouControl"), "{debug}");
+        assert!(debug.contains("Artifact"), "{debug}");
+
+        let threshold =
+            source_control_condition_from_tail(&["you", "control", "seven", "or", "more", "lands"])
+                .expect("threshold control condition should parse");
+        let debug = format!("{threshold:?}");
+        assert!(debug.contains("PlayerHasAtLeast"), "{debug}");
+        assert!(debug.contains("Land"), "{debug}");
+        assert!(debug.contains("count: 7"), "{debug}");
+
+        let qualified =
+            source_control_condition_from_tail(&["you", "control", "another", "artifact"])
+                .expect("qualified control condition should parse");
+        let debug = format!("{qualified:?}");
+        assert!(debug.contains("YouControl"), "{debug}");
+        assert!(debug.contains("Artifact"), "{debug}");
+        assert!(debug.contains("other: true"), "{debug}");
+
+        let subtype_union = source_control_condition_from_tail(&[
+            "you", "control", "a", "knight", "or", "a", "soldier",
+        ])
+        .expect("subtype union control condition should parse");
+        let debug = format!("{subtype_union:?}");
+        assert!(debug.contains("YouControl"), "{debug}");
+        assert!(debug.contains("Knight"), "{debug}");
+        assert!(debug.contains("Soldier"), "{debug}");
+
+        let sized_creature =
+            source_control_condition_from_tail(&["you", "control", "a", "1/1", "creature"])
+                .expect("sized creature control condition should parse");
+        let debug = format!("{sized_creature:?}");
+        assert!(debug.contains("YouControl"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("power: Some(Equal(1))"), "{debug}");
+        assert!(debug.contains("toughness: Some(Equal(1))"), "{debug}");
+    }
+
+    #[test]
+    fn parse_cant_attack_unless_routes_control_tail_through_capture_shape() {
+        let cases = [
+            (
+                "This creature can't attack unless you control another artifact.",
+                "other: true",
+            ),
+            (
+                "This creature can't attack unless you control seven or more lands.",
+                "PlayerHasAtLeast",
+            ),
+        ];
+
+        for (text, expected_debug) in cases {
+            let tokens = tokenize_line(text, 0);
+            let abilities = parse_cant_clauses(&tokens)
+                .expect("cant-attack-unless-control condition should parse")
+                .expect("expected a static restriction");
+
+            assert_eq!(abilities.len(), 1, "{text}");
+            let debug = format!("{:?}", abilities[0]);
+            assert!(debug.contains("CantAttackUnlessCondition"), "{debug}");
+            assert!(debug.contains(expected_debug), "{debug}");
+        }
+    }
+
+    #[test]
+    fn cant_attack_unless_defending_player_control_tails_use_shared_capture_condition_shape() {
+        let cases = [
+            (
+                &["defending", "player", "controls", "an", "island"][..],
+                "Island",
+            ),
+            (
+                &["defending", "player", "controls", "a", "snow", "land"],
+                "Snow",
+            ),
+            (
+                &[
+                    "defending",
+                    "player",
+                    "controls",
+                    "a",
+                    "creature",
+                    "with",
+                    "flying",
+                ],
+                "Flying",
+            ),
+            (
+                &["defending", "player", "controls", "a", "blue", "permanent"],
+                "colors: Some",
+            ),
+        ];
+
+        for (tail, expected_debug) in cases {
+            let filter = defending_player_controls_filter_from_tail(tail)
+                .expect("defending-player controls tail should parse");
+            let debug = format!("{filter:?}");
+            assert!(debug.contains(expected_debug), "{debug}");
+        }
+    }
+
+    #[test]
+    fn parse_cant_attack_unless_routes_defending_player_control_tail_through_capture_shape() {
+        let cases = [
+            (
+                "This creature can't attack unless defending player controls an Island.",
+                "Island",
+            ),
+            (
+                "This creature can't attack unless defending player controls a snow land.",
+                "Snow",
+            ),
+            (
+                "This creature can't attack unless defending player controls a creature with flying.",
+                "Flying",
+            ),
+            (
+                "This creature can't attack unless defending player controls a blue permanent.",
+                "colors: Some",
+            ),
+        ];
+
+        for (text, expected_debug) in cases {
+            let tokens = tokenize_line(text, 0);
+            let abilities = parse_cant_clauses(&tokens)
+                .expect("cant-attack-unless-defending-player-controls condition should parse")
+                .expect("expected a static restriction");
+
+            assert_eq!(abilities.len(), 1, "{text}");
+            let debug = format!("{:?}", abilities[0]);
+            assert!(debug.contains("DefendingPlayerCondition"), "{debug}");
+            assert!(debug.contains(expected_debug), "{debug}");
+        }
     }
 
     #[test]

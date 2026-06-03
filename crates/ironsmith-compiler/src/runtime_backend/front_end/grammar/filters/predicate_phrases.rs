@@ -1,5 +1,5 @@
 use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::super::super::lexer::{LexedClause, OwnedLexToken};
+use super::super::super::lexer::{LexedClause, OwnedLexToken, render_token_slice};
 use super::*;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
@@ -17,17 +17,7 @@ const OUTLAW_SHORTHAND_FILTER_PATTERN: ClauseShape<'static> = clause_shape!(
 const SACRIFICED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sacrificed"]);
 const PERMANENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["permanent"]);
 const CREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
-const SOURCE_EXILED_WITH_COUNTER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "card", "is", "exiled", "with"],
-            &["this", "source", "is", "exiled", "with"],
-        ]
-);
-const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["counter"], &["counters"]]);
-const COUNTER_ON_SOURCE_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["on", "it"], &["on", "this"], &["on", "them"]]);
+const COUNTER_WORD_PHRASES: &[&[&str]] = &[&["counter"], &["counters"]];
 const PERMANENTS_YOU_CONTROL_SCOPE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -49,8 +39,6 @@ const PERMANENTS_AND_OR_GRAVEYARD_CONNECTOR_PATTERN: ClauseShape<'static> =
 const PERMANENTS_AND_OR_SPLIT_CONNECTOR_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "or"]);
 const THERE_ARE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "are"]);
-const THERE_ARE_OR_WERE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["there", "are"], &["there", "were"]]);
 const AND_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["and", "your", "life", "total"]);
 const LIFE_TOTAL_AT_LEAST_STARTING_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -87,14 +75,6 @@ const BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause
             &["exiled", "with", "this"],
         ]
 );
-const IN_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["in", "your", "graveyard"],
-            &["in", "graveyard"],
-            &["in", "the", "graveyard"],
-        ]
-);
 const IT_EXPLOITED_TRIGGERING_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -106,16 +86,18 @@ const COST_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["cost", "was", "paid"], &["cost", "wasnt", "paid"]]);
 const COST_NOT_PAID_INSTEAD_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cost", "was", "not", "paid"]);
+const YOU_BOTH_OWN_AND_CONTROL_PHRASE: &[&str] = &["you", "both", "own", "and", "control"];
+const YOU_BOTH_OWN_AND_CONTROL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & YOU_BOTH_OWN_AND_CONTROL_PHRASE);
+const EXILE_THEM_PHRASE: &[&str] = &["exile", "them"];
+const EXILE_THEM_PATTERN: ClauseShape<'static> = clause_shape!(exact & EXILE_THEM_PHRASE);
 const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const DEFINITE_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
 const WAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["was"]);
-const MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["was", "spent", "to", "cast", "this", "spell"],
-            &["were", "spent", "to", "cast", "this", "spell"],
-        ]
-);
+const MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES: &[&[&str]] = &[
+    &["was", "spent", "to", "cast", "this", "spell"],
+    &["were", "spent", "to", "cast", "this", "spell"],
+];
 const YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const THAT_PLAYER_CONTROLS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -137,25 +119,7 @@ const WITH_DIFFERENT_POWERS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
 const NOT_TOKEN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["not", "token"]);
 const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "enchantment"]);
-const YOUR_GRAVEYARD_WORDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["your", "graveyard"]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
-const PASSIVE_THIS_WAY_COPULA_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"]]);
-const PASSIVE_THIS_WAY_VERB_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["countered"],
-            &["destroyed"],
-            &["discarded"],
-            &["exiled"],
-            &["milled"],
-            &["returned"],
-            &["revealed"],
-            &["sacrificed"],
-        ]
-);
 const IT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
 const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
 const PREDICATE_REFERENCE_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -179,6 +143,19 @@ const OR_COMPARISON_TAIL_WORD_PATTERN: ClauseShape<'static> =
 const ITS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["its"], &["it's"]]);
 const IT_S_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["it", "s"]);
 const YOUR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your"]);
+
+fn predicate_find_exact_phrase_shape(
+    words: &[&str],
+    phrase: &[&str],
+    shape: &ClauseShape<'static>,
+) -> Option<usize> {
+    if phrase.is_empty() || words.len() < phrase.len() {
+        return None;
+    }
+    words
+        .windows(phrase.len())
+        .position(|window| shape.matches_words(window))
+}
 const THEIR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["their"]);
 const HAVE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["have"]);
 const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
@@ -210,12 +187,9 @@ const BE_VERB_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["is"], &["are"], &["was"], &["were"]]);
 const MANA_SYMBOL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["w"], &["u"], &["b"], &["r"], &["g"], &["c"], &["s"]]);
-const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
-const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["attached"], &["tapped"], &["untapped"], &["saddled"]]);
-const SOURCE_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["its"]]);
-const AURA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["aura"], &["auras"]]);
+const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS: &[&str] =
+    &["attached", "tapped", "untapped", "saddled"];
+const AURA_WORDS: &[&str] = &["aura", "auras"];
 const CONTROL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["control"]);
 const CONTROL_OR_CONTROLS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["control"], &["controls"]]);
@@ -264,43 +238,61 @@ const OPPONENT_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
 const PLAYER_WHO_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["player", "who"]);
 const PLAYER_SUBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["player"]);
-const YOUR_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["your", "life", "total"]);
-const THEIR_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["their", "life", "total"]);
-const THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "players", "life", "total"]);
-const TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "players", "life", "total"]);
-const TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "opponents", "life", "total"]);
-const OPPONENT_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["opponents", "life", "total"],
-            &["opponent", "life", "total"]
-        ]
-);
-const DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["defending", "players", "life", "total"]);
-const ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["attacking", "players", "life", "total"]);
-const HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["half", "your", "starting", "life", "total"],
-            &["half", "their", "starting", "life", "total"],
-            &["half", "that", "players", "starting", "life", "total"],
-            &["half", "target", "players", "starting", "life", "total"],
-            &["half", "target", "opponents", "starting", "life", "total"],
-            &["half", "opponents", "starting", "life", "total"],
-            &["half", "defending", "players", "starting", "life", "total"],
-            &["half", "attacking", "players", "starting", "life", "total"],
-        ]
-);
-const LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["less", "than", "or", "equal", "to"]);
-const LESS_THAN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "than"]);
+const HALF_STARTING_LIFE_TOTAL_PHRASES: &[&[&str]] = &[
+    &["half", "your", "starting", "life", "total"],
+    &["half", "their", "starting", "life", "total"],
+    &["half", "that", "players", "starting", "life", "total"],
+    &["half", "target", "players", "starting", "life", "total"],
+    &["half", "target", "opponents", "starting", "life", "total"],
+    &["half", "opponents", "starting", "life", "total"],
+    &["half", "defending", "players", "starting", "life", "total"],
+    &["half", "attacking", "players", "starting", "life", "total"],
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TerminalCounterPhrase {
+    counter_type: Option<ironsmith_core::counter::CounterType>,
+    count: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HalfStartingLifeThreshold {
+    AtMost,
+    LessThan,
+}
+
+fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
+    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
+}
+
+fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
+    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
+}
+
+fn clause_contains_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
+    LexPattern::new(&[LexPattern::phrase(phrase)])
+        .find_in_clause(clause)
+        .is_some()
+}
+
+fn is_source_reference_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["it"],
+            &["its"],
+            &["this"],
+            &["this", "card"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this", "object"],
+        ],
+    )
+}
+
+fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["this"], &["this", "card"]])
+}
 
 fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
@@ -312,46 +304,30 @@ fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let allowed_source = matches!(
-        source.word_refs().as_slice(),
-        ["this"]
-            | ["this", "card"]
-            | ["this", "creature"]
-            | ["this", "permanent"]
-            | ["this", "object"]
-    );
-    if !allowed_source {
+    if !is_source_reference_clause(source) {
         return None;
     }
 
     let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    match zone.word_refs().as_slice() {
-        ["your", "hand"]
-            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
-        {
-            Some(Zone::Hand)
-        }
-        ["your", "graveyard"] => Some(Zone::Graveyard),
-        ["your", "library"]
-            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
-        {
-            Some(Zone::Library)
-        }
-        ["exile"] if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) => {
-            Some(Zone::Exile)
-        }
-        ["the", "command", "zone"]
-            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
-        {
-            Some(Zone::Command)
-        }
-        ["command", "zone"]
-            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
-        {
-            Some(Zone::Command)
-        }
-        _ => None,
+    if clause_matches_phrase(zone, &["your", "graveyard"]) {
+        return Some(Zone::Graveyard);
     }
+    if !is_source_card_reference_clause(source) {
+        return None;
+    }
+    if clause_matches_phrase(zone, &["your", "hand"]) {
+        return Some(Zone::Hand);
+    }
+    if clause_matches_phrase(zone, &["your", "library"]) {
+        return Some(Zone::Library);
+    }
+    if clause_matches_phrase(zone, &["exile"]) {
+        return Some(Zone::Exile);
+    }
+    if clause_matches_any_phrase(zone, &[&["the", "command", "zone"], &["command", "zone"]]) {
+        return Some(Zone::Command);
+    }
+    None
 }
 
 fn parse_outlaw_shorthand_filter(words: &[&str]) -> Option<ObjectFilter> {
@@ -396,13 +372,13 @@ fn parse_source_attachment_count_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing source in attachment predicate".to_string())
         })?;
-    if !is_source_state_subject_words(&source.word_refs()) {
+    if !is_source_state_subject_clause(source) {
         return Ok(None);
     }
     let enchanted_by = matched
         .capture_clause("enchanted_by", clause)
         .ok_or_else(|| CardTextError::ParseError("missing enchanted-by phrase".to_string()))?;
-    if !matches!(enchanted_by.word_refs().as_slice(), ["enchanted", "by"]) {
+    if !clause_matches_phrase(enchanted_by, &["enchanted", "by"]) {
         return Ok(None);
     }
     let attachment = matched
@@ -413,16 +389,11 @@ fn parse_source_attachment_count_predicate(
     if filter_tokens.is_empty() {
         return Ok(None);
     }
-    let filter = parse_object_filter(filter_tokens, false).or_else(|_| {
-        let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-        if AURA_WORD_PATTERN.matches_words(&filter_words) {
-            Ok(ObjectFilter::default().with_subtype(Subtype::Aura))
-        } else {
-            Err(CardTextError::ParseError(format!(
-                "unsupported attachment-count predicate tail (predicate: '{}')",
-                words.join(" ")
-            )))
-        }
+    let filter = parse_attachment_count_filter_tokens(filter_tokens).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported attachment-count predicate tail (predicate: '{}')",
+            words.join(" ")
+        ))
     })?;
 
     Ok(Some(PredicateAst::SourceHasAttachmentsMatching {
@@ -430,6 +401,24 @@ fn parse_source_attachment_count_predicate(
         comparison,
         display: words.join(" "),
     }))
+}
+
+fn parse_attachment_count_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    parse_object_filter(tokens, false)
+        .ok()
+        .or_else(|| parse_aura_attachment_filter_clause(LexedClause::new(tokens)))
+}
+
+fn parse_aura_attachment_filter_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
+    const AURA_ATTACHMENT_FILTER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::object(
+            "aura",
+            LexCaptureKind::OneOf(AURA_WORDS),
+        )]);
+
+    AURA_ATTACHMENT_FILTER_PATTERN
+        .matches_clause(clause)
+        .then(|| ObjectFilter::default().with_subtype(Subtype::Aura))
 }
 
 fn object_filter_has_identity(filter: &ObjectFilter) -> bool {
@@ -465,35 +454,23 @@ fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_reference_words(&source.word_refs()) {
+    if !is_source_reference_clause(source) {
         return None;
     }
     let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    let mut negative = matches!(
-        action.word_refs().as_slice(),
-        ["isnt"] | ["isn't"] | ["arent"] | ["aren't"]
-    );
-    let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let descriptor_words = descriptor.word_refs();
-    let mut descriptor_tokens = descriptor.tokens();
-    if descriptor_words
-        .first()
-        .is_some_and(|word| NOT_WORD_PATTERN.matches_word(word))
-    {
-        negative = true;
-        descriptor_tokens = descriptor_tokens.get(1..).unwrap_or_default();
-    }
-    if descriptor_tokens.is_empty() {
+    let mut negative = source_identity_copula_is_negative(action);
+    let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let (descriptor_negative, descriptor_clause) =
+        parse_source_identity_descriptor_clause(descriptor_clause)?;
+    negative |= descriptor_negative;
+    if descriptor_clause.tokens().is_empty() {
         return None;
     }
-    let descriptor_words = crate::runtime_backend::token_word_refs(descriptor_tokens);
-    if descriptor_words
-        .iter()
-        .any(|word| SOURCE_FILTER_IGNORED_DESCRIPTOR_WORD_PATTERN.matches_word(word))
-    {
+    if source_identity_descriptor_contains_ignored_state(descriptor_clause) {
         return None;
     }
-    let filter = parse_object_filter(descriptor_tokens, false)
+    let descriptor_words = descriptor_clause.word_refs();
+    let filter = parse_object_filter(descriptor_clause.tokens(), false)
         .ok()
         .or_else(|| parse_color_only_object_filter_words(&descriptor_words))?;
     if !object_filter_has_identity(&filter) {
@@ -507,6 +484,39 @@ fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
     })
 }
 
+fn parse_source_identity_descriptor_clause<'a>(
+    descriptor: LexedClause<'a>,
+) -> Option<(bool, LexedClause<'a>)> {
+    const NEGATED_DESCRIPTOR_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("not"),
+        LexPattern::object("descriptor", LexCaptureKind::Rest),
+    ]);
+
+    if let Some(matched) = NEGATED_DESCRIPTOR_PATTERN.match_clause(descriptor) {
+        let descriptor = matched.capture_clause_by_role(LexCaptureRole::Object, descriptor)?;
+        return Some((true, descriptor));
+    }
+
+    Some((false, descriptor))
+}
+
+fn source_identity_copula_is_negative(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["isnt"], &["isn't"], &["arent"], &["aren't"]])
+}
+
+fn is_there_are_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["there", "are"])
+}
+
+fn source_identity_descriptor_contains_ignored_state(descriptor: LexedClause<'_>) -> bool {
+    const IGNORED_SOURCE_DESCRIPTOR_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::any_word(SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS)]);
+
+    IGNORED_SOURCE_DESCRIPTOR_PATTERN
+        .find_in_clause(descriptor)
+        .is_some()
+}
+
 fn parse_source_keyword_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let clause = LexedClause::new(&tokens);
@@ -518,10 +528,7 @@ fn parse_source_keyword_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let subject_words = source.word_refs();
-    if !(is_source_reference_words(&subject_words)
-        || SOURCE_REFERENCE_WORD_PATTERN.matches_words(&subject_words))
-    {
+    if !is_source_reference_clause(source) {
         return None;
     }
     let keyword = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -552,7 +559,7 @@ fn parse_you_life_total_at_most_predicate(
             .ok_or_else(|| {
                 CardTextError::ParseError("missing player in life predicate".to_string())
             })?;
-        if matches!(player.word_refs().as_slice(), ["you"]) {
+        if clause_matches_phrase(player, &["you"]) {
             let amount = matched
                 .capture_clause_by_role(LexCaptureRole::Amount, clause)
                 .ok_or_else(|| {
@@ -575,7 +582,7 @@ fn parse_you_life_total_at_most_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing subject in life predicate".to_string())
         })?;
-    if !matches!(subject.word_refs().as_slice(), ["your", "life", "total"]) {
+    if !clause_matches_phrase(subject, &["your", "life", "total"]) {
         return Ok(None);
     }
     let amount = matched
@@ -607,45 +614,84 @@ fn life_total_at_most_from_amount_tokens(
 }
 
 fn parse_half_starting_life_total_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let parse_life_total_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
-        if YOUR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::You, 3))
-        } else if THEIR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 3))
-        } else if THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 4))
-        } else if TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Target, 4))
-        } else if TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::TargetOpponent, 4))
-        } else if OPPONENT_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Opponent, 3))
-        } else if DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Defending, 4))
-        } else if ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Attacking, 4))
-        } else {
-            None
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let copula_phrases: &[&[&str]] = &[&["is"], &["are"]];
+    let atoms = [
+        LexPattern::subject("life_total", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action("copula", LexCaptureKind::OneOf(&["is", "are"])),
+        LexPattern::condition("threshold", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let player = parse_life_total_subject_clause(subject)?;
+    let threshold = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)?;
+    match parse_half_starting_life_total_threshold_clause(threshold)? {
+        HalfStartingLifeThreshold::AtMost => {
+            Some(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player })
         }
-    };
-    if let Some((player, subject_len)) = parse_life_total_subject(words)
-        && words
-            .get(subject_len)
-            .is_some_and(|word| IS_OR_ARE_WORD_PATTERN.matches_word(word))
-    {
-        let tail = &words[subject_len + 1..];
-        if LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[5..])
-        {
-            return Some(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player });
-        }
-        if LESS_THAN_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[2..])
-        {
-            return Some(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
+        HalfStartingLifeThreshold::LessThan => {
+            Some(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player })
         }
     }
+}
+
+fn parse_life_total_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if clause_matches_phrase(clause, &["your", "life", "total"]) {
+        return Some(PlayerAst::You);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["their", "life", "total"],
+            &["that", "players", "life", "total"],
+        ],
+    ) {
+        return Some(PlayerAst::That);
+    }
+    if clause_matches_phrase(clause, &["target", "players", "life", "total"]) {
+        return Some(PlayerAst::Target);
+    }
+    if clause_matches_phrase(clause, &["target", "opponents", "life", "total"]) {
+        return Some(PlayerAst::TargetOpponent);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["opponent", "life", "total"],
+            &["opponents", "life", "total"],
+        ],
+    ) {
+        return Some(PlayerAst::Opponent);
+    }
+    if clause_matches_phrase(clause, &["defending", "players", "life", "total"]) {
+        return Some(PlayerAst::Defending);
+    }
+    if clause_matches_phrase(clause, &["attacking", "players", "life", "total"]) {
+        return Some(PlayerAst::Attacking);
+    }
     None
+}
+
+fn parse_half_starting_life_total_threshold_clause(
+    clause: LexedClause<'_>,
+) -> Option<HalfStartingLifeThreshold> {
+    const AT_MOST_HALF_STARTING_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["less", "than", "or", "equal", "to"]),
+        LexPattern::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
+    ]);
+    const LESS_THAN_HALF_STARTING_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["less", "than"]),
+        LexPattern::any_phrase(HALF_STARTING_LIFE_TOTAL_PHRASES),
+    ]);
+
+    if AT_MOST_HALF_STARTING_LIFE_PATTERN.matches_clause(clause) {
+        Some(HalfStartingLifeThreshold::AtMost)
+    } else if LESS_THAN_HALF_STARTING_LIFE_PATTERN.matches_clause(clause) {
+        Some(HalfStartingLifeThreshold::LessThan)
+    } else {
+        None
+    }
 }
 
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -711,11 +757,11 @@ fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_state_subject_words(&subject_clause.word_refs()) {
+    if !is_source_state_subject_clause(subject_clause) {
         return None;
     }
     let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    source_state_predicate_from_words(&state_clause.word_refs(), false)
+    source_state_predicate_from_clause(state_clause, false)
 }
 
 fn parse_source_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -734,49 +780,87 @@ fn parse_source_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<Predicate
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_state_subject_words(&subject_clause.word_refs()) {
+    if !is_source_state_subject_clause(subject_clause) {
         return None;
     }
     let copula_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    let negative = match copula_clause.word_refs().as_slice() {
-        ["is"] => false,
-        ["isnt"] | ["isn't"] | ["is", "not"] => true,
-        _ => return None,
-    };
+    let negative = source_copula_is_negative(copula_clause)?;
     let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    source_state_predicate_from_words(&state_clause.word_refs(), negative)
+    source_state_predicate_from_clause(state_clause, negative)
 }
 
-fn is_source_state_subject_words(words: &[&str]) -> bool {
-    is_source_reference_words(words) || SOURCE_REFERENCE_WORD_PATTERN.matches_words(words)
+fn is_source_state_subject_clause(clause: LexedClause<'_>) -> bool {
+    is_source_reference_clause(clause)
 }
 
-fn source_state_predicate_from_words(words: &[&str], negative: bool) -> Option<PredicateAst> {
-    match (words, negative) {
-        (["tapped"], false) | (["untapped"], true) => Some(PredicateAst::SourceIsTapped),
-        (["untapped"], false) | (["tapped"], true) => {
-            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
-        }
-        (["saddled"], false) => Some(PredicateAst::SourceIsSaddled),
-        (["saddled"], true) => Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled))),
-        _ => None,
+fn source_copula_is_negative(clause: LexedClause<'_>) -> Option<bool> {
+    if clause_matches_phrase(clause, &["is"]) {
+        return Some(false);
     }
+    if clause_matches_any_phrase(clause, &[&["isnt"], &["isn't"], &["is", "not"]]) {
+        return Some(true);
+    }
+    None
+}
+
+fn source_state_predicate_from_clause(
+    clause: LexedClause<'_>,
+    negative: bool,
+) -> Option<PredicateAst> {
+    if clause_matches_phrase(clause, &["tapped"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+        } else {
+            Some(PredicateAst::SourceIsTapped)
+        };
+    }
+    if clause_matches_phrase(clause, &["untapped"]) {
+        return if negative {
+            Some(PredicateAst::SourceIsTapped)
+        } else {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+        };
+    }
+    if clause_matches_phrase(clause, &["saddled"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsSaddled)))
+        } else {
+            Some(PredicateAst::SourceIsSaddled)
+        };
+    }
+    None
 }
 
 fn parse_terminal_counter_phrase(
     tokens: &[OwnedLexToken],
 ) -> Option<Option<ironsmith_core::counter::CounterType>> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let counter_idx = find_index(&words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })?;
-    if counter_idx + 1 != words.len() {
-        return None;
-    }
-    if counter_idx == 0 {
-        return Some(None);
-    }
-    parse_counter_type_from_tokens(tokens.get(..=counter_idx)?).map(Some)
+    parse_terminal_counter_phrase_shape(tokens).map(|parsed| parsed.counter_type)
+}
+
+fn parse_terminal_counter_phrase_shape(tokens: &[OwnedLexToken]) -> Option<TerminalCounterPhrase> {
+    const TERMINAL_COUNTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::amount(
+            "count_and_type",
+            LexCaptureKind::UntilAnyPhrase(COUNTER_WORD_PHRASES),
+        ),
+        LexPattern::any_phrase(COUNTER_WORD_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = TERMINAL_COUNTER_PATTERN.match_clause(clause)?;
+    let count_and_type = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let count = parse_number(count_and_type.tokens())
+        .map(|(count, _)| count)
+        .unwrap_or(1);
+    let counter_type = if count_and_type.word_refs().is_empty() {
+        None
+    } else {
+        Some(parse_counter_type_from_tokens(tokens)?)
+    };
+    Some(TerminalCounterPhrase {
+        counter_type,
+        count,
+    })
 }
 
 fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -789,11 +873,11 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_reference_words(&source_clause.word_refs()) {
+    if !is_source_reference_clause(source_clause) {
         return None;
     }
     let target_clause = matched.capture_clause("target", clause)?;
-    if !is_exact_counter_on_source_tail(&target_clause.word_refs()) {
+    if !is_exact_counter_on_source_tail_clause(target_clause) {
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -825,11 +909,11 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_reference_words(&source_clause.word_refs()) {
+    if !is_source_reference_clause(source_clause) {
         return None;
     }
     let target_clause = matched.capture_clause("target", clause)?;
-    if !is_counter_on_source_pronoun_tail(&target_clause.word_refs()) {
+    if !is_counter_on_source_pronoun_tail_clause(target_clause) {
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -844,15 +928,17 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     })
 }
 
-fn is_counter_on_source_pronoun_tail(words: &[&str]) -> bool {
-    matches!(
-        words,
-        ["on", "it"]
-            | ["on", "him"]
-            | ["on", "her"]
-            | ["on", "them"]
-            | ["on", "this"]
-            | ["on", "that"]
+fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["on", "it"],
+            &["on", "him"],
+            &["on", "her"],
+            &["on", "them"],
+            &["on", "this"],
+            &["on", "that"],
+        ],
     )
 }
 
@@ -868,11 +954,11 @@ fn parse_there_are_no_counters_on_source_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+    if !is_there_are_clause(existential) {
         return None;
     }
     let target = matched.capture_clause("target", clause)?;
-    if !is_exact_counter_on_source_tail(&target.word_refs()) {
+    if !is_exact_counter_on_source_tail_clause(target) {
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -916,7 +1002,7 @@ fn parse_basic_land_types_among_lands_predicate(
                 "missing existential in basic-land-types predicate".to_string(),
             )
         })?;
-    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+    if !is_there_are_clause(existential) {
         return Ok(None);
     }
     let count_clause = matched
@@ -942,10 +1028,7 @@ fn parse_basic_land_types_among_lands_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing object in basic-land-types predicate".to_string())
         })?;
-    if !land_type_phrases
-        .iter()
-        .any(|phrase| land_types.word_refs().as_slice() == *phrase)
-    {
+    if !clause_matches_any_phrase(land_types, land_type_phrases) {
         return Ok(None);
     }
     let controller = matched
@@ -955,21 +1038,32 @@ fn parse_basic_land_types_among_lands_predicate(
                 "missing controller in basic-land-types predicate".to_string(),
             )
         })?;
-    let player = match controller.word_refs().as_slice() {
-        ["you", "control"] | ["you", "controls"] => PlayerAst::You,
-        ["that", "player", "control"]
-        | ["that", "player", "controls"]
-        | ["that", "players", "controls"] => PlayerAst::That,
-        _ => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported basic-land-types predicate tail (predicate: '{}')",
-                words.join(" ")
-            )));
-        }
-    };
+    let player = parse_basic_land_types_controller_clause(controller).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported basic-land-types predicate tail (predicate: '{}')",
+            words.join(" ")
+        ))
+    })?;
     Ok(Some(
         PredicateAst::PlayerControlsBasicLandTypesAmongLandsOrMore { player, count },
     ))
+}
+
+fn parse_basic_land_types_controller_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if clause_matches_any_phrase(clause, &[&["you", "control"], &["you", "controls"]]) {
+        return Some(PlayerAst::You);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["that", "player", "control"],
+            &["that", "player", "controls"],
+            &["that", "players", "controls"],
+        ],
+    ) {
+        return Some(PlayerAst::That);
+    }
+    None
 }
 
 fn parse_there_are_source_counters_at_least_predicate(
@@ -983,11 +1077,11 @@ fn parse_there_are_source_counters_at_least_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+    if !is_there_are_clause(existential) {
         return None;
     }
     let target = matched.capture_clause("target", clause)?;
-    if !is_exact_counter_on_source_tail(&target.word_refs()) {
+    if !is_exact_counter_on_source_tail_clause(target) {
         return None;
     }
     let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -1052,46 +1146,55 @@ fn is_exact_counter_on_triggering_object_tail(words: &[&str]) -> bool {
     )
 }
 
-fn is_exact_counter_on_source_tail(words: &[&str]) -> bool {
-    matches!(words, ["on", tail @ ..] if is_source_state_subject_words(tail))
+fn is_exact_counter_on_source_tail_clause(clause: LexedClause<'_>) -> bool {
+    const COUNTER_ON_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("on"),
+        LexPattern::subject("source", LexCaptureKind::Rest),
+    ]);
+
+    let Some(matched) = COUNTER_ON_SOURCE_TAIL_PATTERN.match_clause(clause) else {
+        return false;
+    };
+    let Some(source) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause) else {
+        return false;
+    };
+    is_source_state_subject_clause(source)
 }
 
-fn parse_source_exiled_with_counter_predicate(
-    raw_words: &[&str],
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
-    let with_idx = if SOURCE_EXILED_WITH_COUNTER_PREFIX_PATTERN.matches_words(raw_words) {
-        4
-    } else {
-        return None;
-    };
-    let counter_idx = find_index(&raw_words[with_idx + 1..], |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
-    })? + with_idx
-        + 1;
-    if !raw_words
-        .get(counter_idx + 1..)
-        .is_some_and(|tail| COUNTER_ON_SOURCE_TAIL_PATTERN.matches_words(tail))
-    {
+fn parse_source_exiled_with_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let exiled_with_phrase = &["is", "exiled", "with"];
+    let atoms = [
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(exiled_with_phrase)),
+        LexPattern::phrase(exiled_with_phrase),
+        LexPattern::object("counter", LexCaptureKind::UntilPhrase(&["on"])),
+        LexPattern::modifier("target", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_source_state_subject_clause(source_clause) {
         return None;
     }
 
-    let counter_type = parse_counter_type_from_tokens(&tokens[with_idx + 1..=counter_idx])?;
-    let count = parse_number(&tokens[with_idx + 1..counter_idx])
-        .map(|(count, _)| count)
-        .unwrap_or(1);
+    let target_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !is_exact_counter_on_source_tail_clause(target_clause) {
+        return None;
+    }
+
+    let counter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let counter = parse_terminal_counter_phrase_shape(counter_clause.tokens())?;
+    let counter_type = counter.counter_type?;
     Some(PredicateAst::And(
         Box::new(PredicateAst::SourceIsInZone(Zone::Exile)),
         Box::new(PredicateAst::SourceHasCounterAtLeast {
             counter_type,
-            count,
+            count: counter.count,
         }),
     ))
 }
 
-fn parse_source_is_your_ring_bearer_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let clause = LexedClause::new(&tokens);
+fn parse_source_is_your_ring_bearer_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["is"])),
         LexPattern::action("copula", LexCaptureKind::OneOf(&["is"])),
@@ -1099,19 +1202,24 @@ fn parse_source_is_your_ring_bearer_predicate(words: &[&str]) -> Option<Predicat
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        source.word_refs().as_slice(),
-        ["this"] | ["this", "creature"]
-    ) {
+    if !is_this_source_clause(source) {
         return None;
     }
     let role = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(role.word_refs().as_slice(), ["your", "ring", "bearer"]) {
+    if !is_your_ring_bearer_clause(role) {
         return None;
     }
     Some(PredicateAst::SourceIsRingBearer {
         player: PlayerAst::You,
     })
+}
+
+fn is_this_source_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["this"], &["this", "creature"]])
+}
+
+fn is_your_ring_bearer_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "ring", "bearer"])
 }
 
 fn parse_ring_has_tempted_you_this_game_predicate(
@@ -1129,13 +1237,13 @@ fn parse_ring_has_tempted_you_this_game_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let tempted = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(tempted.word_refs().as_slice(), ["has", "tempted", "you"]) {
+    if !clause_matches_phrase(tempted, &["has", "tempted", "you"]) {
         return None;
     }
     let window = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    if !matches!(
-        window.word_refs().as_slice(),
-        ["time" | "times", "this", "game"]
+    if !clause_matches_any_phrase(
+        window,
+        &[&["time", "this", "game"], &["times", "this", "game"]],
     ) {
         return None;
     }
@@ -1150,25 +1258,28 @@ fn parse_ring_has_tempted_you_this_game_predicate(
     })
 }
 
-fn parse_ring_bearer_temptation_predicate(
-    words: &[&str],
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
-    if let Some(predicate) = parse_source_is_your_ring_bearer_predicate(words) {
+fn parse_ring_bearer_temptation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    if let Some(predicate) = parse_source_is_your_ring_bearer_predicate(tokens) {
         return Some(predicate);
     }
     if let Some(predicate) = parse_ring_has_tempted_you_this_game_predicate(tokens) {
         return Some(predicate);
     }
 
-    let and_idx = find_index(words, |word| AND_WORD_PATTERN.matches_word(word))?;
-    let left_words = &words[..and_idx];
-    let right_words = &words[and_idx + 1..];
-    if left_words.is_empty() || right_words.is_empty() {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::condition("left", LexCaptureKind::UntilPhrase(&["and"])),
+        LexPattern::word("and"),
+        LexPattern::condition("right", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let left_clause = matched.capture_clause("left", clause)?;
+    let right_clause = matched.capture_clause("right", clause)?;
+    if left_clause.word_refs().is_empty() || right_clause.word_refs().is_empty() {
         return None;
     }
-    let left = parse_source_is_your_ring_bearer_predicate(left_words)?;
-    let right = parse_ring_has_tempted_you_this_game_predicate(&tokens[and_idx + 1..])?;
+    let left = parse_source_is_your_ring_bearer_predicate(left_clause.tokens())?;
+    let right = parse_ring_has_tempted_you_this_game_predicate(right_clause.tokens())?;
     Some(PredicateAst::And(Box::new(left), Box::new(right)))
 }
 
@@ -1182,27 +1293,16 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let spell = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        spell.word_refs().as_slice(),
-        ["that", "spell"] | ["spell"] | ["it"]
-    ) {
+    if !is_stack_object_reference_clause(spell) {
         return None;
     }
     let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action.word_refs().as_slice(), ["targets", "only"]) {
+    if !clause_matches_phrase(action, &["targets", "only"]) {
         return None;
     }
 
     let target = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let mut target_filter = match target.word_refs().as_slice() {
-        ["this", "creature"] => ObjectFilter::creature(),
-        ["this", "artifact"] => ObjectFilter::artifact(),
-        ["this", "enchantment"] => ObjectFilter::enchantment(),
-        ["this", "land"] => ObjectFilter::land(),
-        ["this", "permanent"] => ObjectFilter::default().in_zone(Zone::Battlefield),
-        ["this", "source"] | ["it"] => ObjectFilter::source().in_zone(Zone::Battlefield),
-        _ => return None,
-    };
+    let mut target_filter = source_target_filter_from_clause(target)?;
     target_filter.source = true;
 
     Some(PredicateAst::ItMatches(
@@ -1210,6 +1310,32 @@ fn parse_stack_object_targets_only_source_predicate(filtered: &[&str]) -> Option
             .targeting_only_object(target_filter)
             .target_count_exact(1),
     ))
+}
+
+fn is_stack_object_reference_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["that", "spell"], &["spell"], &["it"]])
+}
+
+fn source_target_filter_from_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
+    if clause_matches_phrase(clause, &["this", "creature"]) {
+        return Some(ObjectFilter::creature());
+    }
+    if clause_matches_phrase(clause, &["this", "artifact"]) {
+        return Some(ObjectFilter::artifact());
+    }
+    if clause_matches_phrase(clause, &["this", "enchantment"]) {
+        return Some(ObjectFilter::enchantment());
+    }
+    if clause_matches_phrase(clause, &["this", "land"]) {
+        return Some(ObjectFilter::land());
+    }
+    if clause_matches_phrase(clause, &["this", "permanent"]) {
+        return Some(ObjectFilter::default().in_zone(Zone::Battlefield));
+    }
+    if clause_matches_any_phrase(clause, &[&["this", "source"], &["it"]]) {
+        return Some(ObjectFilter::source().in_zone(Zone::Battlefield));
+    }
+    None
 }
 
 fn mana_cost_label_from_words(words: &[&str]) -> Option<String> {
@@ -1339,17 +1465,9 @@ fn parse_player_controls_zero_quantity_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let (player, controller) = match subject_clause.word_refs().as_slice() {
-        ["you"] => (PlayerAst::You, PlayerFilter::You),
-        ["player"] => (PlayerAst::Any, PlayerFilter::Any),
-        _ => return None,
-    };
+    let (player, controller) = zero_control_subject_clause(subject_clause)?;
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    let tagged_neither = match amount_clause.word_refs().as_slice() {
-        ["no"] => false,
-        ["neither"] if player == PlayerAst::You => true,
-        _ => return None,
-    };
+    let tagged_neither = zero_control_amount_clause(amount_clause, player)?;
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
     if object_clause.word_refs().is_empty() {
         return None;
@@ -1363,6 +1481,23 @@ fn parse_player_controls_zero_quantity_predicate(
         PredicateAst::PlayerControlsNo { player, filter }
     });
     Some(result)
+}
+
+fn zero_control_subject_clause(clause: LexedClause<'_>) -> Option<(PlayerAst, PlayerFilter)> {
+    if clause_matches_phrase(clause, &["you"]) {
+        return Some((PlayerAst::You, PlayerFilter::You));
+    }
+    if clause_matches_phrase(clause, &["player"]) {
+        return Some((PlayerAst::Any, PlayerFilter::Any));
+    }
+    None
+}
+
+fn zero_control_amount_clause(clause: LexedClause<'_>, player: PlayerAst) -> Option<bool> {
+    if clause_matches_phrase(clause, &["no"]) {
+        return Some(false);
+    }
+    (player == PlayerAst::You && clause_matches_phrase(clause, &["neither"])).then_some(true)
 }
 
 fn parse_player_does_not_control_predicate(
@@ -1381,14 +1516,11 @@ fn parse_player_does_not_control_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let negation_clause = matched.capture_clause("negation", clause)?;
-    if !matches!(
-        negation_clause.word_refs().as_slice(),
-        ["dont"] | ["don't"] | ["do", "not"]
-    ) {
+    if !is_do_not_clause(negation_clause) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -1409,6 +1541,14 @@ fn parse_player_does_not_control_predicate(
     Some(result)
 }
 
+fn is_you_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["you"])
+}
+
+fn is_do_not_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["dont"], &["don't"], &["do", "not"]])
+}
+
 fn parse_you_control_or_graveyard_predicate(
     filtered: &[&str],
 ) -> Option<Result<PredicateAst, CardTextError>> {
@@ -1423,7 +1563,7 @@ fn parse_you_control_or_graveyard_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(controller_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(controller_clause) {
         return None;
     }
 
@@ -1433,21 +1573,9 @@ fn parse_you_control_or_graveyard_predicate(
     }
 
     let graveyard_object = matched.capture_clause("graveyard_object", clause)?;
-    let graveyard_tokens = graveyard_object.tokens();
-    let mut graveyard_words = graveyard_object.word_refs();
-    let existential_prefix_len = match graveyard_words.as_slice() {
-        ["there", "is" | "are", ..] => 2,
-        ["there", ..] => 1,
-        _ => 0,
-    };
-    if existential_prefix_len > 0 {
-        graveyard_words.drain(0..existential_prefix_len);
-    }
-    let graveyard_tokens = &graveyard_tokens[existential_prefix_len..];
-    if graveyard_tokens.is_empty() || !YOUR_GRAVEYARD_WORDS_PATTERN.matches_words(&graveyard_words)
-    {
+    let Some(graveyard_tokens) = graveyard_object_tokens_after_existential(graveyard_object) else {
         return None;
-    }
+    };
 
     let result =
         parse_object_filter(control_object.tokens(), false).and_then(|mut control_filter| {
@@ -1469,6 +1597,42 @@ fn parse_you_control_or_graveyard_predicate(
     Some(result)
 }
 
+fn graveyard_object_tokens_after_existential<'a>(
+    clause: LexedClause<'a>,
+) -> Option<&'a [OwnedLexToken]> {
+    const THERE_IS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["there", "is"]),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ]);
+    const THERE_ARE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["there", "are"]),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ]);
+    const THERE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("there"),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ]);
+
+    let object_clause = THERE_IS_PATTERN
+        .match_clause(clause)
+        .and_then(|matched| matched.capture_clause_by_role(LexCaptureRole::Object, clause))
+        .or_else(|| {
+            THERE_ARE_PATTERN
+                .match_clause(clause)
+                .and_then(|matched| matched.capture_clause_by_role(LexCaptureRole::Object, clause))
+        })
+        .or_else(|| {
+            THERE_PATTERN
+                .match_clause(clause)
+                .and_then(|matched| matched.capture_clause_by_role(LexCaptureRole::Object, clause))
+        })
+        .unwrap_or(clause);
+    let object_clause = object_clause.trimmed();
+    (!object_clause.tokens().is_empty()
+        && clause_contains_phrase(object_clause, &["your", "graveyard"]))
+    .then_some(object_clause.tokens())
+}
+
 fn parse_you_control_conjoined_predicate(
     filtered: &[&str],
 ) -> Option<Result<PredicateAst, CardTextError>> {
@@ -1483,7 +1647,7 @@ fn parse_you_control_conjoined_predicate(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(controller_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(controller_clause) {
         return None;
     }
 
@@ -1527,6 +1691,7 @@ fn parse_player_controls_predicate(
             crate::runtime_backend::grammar::conditions::ControlConditionOptions {
                 allow_that_player: player == PlayerAst::That,
                 allow_opponent_players: false,
+                allow_defending_player: false,
                 bind_filter_controller_to_subject: controller.is_some(),
                 allow_different_powers_tail: allow_different_powers,
                 default_filter_zone: None,
@@ -1697,10 +1862,10 @@ fn predicate_tokens_from_words(words: &[&str]) -> Vec<OwnedLexToken> {
     crate::runtime_backend::lexer::synthetic_word_tokens(words)
 }
 
-fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+fn parse_color_only_object_filter_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
     let mut filter = ObjectFilter::default();
     let mut saw_color = false;
-    for word in words {
+    for word in clause.word_refs() {
         if AND_WORD_PATTERN.matches_word(word) || OR_WORD_PATTERN.matches_word(word) {
             continue;
         }
@@ -1720,32 +1885,50 @@ fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> 
     saw_color.then_some(filter)
 }
 
-fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
-    let (words, needs_chosen_name) = if let Some(base_words) =
-        crate::runtime_backend::lexer::word_slice_strip_suffix(words, &["with", "chosen", "name"])
-    {
-        (base_words, true)
-    } else {
-        (words, false)
-    };
-    let has_card_noun = words
+fn parse_color_only_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let tokens = predicate_tokens_from_words(words);
+    parse_color_only_object_filter_clause(LexedClause::new(&tokens))
+}
+
+fn strip_clause_suffix<'a>(
+    clause: LexedClause<'a>,
+    suffix: &'static [&'static str],
+) -> Option<LexedClause<'a>> {
+    let atoms = [
+        LexPattern::object("base", LexCaptureKind::UntilLastPhrase(suffix)),
+        LexPattern::phrase(suffix),
+    ];
+    LexPattern::new(&atoms)
+        .match_clause(clause)
+        .and_then(|matched| matched.capture_clause_by_role(LexCaptureRole::Object, clause))
+        .map(LexedClause::trimmed)
+}
+
+fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
+    let clause = clause.trimmed();
+    let (base_clause, needs_chosen_name) =
+        if let Some(base_clause) = strip_clause_suffix(clause, &["with", "chosen", "name"]) {
+            (base_clause, true)
+        } else {
+            (clause, false)
+        };
+    let has_card_noun = base_clause
+        .tokens()
         .last()
-        .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
+        .is_some_and(|token| CARD_OR_CARDS_WORD_PATTERN.matches_word(token.parser_text()));
     let candidates = [
-        (words, has_card_noun),
+        (base_clause, has_card_noun),
         (
-            crate::runtime_backend::lexer::word_slice_strip_suffix(words, &["card"])
-                .unwrap_or(words),
+            strip_clause_suffix(base_clause, &["card"]).unwrap_or(base_clause),
             true,
         ),
         (
-            crate::runtime_backend::lexer::word_slice_strip_suffix(words, &["cards"])
-                .unwrap_or(words),
+            strip_clause_suffix(base_clause, &["cards"]).unwrap_or(base_clause),
             true,
         ),
     ];
     for (candidate, stripped_card_noun) in candidates {
-        if candidate.is_empty() {
+        if candidate.tokens().is_empty() {
             let mut filter = ObjectFilter::default();
             if needs_chosen_name {
                 filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -1755,8 +1938,7 @@ fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
             }
             return Some(filter);
         }
-        let tokens = predicate_tokens_from_words(candidate);
-        if let Ok(mut filter) = parse_object_filter(&tokens, false) {
+        if let Ok(mut filter) = parse_object_filter(candidate.tokens(), false) {
             if stripped_card_noun {
                 filter.zone = None;
             }
@@ -1768,7 +1950,7 @@ fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
             }
             return Some(filter);
         }
-        if let Some(mut filter) = parse_color_only_object_filter_words(candidate) {
+        if let Some(mut filter) = parse_color_only_object_filter_clause(candidate) {
             if stripped_card_noun {
                 filter.zone = None;
             }
@@ -1787,20 +1969,60 @@ fn parse_this_way_object_filter_words(words: &[&str]) -> Option<ObjectFilter> {
 fn parse_passive_this_way_tagged_object_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if filtered.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[
+        &["is", "countered"],
+        &["are", "countered"],
+        &["was", "countered"],
+        &["were", "countered"],
+        &["is", "destroyed"],
+        &["are", "destroyed"],
+        &["was", "destroyed"],
+        &["were", "destroyed"],
+        &["is", "discarded"],
+        &["are", "discarded"],
+        &["was", "discarded"],
+        &["were", "discarded"],
+        &["is", "exiled"],
+        &["are", "exiled"],
+        &["was", "exiled"],
+        &["were", "exiled"],
+        &["is", "milled"],
+        &["are", "milled"],
+        &["was", "milled"],
+        &["were", "milled"],
+        &["is", "returned"],
+        &["are", "returned"],
+        &["was", "returned"],
+        &["were", "returned"],
+        &["is", "revealed"],
+        &["are", "revealed"],
+        &["was", "revealed"],
+        &["were", "revealed"],
+        &["is", "sacrificed"],
+        &["are", "sacrificed"],
+        &["was", "sacrificed"],
+        &["were", "sacrificed"],
+    ];
+    let atoms = [
+        LexPattern::object("object", LexCaptureKind::UntilLastAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        LexPattern::phrase(&["this", "way"]),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+        return Ok(None);
+    };
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in passive this-way predicate".to_string())
+        })?;
+    let filter_words = filter_clause.word_refs();
+    if filter_words.is_empty() {
         return Ok(None);
     }
-    let verb_idx = filtered.len() - 3;
-    let copula_idx = verb_idx.saturating_sub(1);
-    if copula_idx == 0
-        || !PASSIVE_THIS_WAY_COPULA_WORD_PATTERN.matches_word(filtered[copula_idx])
-        || !PASSIVE_THIS_WAY_VERB_WORD_PATTERN.matches_word(filtered[verb_idx])
-    {
-        return Ok(None);
-    }
-
-    let filter_words = &filtered[..copula_idx];
-    let Some(filter) = parse_this_way_object_filter_words(filter_words) else {
+    let Some(filter) = parse_this_way_object_filter_clause(filter_clause) else {
         return Ok(None);
     };
     Ok(Some(PredicateAst::TaggedMatches(
@@ -1812,22 +2034,39 @@ fn parse_passive_this_way_tagged_object_predicate(
 fn parse_active_this_way_discard_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if filtered.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
-        return Ok(None);
-    }
-
-    let Some((player, subject_len)) = active_discard_player_subject(filtered) else {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let action_phrases: &[&[&str]] = &[&["discard"], &["discards"], &["discarded"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action(
+            "action",
+            LexCaptureKind::OneOf(&["discard", "discards", "discarded"]),
+        ),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "way"])),
+        LexPattern::phrase(&["this", "way"]),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
     };
-    let Some(verb) = filtered.get(subject_len) else {
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing subject in active this-way predicate".to_string())
+        })?;
+    let Some(player) = active_discard_player_subject_clause(subject_clause) else {
         return Ok(None);
     };
-    if !matches!(*verb, "discard" | "discards" | "discarded") {
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in active this-way predicate".to_string())
+        })?;
+    let filter_words = filter_clause.word_refs();
+    if filter_words.is_empty() {
         return Ok(None);
     }
-
-    let filter_words = &filtered[subject_len + 1..filtered.len() - 2];
-    let Some(filter) = parse_this_way_object_filter_words(filter_words) else {
+    let Some(filter) = parse_this_way_object_filter_clause(filter_clause) else {
         return Ok(None);
     };
     Ok(Some(PredicateAst::PlayerTaggedObjectMatches {
@@ -1857,33 +2096,23 @@ fn parse_negative_put_tagged_object_predicate(filtered: &[&str]) -> Option<Predi
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let negation_clause = matched.capture_clause("negation", clause)?;
-    if !matches!(
-        negation_clause.word_refs().as_slice(),
-        ["dont"] | ["didnt"] | ["did", "not"]
-    ) {
+    if !is_do_or_did_not_clause(negation_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["put"]) {
+    if !clause_matches_phrase(action_clause, &["put"]) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        object_clause.word_refs().as_slice(),
-        ["the", "card"] | ["that", "card"] | ["card"] | ["it"]
-    ) {
+    if !is_tagged_card_reference_clause(object_clause) {
         return None;
     }
     let destination_clause = matched.capture_clause("destination", clause)?;
-    let zone = match destination_clause.word_refs().as_slice() {
-        ["into", "your", "hand"] => Zone::Hand,
-        ["onto", "battlefield"] | ["onto", "the", "battlefield"] => Zone::Battlefield,
-        _ => return None,
-    };
+    let zone = tagged_put_destination_zone(destination_clause)?;
     Some(PredicateAst::Not(Box::new(
         PredicateAst::PlayerTaggedObjectMatches {
             player: PlayerAst::You,
@@ -1893,12 +2122,52 @@ fn parse_negative_put_tagged_object_predicate(filtered: &[&str]) -> Option<Predi
     )))
 }
 
+fn is_do_or_did_not_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["dont"],
+            &["don't"],
+            &["didnt"],
+            &["didn't"],
+            &["did", "not"],
+        ],
+    )
+}
+
+fn is_tagged_card_reference_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[&["the", "card"], &["that", "card"], &["card"], &["it"]],
+    )
+}
+
+fn tagged_put_destination_zone(clause: LexedClause<'_>) -> Option<Zone> {
+    if clause_matches_phrase(clause, &["into", "your", "hand"]) {
+        return Some(Zone::Hand);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[&["onto", "battlefield"], &["onto", "the", "battlefield"]],
+    ) {
+        return Some(Zone::Battlefield);
+    }
+    None
+}
+
+fn is_battlefield_this_way_destination_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["onto", "battlefield", "this", "way"],
+            &["onto", "the", "battlefield", "this", "way"],
+        ],
+    )
+}
+
 fn parse_active_this_way_battlefield_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if filtered.len() < 7 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
-        return Ok(None);
-    }
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
     let clause = LexedClause::new(&tokens);
     let destination_phrases: &[&[&str]] =
@@ -1922,7 +2191,7 @@ fn parse_active_this_way_battlefield_predicate(
                 "missing subject in this-way battlefield predicate".to_string(),
             )
         })?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return Ok(None);
     }
     let destination_clause = matched
@@ -1932,10 +2201,7 @@ fn parse_active_this_way_battlefield_predicate(
                 "missing destination in this-way battlefield predicate".to_string(),
             )
         })?;
-    if !matches!(
-        destination_clause.word_refs().as_slice(),
-        ["onto", "battlefield", "this", "way"] | ["onto", "the", "battlefield", "this", "way"]
-    ) {
+    if !is_battlefield_this_way_destination_clause(destination_clause) {
         return Ok(None);
     }
     let filter_clause = matched
@@ -1959,9 +2225,6 @@ fn parse_active_this_way_battlefield_predicate(
 fn parse_passive_this_way_battlefield_predicate(
     filtered: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if filtered.len() < 7 || !THIS_WAY_SUFFIX_PATTERN.matches_words(filtered) {
-        return Ok(None);
-    }
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
     let clause = LexedClause::new(&tokens);
     let atoms = [
@@ -1979,7 +2242,7 @@ fn parse_passive_this_way_battlefield_predicate(
                 "missing action in passive this-way battlefield predicate".to_string(),
             )
         })?;
-    if !matches!(action_clause.word_refs().as_slice(), ["is", "put"]) {
+    if !clause_matches_phrase(action_clause, &["is", "put"]) {
         return Ok(None);
     }
     let destination_clause = matched
@@ -1989,10 +2252,7 @@ fn parse_passive_this_way_battlefield_predicate(
                 "missing destination in passive this-way battlefield predicate".to_string(),
             )
         })?;
-    if !matches!(
-        destination_clause.word_refs().as_slice(),
-        ["onto", "battlefield", "this", "way"] | ["onto", "the", "battlefield", "this", "way"]
-    ) {
+    if !is_battlefield_this_way_destination_clause(destination_clause) {
         return Ok(None);
     }
     let filter_clause = matched
@@ -2012,15 +2272,23 @@ fn parse_passive_this_way_battlefield_predicate(
     )))
 }
 
-fn active_discard_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    match words {
-        ["you", ..] => Some((PlayerAst::You, 1)),
-        ["that", "player" | "players", ..] => Some((PlayerAst::That, 2)),
-        ["target", "player", ..] => Some((PlayerAst::Target, 2)),
-        ["target", "opponent", ..] => Some((PlayerAst::TargetOpponent, 2)),
-        ["opponent" | "opponents", ..] => Some((PlayerAst::Opponent, 1)),
-        _ => None,
+fn active_discard_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if clause_matches_phrase(clause, &["you"]) {
+        return Some(PlayerAst::You);
     }
+    if clause_matches_any_phrase(clause, &[&["that", "player"], &["that", "players"]]) {
+        return Some(PlayerAst::That);
+    }
+    if clause_matches_phrase(clause, &["target", "player"]) {
+        return Some(PlayerAst::Target);
+    }
+    if clause_matches_phrase(clause, &["target", "opponent"]) {
+        return Some(PlayerAst::TargetOpponent);
+    }
+    if clause_matches_any_phrase(clause, &[&["opponent"], &["opponents"]]) {
+        return Some(PlayerAst::Opponent);
+    }
+    None
 }
 
 fn parse_repeated_if_or_predicate(
@@ -2109,33 +2377,41 @@ fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter
 }
 
 fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
-    let Some(or_idx) = rfind_index_with(filtered, |idx, word| {
-        if !OR_WORD_PATTERN.matches_word(word) || idx == 0 || idx + 1 >= filtered.len() {
-            return false;
-        }
-        if filtered
-            .get(idx + 1)
-            .is_some_and(|word| OR_COMPARISON_TAIL_WORD_PATTERN.matches_word(word))
-        {
-            return false;
-        }
-        true
-    }) else {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
+    let clause = LexedClause::new(&tokens);
+    let atoms = [
+        LexPattern::object("left", LexCaptureKind::UntilLastPhrase(&["or"])),
+        LexPattern::word("or"),
+        LexPattern::modifier("right", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
     };
+    let left_clause = matched
+        .capture_clause("left", clause)
+        .ok_or_else(|| CardTextError::ParseError("missing left or-predicate".to_string()))?;
+    let right_clause = matched
+        .capture_clause("right", clause)
+        .ok_or_else(|| CardTextError::ParseError("missing right or-predicate".to_string()))?;
+    let left_words = left_clause.word_refs();
+    let right_words = right_clause.word_refs();
+    if left_words.is_empty()
+        || right_words.is_empty()
+        || right_words
+            .first()
+            .is_some_and(|word| OR_COMPARISON_TAIL_WORD_PATTERN.matches_word(word))
+    {
+        return Ok(None);
+    }
 
-    let left_words = &filtered[..or_idx];
-    let right_words = &filtered[or_idx + 1..];
-    let left_tokens = predicate_tokens_from_words(left_words);
-    let right_tokens = predicate_tokens_from_words(right_words);
-    let left = parse_predicate(&left_tokens)?;
-    let right = match parse_predicate(&right_tokens) {
+    let left = parse_predicate(left_clause.tokens())?;
+    let right = match parse_predicate(right_clause.tokens()) {
         Ok(predicate) => predicate,
         Err(original_err) => {
-            let Some(reference_prefix) = predicate_reference_prefix(left_words) else {
+            let Some(reference_prefix) = predicate_reference_prefix(left_words.as_slice()) else {
                 return Err(original_err);
             };
-            if predicate_words_start_with_reference(right_words) {
+            if predicate_words_start_with_reference(right_words.as_slice()) {
                 return Err(original_err);
             }
             let prefixed_words = reference_prefix
@@ -2193,11 +2469,11 @@ fn parse_attacking_you_own_control_predicate(
     let right = matched.capture_clause("right", clause).ok_or_else(|| {
         CardTextError::ParseError("missing right subject in attacking meld predicate".to_string())
     })?;
-    if left.word_refs().is_empty() || right.word_refs().is_empty() {
+    if left.tokens().is_empty() || right.tokens().is_empty() {
         return Ok(None);
     }
 
-    let mut left_filter = parse_meld_subject_filter(&left.word_refs()).map_err(|_| {
+    let mut left_filter = parse_meld_subject_filter_clause(left).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported attacking meld predicate subject (predicate: '{}')",
             filtered.join(" ")
@@ -2206,7 +2482,7 @@ fn parse_attacking_you_own_control_predicate(
     left_filter.controller = Some(PlayerFilter::You);
     left_filter.attacking = true;
 
-    let mut right_filter = parse_meld_subject_filter(&right.word_refs()).map_err(|_| {
+    let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported attacking meld predicate tail (predicate: '{}')",
             filtered.join(" ")
@@ -2247,7 +2523,7 @@ fn parse_you_both_own_and_control_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing owner in own/control predicate".to_string())
         })?;
-    if !matches!(owner.word_refs().as_slice(), ["you", "both", "own", "and"]) {
+    if !is_you_both_own_and_clause(owner) {
         return Ok(None);
     }
     let left = matched.capture_clause("left", clause).ok_or_else(|| {
@@ -2256,18 +2532,18 @@ fn parse_you_both_own_and_control_predicate(
     let right = matched.capture_clause("right", clause).ok_or_else(|| {
         CardTextError::ParseError("missing right subject in own/control predicate".to_string())
     })?;
-    if left.word_refs().is_empty() || right.word_refs().is_empty() {
+    if left.tokens().is_empty() || right.tokens().is_empty() {
         return Ok(None);
     }
 
-    let mut left_filter = parse_meld_subject_filter(&left.word_refs()).map_err(|_| {
+    let mut left_filter = parse_meld_subject_filter_clause(left).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported own-and-control predicate subject (predicate: '{}')",
             filtered.join(" ")
         ))
     })?;
     left_filter.controller = Some(PlayerFilter::You);
-    let mut right_filter = parse_meld_subject_filter(&right.word_refs()).map_err(|_| {
+    let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported own-and-control predicate tail (predicate: '{}')",
             filtered.join(" ")
@@ -2285,6 +2561,28 @@ fn parse_you_both_own_and_control_predicate(
             filter: right_filter,
         }),
     )))
+}
+
+fn parse_meld_subject_filter_clause(
+    clause: LexedClause<'_>,
+) -> Result<ObjectFilter, CardTextError> {
+    let clause = clause.trimmed();
+    if clause.tokens().is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing meld predicate subject".to_string(),
+        ));
+    }
+    if is_source_reference_clause(clause) {
+        return Ok(ObjectFilter::source());
+    }
+
+    parse_object_filter(clause.tokens(), false).or_else(|_| {
+        Ok(ObjectFilter::default().named(render_token_slice(clause.tokens()).trim().to_string()))
+    })
+}
+
+fn is_you_both_own_and_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["you", "both", "own", "and"])
 }
 
 fn parse_implicit_subject_and_predicate(
@@ -2459,16 +2757,17 @@ fn parse_empty_battlefield_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let zone = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    if !matches!(
-        zone.word_refs().as_slice(),
-        ["battlefield"] | ["the", "battlefield"]
-    ) {
+    if !is_battlefield_zone_clause(zone) {
         return None;
     }
     Some(PredicateAst::PlayerControlsNo {
         player: PlayerAst::Any,
         filter: ObjectFilter::creature(),
     })
+}
+
+fn is_battlefield_zone_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["battlefield"], &["the", "battlefield"]])
 }
 
 fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2486,17 +2785,11 @@ fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<P
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let second_player = matched.capture_clause("second_player", clause)?;
-    if !matches!(
-        second_player.word_refs().as_slice(),
-        ["player", "youre", "attacking"] | ["a", "player", "youre", "attacking"]
-    ) {
+    if !is_player_youre_attacking_clause(second_player) {
         return None;
     }
     let status = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        status.word_refs().as_slice(),
-        ["initiative"] | ["the", "initiative"]
-    ) {
+    if !is_initiative_status_clause(status) {
         return None;
     }
     Some(PredicateAst::Or(
@@ -2507,6 +2800,20 @@ fn parse_initiative_choice_predicate_shape(tokens: &[OwnedLexToken]) -> Option<P
             player: PlayerAst::Defending,
         }),
     ))
+}
+
+fn is_player_youre_attacking_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["player", "youre", "attacking"],
+            &["a", "player", "youre", "attacking"],
+        ],
+    )
+}
+
+fn is_initiative_status_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["initiative"], &["the", "initiative"]])
 }
 
 fn parse_night_state_predicate_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2537,10 +2844,14 @@ fn parse_first_combat_phase_predicate_shape(tokens: &[OwnedLexToken]) -> Option<
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let phase = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(phase.word_refs().as_slice(), ["first", "combat", "phase"]) {
+    if !is_first_combat_phase_clause(phase) {
         return None;
     }
     Some(PredicateAst::FirstCombatPhaseOfTurn)
+}
+
+fn is_first_combat_phase_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["first", "combat", "phase"])
 }
 
 fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -2555,16 +2866,20 @@ fn parse_cast_this_spell_during_main_phase_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(object.word_refs().as_slice(), ["this", "spell"]) {
+    if !clause_matches_phrase(object, &["this", "spell"]) {
         return None;
     }
     let phase = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    if !matches!(phase.word_refs().as_slice(), ["your", "main", "phase"]) {
+    if !is_your_main_phase_clause(phase) {
         return None;
     }
     Some(PredicateAst::ThisSpellPaidLabel(
         "CastDuringYourMainPhase".to_string(),
     ))
+}
+
+fn is_your_main_phase_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "main", "phase"])
 }
 
 fn parse_player_achievement_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -2728,7 +3043,7 @@ fn parse_turn_timing_predicate(words: &[&str]) -> Option<PredicateAst> {
         return None;
     }
     let turn_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(turn_clause.word_refs().as_slice(), ["your", "turn"]) {
+    if !is_your_turn_clause(turn_clause) {
         return None;
     }
     let predicate = PredicateAst::YourTurn;
@@ -2737,6 +3052,10 @@ fn parse_turn_timing_predicate(words: &[&str]) -> Option<PredicateAst> {
     } else {
         Some(predicate)
     }
+}
+
+fn is_your_turn_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "turn"])
 }
 
 fn parse_opponent_controls_tagged_object_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -2749,10 +3068,7 @@ fn parse_opponent_controls_tagged_object_predicate(words: &[&str]) -> Option<Pre
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let controller = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        controller.word_refs().as_slice(),
-        ["opponent"] | ["an", "opponent"]
-    ) {
+    if !is_opponent_controller_clause(controller) {
         return None;
     }
     let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -2760,12 +3076,31 @@ fn parse_opponent_controls_tagged_object_predicate(words: &[&str]) -> Option<Pre
         controller: Some(PlayerFilter::Opponent),
         ..Default::default()
     };
-    match object.word_refs().as_slice() {
-        ["it"] | ["that", "permanent"] => {}
-        ["that", "creature"] => filter.card_types.push(CardType::Creature),
-        _ => return None,
+    match controlled_tagged_object_kind(object)? {
+        ControlledTaggedObjectKind::Permanent => {}
+        ControlledTaggedObjectKind::Creature => filter.card_types.push(CardType::Creature),
     }
     Some(PredicateAst::ItMatches(filter))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlledTaggedObjectKind {
+    Permanent,
+    Creature,
+}
+
+fn is_opponent_controller_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["opponent"], &["an", "opponent"]])
+}
+
+fn controlled_tagged_object_kind(clause: LexedClause<'_>) -> Option<ControlledTaggedObjectKind> {
+    if clause_matches_any_phrase(clause, &[&["it"], &["that", "permanent"]]) {
+        return Some(ControlledTaggedObjectKind::Permanent);
+    }
+    if clause_matches_phrase(clause, &["that", "creature"]) {
+        return Some(ControlledTaggedObjectKind::Creature);
+    }
+    None
 }
 
 fn parse_secret_choices_match_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -2777,13 +3112,14 @@ fn parse_secret_choices_match_predicate(words: &[&str]) -> Option<PredicateAst> 
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject.word_refs().as_slice(),
-        ["they"] | ["those", "choices"]
-    ) {
+    if !is_secret_choices_subject_clause(subject) {
         return None;
     }
     Some(PredicateAst::SecretChoicesMatch)
+}
+
+fn is_secret_choices_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["they"], &["those", "choices"]])
 }
 
 fn parse_vote_result_predicate(
@@ -2839,11 +3175,10 @@ fn parse_x_value_comparison_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let comparison_clause = matched.capture_clause("comparison", clause)?;
-    let comparison_words = comparison_clause.word_refs();
-    let comparison_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&comparison_words);
     let (comparison, used) =
-        parse_quantity_comparison_prefix(&comparison_tokens, false, false, "x comparison").ok()?;
-    if used != comparison_words.len() {
+        parse_quantity_comparison_prefix(comparison_clause.tokens(), false, false, "x comparison")
+            .ok()?;
+    if used != comparison_clause.tokens().len() {
         return None;
     }
     let (operator, amount) = comparison_to_value_comparison_operator(comparison)?;
@@ -2873,11 +3208,7 @@ fn parse_paid_cost_label_predicate(words: &[&str]) -> Option<PredicateAst> {
         label_words.remove(0);
     }
     let paid_tail = matched.capture_clause("paid_tail", clause)?;
-    let negated = match paid_tail.word_refs().as_slice() {
-        ["cost", "was", "paid"] => false,
-        ["cost", "wasnt", "paid"] | ["cost", "was", "not", "paid"] => true,
-        _ => return None,
-    };
+    let negated = paid_cost_tail_is_negated(paid_tail)?;
     let label = match label_words.as_slice() {
         ["this", possessive, label] if is_this_spell_possessive_word(possessive) => {
             named_paid_cost_label_from_word(label)?
@@ -2890,6 +3221,19 @@ fn parse_paid_cost_label_predicate(words: &[&str]) -> Option<PredicateAst> {
     } else {
         Some(predicate)
     }
+}
+
+fn paid_cost_tail_is_negated(clause: LexedClause<'_>) -> Option<bool> {
+    if clause_matches_phrase(clause, &["cost", "was", "paid"]) {
+        return Some(false);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[&["cost", "wasnt", "paid"], &["cost", "was", "not", "paid"]],
+    ) {
+        return Some(true);
+    }
+    None
 }
 
 fn parse_vote_option_result_predicate(words: &[&str], allow_tied: bool) -> Option<PredicateAst> {
@@ -2906,17 +3250,14 @@ fn parse_vote_option_result_predicate(words: &[&str], allow_tied: bool) -> Optio
         return None;
     }
     let result = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    match result.word_refs().as_slice() {
-        ["more", "votes"] => Some(PredicateAst::VoteOptionGetsMoreVotes {
-            option: option.word_refs().join(" "),
-        }),
-        ["more", "votes", "or", "vote", "is", "tied"] if allow_tied => {
-            Some(PredicateAst::VoteOptionGetsMoreVotesOrTied {
-                option: option.word_refs().join(" "),
-            })
-        }
-        _ => None,
+    let option = option.word_refs().join(" ");
+    if clause_matches_phrase(result, &["more", "votes"]) {
+        return Some(PredicateAst::VoteOptionGetsMoreVotes { option });
     }
+    if allow_tied && clause_matches_phrase(result, &["more", "votes", "or", "vote", "is", "tied"]) {
+        return Some(PredicateAst::VoteOptionGetsMoreVotesOrTied { option });
+    }
+    None
 }
 
 fn parse_no_vote_objects_matched_predicate(
@@ -2937,7 +3278,7 @@ fn parse_no_vote_objects_matched_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing action in vote result predicate".to_string())
         })?;
-    if !matches!(action.word_refs().as_slice(), ["got", "votes"]) {
+    if !clause_matches_phrase(action, &["got", "votes"]) {
         return Ok(None);
     }
     let objects = matched
@@ -3131,6 +3472,87 @@ fn parse_combat_damage_this_turn_predicate(words: &[&str]) -> Option<PredicateAs
         .or_else(|| parse_player_dealt_combat_damage_by_subtype_this_turn_shape(&tokens))
 }
 
+fn is_player_object_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["player"], &["a", "player"]])
+}
+
+fn combat_damage_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if clause_matches_any_phrase(clause, &[&["a", "player"], &["player"]]) {
+        return Some(PlayerAst::Any);
+    }
+    if clause_matches_any_phrase(clause, &[&["an", "opponent"], &["opponent"]]) {
+        return Some(PlayerAst::Opponent);
+    }
+    None
+}
+
+fn single_subtype_word_clause(clause: LexedClause<'_>) -> Option<&str> {
+    let words = clause.word_refs();
+    match words.as_slice() {
+        [word] => Some(*word),
+        ["a" | "an", word] => Some(*word),
+        _ => None,
+    }
+}
+
+fn is_this_turn_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["this", "turn"])
+}
+
+fn is_this_combat_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["this", "combat"])
+}
+
+fn is_attacked_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["attacked"])
+}
+
+fn is_triggering_attack_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["that", "creature"], &["it"]])
+}
+
+fn is_other_creatures_this_combat_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["other", "creature", "this", "combat"],
+            &["other", "creatures", "this", "combat"],
+            &["others", "creature", "this", "combat"],
+            &["others", "creatures", "this", "combat"],
+        ],
+    )
+}
+
+fn is_source_attacked_or_blocked_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["this"],
+            &["it"],
+        ],
+    )
+}
+
+fn is_attacked_or_blocked_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["attacked", "or", "blocked"])
+}
+
+fn is_source_did_not_attack_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["this", "creature"])
+}
+
+fn is_entered_under_your_control_tail_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["or", "come", "under", "your", "control"],
+            &["or", "came", "under", "your", "control"],
+        ],
+    )
+}
+
 fn parse_source_dealt_combat_damage_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
@@ -3144,18 +3566,15 @@ fn parse_source_dealt_combat_damage_this_turn_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["it"]) {
+    if !clause_matches_phrase(subject_clause, &["it"]) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        object_clause.word_refs().as_slice(),
-        ["player"] | ["a", "player"]
-    ) {
+    if !is_player_object_clause(object_clause) {
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+    if !is_this_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn)
@@ -3174,21 +3593,12 @@ fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let player = match subject_clause.word_refs().as_slice() {
-        ["a", "player"] | ["player"] => PlayerAst::Any,
-        ["an", "opponent"] | ["opponent"] => PlayerAst::Opponent,
-        _ => return None,
-    };
+    let player = combat_damage_player_subject_clause(subject_clause)?;
     let subtype_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let subtype_words = subtype_clause.word_refs();
-    let subtype_word = match subtype_words.as_slice() {
-        [word] => *word,
-        ["a" | "an", word] => *word,
-        _ => return None,
-    };
+    let subtype_word = single_subtype_word_clause(subtype_clause)?;
     let subtype = parse_subtype_word(subtype_word)?;
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+    if !is_this_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { player, subtype })
@@ -3211,15 +3621,15 @@ fn parse_you_attacked_this_turn_shape(tokens: &[OwnedLexToken]) -> Option<Predic
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["attacked"]) {
+    if !is_attacked_action_clause(action_clause) {
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+    if !is_this_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::YouAttackedThisTurn)
@@ -3240,14 +3650,11 @@ fn parse_triggering_object_had_to_attack_this_combat_shape(
             continue;
         };
         let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !matches!(
-            subject_clause.word_refs().as_slice(),
-            ["that", "creature"] | ["it"]
-        ) {
+        if !is_triggering_attack_subject_clause(subject_clause) {
             continue;
         }
         let window_clause = matched.capture_clause("window", clause)?;
-        if !matches!(window_clause.word_refs().as_slice(), ["this", "combat"]) {
+        if !is_this_combat_clause(window_clause) {
             continue;
         }
         return Some(PredicateAst::TriggeringObjectHadToAttackThisCombat);
@@ -3273,28 +3680,20 @@ fn parse_you_attacked_with_exactly_other_creatures_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(
-        action_clause.word_refs().as_slice(),
-        ["attacked", "with", "exactly"]
-    ) {
+    if !clause_matches_phrase(action_clause, &["attacked", "with", "exactly"]) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        object_clause.word_refs().as_slice(),
-        ["other", "creature" | "creatures", "this", "combat"]
-            | ["others", "creature" | "creatures", "this", "combat"]
-    ) {
+    if !is_other_creatures_this_combat_clause(object_clause) {
         return None;
     }
     let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    let count_words = count_clause.word_refs();
-    let (count, used) = predicate_number_prefix(&count_words)?;
-    if used != count_words.len() {
+    let (count, used) = parse_number(count_clause.tokens())?;
+    if used != count_clause.tokens().len() {
         return None;
     }
     Some(PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count))
@@ -3314,21 +3713,15 @@ fn parse_source_attacked_or_blocked_this_turn_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["this", "creature"] | ["this", "permanent"] | ["this"] | ["it"]
-    ) {
+    if !is_source_attacked_or_blocked_subject_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(
-        action_clause.word_refs().as_slice(),
-        ["attacked", "or", "blocked"]
-    ) {
+    if !is_attacked_or_blocked_action_clause(action_clause) {
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+    if !is_this_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::SourceAttackedOrBlockedThisTurn)
@@ -3338,10 +3731,6 @@ fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let enter_phrases: &[&[&str]] = &[
-        &["or", "come", "under", "your", "control"],
-        &["or", "came", "under", "your", "control"],
-    ];
     let atoms = [
         LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["didnt", "attack"])),
         LexPattern::modifier("negation", LexCaptureKind::OneOf(&["didnt"])),
@@ -3354,18 +3743,15 @@ fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["this", "creature"]) {
+    if !is_source_did_not_attack_subject_clause(subject_clause) {
         return None;
     }
     let enter_clause = matched.capture_clause("enter", clause)?;
-    if !enter_phrases
-        .iter()
-        .any(|phrase| enter_clause.word_refs().as_slice() == *phrase)
-    {
+    if !is_entered_under_your_control_tail_clause(enter_clause) {
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["this", "turn"]) {
+    if !is_this_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::And(
@@ -3388,6 +3774,103 @@ fn parse_spell_lifecycle_predicate(words: &[&str]) -> Option<PredicateAst> {
         .or_else(|| parse_target_was_kicked_shape(&tokens))
 }
 
+fn is_cast_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["cast"])
+}
+
+fn is_source_spell_object_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["it"], &["this", "spell"]])
+}
+
+fn is_tagged_cast_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["it"],
+            &["that", "creature"],
+            &["that", "permanent"],
+            &["that", "object"],
+        ],
+    )
+}
+
+fn is_was_cast_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["was", "cast"])
+}
+
+fn is_this_spell_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["this", "spell"])
+}
+
+fn is_was_cast_from_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["was", "cast", "from"])
+}
+
+fn spell_cast_origin_zone_clause(clause: LexedClause<'_>) -> Option<Zone> {
+    if clause_matches_phrase(clause, &["anywhere", "other", "than", "your", "hand"]) {
+        return None;
+    }
+    let words = clause.word_refs();
+    match words.as_slice() {
+        [zone_word] => parse_zone_word(zone_word),
+        [article, zone_word]
+            if is_article(article) || DEFINITE_ARTICLE_WORD_PATTERN.matches_word(article) =>
+        {
+            parse_zone_word(zone_word)
+        }
+        _ => None,
+    }
+}
+
+fn is_no_amount_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["no"])
+}
+
+fn is_spell_object_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["spell"], &["spells"]])
+}
+
+fn is_were_cast_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["was", "cast"], &["were", "cast"]])
+}
+
+fn is_last_turn_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["last", "turn"])
+}
+
+fn is_kicked_source_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["this", "spell"],
+            &["this", "creature"],
+            &["this", "permanent"],
+            &["it"],
+        ],
+    )
+}
+
+fn is_was_kicked_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["was", "kicked"])
+}
+
+fn is_bargained_source_clause(clause: LexedClause<'_>) -> bool {
+    is_source_spell_object_clause(clause)
+}
+
+fn is_was_bargained_action_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["was", "bargained"])
+}
+
+fn is_named_label_clause(clause: LexedClause<'_>, label: &str) -> bool {
+    let label_word = label.to_ascii_lowercase();
+    clause_matches_phrase(clause, &[label_word.as_str()])
+}
+
+fn is_that_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["that"])
+}
+
 fn parse_you_cast_source_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
@@ -3397,18 +3880,15 @@ fn parse_you_cast_source_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["cast"]) {
+    if !is_cast_action_clause(action_clause) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        object_clause.word_refs().as_slice(),
-        ["it"] | ["this", "spell"]
-    ) {
+    if !is_source_spell_object_clause(object_clause) {
         return None;
     }
     Some(PredicateAst::SourceWasCast)
@@ -3422,14 +3902,11 @@ fn parse_tagged_was_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst>
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["it"] | ["that", "creature"] | ["that", "permanent"] | ["that", "object"]
-    ) {
+    if !is_tagged_cast_subject_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["was", "cast"]) {
+    if !is_was_cast_action_clause(action_clause) {
         return None;
     }
     Some(PredicateAst::TaggedWasCast(TagKey::from(IT_TAG)))
@@ -3447,34 +3924,21 @@ fn parse_this_spell_was_cast_from_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["this", "spell"]) {
+    if !is_this_spell_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(
-        action_clause.word_refs().as_slice(),
-        ["was", "cast", "from"]
-    ) {
+    if !is_was_cast_from_action_clause(action_clause) {
         return None;
     }
     let origin_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let origin_words = origin_clause.word_refs();
-    if matches!(
-        origin_words.as_slice(),
-        ["anywhere", "other", "than", "your", "hand"]
+    if clause_matches_phrase(
+        origin_clause,
+        &["anywhere", "other", "than", "your", "hand"],
     ) {
         return Some(PredicateAst::ThisSpellWasCastFromNonHand);
     }
-    let zone_words = origin_words.as_slice();
-    let zone = if zone_words.len() == 1 {
-        parse_zone_word(zone_words[0])
-    } else if zone_words.len() == 2
-        && (is_article(zone_words[0]) || DEFINITE_ARTICLE_WORD_PATTERN.matches_word(zone_words[0]))
-    {
-        parse_zone_word(zone_words[1])
-    } else {
-        None
-    }?;
+    let zone = spell_cast_origin_zone_clause(origin_clause)?;
     Some(PredicateAst::ThisSpellWasCastFromZone(zone))
 }
 
@@ -3488,22 +3952,19 @@ fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    if !matches!(amount_clause.word_refs().as_slice(), ["no"]) {
+    if !is_no_amount_clause(amount_clause) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(object_clause.word_refs().as_slice(), ["spell" | "spells"]) {
+    if !is_spell_object_clause(object_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(
-        action_clause.word_refs().as_slice(),
-        ["was" | "were", "cast"]
-    ) {
+    if !is_were_cast_action_clause(action_clause) {
         return None;
     }
     let window_clause = matched.capture_clause("window", clause)?;
-    if !matches!(window_clause.word_refs().as_slice(), ["last", "turn"]) {
+    if !is_last_turn_clause(window_clause) {
         return None;
     }
     Some(PredicateAst::NoSpellsWereCastLastTurn)
@@ -3541,14 +4002,11 @@ fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<Predica
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["this", "spell"] | ["this", "creature"] | ["this", "permanent"] | ["it"]
-    ) {
+    if !is_kicked_source_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["was", "kicked"]) {
+    if !is_was_kicked_action_clause(action_clause) {
         return None;
     }
     Some(PredicateAst::ThisSpellWasKicked)
@@ -3565,14 +4023,11 @@ fn parse_this_spell_was_bargained_shape(tokens: &[OwnedLexToken]) -> Option<Pred
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["this", "spell"] | ["it"]
-    ) {
+    if !is_bargained_source_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["was", "bargained"]) {
+    if !is_was_bargained_action_clause(action_clause) {
         return None;
     }
     Some(PredicateAst::ThisSpellPaidLabel("Bargain".to_string()))
@@ -3584,7 +4039,6 @@ fn parse_named_spell_label_action_shape(
     action_phrase: &[&str],
     negated: bool,
 ) -> Option<PredicateAst> {
-    let label_word = label.to_ascii_lowercase();
     let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("label", LexCaptureKind::UntilPhrase(action_phrase)),
@@ -3592,11 +4046,11 @@ fn parse_named_spell_label_action_shape(
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let label_clause = matched.capture_clause("label", clause)?;
-    if !matches!(label_clause.word_refs().as_slice(), [word] if *word == label_word) {
+    if !is_named_label_clause(label_clause, label) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if action_clause.word_refs().as_slice() != action_phrase {
+    if !clause_matches_phrase(action_clause, action_phrase) {
         return None;
     }
     let predicate = PredicateAst::ThisSpellPaidLabel(label.to_string());
@@ -3635,11 +4089,11 @@ fn parse_target_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAs
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["that"]) {
+    if !is_that_clause(subject_clause) {
         return None;
     }
     let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !matches!(action_clause.word_refs().as_slice(), ["was", "kicked"]) {
+    if !is_was_kicked_action_clause(action_clause) {
         return None;
     }
     Some(PredicateAst::TargetWasKicked)
@@ -3661,19 +4115,14 @@ fn parse_mana_spent_capture_predicate(words: &[&str]) -> Option<PredicateAst> {
 
 fn parse_mana_symbol_spent_to_cast_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let spent_phrases: &[&[&str]] = &[
-        &["was", "spent", "to", "cast", "this", "spell"],
-        &["were", "spent", "to", "cast", "this", "spell"],
-    ];
     let atoms = [
-        LexPattern::amount("symbols", LexCaptureKind::UntilAnyPhrase(spent_phrases)),
-        LexPattern::action("spent", LexCaptureKind::Rest),
+        LexPattern::amount(
+            "symbols",
+            LexCaptureKind::UntilAnyPhrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
+        ),
+        LexPattern::any_phrase(MANA_SPENT_TO_CAST_THIS_SPELL_PHRASES),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let spent_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !MANA_SPENT_TO_CAST_THIS_SPELL_TAIL_PATTERN.matches_words(&spent_clause.word_refs()) {
-        return None;
-    }
     let symbol_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
     let symbol_words = symbol_clause.word_refs();
     if symbol_words.is_empty()
@@ -3714,10 +4163,7 @@ fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<Pr
             continue;
         };
         let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !matches!(
-            subject_clause.word_refs().as_slice(),
-            ["this", "permanent"] | ["that", "permanent"]
-        ) {
+        if !is_this_or_that_permanent_clause(subject_clause) {
             continue;
         }
         let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -3733,6 +4179,63 @@ fn parse_this_permanent_attached_to_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     None
 }
 
+fn is_this_or_that_permanent_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["this", "permanent"], &["that", "permanent"]])
+}
+
+fn is_tagged_exiled_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["any", "of", "those", "cards"],
+            &["those", "cards"],
+            &["that", "card"],
+            &["it"],
+        ],
+    )
+}
+
+fn is_exiled_zone_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["exiled"])
+}
+
+fn is_that_permanent_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["that", "permanent"])
+}
+
+fn is_tagged_entered_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[&["it"], &["that", "card"], &["that", "permanent"]],
+    )
+}
+
+fn is_your_control_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "control"])
+}
+
+fn is_tagged_creature_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["it"], &["that", "creature"]])
+}
+
+fn is_blocking_state_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["blocking"])
+}
+
+fn is_soulbond_partner_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["creature"], &["another", "creature"]])
+}
+
+fn tagged_creature_role_clause(clause: LexedClause<'_>) -> Option<&'static str> {
+    if clause_matches_phrase(clause, &["equipped", "creature"]) {
+        return Some("equipped");
+    }
+    if clause_matches_phrase(clause, &["enchanted", "creature"]) {
+        return Some("enchanted");
+    }
+    None
+}
+
 fn parse_tagged_exiled_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let clause = LexedClause::new(&tokens);
@@ -3744,14 +4247,11 @@ fn parse_tagged_exiled_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["any", "of", "those", "cards"] | ["those", "cards"] | ["that", "card"] | ["it"]
-    ) {
+    if !is_tagged_exiled_subject_clause(subject_clause) {
         return None;
     }
     let zone_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(zone_clause.word_refs().as_slice(), ["exiled"]) {
+    if !is_exiled_zone_clause(zone_clause) {
         return None;
     }
     Some(PredicateAst::TaggedMatches(
@@ -3779,11 +4279,11 @@ fn parse_tagged_controlled_permanent_shape(tokens: &[OwnedLexToken]) -> Option<P
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(subject_clause.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(subject_clause) {
         return None;
     }
     let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(object_clause.word_refs().as_slice(), ["that", "permanent"]) {
+    if !is_that_permanent_clause(object_clause) {
         return None;
     }
     Some(PredicateAst::PlayerTaggedObjectMatches {
@@ -3803,17 +4303,11 @@ fn parse_tagged_entered_under_your_control_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        subject_clause.word_refs().as_slice(),
-        ["it"] | ["that", "card"] | ["that", "permanent"]
-    ) {
+    if !is_tagged_entered_subject_clause(subject_clause) {
         return None;
     }
     let controller_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    if !matches!(
-        controller_clause.word_refs().as_slice(),
-        ["your", "control"]
-    ) {
+    if !is_your_control_clause(controller_clause) {
         return None;
     }
     Some(PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn {
@@ -3835,14 +4329,11 @@ fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<Predica
             continue;
         };
         let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !matches!(
-            subject_clause.word_refs().as_slice(),
-            ["it"] | ["that", "creature"]
-        ) {
+        if !is_tagged_creature_subject_clause(subject_clause) {
             continue;
         }
         let state_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-        if !matches!(state_clause.word_refs().as_slice(), ["blocking"]) {
+        if !is_blocking_state_clause(state_clause) {
             continue;
         }
         return Some(PredicateAst::TaggedMatches(
@@ -3869,14 +4360,11 @@ fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateA
             continue;
         };
         let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-        if !matches!(subject_clause.word_refs().as_slice(), ["it"]) {
+        if !clause_matches_phrase(subject_clause, &["it"]) {
             continue;
         }
         let partner_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-        if !matches!(
-            partner_clause.word_refs().as_slice(),
-            ["creature"] | ["another", "creature"]
-        ) {
+        if !is_soulbond_partner_clause(partner_clause) {
             continue;
         }
         return Some(PredicateAst::ItIsSoulbondPaired);
@@ -3892,11 +4380,7 @@ fn parse_tagged_creature_filter_shape(tokens: &[OwnedLexToken]) -> Option<Predic
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let tagged_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let tag = match tagged_clause.word_refs().as_slice() {
-        ["equipped", "creature"] => "equipped",
-        ["enchanted", "creature"] => "enchanted",
-        _ => return None,
-    };
+    let tag = tagged_creature_role_clause(tagged_clause)?;
     let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
     let mut filter = parse_object_filter(filter_clause.tokens(), false).ok()?;
     if filter.card_types.is_empty() {
@@ -3949,33 +4433,6 @@ fn comparison_player_subject(words: &[&str]) -> Option<(PlayerAst, usize)> {
 }
 
 fn parse_player_cards_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if let Some(action_idx) = find_index(&words, |word| matches!(*word, "has" | "have"))
-        && let Some(card_in_idx) = words
-            .windows(2)
-            .position(|window| matches!(window, ["card", "in"] | ["cards", "in"]))
-        && action_idx < card_in_idx
-    {
-        let subject_words = &words[..action_idx];
-        let (player, consumed) = comparison_player_subject(subject_words)?;
-        if consumed == subject_words.len() {
-            let quantity_words = &words[action_idx + 1..card_in_idx];
-            let (comparison, used) = predicate_quantity_prefix(quantity_words)?;
-            if used == quantity_words.len() {
-                let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
-                let tail = &words[card_in_idx + 2..];
-                if matches!(tail, ["your", "graveyard"] | ["their", "graveyard"]) {
-                    let player_filter = player_filter_for_turn_value(player)?;
-                    return Some(PredicateAst::ValueComparison {
-                        left: Value::CardsInGraveyard(player_filter),
-                        operator,
-                        right: Value::Fixed(count),
-                    });
-                }
-            }
-        }
-    }
-
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["has"], &["have"]];
     let card_in_phrases: &[&[&str]] = &[&["card", "in"], &["cards", "in"]];
@@ -4031,7 +4488,7 @@ fn parse_player_controls_more_than_you_predicate(tokens: &[OwnedLexToken]) -> Op
         return None;
     }
     let tail = matched.capture_clause("comparison_player", clause)?;
-    if !matches!(tail.word_refs().as_slice(), ["you"] | ["you", "do"]) {
+    if !is_you_comparison_tail_clause(tail) {
         return None;
     }
     let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -4063,10 +4520,7 @@ fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let controller = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        controller.word_refs().as_slice(),
-        ["opponent"] | ["an", "opponent"]
-    ) {
+    if !is_opponent_controller_clause(controller) {
         return None;
     }
     let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -4093,51 +4547,86 @@ fn parse_opponent_controls_predicate(tokens: &[OwnedLexToken]) -> Option<Predica
     })
 }
 
+fn is_you_comparison_tail_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["you"], &["you", "do"]])
+}
+
+fn parse_keyword_subject_object_filter_words(
+    object_words: &[&str],
+) -> Result<ObjectFilter, CardTextError> {
+    let object = strip_leading_article_word_refs(object_words);
+    if NONLAND_CARD_OBJECT_PATTERN.matches_words(object) {
+        let mut filter = ObjectFilter::default();
+        filter.excluded_card_types.push(CardType::Land);
+        return Ok(filter);
+    }
+
+    let normalized_object;
+    let object = if object.ends_with(&["cards"]) {
+        normalized_object = object[..object.len() - 1]
+            .iter()
+            .copied()
+            .chain(std::iter::once("card"))
+            .collect::<Vec<_>>();
+        normalized_object.as_slice()
+    } else {
+        object
+    };
+    let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object);
+    parse_object_filter(&object_tokens, false).or_else(|_| {
+        let trimmed = object
+            .strip_suffix(&["card"])
+            .or_else(|| object.strip_suffix(&["cards"]))
+            .unwrap_or(object);
+        let trimmed_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
+        parse_object_filter(&trimmed_tokens, false)
+    })
+}
+
+fn parse_graveyard_escape_keyword_predicate(
+    words: &[&str],
+) -> Result<Option<PredicateAst>, CardTextError> {
+    const IN_YOUR_GRAVEYARD_PHRASE: &[&str] = &["in", "your", "graveyard"];
+    const ESCAPE_KEYWORD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "object",
+            LexCaptureKind::UntilPhrase(IN_YOUR_GRAVEYARD_PHRASE),
+        ),
+        LexPattern::phrase(IN_YOUR_GRAVEYARD_PHRASE),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["has", "have"])),
+        LexPattern::object("keyword", LexCaptureKind::OneOf(&["escape"])),
+    ]);
+
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let Some(matched) = ESCAPE_KEYWORD_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let object = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in escape predicate".to_string())
+        })?;
+    let object_words = object.word_refs();
+    if object_words.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_keyword_subject_object_filter_words(object_words.as_slice())?;
+    filter.zone = Some(Zone::Graveyard);
+    filter.owner = Some(PlayerFilter::You);
+    filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Escape);
+    Ok(Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter,
+    }))
+}
+
 fn parse_player_object_keyword_predicate(
     words: &[&str],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if words.len() >= 5
-        && words.last().copied() == Some("escape")
-        && words.get(words.len().saturating_sub(2)).copied() == Some("have")
-    {
-        let subject = &words[..words.len() - 2];
-        if let [object @ .., "in", "your", "graveyard"] = subject {
-            let object = strip_leading_article_word_refs(object);
-            let mut filter = if NONLAND_CARD_OBJECT_PATTERN.matches_words(object) {
-                let mut filter = ObjectFilter::default();
-                filter.excluded_card_types.push(CardType::Land);
-                filter
-            } else {
-                let normalized_object;
-                let object = if object.ends_with(&["cards"]) {
-                    normalized_object = object[..object.len() - 1]
-                        .iter()
-                        .copied()
-                        .chain(std::iter::once("card"))
-                        .collect::<Vec<_>>();
-                    normalized_object.as_slice()
-                } else {
-                    object
-                };
-                let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object);
-                parse_object_filter(&object_tokens, false).or_else(|_| {
-                    let trimmed = object
-                        .strip_suffix(&["card"])
-                        .or_else(|| object.strip_suffix(&["cards"]))
-                        .unwrap_or(object);
-                    let trimmed_tokens =
-                        crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
-                    parse_object_filter(&trimmed_tokens, false)
-                })?
-            };
-            filter.zone = Some(Zone::Graveyard);
-            filter.owner = Some(PlayerFilter::You);
-            filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Escape);
-            return Ok(Some(PredicateAst::PlayerControls {
-                player: PlayerAst::You,
-                filter,
-            }));
-        }
+    if let Some(predicate) = parse_graveyard_escape_keyword_predicate(words)? {
+        return Ok(Some(predicate));
     }
 
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
@@ -4198,43 +4687,11 @@ fn parse_player_object_keyword_predicate(
                 filter.owner = Some(PlayerFilter::You);
             }
             filter
-        } else {
-            let Some(in_idx) = find_index(&subject_words, |word| *word == "in") else {
-                return Ok(None);
-            };
-            let object_words = &subject_words[..in_idx];
-            let zone_words = &subject_words[in_idx + 1..];
-            if object_words.is_empty() || zone_words.is_empty() {
-                return Ok(None);
-            }
-            let mut filter = if NONLAND_CARD_OBJECT_PATTERN.matches_words(object_words) {
-                let mut filter = ObjectFilter::default();
-                filter.excluded_card_types.push(CardType::Land);
-                filter
-            } else {
-                let object_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
-                let Some(filter) = parse_object_filter(&object_tokens, false).ok().or_else(|| {
-                    let trimmed = object_words
-                        .strip_suffix(&["card"])
-                        .or_else(|| object_words.strip_suffix(&["cards"]))
-                        .unwrap_or(object_words);
-                    let trimmed_tokens =
-                        crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
-                    parse_object_filter(&trimmed_tokens, false).ok()
-                }) else {
-                    return Ok(None);
-                };
-                filter
-            };
-            match zone_words {
-                ["your", "graveyard"] => {
-                    filter.zone = Some(Zone::Graveyard);
-                    filter.owner = Some(PlayerFilter::You);
-                }
-                _ => return Ok(None),
-            }
+        } else if let Some(filter) = parse_keyword_subject_object_in_zone_filter(subject.tokens())?
+        {
             filter
+        } else {
+            return Ok(None);
         }
     } else {
         return Ok(None);
@@ -4245,6 +4702,53 @@ fn parse_player_object_keyword_predicate(
         player: PlayerAst::You,
         filter,
     }))
+}
+
+fn parse_keyword_subject_object_in_zone_filter(
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    const OBJECT_IN_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["in"])),
+        LexPattern::word("in"),
+        LexPattern::modifier("zone", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(subject_tokens);
+    let Some(matched) = OBJECT_IN_ZONE_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let object = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing object in keyword-zone predicate".to_string())
+        })?;
+    let zone = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing zone in keyword-zone predicate".to_string())
+        })?;
+    let object_words = object.word_refs();
+    if object_words.is_empty() || zone.word_refs().is_empty() {
+        return Ok(None);
+    }
+    let Ok(mut filter) = parse_keyword_subject_object_filter_words(&object_words) else {
+        return Ok(None);
+    };
+    if is_your_graveyard_clause(zone) {
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+    } else {
+        return Ok(None);
+    }
+    Ok(Some(filter))
+}
+
+fn is_your_graveyard_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "graveyard"])
+}
+
+fn is_there_are_or_were_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["there", "are"], &["there", "were"]])
 }
 
 fn permanents_you_control_scope(words: &[&str]) -> Option<ObjectFilter> {
@@ -4304,14 +4808,13 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(&existential.word_refs()) {
+    if !is_there_are_or_were_clause(existential) {
         return None;
     }
 
     let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    let quantity_words = quantity.word_refs();
-    let (count, used) = predicate_number_prefix(&quantity_words)?;
-    if used != quantity_words.len() {
+    let (count, used) = parse_number(quantity.tokens())?;
+    if used != quantity.tokens().len() {
         return None;
     }
 
@@ -4325,30 +4828,45 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 }
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words) {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    let clause = LexedClause::new(&tokens);
+    let card_type_phrases: &[&[&str]] = &[
+        &["card", "type"],
+        &["card", "types"],
+        &["cards", "type"],
+        &["cards", "types"],
+    ];
+    let atoms = [
+        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
+        LexPattern::amount(
+            "quantity",
+            LexCaptureKind::UntilAnyPhrase(card_type_phrases),
+        ),
+        LexPattern::any_phrase(card_type_phrases),
+        LexPattern::word("among"),
+        LexPattern::modifier("scope", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_there_are_or_were_clause(existential) {
         return None;
     }
 
-    let quantity_start = 2;
-    let card_type_start = (quantity_start..words.len().saturating_sub(1)).find(|idx| {
-        matches!(words[*idx], "card" | "cards") && matches!(words[*idx + 1], "type" | "types")
-    })?;
-    let quantity_words = &words[quantity_start..card_type_start];
+    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let quantity_words = quantity.word_refs();
     let (count, used) = predicate_at_least_quantity_prefix(&quantity_words)?;
     if used != quantity_words.len() {
         return None;
     }
 
-    if words.get(card_type_start + 2).copied() != Some("among") {
-        return None;
-    }
-    let scope_words = &words[card_type_start + 3..];
-    let filter = match scope_words {
+    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let scope_words = scope.word_refs();
+    let filter = match scope_words.as_slice() {
         ["sacrificed" | "sacrificed_0"]
         | ["sacrificed" | "sacrificed_0", "permanent" | "permanents"] => {
             ObjectFilter::tagged("sacrificed_0")
         }
-        _ => permanents_and_your_graveyard_scope(scope_words)?,
+        _ => permanents_and_your_graveyard_scope(&scope_words)?,
     };
 
     Some(PredicateAst::ValueComparison {
@@ -4565,7 +5083,7 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let revealer = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(revealer.word_refs().as_slice(), ["you"]) {
+    if !is_you_clause(revealer) {
         return None;
     }
 
@@ -4585,6 +5103,21 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
             filter: ObjectFilter::default().with_subtype(subtype),
         }),
     ))
+}
+
+fn is_card_graveyard_existential_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["there", "is"], &["there", "are"]])
+}
+
+fn is_graveyard_location_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["your", "graveyard"],
+            &["graveyard"],
+            &["the", "graveyard"],
+        ],
+    )
 }
 
 fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -4626,15 +5159,12 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(
-        existential.word_refs().as_slice(),
-        ["there", "is"] | ["there", "are"]
-    ) {
+    if !is_card_graveyard_existential_clause(existential) {
         return None;
     }
 
     let location = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    if !IN_YOUR_GRAVEYARD_TAIL_PATTERN.matches_words(&location.word_refs()) {
+    if !is_graveyard_location_clause(location) {
         return None;
     }
 
@@ -4691,10 +5221,7 @@ fn parse_object_on_battlefield_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing location in battlefield predicate".to_string())
         })?;
-    if !matches!(
-        location.word_refs().as_slice(),
-        ["battlefield"] | ["the", "battlefield"]
-    ) {
+    if !is_battlefield_zone_clause(location) {
         return Ok(None);
     }
 
@@ -4709,23 +5236,9 @@ fn parse_object_on_battlefield_predicate(
     }
     let mut filter = parse_object_filter(object_tokens, false)?;
     if filter.name.is_some()
-        && let Some(named_idx) = object_tokens
-            .iter()
-            .position(|token| token.is_word("named"))
+        && let Some(name) = parse_named_object_filter_name_tail(object_tokens)
     {
-        let object_words = object_tokens
-            .iter()
-            .filter_map(OwnedLexToken::as_word)
-            .collect::<Vec<_>>();
-        let name_end = find_name_clause_end(&object_words, named_idx + 1);
-        let name = object_tokens[named_idx + 1..name_end]
-            .iter()
-            .filter_map(OwnedLexToken::as_word)
-            .collect::<Vec<_>>()
-            .join(" ");
-        if !name.is_empty() {
-            filter.name = Some(name);
-        }
+        filter.name = Some(name);
     }
     filter.zone = Some(Zone::Battlefield);
 
@@ -4734,6 +5247,26 @@ fn parse_object_on_battlefield_predicate(
         operator: crate::effect::ValueComparisonOperator::GreaterThan,
         right: Value::Fixed(0),
     }))
+}
+
+fn parse_named_object_filter_name_tail(tokens: &[OwnedLexToken]) -> Option<String> {
+    const NAMED_OBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["named"])),
+        LexPattern::word("named"),
+        LexPattern::modifier("name", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = NAMED_OBJECT_PATTERN.match_clause(clause)?;
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if object.word_refs().is_empty() {
+        return None;
+    }
+    let name = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let name_words = name.word_refs();
+    let name_end = find_name_clause_end(name_words.as_slice(), 0);
+    let name = name_words.get(..name_end)?.join(" ");
+    (!name.is_empty()).then_some(name)
 }
 
 fn graveyard_card_types_subject(words: &[&str]) -> Option<PlayerAst> {
@@ -4771,11 +5304,7 @@ fn parse_card_types_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<P
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let lead = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let constrained_player = match lead.word_refs().as_slice() {
-        ["there", "are"] => None,
-        ["you", "have"] => Some(PlayerAst::You),
-        _ => return None,
-    };
+    let constrained_player = card_types_graveyard_lead_player_clause(lead)?;
     let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
     let (count, used) = predicate_at_least_quantity_prefix(&quantity.word_refs())?;
     if used != quantity.word_refs().len() {
@@ -4788,6 +5317,16 @@ fn parse_card_types_in_graveyard_predicate(tokens: &[OwnedLexToken]) -> Option<P
     }
 
     Some(PredicateAst::PlayerHasCardTypesInGraveyardOrMore { player, count })
+}
+
+fn card_types_graveyard_lead_player_clause(clause: LexedClause<'_>) -> Option<Option<PlayerAst>> {
+    if is_there_are_clause(clause) {
+        return Some(None);
+    }
+    if clause_matches_phrase(clause, &["you", "have"]) {
+        return Some(Some(PlayerAst::You));
+    }
+    None
 }
 
 fn parse_there_are_objects_on_battlefield_predicate(
@@ -4810,7 +5349,7 @@ fn parse_there_are_objects_on_battlefield_predicate(
                 "missing existential in battlefield count predicate".to_string(),
             )
         })?;
-    if !matches!(existential.word_refs().as_slice(), ["there", "are"]) {
+    if !is_there_are_clause(existential) {
         return Ok(None);
     }
     let location = matched
@@ -4818,10 +5357,7 @@ fn parse_there_are_objects_on_battlefield_predicate(
         .ok_or_else(|| {
             CardTextError::ParseError("missing location in battlefield count predicate".to_string())
         })?;
-    if !matches!(
-        location.word_refs().as_slice(),
-        ["battlefield"] | ["the", "battlefield"]
-    ) {
+    if !is_battlefield_zone_clause(location) {
         return Ok(None);
     }
 
@@ -4896,12 +5432,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             filtered.truncate(instead_idx);
         }
     }
-    if filtered
-        .windows(5)
-        .any(|window| window == ["you", "both", "own", "and", "control"])
-        && let Some(exile_idx) = filtered
-            .windows(2)
-            .position(|window| window == ["exile", "them"])
+    if predicate_find_exact_phrase_shape(
+        &filtered,
+        YOU_BOTH_OWN_AND_CONTROL_PHRASE,
+        &YOU_BOTH_OWN_AND_CONTROL_PATTERN,
+    )
+    .is_some()
+        && let Some(exile_idx) =
+            predicate_find_exact_phrase_shape(&filtered, EXILE_THEM_PHRASE, &EXILE_THEM_PATTERN)
     {
         filtered.truncate(exile_idx);
     }
@@ -4954,7 +5492,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(PredicateAst::SourceIsInZone(zone));
     }
 
-    if let Some(predicate) = parse_source_exiled_with_counter_predicate(&raw_words, tokens) {
+    if let Some(predicate) = parse_source_exiled_with_counter_predicate(tokens) {
         return Ok(predicate);
     }
 
@@ -5514,7 +6052,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_ring_bearer_temptation_predicate(&filtered, tokens) {
+    if let Some(predicate) = parse_ring_bearer_temptation_predicate(tokens) {
         return Ok(predicate);
     }
 

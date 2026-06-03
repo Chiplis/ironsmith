@@ -1,5 +1,7 @@
 const LABELED_ROUND_UP_EACH_TIME_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["round", "up", "each", "time"]);
+const LABELED_THE_NEXT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "next"]);
 const LABELED_CAST_FROM_AMONG_FREE_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix & ["you", "may", "cast"];
     contains_phrases & [
@@ -582,7 +584,7 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
         filter.owner = Some(PlayerFilter::You);
     }
 
-    if word_slice_starts_with(clause_words.as_slice(), &["the", "next"])
+    if LABELED_THE_NEXT_PREFIX_PATTERN.matches_words(&clause_words)
         && let Some((mana_reduction, used)) = parse_cost_modifier_mana_cost(&reduction_tokens)
         && used == reduction_tokens.len()
     {

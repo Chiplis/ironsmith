@@ -107,6 +107,10 @@ impl<'p> LexPattern<'p> {
         Self::role_capture(name, LexCaptureRole::Modifier, kind)
     }
 
+    pub(crate) const fn condition(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
+        Self::role_capture(name, LexCaptureRole::Condition, kind)
+    }
+
     pub(crate) const fn tail(name: &'p str, kind: LexCaptureKind<'p>) -> LexPatternAtom<'p> {
         Self::role_capture(name, LexCaptureRole::Tail, kind)
     }

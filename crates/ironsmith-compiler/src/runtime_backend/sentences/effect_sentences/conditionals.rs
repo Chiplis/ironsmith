@@ -47,6 +47,17 @@ const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_PATTERN: ClauseShape<'static> =
             ],
         ]
 );
+const EXILE_TARGET_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["exile", "target", "creature"]);
+const GREATEST_POWER_AMONG_CREATURES_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["greatest", "power", "among", "creatures"]]);
+const ON_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["on", "battlefield"],
+            &["on", "the", "battlefield"],
+        ]]
+);
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -192,13 +203,11 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let is_shape = grammar::words_match_any_prefix(tokens, &[&["exile", "target", "creature"]])
-        .is_some()
-        && grammar::words_find_phrase(tokens, &["greatest", "power", "among", "creatures"])
-            .is_some()
-        && (grammar::words_find_phrase(tokens, &["on", "battlefield"]).is_some()
-            || grammar::words_find_phrase(tokens, &["on", "the", "battlefield"]).is_some());
-    if !is_shape {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if !EXILE_TARGET_CREATURE_PREFIX_PATTERN.matches_words(&clause_words)
+        || !GREATEST_POWER_AMONG_CREATURES_PATTERN.matches_words(&clause_words)
+        || !ON_BATTLEFIELD_PATTERN.matches_words(&clause_words)
+    {
         return Ok(None);
     }
 

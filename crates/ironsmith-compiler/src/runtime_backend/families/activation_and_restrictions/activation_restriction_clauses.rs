@@ -1481,7 +1481,9 @@ pub(crate) fn target_ast_player_filter(
 }
 
 pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if words.first().is_some_and(|word| CAST_WORD_PATTERN.matches_word(word))
+    if words
+        .first()
+        .is_some_and(|word| CAST_WORD_PATTERN.matches_word(word))
         && let Some(mut filter) = parse_spell_restriction_subject_filter(&words[1..])
     {
         filter.zone = None;

@@ -49,6 +49,7 @@ const YOU_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
 const OPPONENT_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["opponent"], &["opponents"]]);
 const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["this", "turn"]);
+const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["this", "way"]]);
 const OTHER_THAN_THE_FIRST_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["other", "than", "the", "first"]);
 const PUT_OR_PUTS_WORD_PATTERN: ClauseShape<'static> =
@@ -57,6 +58,13 @@ const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["counter"], &["counters"]]);
 const EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
 const EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["equal", "to"]);
+const EQUAL_TO_DIFFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["equal", "to", "the", "difference"],
+            &["equal", "to", "difference"]
+        ]]
+);
 const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
 const HIM_OR_HER_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["him"], &["her"]]);
 const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
@@ -136,7 +144,7 @@ fn token_slice_matches_shape(tokens: &[OwnedLexToken], shape: &ClauseShape<'stat
 }
 
 fn tokens_reference_objects_this_way(tokens: &[OwnedLexToken]) -> bool {
-    grammar::words_find_phrase(tokens, &["this", "way"]).is_some()
+    token_slice_matches_shape(tokens, &THIS_WAY_PATTERN)
         && (grammar::contains_word(tokens, "destroyed")
             || grammar::contains_word(tokens, "died")
             || grammar::contains_word(tokens, "exiled")
@@ -365,9 +373,7 @@ fn parse_put_counter_count_value(
         return Ok((value, used));
     }
     if grammar::words_match_any_prefix(tokens, &[&["a", "number", "of"]]).is_some() {
-        if grammar::words_find_phrase(tokens, &["equal", "to", "the", "difference"]).is_some()
-            || grammar::words_find_phrase(tokens, &["equal", "to", "difference"]).is_some()
-        {
+        if token_slice_matches_shape(tokens, &EQUAL_TO_DIFFERENCE_PATTERN) {
             return Ok((Value::Fixed(0), 3));
         }
         if let Some(value) = parse_add_mana_equal_amount_value(tokens)

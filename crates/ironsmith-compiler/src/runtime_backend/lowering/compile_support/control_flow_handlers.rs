@@ -710,7 +710,8 @@ pub(crate) fn compile_repeat_process_body(
 
     for (idx, effect) in effects.iter().enumerate() {
         let (mut effect_list, effect_choices) = if idx == continue_effect_index {
-            if let Some(compiled) = compile_starting_with_controller_pay_life_process(effect, ctx)? {
+            if let Some(compiled) = compile_starting_with_controller_pay_life_process(effect, ctx)?
+            {
                 compiled
             } else {
                 compile_effect(effect, ctx)?

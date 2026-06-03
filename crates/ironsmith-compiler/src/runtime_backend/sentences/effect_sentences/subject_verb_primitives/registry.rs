@@ -52,6 +52,12 @@ const REGISTRY_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
 const REGISTRY_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
 const REGISTRY_YOU_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const REGISTRY_DRAWS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["draws"]);
+const REGISTRY_TARGET_OPPONENT_OBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["target", "opponent"], &["target", "opponents"]]);
+const REGISTRY_TARGET_PLAYER_OBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["target", "player"], &["target", "players"]]);
+const REGISTRY_THAT_PLAYER_OBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["that", "player"], &["that", "players"]]);
 const PRIMITIVE_ROUTE_VERBS: &[(&[&str], &str)] = &[
     (&["choose"], "Choose"),
     (&["search"], "Search"),
@@ -86,6 +92,22 @@ fn registry_token_matches_word(token: &OwnedLexToken, expected: &str) -> bool {
     ClauseShape::new()
         .exact(&[expected])
         .matches_words(&[token.as_word().unwrap_or_default()])
+}
+
+fn parse_registry_player_object_clause(
+    object_clause: SubjectVerbPrimitiveClause<'_>,
+) -> Option<PlayerAst> {
+    let object_words = object_clause.word_refs();
+    if REGISTRY_TARGET_OPPONENT_OBJECT_PATTERN.matches_words(&object_words) {
+        return Some(PlayerAst::TargetOpponent);
+    }
+    if REGISTRY_TARGET_PLAYER_OBJECT_PATTERN.matches_words(&object_words) {
+        return Some(PlayerAst::Target);
+    }
+    if REGISTRY_THAT_PLAYER_OBJECT_PATTERN.matches_words(&object_words) {
+        return Some(PlayerAst::That);
+    }
+    None
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1100,11 +1122,8 @@ pub(crate) fn parse_you_and_target_player_each_draw_sentence_matched(
     let Some(object_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Object) else {
         return Ok(None);
     };
-    let target_player = match object_clause.word_refs().as_slice() {
-        ["target", "opponent" | "opponents"] => PlayerAst::TargetOpponent,
-        ["target", "player" | "players"] => PlayerAst::Target,
-        ["that", "player" | "players"] => PlayerAst::That,
-        _ => return Ok(None),
+    let Some(target_player) = parse_registry_player_object_clause(object_clause) else {
+        return Ok(None);
     };
 
     let Some(amount_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Amount) else {

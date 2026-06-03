@@ -10,6 +10,8 @@ const COUNTER_MANA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["
 const ZONE_MOVE_MINUS_ONE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["minus", "one"]);
 const ZONE_MOVE_PLUS_ONE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["plus", "one"]);
 const ZONE_MOVE_FOR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["for", "each"]]);
+const ZONE_MOVE_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]);
 const ZONE_MOVE_ADDITIONAL_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["additional"]);
 const ZONE_MOVE_ROUNDED_DOWN_PREFIX_PATTERN: ClauseShape<'static> =
@@ -577,7 +579,8 @@ pub(crate) fn parse_draw_as_many_cards_value(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
-    let references_previous_event = grammar::words_find_phrase(tokens, &["this", "way"]).is_some();
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let references_previous_event = ZONE_MOVE_THIS_WAY_PATTERN.matches_words(&clause_words);
     if references_previous_event {
         return Some(Value::EventValue(EventValueSpec::Amount));
     }
@@ -676,7 +679,8 @@ pub(crate) fn parse_draw_equal_to_value(
     {
         return Ok(Some(value));
     }
-    if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if ZONE_MOVE_THIS_WAY_PATTERN.matches_words(&clause_words) {
         return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
     }
     if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {

@@ -47,11 +47,91 @@ const FACE_DOWN_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["face-down"], &["facedown"]]);
 const ENTER_OR_ENTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["enter"], &["enters"]]);
+const AS_COPY_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["as", "a", "copy"], &["as", "an", "copy"], &["as", "copy"]]);
+const PUT_ONE_OF_THEM_INTO_YOUR_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["one", "of", "them", "into", "your"]]);
+const ALL_ABILITIES_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["all", "abilities"]]);
+const WAS_SPENT_TO_CAST_THIS_SPELL_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["was", "spent", "to", "cast", "this", "spell"]]);
+const DIFFERENT_MANA_VALUE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["different", "mana", "value"]]);
+const MOST_COMMON_COLOR_EXCLUDED_SHARES_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [&[
+            "shares",
+            "a",
+            "color",
+            "with",
+            "the",
+            "most",
+            "common",
+            "color",
+            "among",
+            "all",
+            "permanents",
+            "or",
+            "a",
+            "color",
+            "tied",
+            "for",
+            "most",
+            "common",
+        ]]
+);
+const MOST_COMMON_COLOR_AMONG_ALL_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["most", "common", "color", "among", "all"]]);
+const POWER_LESS_THAN_OR_EQUAL_COUNT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [&[
+            "less", "than", "or", "equal", "to", "the", "number", "of",
+        ]]
+);
+const PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&[
+        "put",
+        "into",
+        "graveyards",
+        "from",
+        "the",
+        "battlefield",
+        "this",
+        "turn",
+    ]]);
+const LEAVES_THE_BATTLEFIELD_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["leaves", "the", "battlefield"]]);
+const SAME_NAME_AS_ANOTHER_CARD_IN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["same", "name", "as", "another", "card", "in"]]);
+const FOR_EACH_MANA_FROM_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "each", "mana", "from"]]);
+const CAST_THIS_SPELL_CREATE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["cast", "this", "spell", "create"]]);
+const WHEN_YOU_SACRIFICE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["when", "you", "sacrifice"]]);
+const THIS_WAY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]);
+const DEFENDING_PLAYER_CHOICE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["defending", "player's", "choice"],
+            &["defending", "player", "choice"],
+            &["player's", "choice", "target"],
+            &["defending", "player", "s", "choice"],
+        ]]
+);
+const FOR_AS_LONG_AS_YOU_CONTROL_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "as", "long", "as", "you", "control"]]);
+const FOR_AS_LONG_AS_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]);
+
+fn unsupported_phrase_start(words: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
+    (0..words.len()).find(|idx| shape.matches_words(&words[*idx..]))
+}
 
 pub(crate) fn is_enters_as_copy_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let as_copy_idx = primitives::words_find_phrase(tokens, &["as", "a", "copy"])
-        .or_else(|| primitives::words_find_phrase(tokens, &["as", "an", "copy"]))
-        .or_else(|| primitives::words_find_phrase(tokens, &["as", "copy"]));
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let as_copy_idx = unsupported_phrase_start(&words, AS_COPY_TAIL_PATTERN);
     match as_copy_idx {
         Some(idx) => tokens[..idx]
             .iter()
@@ -71,14 +151,10 @@ pub(crate) fn is_negated_untap_clause_words(words: &[&str]) -> bool {
 }
 
 pub(crate) fn is_negated_untap_clause_lexed(tokens: &[OwnedLexToken]) -> bool {
-    let has_untap =
-        primitives::contains_word(tokens, "untap") || primitives::contains_word(tokens, "untaps");
-    let has_negation = primitives::contains_word(tokens, "doesnt")
-        || primitives::contains_word(tokens, "dont")
-        || primitives::contains_word(tokens, "cant")
-        || primitives::words_find_phrase(tokens, &["does", "not"]).is_some()
-        || primitives::words_find_phrase(tokens, &["do", "not"]).is_some()
-        || primitives::words_find_phrase(tokens, &["can", "not"]).is_some();
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let has_untap = UNTAP_MARKER_PATTERN.matches_words(&words);
+    let has_negation = CONTRACTION_NEGATION_MARKER_PATTERN.matches_words(&words)
+        || SPLIT_NEGATION_MARKER_PATTERN.matches_words(&words);
     has_untap && has_negation
 }
 
@@ -117,7 +193,8 @@ pub(crate) fn has_each_player_exile_sacrifice_return_exiled_clause_sentence_lexe
 pub(crate) fn has_put_one_of_them_into_hand_rest_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(tokens, &["one", "of", "them", "into", "your"]).is_some()
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    PUT_ONE_OF_THEM_INTO_YOUR_MARKER_PATTERN.matches_words(&words)
         && primitives::contains_word(tokens, "rest")
         && (primitives::contains_word(tokens, "graveyard")
             || primitives::contains_word(tokens, "graveyards"))
@@ -126,19 +203,18 @@ pub(crate) fn has_put_one_of_them_into_hand_rest_clause_sentence_lexed(
 pub(crate) fn has_loses_all_abilities_with_becomes_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let has_loses_all_abilities = (primitives::contains_word(tokens, "lose")
         || primitives::contains_word(tokens, "loses"))
-        && primitives::words_find_phrase(tokens, &["all", "abilities"]).is_some();
+        && ALL_ABILITIES_MARKER_PATTERN.matches_words(&words);
     has_loses_all_abilities && primitives::contains_word(tokens, "becomes")
 }
 
 pub(crate) fn has_spent_to_cast_this_spell_without_condition_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    let has_spent_to_cast_this_spell =
-        primitives::words_find_phrase(tokens, &["was", "spent", "to", "cast", "this", "spell"])
-            .is_some();
-    has_spent_to_cast_this_spell
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    WAS_SPENT_TO_CAST_THIS_SPELL_MARKER_PATTERN.matches_words(&words)
         && !primitives::contains_word(tokens, "if")
         && !primitives::contains_word(tokens, "unless")
 }
@@ -153,98 +229,64 @@ pub(crate) fn has_would_enter_instead_replacement_clause_sentence_lexed(
 }
 
 pub(crate) fn has_different_mana_value_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::words_find_phrase(tokens, &["different", "mana", "value"]).is_some()
+    DIFFERENT_MANA_VALUE_MARKER_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
 }
 
 pub(crate) fn has_most_common_color_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    if primitives::words_find_phrase(
-        tokens,
-        &[
-            "shares",
-            "a",
-            "color",
-            "with",
-            "the",
-            "most",
-            "common",
-            "color",
-            "among",
-            "all",
-            "permanents",
-            "or",
-            "a",
-            "color",
-            "tied",
-            "for",
-            "most",
-            "common",
-        ],
-    )
-    .is_some()
-    {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if MOST_COMMON_COLOR_EXCLUDED_SHARES_PATTERN.matches_words(&words) {
         return false;
     }
-    primitives::words_find_phrase(tokens, &["most", "common", "color", "among", "all"]).is_some()
+    MOST_COMMON_COLOR_AMONG_ALL_MARKER_PATTERN.matches_words(&words)
         && primitives::contains_word(tokens, "permanents")
 }
 
 pub(crate) fn has_power_vs_count_constraint_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
     primitives::contains_word(tokens, "power")
-        && primitives::words_find_phrase(
-            tokens,
-            &["less", "than", "or", "equal", "to", "the", "number", "of"],
-        )
-        .is_some()
+        && POWER_LESS_THAN_OR_EQUAL_COUNT_MARKER_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(
-        tokens,
-        &[
-            "put",
-            "into",
-            "graveyards",
-            "from",
-            "the",
-            "battlefield",
-            "this",
-            "turn",
-        ],
-    )
-    .is_some()
+    PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_MARKER_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
 }
 
 pub(crate) fn has_phase_out_until_leaves_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
     (primitives::contains_word(tokens, "phase")
         || primitives::contains_word(tokens, "phases")
         || primitives::contains_word(tokens, "phased"))
         && primitives::contains_word(tokens, "until")
-        && primitives::words_find_phrase(tokens, &["leaves", "the", "battlefield"]).is_some()
+        && LEAVES_THE_BATTLEFIELD_MARKER_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn has_same_name_as_another_in_hand_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(tokens, &["same", "name", "as", "another", "card", "in"])
-        .is_some()
+    SAME_NAME_AS_ANOTHER_CARD_IN_MARKER_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
         && primitives::contains_word(tokens, "hand")
 }
 
 pub(crate) fn has_for_each_mana_from_spent_to_cast_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(tokens, &["for", "each", "mana", "from"]).is_some()
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    FOR_EACH_MANA_FROM_MARKER_PATTERN.matches_words(&words)
         && primitives::contains_word(tokens, "spent")
-        && primitives::words_find_phrase(tokens, &["cast", "this", "spell", "create"]).is_some()
+        && CAST_THIS_SPELL_CREATE_MARKER_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn has_when_you_sacrifice_this_way_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
-    primitives::words_find_phrase(tokens, &["when", "you", "sacrifice"]).is_some()
-        && primitives::words_find_phrase(tokens, &["this", "way"]).is_some()
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    WHEN_YOU_SACRIFICE_MARKER_PATTERN.matches_words(&words)
+        && THIS_WAY_MARKER_PATTERN.matches_words(&words)
 }
 
 pub(crate) fn has_greatest_mana_value_clause_sentence_lexed(words: &[&str]) -> bool {
@@ -275,10 +317,9 @@ pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool
 }
 
 pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    primitives::words_find_phrase(tokens, &["defending", "player's", "choice"]).is_some()
-        || primitives::words_find_phrase(tokens, &["defending", "player", "choice"]).is_some()
-        || primitives::words_find_phrase(tokens, &["player's", "choice", "target"]).is_some()
-        || primitives::words_find_phrase(tokens, &["defending", "player", "s", "choice"]).is_some()
+    DEFENDING_PLAYER_CHOICE_MARKER_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+        tokens,
+    ))
 }
 
 pub(crate) fn has_target_creature_token_player_planeswalker_clause_sentence_lexed(
@@ -341,11 +382,11 @@ pub(crate) fn has_return_each_creature_that_isnt_list_clause_sentence_lexed(
 pub(crate) fn has_unsupported_negated_untap_clause_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
     let has_supported_control_duration =
-        primitives::words_find_phrase(tokens, &["for", "as", "long", "as", "you", "control"])
-            .is_some();
+        FOR_AS_LONG_AS_YOU_CONTROL_MARKER_PATTERN.matches_words(&words);
     let has_supported_source_tapped_duration =
-        primitives::words_find_phrase(tokens, &["for", "as", "long", "as"]).is_some()
+        FOR_AS_LONG_AS_MARKER_PATTERN.matches_words(&words)
             && primitives::contains_word(tokens, "remains")
             && primitives::contains_word(tokens, "tapped")
             && (primitives::contains_word(tokens, "this")

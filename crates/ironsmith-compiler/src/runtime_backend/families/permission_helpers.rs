@@ -17,15 +17,15 @@ use super::grammar::filters::{
 };
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom};
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, parser_token_word_refs, token_slice_first_is_any,
-    token_slice_strip_word_prefix, token_word_refs, trim_lexed_commas, word_slice_ends_with,
-    word_slice_eq, word_slice_starts_with,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, token_slice_first_is_any, token_word_refs,
+    trim_lexed_commas, word_slice_ends_with,
 };
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
-    TurnDurationPhrase, find_index as find_token_index, parse_i32_word_token, parse_lexed_prefix,
-    parse_turn_duration_prefix, parse_turn_duration_suffix,
+    TurnDurationPhrase, parse_i32_word_token, parse_lexed_prefix, parse_turn_duration_prefix,
+    parse_turn_duration_suffix,
 };
 use super::util::{
     strip_leading_article_word_refs, strip_leading_token_words_any, token_index_for_word_index,
@@ -73,23 +73,248 @@ struct TaggedPermissionTarget {
     as_copy: bool,
 }
 
-const SPELL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["spell"], &["spells"]]);
-const HAND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["hand"]);
-const GRAVEYARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["graveyard"]);
-const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
-const WITHOUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["without"]);
-const SOURCE_CARD_OR_SPELL_FROM_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "card", "from", "your", "graveyard"],
-            &["this", "spell", "from", "your", "graveyard"],
-        ]
-);
-const FROM_TOP_OF_YOUR_LIBRARY_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["from", "the", "top", "of", "your", "library"]);
-const FROM_YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["from", "your", "graveyard"]);
+fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
+    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
+}
+
+fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
+    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FreeCastFromYourZoneRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ManaValueLimitedFreeCastFromYourZoneRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    comparison_tokens: &'a [OwnedLexToken],
+    zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ZoneFirstManaValueLimitedFreeCastRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    comparison_tokens: &'a [OwnedLexToken],
+    zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct CommandZoneFreeCastRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PlayFromZoneRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FlashGrantRest<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    lifetime: PermissionLifetime,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RevealedTopLibraryPermissionIntro<'a> {
+    permission_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PermissionLifetimePrefix<'a> {
+    lifetime: PermissionLifetime,
+    rest_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OnceEachTurnGraveyardCastRest<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    cost_tokens: Option<&'a [OwnedLexToken]>,
+    exiles_after_resolution: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct OnceEachTurnTopLibrarySharedTypeCast<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    source_reference_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceGraveyardCastAdditionalCost<'a> {
+    cost_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceCastPermission {
+    zone: Zone,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SourceGraveyardDieRollCastPermission {
+    result: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LandsAndCastFromLibraryPermission<'a> {
+    spell_filter_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ConditionalTaggedFreeCastTail<'a> {
+    lifetime: PermissionLifetime,
+    condition_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TaggedPermissionTail<'a> {
+    tail_tokens: &'a [OwnedLexToken],
+}
+
+const SINGLE_TAGGED_PERMISSION_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["it"], &["that", "card"], &["that", "spell"]]);
+const PLURAL_TAGGED_PERMISSION_CARDS_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["those", "cards"]);
+const PLAY_FROM_ZONE_TAILS: &[&[&str]] = &[
+    &["from", "the", "top", "of", "your", "library"],
+    &["from", "your", "graveyard"],
+    &["from", "exile"],
+];
+const FROM_TOP_OF_YOUR_LIBRARY_PHRASE: &[&str] = &["from", "the", "top", "of", "your", "library"];
+const FLASH_GRANT_TAILS: &[&[&str]] = &[
+    &["as", "though", "they", "had", "flash"],
+    &["as", "though", "they", "have", "flash"],
+    &["this", "turn", "as", "though", "they", "had", "flash"],
+    &["this", "turn", "as", "though", "they", "have", "flash"],
+    &[
+        "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
+    ],
+    &[
+        "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
+    ],
+];
+const FREE_CAST_FROM_YOUR_ZONE_TAILS: &[&[&str]] = &[
+    &[
+        "from", "your", "hand", "without", "paying", "their", "mana", "costs",
+    ],
+    &[
+        "from", "your", "hand", "without", "paying", "their", "mana", "cost",
+    ],
+    &[
+        "from", "your", "hand", "without", "paying", "its", "mana", "cost",
+    ],
+    &[
+        "from",
+        "your",
+        "graveyard",
+        "without",
+        "paying",
+        "their",
+        "mana",
+        "costs",
+    ],
+    &[
+        "from",
+        "your",
+        "graveyard",
+        "without",
+        "paying",
+        "their",
+        "mana",
+        "cost",
+    ],
+    &[
+        "from",
+        "your",
+        "graveyard",
+        "without",
+        "paying",
+        "its",
+        "mana",
+        "cost",
+    ],
+];
+const WITH_MANA_VALUE_PHRASE: &[&str] = &["with", "mana", "value"];
+const FROM_YOUR_HAND_WITH_MANA_VALUE_PHRASE: &[&str] =
+    &["from", "your", "hand", "with", "mana", "value"];
+const FROM_YOUR_GRAVEYARD_WITH_MANA_VALUE_PHRASE: &[&str] =
+    &["from", "your", "graveyard", "with", "mana", "value"];
+const WITHOUT_PAYING_ITS_MANA_COST_PHRASE: &[&str] = &["without", "paying", "its", "mana", "cost"];
+const COMMAND_ZONE_FREE_CAST_TAIL: &[&str] = &[
+    "from", "the", "command", "zone", "without", "paying", "its", "mana", "cost",
+];
+const REVEALED_TOP_LIBRARY_PERMISSION_PREFIX: &[&str] =
+    &["until", "end", "of", "turn", "for", "as", "long", "as"];
+const REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL: &[&str] = &[
+    "remains", "on", "top", "of", "your", "library", "play", "with", "the", "top", "card", "of",
+    "your", "library", "revealed", "and",
+];
+const PERMISSION_LIFETIME_PREFIXES: &[&[&str]] = &[
+    &["for", "as", "long", "as", "it", "remains", "exiled"],
+    &[
+        "for", "as", "long", "as", "that", "card", "remains", "exiled",
+    ],
+    &[
+        "for", "as", "long", "as", "you", "control", "this", "creature",
+    ],
+];
+const ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES: &[&[&str]] = &[
+    &[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
+    ],
+    &[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
+    ],
+    &[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+    ],
+    &[
+        "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "cast", "it",
+    ],
+    &[
+        "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "cast", "that", "spell",
+    ],
+    &[
+        "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "cast", "them",
+    ],
+    &[
+        "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of", "any",
+        "color", "to", "cast", "those", "spells",
+    ],
+];
+const ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX: &[&str] = &[
+    "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
+];
+const FROM_YOUR_GRAVEYARD_PHRASE: &[&str] = &["from", "your", "graveyard"];
+const GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX: &[&str] =
+    &["in", "addition", "to", "paying", "its", "other", "costs"];
+const SOURCE_GRAVEYARD_CAST_BY_PREFIXES: &[&[&str]] = &[
+    &["this", "card", "from", "your", "graveyard", "by"],
+    &["this", "spell", "from", "your", "graveyard", "by"],
+];
+const GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX: &[&str] = &[
+    "if",
+    "a",
+    "spell",
+    "cast",
+    "this",
+    "way",
+    "would",
+    "be",
+    "put",
+    "into",
+    "your",
+    "graveyard",
+    "exile",
+    "it",
+    "instead",
+];
+
 const PLAY_ANY_NUMBER_OF_LANDS_EACH_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -112,25 +337,6 @@ const ADDITIONAL_LAND_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shap
             &["additional", "lands", "this", "turn"],
         ]
 );
-const SINGULAR_FREE_CAST_FROM_HAND_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["cast", "a", "spell"], &["cast", "one", "spell"]]]);
-const FROM_YOUR_ZONE_WITH_MANA_VALUE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["from", "your", "graveyard", "with", "mana", "value"],
-            &["from", "your", "hand", "with", "mana", "value"],
-        ]
-);
-const WITHOUT_PAYING_ITS_MANA_COST_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["without", "paying", "its", "mana", "cost"]);
-const TAGGED_SPELL_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["that", "spell", "s", "mana", "value"],
-            &["that", "spells", "mana", "value"],
-        ]]
-);
-
 fn parse_permission_lead_inner<'a>(
     input: &mut LexStream<'a>,
 ) -> Result<PermissionLead, ErrMode<ContextError>> {
@@ -301,85 +507,11 @@ fn parse_tagged_permission_mana_value_condition_prefix_inner<'a>(
     .parse_next(input)
 }
 
-fn parse_flash_tail_inner<'a>(
-    input: &mut LexStream<'a>,
-) -> Result<PermissionLifetime, ErrMode<ContextError>> {
-    alt((
-        grammar::phrase(&["as", "though", "they", "had", "flash"])
-            .value(PermissionLifetime::Static),
-        grammar::phrase(&["as", "though", "they", "have", "flash"])
-            .value(PermissionLifetime::Static),
-        grammar::phrase(&["this", "turn", "as", "though", "they", "had", "flash"])
-            .value(PermissionLifetime::ThisTurn),
-        grammar::phrase(&["this", "turn", "as", "though", "they", "have", "flash"])
-            .value(PermissionLifetime::ThisTurn),
-        grammar::phrase(&[
-            "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
-        ])
-        .value(PermissionLifetime::UntilEndOfTurn),
-        grammar::phrase(&[
-            "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
-        ])
-        .value(PermissionLifetime::UntilEndOfTurn),
-    ))
-    .parse_next(input)
-}
-
 fn parse_exact_lexed_prefix<'a, O>(
     tokens: &'a [OwnedLexToken],
     parser: impl Parser<LexStream<'a>, O, ErrMode<ContextError>>,
 ) -> Option<O> {
     parse_lexed_prefix(tokens, parser).and_then(|(parsed, rest)| rest.is_empty().then_some(parsed))
-}
-
-fn strip_flash_tail_tokens<'a>(
-    tokens: &'a [OwnedLexToken],
-) -> Option<(&'a [OwnedLexToken], PermissionLifetime)> {
-    const PHRASES: &[&[&str]] = &[
-        &["as", "though", "they", "had", "flash"],
-        &["as", "though", "they", "have", "flash"],
-        &["this", "turn", "as", "though", "they", "had", "flash"],
-        &["this", "turn", "as", "though", "they", "have", "flash"],
-        &[
-            "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
-        ],
-        &[
-            "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
-        ],
-    ];
-    let (phrase, rest) = grammar::strip_lexed_suffix_phrases(tokens, PHRASES)?;
-    let lifetime = match *phrase {
-        ["as", "though", "they", "had", "flash"] | ["as", "though", "they", "have", "flash"] => {
-            PermissionLifetime::Static
-        }
-        ["this", "turn", "as", "though", "they", "had", "flash"]
-        | ["this", "turn", "as", "though", "they", "have", "flash"] => PermissionLifetime::ThisTurn,
-        [
-            "until",
-            "end",
-            "of",
-            "turn",
-            "as",
-            "though",
-            "they",
-            "had",
-            "flash",
-        ]
-        | [
-            "until",
-            "the",
-            "end",
-            "of",
-            "turn",
-            "as",
-            "though",
-            "they",
-            "had",
-            "flash",
-        ] => PermissionLifetime::UntilEndOfTurn,
-        _ => return None,
-    };
-    Some((rest, lifetime))
 }
 
 fn combine_flash_permission_lifetime(
@@ -401,61 +533,471 @@ fn grant_spec_grants_flash_to_hand(spec: &crate::grant::GrantSpec) -> bool {
     ) && spec.zone == Zone::Hand
 }
 
-fn strip_cast_from_hand_without_paying_mana_cost_suffix_tokens<'a>(
+fn play_from_zone_from_tail_clause(clause: LexedClause<'_>) -> Option<Zone> {
+    if clause_matches_phrase(clause, &["from", "the", "top", "of", "your", "library"]) {
+        return Some(Zone::Library);
+    }
+    if clause_matches_phrase(clause, &["from", "your", "graveyard"]) {
+        return Some(Zone::Graveyard);
+    }
+    if clause_matches_phrase(clause, &["from", "exile"]) {
+        return Some(Zone::Exile);
+    }
+    None
+}
+
+fn parse_play_from_zone_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<PlayFromZoneRest<'a>> {
+    const PLAY_FROM_ZONE_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "spell_filter",
+            LexCaptureKind::UntilAnyPhrase(PLAY_FROM_ZONE_TAILS),
+        ),
+        LexPattern::tail("zone_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(rest_tokens);
+    let matched = PLAY_FROM_ZONE_REST_PATTERN.match_clause(clause)?;
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let zone = play_from_zone_from_tail_clause(tail_clause)?;
+    Some(PlayFromZoneRest {
+        filter_tokens: trim_lexed_commas(filter_clause.tokens()),
+        zone,
+    })
+}
+
+fn parse_lands_from_top_library_permission_rest_tokens(tokens: &[OwnedLexToken]) -> bool {
+    const LANDS_FROM_TOP_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("lands"),
+        LexPattern::phrase(FROM_TOP_OF_YOUR_LIBRARY_PHRASE),
+    ]);
+
+    LANDS_FROM_TOP_LIBRARY_PATTERN.matches_clause(LexedClause::new(tokens))
+}
+
+fn parse_lands_and_cast_from_top_library_permission_rest_tokens<'a>(
     tokens: &'a [OwnedLexToken],
-) -> Option<&'a [OwnedLexToken]> {
-    grammar::strip_lexed_suffix_phrases(
-        tokens,
+) -> Option<LandsAndCastFromLibraryPermission<'a>> {
+    const LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["lands", "and", "cast"]),
+        LexPattern::object(
+            "spell_filter",
+            LexCaptureKind::UntilPhrase(FROM_TOP_OF_YOUR_LIBRARY_PHRASE),
+        ),
+        LexPattern::phrase(FROM_TOP_OF_YOUR_LIBRARY_PHRASE),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = LANDS_AND_CAST_FROM_TOP_LIBRARY_PATTERN.match_clause(clause)?;
+    let spell_filter = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let spell_filter_tokens = trim_lexed_commas(spell_filter.tokens());
+    (!spell_filter_tokens.is_empty()).then_some(LandsAndCastFromLibraryPermission {
+        spell_filter_tokens,
+    })
+}
+
+fn flash_lifetime_from_tail_clause(clause: LexedClause<'_>) -> Option<PermissionLifetime> {
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["as", "though", "they", "had", "flash"],
+            &["as", "though", "they", "have", "flash"],
+        ],
+    ) {
+        return Some(PermissionLifetime::Static);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["this", "turn", "as", "though", "they", "had", "flash"],
+            &["this", "turn", "as", "though", "they", "have", "flash"],
+        ],
+    ) {
+        return Some(PermissionLifetime::ThisTurn);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &[
+                "until", "end", "of", "turn", "as", "though", "they", "had", "flash",
+            ],
+            &[
+                "until", "the", "end", "of", "turn", "as", "though", "they", "had", "flash",
+            ],
+        ],
+    ) {
+        return Some(PermissionLifetime::UntilEndOfTurn);
+    }
+    None
+}
+
+fn parse_flash_grant_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<FlashGrantRest<'a>> {
+    const FLASH_GRANT_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "spell_filter",
+            LexCaptureKind::UntilAnyPhrase(FLASH_GRANT_TAILS),
+        ),
+        LexPattern::tail("flash_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(rest_tokens);
+    let matched = FLASH_GRANT_REST_PATTERN.match_clause(clause)?;
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let lifetime = flash_lifetime_from_tail_clause(tail_clause)?;
+    let filter_tokens = trim_lexed_commas(filter_clause.tokens());
+    (!filter_tokens.is_empty()).then_some(FlashGrantRest {
+        filter_tokens,
+        lifetime,
+    })
+}
+
+fn parse_revealed_top_library_permission_intro_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<RevealedTopLibraryPermissionIntro<'a>> {
+    const REVEALED_TOP_LIBRARY_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(REVEALED_TOP_LIBRARY_PERMISSION_PREFIX),
+        LexPattern::object(
+            "referenced_card",
+            LexCaptureKind::UntilPhrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
+        ),
+        LexPattern::phrase(REVEALED_TOP_LIBRARY_REMAINS_TOP_TAIL),
+        LexPattern::tail("permission", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = REVEALED_TOP_LIBRARY_PERMISSION_PATTERN.match_clause(clause)?;
+    let referenced_card_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    if !clause_matches_any_phrase(
+        referenced_card_clause,
+        &[
+            &["that", "card"],
+            &["that", "revealed", "card"],
+            &["the", "revealed", "card"],
+        ],
+    ) {
+        return None;
+    }
+    let permission_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let permission_tokens = trim_lexed_commas(permission_clause.tokens());
+    (!permission_tokens.is_empty())
+        .then_some(RevealedTopLibraryPermissionIntro { permission_tokens })
+}
+
+fn permission_lifetime_from_prefix_words(words: &[&str]) -> Option<PermissionLifetime> {
+    match words {
+        ["for", "as", "long", "as", "it", "remains", "exiled"]
+        | [
+            "for",
+            "as",
+            "long",
+            "as",
+            "that",
+            "card",
+            "remains",
+            "exiled",
+        ] => Some(PermissionLifetime::ForAsLongAsExiled),
+        [
+            "for",
+            "as",
+            "long",
+            "as",
+            "you",
+            "control",
+            "this",
+            "creature",
+        ] => Some(PermissionLifetime::ForAsLongAsYouControlSource),
+        _ => None,
+    }
+}
+
+fn parse_permission_lifetime_prefix_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<PermissionLifetimePrefix<'a>> {
+    const PERMISSION_LIFETIME_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(PERMISSION_LIFETIME_PREFIXES),
+        LexPattern::tail("rest", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PERMISSION_LIFETIME_PREFIX_PATTERN.match_clause(clause)?;
+    let tail_capture = matched.capture_by_role(LexCaptureRole::Tail)?;
+    let words = clause.word_refs();
+    let lifetime = permission_lifetime_from_prefix_words(&words[..tail_capture.word_range.start])?;
+    let rest_clause = tail_capture.clause(clause)?;
+    Some(PermissionLifetimePrefix {
+        lifetime,
+        rest_tokens: rest_clause.tokens(),
+    })
+}
+
+fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<OnceEachTurnGraveyardCastRest<'a>> {
+    const EXILE_AFTER_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::phrase(
+        GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX,
+    )];
+    const PLAIN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
+        LexPattern::object(
+            "subject",
+            LexCaptureKind::UntilPhrase(FROM_YOUR_GRAVEYARD_PHRASE),
+        ),
+        LexPattern::phrase(FROM_YOUR_GRAVEYARD_PHRASE),
+        LexPattern::optional(EXILE_AFTER_ATOMS),
+    ]);
+    const COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(ONCE_EACH_TURN_GRAVEYARD_CAST_PREFIX),
+        LexPattern::object(
+            "subject",
+            LexCaptureKind::UntilPhrase(FROM_YOUR_GRAVEYARD_PHRASE),
+        ),
+        LexPattern::phrase(FROM_YOUR_GRAVEYARD_PHRASE),
+        LexPattern::word("by"),
+        LexPattern::modifier(
+            "cost",
+            LexCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+        ),
+        LexPattern::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+        LexPattern::optional(EXILE_AFTER_ATOMS),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    if let Some(matched) = COST_PATTERN.match_clause(clause) {
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let cost_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+        let exiles_after_resolution = clause
+            .word_refs()
+            .ends_with(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX);
+        let subject_tokens = trim_lexed_commas(subject_clause.tokens());
+        let cost_tokens = trim_lexed_commas(cost_clause.tokens());
+        if subject_tokens.is_empty() || cost_tokens.is_empty() {
+            return None;
+        }
+        return Some(OnceEachTurnGraveyardCastRest {
+            subject_tokens,
+            cost_tokens: Some(cost_tokens),
+            exiles_after_resolution,
+        });
+    }
+
+    let matched = PLAIN_PATTERN.match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let subject_tokens = trim_lexed_commas(subject_clause.tokens());
+    if subject_tokens.is_empty() {
+        return None;
+    }
+    Some(OnceEachTurnGraveyardCastRest {
+        subject_tokens,
+        cost_tokens: None,
+        exiles_after_resolution: clause
+            .word_refs()
+            .ends_with(GRAVEYARD_CAST_EXILE_AFTER_RESOLUTION_SUFFIX),
+    })
+}
+
+fn free_cast_zone_from_tail_clause(clause: LexedClause<'_>) -> Option<Zone> {
+    if clause_matches_any_phrase(
+        clause,
         &[
             &[
                 "from", "your", "hand", "without", "paying", "their", "mana", "costs",
-            ][..],
+            ],
             &[
                 "from", "your", "hand", "without", "paying", "their", "mana", "cost",
-            ][..],
+            ],
             &[
                 "from", "your", "hand", "without", "paying", "its", "mana", "cost",
-            ][..],
+            ],
         ],
+    ) {
+        return Some(Zone::Hand);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &[
+                "from",
+                "your",
+                "graveyard",
+                "without",
+                "paying",
+                "their",
+                "mana",
+                "costs",
+            ],
+            &[
+                "from",
+                "your",
+                "graveyard",
+                "without",
+                "paying",
+                "their",
+                "mana",
+                "cost",
+            ],
+            &[
+                "from",
+                "your",
+                "graveyard",
+                "without",
+                "paying",
+                "its",
+                "mana",
+                "cost",
+            ],
+        ],
+    ) {
+        return Some(Zone::Graveyard);
+    }
+    None
+}
+
+fn parse_free_cast_from_your_zone_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<FreeCastFromYourZoneRest<'a>> {
+    const FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "spell_filter",
+            LexCaptureKind::UntilAnyPhrase(FREE_CAST_FROM_YOUR_ZONE_TAILS),
+        ),
+        LexPattern::tail("zone_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(rest_tokens);
+    let matched = FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.match_clause(clause)?;
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let zone = free_cast_zone_from_tail_clause(tail_clause)?;
+    let filter_tokens = trim_lexed_commas(filter_clause.tokens());
+    (!filter_tokens.is_empty()).then_some(FreeCastFromYourZoneRest {
+        filter_tokens,
+        zone,
+    })
+}
+
+fn parse_mana_value_limited_free_cast_from_your_zone_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<ManaValueLimitedFreeCastFromYourZoneRest<'a>> {
+    const MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[
+            LexPattern::object(
+                "spell_filter",
+                LexCaptureKind::UntilPhrase(WITH_MANA_VALUE_PHRASE),
+            ),
+            LexPattern::phrase(WITH_MANA_VALUE_PHRASE),
+            LexPattern::amount(
+                "mana_value_comparison",
+                LexCaptureKind::UntilAnyPhrase(FREE_CAST_FROM_YOUR_ZONE_TAILS),
+            ),
+            LexPattern::tail("zone_tail", LexCaptureKind::Rest),
+        ]);
+
+    let clause = LexedClause::new(rest_tokens);
+    let matched = MANA_VALUE_FREE_CAST_FROM_YOUR_ZONE_REST_PATTERN.match_clause(clause)?;
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let comparison_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
+    let zone = free_cast_zone_from_tail_clause(tail_clause)?;
+    let filter_tokens = trim_lexed_commas(filter_clause.tokens());
+    let comparison_tokens = trim_lexed_commas(comparison_clause.tokens());
+    (!filter_tokens.is_empty() && !comparison_tokens.is_empty()).then_some(
+        ManaValueLimitedFreeCastFromYourZoneRest {
+            filter_tokens,
+            comparison_tokens,
+            zone,
+        },
     )
-    .map(|(_, rest)| rest)
+}
+
+fn parse_zone_first_mana_value_limited_free_cast_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<ZoneFirstManaValueLimitedFreeCastRest<'a>> {
+    fn match_zone_pattern<'a>(
+        rest_tokens: &'a [OwnedLexToken],
+        zone_phrase: &'static [&'static str],
+        zone: Zone,
+    ) -> Option<ZoneFirstManaValueLimitedFreeCastRest<'a>> {
+        let atoms = [
+            LexPattern::object("spell_filter", LexCaptureKind::UntilPhrase(zone_phrase)),
+            LexPattern::phrase(zone_phrase),
+            LexPattern::amount(
+                "mana_value_comparison",
+                LexCaptureKind::UntilPhrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+            ),
+            LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        ];
+        let clause = LexedClause::new(rest_tokens);
+        let matched = LexPattern::new(&atoms).match_clause(clause)?;
+        let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+        let comparison_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+        let filter_tokens = trim_lexed_commas(filter_clause.tokens());
+        let comparison_tokens = trim_lexed_commas(comparison_clause.tokens());
+        (!filter_tokens.is_empty() && !comparison_tokens.is_empty()).then_some(
+            ZoneFirstManaValueLimitedFreeCastRest {
+                filter_tokens,
+                comparison_tokens,
+                zone,
+            },
+        )
+    }
+
+    match_zone_pattern(
+        rest_tokens,
+        FROM_YOUR_HAND_WITH_MANA_VALUE_PHRASE,
+        Zone::Hand,
+    )
+    .or_else(|| {
+        match_zone_pattern(
+            rest_tokens,
+            FROM_YOUR_GRAVEYARD_WITH_MANA_VALUE_PHRASE,
+            Zone::Graveyard,
+        )
+    })
+}
+
+fn parse_command_zone_free_cast_rest_tokens<'a>(
+    rest_tokens: &'a [OwnedLexToken],
+) -> Option<CommandZoneFreeCastRest<'a>> {
+    const COMMAND_ZONE_FREE_CAST_REST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "spell_filter",
+            LexCaptureKind::UntilPhrase(COMMAND_ZONE_FREE_CAST_TAIL),
+        ),
+        LexPattern::phrase(COMMAND_ZONE_FREE_CAST_TAIL),
+    ]);
+
+    let clause = LexedClause::new(rest_tokens);
+    let matched = COMMAND_ZONE_FREE_CAST_REST_PATTERN.match_clause(clause)?;
+    let filter_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let filter_tokens = trim_lexed_commas(filter_clause.tokens());
+    (!filter_tokens.is_empty()).then_some(CommandZoneFreeCastRest { filter_tokens })
+}
+
+fn free_cast_filter_mentions_singular_spell(filter_tokens: &[OwnedLexToken]) -> bool {
+    filter_tokens_contain_singular_spell_subject(filter_tokens)
+        && !filter_tokens_contain_plural_spell_subject(filter_tokens)
 }
 
 fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<&'a [OwnedLexToken]> {
-    grammar::strip_lexed_suffix_phrases(
-        tokens,
-        &[
-            &[
-                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
-            ][..],
-            &[
-                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
-            ][..],
-            &[
-                "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
-                "spell",
-            ][..],
-            &[
-                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-                "any", "color", "to", "cast", "it",
-            ][..],
-            &[
-                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-                "any", "color", "to", "cast", "that", "spell",
-            ][..],
-            &[
-                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-                "any", "color", "to", "cast", "them",
-            ][..],
-            &[
-                "and", "you", "may", "spend", "mana", "as", "though", "it", "were", "mana", "of",
-                "any", "color", "to", "cast", "those", "spells",
-            ][..],
-        ],
-    )
-    .map(|(_, rest)| rest)
+    const ALLOW_ANY_COLOR_SUFFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::modifier(
+            "body",
+            LexCaptureKind::UntilLastAnyPhrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
+        ),
+        LexPattern::any_phrase(ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = ALLOW_ANY_COLOR_SUFFIX_PATTERN.match_clause(clause)?;
+    let body = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    Some(trim_lexed_commas(body.tokens()))
 }
 
 fn parse_without_paying_mana_cost_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -469,20 +1011,10 @@ fn parse_permission_duration_prefix_tokens<'a>(
         return (Some(permission_lifetime_from_turn_duration(duration)), rest);
     }
 
-    if let Some(rest) = token_slice_strip_word_prefix(
-        tokens,
-        &["for", "as", "long", "as", "it", "remains", "exiled"],
-    ) {
-        return (Some(PermissionLifetime::ForAsLongAsExiled), rest);
-    }
-
-    if let Some(rest) = token_slice_strip_word_prefix(
-        tokens,
-        &[
-            "for", "as", "long", "as", "that", "card", "remains", "exiled",
-        ],
-    ) {
-        return (Some(PermissionLifetime::ForAsLongAsExiled), rest);
+    if let Some(parsed) = parse_permission_lifetime_prefix_tokens(tokens)
+        && matches!(parsed.lifetime, PermissionLifetime::ForAsLongAsExiled)
+    {
+        return (Some(parsed.lifetime), parsed.rest_tokens);
     }
 
     (None, tokens)
@@ -510,6 +1042,29 @@ fn parse_tagged_cast_or_play_target_tokens<'a>(
     parse_lexed_prefix(tokens, parse_tagged_cast_or_play_target_inner)
 }
 
+fn parse_tagged_permission_tail_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> TaggedPermissionTail<'a> {
+    const FROM_EXILE_PREFIX: &[&str] = &["from", "exile"];
+    const FROM_EXILE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(FROM_EXILE_PREFIX),
+        LexPattern::tail("tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    if let Some(matched) = FROM_EXILE_TAIL_PATTERN.match_clause(clause) {
+        if let Some(tail) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) {
+            return TaggedPermissionTail {
+                tail_tokens: tail.tokens(),
+            };
+        }
+    }
+
+    TaggedPermissionTail {
+        tail_tokens: tokens,
+    }
+}
+
 fn parse_tagged_permission_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<(ValueComparisonOperator, Value)> {
@@ -523,6 +1078,37 @@ fn parse_tagged_permission_mana_value_condition_tokens(
         return Some((operator, Value::Fixed(value)));
     }
 
+    None
+}
+
+fn parse_conditional_tagged_free_cast_tail_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<ConditionalTaggedFreeCastTail<'a>> {
+    const IMMEDIATE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        LexPattern::condition("condition", LexCaptureKind::Rest),
+    ]);
+    const THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["this", "turn"]),
+        LexPattern::phrase(WITHOUT_PAYING_ITS_MANA_COST_PHRASE),
+        LexPattern::condition("condition", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    if let Some(matched) = IMMEDIATE_PATTERN.match_clause(clause) {
+        let condition = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)?;
+        return Some(ConditionalTaggedFreeCastTail {
+            lifetime: PermissionLifetime::Immediate,
+            condition_tokens: condition.tokens(),
+        });
+    }
+    if let Some(matched) = THIS_TURN_PATTERN.match_clause(clause) {
+        let condition = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)?;
+        return Some(ConditionalTaggedFreeCastTail {
+            lifetime: PermissionLifetime::ThisTurn,
+            condition_tokens: condition.tokens(),
+        });
+    }
     None
 }
 
@@ -540,35 +1126,10 @@ fn parse_permission_tail_tokens(
         return Some((default_lifetime, true));
     }
 
-    if token_slice_strip_word_prefix(
-        tokens,
-        &["for", "as", "long", "as", "it", "remains", "exiled"],
-    )
-    .is_some_and(|rest| rest.is_empty())
+    if let Some(parsed) = parse_permission_lifetime_prefix_tokens(tokens)
+        && parsed.rest_tokens.is_empty()
     {
-        return Some((PermissionLifetime::ForAsLongAsExiled, false));
-    }
-
-    if token_slice_strip_word_prefix(
-        tokens,
-        &[
-            "for", "as", "long", "as", "that", "card", "remains", "exiled",
-        ],
-    )
-    .is_some_and(|rest| rest.is_empty())
-    {
-        return Some((PermissionLifetime::ForAsLongAsExiled, false));
-    }
-
-    if token_slice_strip_word_prefix(
-        tokens,
-        &[
-            "for", "as", "long", "as", "you", "control", "this", "creature",
-        ],
-    )
-    .is_some_and(|rest| rest.is_empty())
-    {
-        return Some((PermissionLifetime::ForAsLongAsYouControlSource, false));
+        return Some((parsed.lifetime, false));
     }
 
     if let Some((duration, rest)) = parse_turn_duration_prefix(tokens) {
@@ -596,42 +1157,10 @@ fn parse_revealed_top_library_permission_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tokens = trim_lexed_commas(tokens);
-    let words = token_word_refs(tokens);
-    const PREFIX: &[&str] = &["until", "end", "of", "turn", "for", "as", "long", "as"];
-    const REMAINS_TOP: &[&str] = &[
-        "remains", "on", "top", "of", "your", "library", "play", "with", "the", "top", "card",
-        "of", "your", "library", "revealed", "and",
-    ];
-
-    if !word_slice_starts_with(&words, PREFIX) {
-        return Ok(None);
-    }
-
-    let Some(after_prefix) = words.get(PREFIX.len()..) else {
+    let Some(intro) = parse_revealed_top_library_permission_intro_tokens(tokens) else {
         return Ok(None);
     };
-    let referenced_card_len = if word_slice_starts_with(after_prefix, &["that", "card"]) {
-        2
-    } else if word_slice_starts_with(after_prefix, &["that", "revealed", "card"])
-        || word_slice_starts_with(after_prefix, &["the", "revealed", "card"])
-    {
-        3
-    } else {
-        return Ok(None);
-    };
-
-    let after_card = &after_prefix[referenced_card_len..];
-    if !word_slice_starts_with(after_card, REMAINS_TOP) {
-        return Ok(None);
-    }
-
-    let permission_start_word = PREFIX.len() + referenced_card_len + REMAINS_TOP.len();
-    let Some(permission_start_token) = token_index_for_word_index(tokens, permission_start_word)
-    else {
-        return Ok(None);
-    };
-    let permission_tokens = trim_lexed_commas(&tokens[permission_start_token..]);
-    let permission = match parse_permission_clause_spec(permission_tokens)? {
+    let permission = match parse_permission_clause_spec(intro.permission_tokens)? {
         Some(PermissionClauseSpec::Tagged {
             mut tag,
             player,
@@ -654,7 +1183,7 @@ fn parse_revealed_top_library_permission_clause(
         _ => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported revealed top-library play permission clause (clause: '{}')",
-                words.join(" ")
+                token_word_refs(tokens).join(" ")
             )));
         }
     };
@@ -684,6 +1213,97 @@ fn normalize_permission_subject_filter(mut filter: ObjectFilter) -> ObjectFilter
     filter
 }
 
+fn filter_tokens_contain_spell_subject(tokens: &[OwnedLexToken]) -> bool {
+    const SPELL_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+        "spell",
+        LexCaptureKind::OneOf(&["spell", "spells"]),
+    )]);
+
+    SPELL_SUBJECT_PATTERN
+        .find_in_clause(LexedClause::new(tokens))
+        .is_some()
+}
+
+fn filter_tokens_contain_singular_spell_subject(tokens: &[OwnedLexToken]) -> bool {
+    const SINGULAR_SPELL_SUBJECT_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::object(
+            "spell",
+            LexCaptureKind::OneOf(&["spell"]),
+        )]);
+
+    SINGULAR_SPELL_SUBJECT_PATTERN
+        .find_in_clause(LexedClause::new(tokens))
+        .is_some()
+}
+
+fn filter_tokens_contain_plural_spell_subject(tokens: &[OwnedLexToken]) -> bool {
+    const PLURAL_SPELL_SUBJECT_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::object(
+            "spells",
+            LexCaptureKind::OneOf(&["spells"]),
+        )]);
+
+    PLURAL_SPELL_SUBJECT_PATTERN
+        .find_in_clause(LexedClause::new(tokens))
+        .is_some()
+}
+
+fn filter_tokens_are_generic_spell_subject(tokens: &[OwnedLexToken]) -> bool {
+    const GENERIC_SPELL_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
+        LexPattern::object("spell", LexCaptureKind::OneOf(&["spell", "spells"])),
+    ]);
+
+    GENERIC_SPELL_SUBJECT_PATTERN.matches_clause(LexedClause::new(tokens))
+}
+
+fn filter_tokens_are_exact_words(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
+    LexPattern::new(&[LexPattern::phrase(words)]).matches_clause(LexedClause::new(tokens))
+}
+
+fn filter_tokens_match_any_exact_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) -> bool {
+    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(LexedClause::new(tokens))
+}
+
+fn filter_tokens_start_with_generic_spell_subject(tokens: &[OwnedLexToken]) -> bool {
+    const GENERIC_SPELL_SUBJECT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
+        LexPattern::object("spell", LexCaptureKind::OneOf(&["spell", "spells"])),
+        LexPattern::tail("tail", LexCaptureKind::Rest),
+    ]);
+
+    GENERIC_SPELL_SUBJECT_PREFIX_PATTERN.matches_clause(LexedClause::new(tokens))
+}
+
+fn token_slice_is_spell_word(tokens: &[OwnedLexToken]) -> bool {
+    const SPELL_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+        "spell",
+        LexCaptureKind::OneOf(&["spell", "spells"]),
+    )]);
+
+    SPELL_WORD_PATTERN.matches_clause(LexedClause::new(tokens))
+}
+
+fn mark_generic_spell_filter_nonland(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if filter_tokens_start_with_generic_spell_subject(tokens)
+        && !filter.excluded_card_types.contains(&CardType::Land)
+    {
+        filter.excluded_card_types.push(CardType::Land);
+    }
+}
+
+fn parse_cast_permission_filter_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if filter_tokens_start_with_generic_spell_subject(tokens) {
+        return Ok(Some(ObjectFilter::default()));
+    }
+    if let Some(filter) = parse_simple_spell_type_list_filter_tokens(tokens) {
+        return Ok(Some(filter));
+    }
+    parse_permission_subject_filter_tokens_lexed(tokens)
+}
+
 fn permanent_spell_filter() -> ObjectFilter {
     ObjectFilter {
         card_types: vec![
@@ -707,15 +1327,12 @@ fn parse_simple_spell_type_list_filter_tokens(tokens: &[OwnedLexToken]) -> Optio
         start = 1;
     }
     let mut end = tokens.len();
-    if tokens
-        .get(end.saturating_sub(1))
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|word| SPELL_WORD_PATTERN.matches_words(&[word]))
-    {
+    let has_spell_word = end > 0 && token_slice_is_spell_word(&tokens[end.saturating_sub(1)..end]);
+    if has_spell_word {
         end = end.saturating_sub(1);
     }
     if start >= end {
-        return None;
+        return has_spell_word.then(ObjectFilter::default);
     }
 
     let mut card_types = Vec::new();
@@ -778,50 +1395,35 @@ fn parse_permission_subject_filter_tokens_lexed(
         return Ok(None);
     }
 
-    let filter_words = token_word_refs(filter_tokens);
-    if matches!(
-        filter_words.as_slice(),
-        ["aura", "spells", "with", "enchant", "creature"]
-            | ["aura", "cards", "with", "enchant", "creature"]
+    if filter_tokens_match_any_exact_phrase(
+        filter_tokens,
+        &[
+            &["aura", "spells", "with", "enchant", "creature"],
+            &["aura", "cards", "with", "enchant", "creature"],
+        ],
     ) {
         return Ok(Some(ObjectFilter::default().with_subtype(Subtype::Aura)));
     }
-    if matches!(
-        strip_leading_article_word_refs(&filter_words),
-        ["permanent", "spell"] | ["permanent", "spells"]
+    if filter_tokens_match_any_exact_phrase(
+        filter_tokens,
+        &[
+            &["permanent", "spell"],
+            &["permanent", "spells"],
+            &["a", "permanent", "spell"],
+            &["a", "permanent", "spells"],
+            &["an", "permanent", "spell"],
+            &["an", "permanent", "spells"],
+            &["the", "permanent", "spell"],
+            &["the", "permanent", "spells"],
+        ],
     ) {
         return Ok(Some(permanent_spell_filter()));
     }
     if let Some(filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens) {
         return Ok(Some(filter));
     }
-    for separator in ["and", "or"] {
-        let Some(split_idx) = find_token_index(filter_words.as_slice(), |word| *word == separator)
-        else {
-            continue;
-        };
-        let Some(split_token_idx) = token_index_for_word_index(filter_tokens, split_idx) else {
-            continue;
-        };
-        let left_tokens = trim_lexed_commas(&filter_tokens[..split_token_idx]);
-        let right_tokens = trim_lexed_commas(&filter_tokens[split_token_idx + 1..]);
-        if left_tokens.is_empty() || right_tokens.is_empty() {
-            continue;
-        }
-        let Ok(left) = parse_object_filter_with_grammar_entrypoint_lexed(left_tokens, false) else {
-            continue;
-        };
-        let Ok(right) = parse_object_filter_with_grammar_entrypoint_lexed(right_tokens, false)
-        else {
-            continue;
-        };
-        return Ok(Some(ObjectFilter {
-            any_of: vec![
-                normalize_permission_subject_filter(left),
-                normalize_permission_subject_filter(right),
-            ],
-            ..ObjectFilter::default()
-        }));
+    if let Some(filter) = parse_binary_permission_subject_filter_tokens(filter_tokens)? {
+        return Ok(Some(filter));
     }
 
     if let Ok(mut filter) = parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)
@@ -843,32 +1445,109 @@ fn parse_permission_subject_filter_tokens_lexed(
     Ok(None)
 }
 
-fn parse_static_hand_free_cast_grant_spec_from_rest(
+fn parse_binary_permission_subject_filter_tokens(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    for separator in ["and", "or"] {
+        let separator_words = [separator];
+        let atoms = [
+            LexPattern::object("left", LexCaptureKind::UntilPhrase(&separator_words)),
+            LexPattern::action("separator", LexCaptureKind::OneOf(&separator_words)),
+            LexPattern::object("right", LexCaptureKind::Rest),
+        ];
+        let clause = LexedClause::new(filter_tokens);
+        let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+            continue;
+        };
+        let Some(left_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+        else {
+            continue;
+        };
+        let Some(right_clause) = matched.capture_clause("right", clause) else {
+            continue;
+        };
+        let left_tokens = trim_lexed_commas(left_clause.tokens());
+        let right_tokens = trim_lexed_commas(right_clause.tokens());
+        if left_tokens.is_empty() || right_tokens.is_empty() {
+            continue;
+        }
+        let Ok(left) = parse_object_filter_with_grammar_entrypoint_lexed(left_tokens, false) else {
+            continue;
+        };
+        let Ok(right) = parse_object_filter_with_grammar_entrypoint_lexed(right_tokens, false)
+        else {
+            continue;
+        };
+        return Ok(Some(ObjectFilter {
+            any_of: vec![
+                normalize_permission_subject_filter(left),
+                normalize_permission_subject_filter(right),
+            ],
+            ..ObjectFilter::default()
+        }));
+    }
+
+    Ok(None)
+}
+
+fn parse_hand_free_cast_grant_spec_from_rest(
     rest_tokens: &[OwnedLexToken],
+    allow_singular_spell_filter: bool,
 ) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
-    let Some(filter_tokens) =
-        strip_cast_from_hand_without_paying_mana_cost_suffix_tokens(rest_tokens)
-    else {
+    let (filter_tokens, mana_value_comparison_tokens) = if let Some(parsed) =
+        parse_mana_value_limited_free_cast_from_your_zone_rest_tokens(rest_tokens)
+    {
+        if parsed.zone != Zone::Hand {
+            return Ok(None);
+        }
+        (parsed.filter_tokens, Some(parsed.comparison_tokens))
+    } else if let Some(parsed) =
+        parse_zone_first_mana_value_limited_free_cast_rest_tokens(rest_tokens)
+    {
+        if parsed.zone != Zone::Hand {
+            return Ok(None);
+        }
+        (parsed.filter_tokens, Some(parsed.comparison_tokens))
+    } else if let Some(parsed) = parse_free_cast_from_your_zone_rest_tokens(rest_tokens) {
+        if parsed.zone != Zone::Hand {
+            return Ok(None);
+        }
+        (parsed.filter_tokens, None)
+    } else {
         return Ok(None);
     };
-    let filter_tokens = trim_lexed_commas(filter_tokens);
-    let filter_refs = token_word_refs(filter_tokens);
-    if filter_refs.is_empty()
-        || !filter_refs
-            .iter()
-            .any(|word| SPELL_WORD_PATTERN.matches_words(&[*word]))
-    {
+    if !filter_tokens_contain_spell_subject(filter_tokens) {
+        return Ok(None);
+    }
+    if !allow_singular_spell_filter && free_cast_filter_mentions_singular_spell(filter_tokens) {
         return Ok(None);
     }
 
     let mut filter = ObjectFilter::nonland();
-    merge_spell_filters(
-        &mut filter,
-        parse_spell_filter_with_grammar_entrypoint_lexed(filter_tokens),
-    );
+    let parsed_filter = parse_permission_subject_filter_tokens_lexed(filter_tokens)?
+        .unwrap_or_else(|| parse_spell_filter_with_grammar_entrypoint_lexed(filter_tokens));
+    merge_spell_filters(&mut filter, parsed_filter);
+    if let Some(comparison_tokens) = mana_value_comparison_tokens {
+        let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
+            return Ok(None);
+        };
+        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+            return Ok(None);
+        };
+        if used != rhs_tokens.len() {
+            return Ok(None);
+        }
+        filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
+    }
     Ok(Some(
         crate::grant::GrantSpec::cast_from_hand_without_paying_mana_cost_matching(filter),
     ))
+}
+
+fn parse_static_hand_free_cast_grant_spec_from_rest(
+    rest_tokens: &[OwnedLexToken],
+) -> Result<Option<crate::grant::GrantSpec>, CardTextError> {
+    parse_hand_free_cast_grant_spec_from_rest(rest_tokens, false)
 }
 
 pub(crate) fn parse_permission_clause_spec(
@@ -883,47 +1562,25 @@ pub(crate) fn parse_unsupported_play_cast_permission_clause(
     parse_unsupported_play_cast_permission_clause_lexed(tokens)
 }
 
-fn find_word_phrase_index(words: &[&str], phrase: &[&str]) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-    words
-        .windows(phrase.len())
-        .position(|window| window == phrase)
-}
-
-fn token_slice_for_word_range<'a>(
-    tokens: &'a [OwnedLexToken],
-    start_word: usize,
-    end_word: usize,
-) -> Option<&'a [OwnedLexToken]> {
-    let start = token_index_for_word_index(tokens, start_word)?;
-    let end = if end_word == token_word_refs(tokens).len() {
-        tokens.len()
-    } else if start_word == end_word {
-        start
-    } else {
-        token_index_for_word_index(tokens, end_word)?
-    };
-    Some(&tokens[start..end])
-}
-
 fn parse_sacrificing_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<crate::costs::Cost>, CardTextError> {
-    let words = token_word_refs(tokens);
-    let Some(rest) = words.strip_prefix(&["sacrificing"]) else {
+    const SACRIFICING_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("sacrificing"),
+        LexPattern::object("filter", LexCaptureKind::OneOrMoreWords),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = SACRIFICING_COST_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    if rest.is_empty() {
-        return Ok(None);
-    }
-    let Some(filter_tokens) = token_slice_for_word_range(tokens, 1, words.len()) else {
+    let Some(filter_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
         return Ok(None);
     };
-    let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)? else {
+    let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_clause.tokens())? else {
         return Ok(None);
     };
+
     Ok(Some(crate::costs::Cost::sacrifice(filter.you_control())))
 }
 
@@ -943,34 +1600,40 @@ fn parse_card_type_word(word: &str) -> Option<CardType> {
 fn parse_exiling_graveyard_additional_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<crate::costs::Cost>, CardTextError> {
-    parse_exiling_graveyard_additional_cost_words(&token_word_refs(tokens))
-}
+    const CARD_WORD_PHRASES: &[&[&str]] = &[&["card"], &["cards"]];
+    const EXILING_GRAVEYARD_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("exiling"),
+        LexPattern::amount("count", LexCaptureKind::WordCount(1)),
+        LexPattern::object(
+            "card_types",
+            LexCaptureKind::UntilAnyPhrase(CARD_WORD_PHRASES),
+        ),
+        LexPattern::any_phrase(CARD_WORD_PHRASES),
+        LexPattern::phrase(FROM_YOUR_GRAVEYARD_PHRASE),
+    ]);
 
-fn parse_exiling_graveyard_additional_cost_words(
-    words: &[&str],
-) -> Result<Option<crate::costs::Cost>, CardTextError> {
-    let Some(rest) = words.strip_prefix(&["exiling"]) else {
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = EXILING_GRAVEYARD_COST_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let Some(count_word) = rest.first() else {
+    let Some(count_clause) = matched.capture_clause_by_role(LexCaptureRole::Amount, clause) else {
+        return Ok(None);
+    };
+    let count_words = count_clause.word_refs();
+    let Some(count_word) = count_words.first() else {
         return Ok(None);
     };
     let Some(count) = parse_named_number(count_word) else {
         return Ok(None);
     };
-    let Some(card_idx) = rest
-        .iter()
-        .position(|word| matches!(*word, "card" | "cards"))
+    let Some(card_types_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
     else {
         return Ok(None);
     };
-    if rest.get(card_idx + 1..) != Some(&["from", "your", "graveyard"][..]) {
-        return Ok(None);
-    }
 
     let mut card_types = Vec::new();
-    for word in &rest[1..card_idx] {
-        if matches!(*word, "and" | "or" | "and/or") {
+    for word in card_types_clause.word_refs() {
+        if matches!(word, "and" | "or" | "and/or") {
             continue;
         }
         let Some(card_type) = parse_card_type_word(word) else {
@@ -995,90 +1658,114 @@ fn parse_graveyard_cast_additional_cost_tokens(
     parse_exiling_graveyard_additional_cost_tokens(tokens)
 }
 
+fn parse_source_graveyard_cast_additional_cost_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<SourceGraveyardCastAdditionalCost<'a>> {
+    const SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(SOURCE_GRAVEYARD_CAST_BY_PREFIXES),
+        LexPattern::modifier(
+            "cost",
+            LexCaptureKind::UntilPhrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+        ),
+        LexPattern::phrase(GRAVEYARD_CAST_ADDITIONAL_COST_SUFFIX),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = SOURCE_GRAVEYARD_CAST_ADDITIONAL_COST_PATTERN.match_clause(clause)?;
+    let cost_clause = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    let cost_tokens = trim_lexed_commas(cost_clause.tokens());
+    (!cost_tokens.is_empty()).then_some(SourceGraveyardCastAdditionalCost { cost_tokens })
+}
+
+fn parse_source_cast_permission_tokens(tokens: &[OwnedLexToken]) -> Option<SourceCastPermission> {
+    const SOURCE_FROM_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("this"),
+        LexPattern::object("source_kind", LexCaptureKind::OneOf(&["card", "spell"])),
+        LexPattern::phrase(FROM_YOUR_GRAVEYARD_PHRASE),
+    ]);
+    const SOURCE_FROM_EXILE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("this"),
+        LexPattern::object("source_kind", LexCaptureKind::OneOf(&["card", "spell"])),
+        LexPattern::phrase(&["from", "exile"]),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    if SOURCE_FROM_GRAVEYARD_PATTERN.match_clause(clause).is_some() {
+        return Some(SourceCastPermission {
+            zone: Zone::Graveyard,
+        });
+    }
+    if SOURCE_FROM_EXILE_PATTERN.match_clause(clause).is_some() {
+        return Some(SourceCastPermission { zone: Zone::Exile });
+    }
+    None
+}
+
+fn parse_source_graveyard_die_roll_cast_permission_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<SourceGraveyardDieRollCastPermission> {
+    const DIE_ROLL_PERMISSION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["this", "card"]),
+        LexPattern::phrase(FROM_YOUR_GRAVEYARD_PHRASE),
+        LexPattern::phrase(&["as", "long", "as"]),
+        LexPattern::subject("player", LexCaptureKind::OneOf(&["youve", "you've"])),
+        LexPattern::word("rolled"),
+        LexPattern::word("a"),
+        LexPattern::amount("result", LexCaptureKind::WordCount(1)),
+        LexPattern::phrase(&[
+            "this",
+            "turn",
+            "if",
+            "you",
+            "cast",
+            "it",
+            "this",
+            "way",
+            "and",
+            "it",
+            "would",
+            "be",
+            "put",
+            "into",
+            "your",
+            "graveyard",
+            "exile",
+            "it",
+            "instead",
+        ]),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = DIE_ROLL_PERMISSION_PATTERN.match_clause(clause)?;
+    let result_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let result_words = result_clause.word_refs();
+    let result = parse_named_number(result_words.first().copied()?)?;
+    Some(SourceGraveyardDieRollCastPermission { result })
+}
+
 fn parse_once_each_turn_graveyard_cast_permission(
     tokens: &[OwnedLexToken],
-    clause_refs: &[&str],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
-    const PREFIX: &[&str] = &[
-        "once", "during", "each", "of", "your", "turns", "you", "may", "cast",
-    ];
-    const GRAVEYARD_SUFFIX: &[&str] = &["from", "your", "graveyard"];
-    const ADDITIONAL_COST_SUFFIX: &[&str] =
-        &["in", "addition", "to", "paying", "its", "other", "costs"];
-    const EXILE_AFTER_RESOLUTION_SUFFIX: &[&str] = &[
-        "if",
-        "a",
-        "spell",
-        "cast",
-        "this",
-        "way",
-        "would",
-        "be",
-        "put",
-        "into",
-        "your",
-        "graveyard",
-        "exile",
-        "it",
-        "instead",
-    ];
-
-    if !word_slice_starts_with(clause_refs, PREFIX) {
-        return Ok(None);
-    }
-
-    let (main_refs, exiles_after_resolution) =
-        if word_slice_ends_with(clause_refs, EXILE_AFTER_RESOLUTION_SUFFIX) {
-            (
-                &clause_refs[..clause_refs.len() - EXILE_AFTER_RESOLUTION_SUFFIX.len()],
-                true,
-            )
-        } else {
-            (clause_refs, false)
-        };
-    let Some(from_idx) = find_word_phrase_index(main_refs, GRAVEYARD_SUFFIX) else {
+    let Some(parsed) = parse_once_each_turn_graveyard_cast_rest_tokens(tokens) else {
         return Ok(None);
     };
-    let subject_start = PREFIX.len();
-    if from_idx <= subject_start {
-        return Ok(None);
-    }
-    let Some(subject_tokens) = token_slice_for_word_range(tokens, subject_start, from_idx) else {
-        return Ok(None);
-    };
-    let Some(filter) =
-        parse_permission_subject_filter_tokens_lexed(trim_lexed_commas(subject_tokens))?
-    else {
+    let Some(filter) = parse_permission_subject_filter_tokens_lexed(parsed.subject_tokens)? else {
         return Ok(None);
     };
 
-    let after_graveyard_idx = from_idx + GRAVEYARD_SUFFIX.len();
-    let additional_costs = if after_graveyard_idx == main_refs.len() {
-        Vec::new()
-    } else {
-        let cost_refs = &main_refs[after_graveyard_idx..];
-        if !word_slice_starts_with(cost_refs, &["by"])
-            || !word_slice_ends_with(cost_refs, ADDITIONAL_COST_SUFFIX)
-        {
-            return Ok(None);
-        }
-        let cost_start = after_graveyard_idx + 1;
-        let cost_end = main_refs.len() - ADDITIONAL_COST_SUFFIX.len();
-        let Some(cost_tokens) = token_slice_for_word_range(tokens, cost_start, cost_end) else {
-            return Ok(None);
-        };
-        let Some(cost) =
-            parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
-        else {
+    let additional_costs = if let Some(cost_tokens) = parsed.cost_tokens {
+        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(cost_tokens)? else {
             return Ok(None);
         };
         vec![cost]
+    } else {
+        Vec::new()
     };
 
     let grantable =
         crate::grant::Grantable::once_each_turn_graveyard_cast_from_cards_mana_cost_exiles_after_resolution(
             additional_costs,
-            exiles_after_resolution,
+            parsed.exiles_after_resolution,
         );
 
     Ok(Some(PermissionClauseSpec::GrantBySpec {
@@ -1088,37 +1775,56 @@ fn parse_once_each_turn_graveyard_cast_permission(
     }))
 }
 
-fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
-    clause_refs: &[&str],
-) -> Option<PermissionClauseSpec> {
-    const PREFIX: &[&str] = &["once", "each", "turn", "you", "may", "cast"];
-    const TOP_LIBRARY_TAIL: &[&str] = &["from", "the", "top", "of", "your", "library"];
-    const CONDITION_PREFIX: &[&str] = &["if", "it", "shares", "a", "card", "type", "with"];
-    const SOURCE_EXILED_PREFIX: &[&str] = &["a", "card", "exiled", "with", "this"];
+fn parse_once_each_turn_top_library_shared_type_cast_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<OnceEachTurnTopLibrarySharedTypeCast<'a>> {
+    const CAST_PREFIX: &[&str] = &["once", "each", "turn", "you", "may", "cast"];
+    const TOP_LIBRARY_PHRASE: &[&str] = &["from", "the", "top", "of", "your", "library"];
+    const SHARES_CARD_TYPE_WITH_PHRASE: &[&str] =
+        &["if", "it", "shares", "a", "card", "type", "with"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(CAST_PREFIX),
+        LexPattern::object("subject", LexCaptureKind::UntilPhrase(TOP_LIBRARY_PHRASE)),
+        LexPattern::phrase(TOP_LIBRARY_PHRASE),
+        LexPattern::phrase(SHARES_CARD_TYPE_WITH_PHRASE),
+        LexPattern::object("source_reference", LexCaptureKind::Rest),
+    ]);
 
-    if !word_slice_starts_with(clause_refs, PREFIX) {
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject = matched.capture_clause("subject", clause)?.trimmed();
+    if !clause_matches_any_phrase(subject, &[&["a", "spell"], &["spells"]]) {
         return None;
     }
-    let rest = &clause_refs[PREFIX.len()..];
-    let subject_len = match rest {
-        ["a", "spell", ..] => 2,
-        ["spells", ..] => 1,
-        _ => return None,
-    };
-    let after_subject = &rest[subject_len..];
-    if !word_slice_starts_with(after_subject, TOP_LIBRARY_TAIL) {
+
+    let source_reference = matched
+        .capture_clause("source_reference", clause)?
+        .trimmed();
+    if !source_reference_is_card_exiled_with_this(source_reference) {
         return None;
     }
-    let after_zone = &after_subject[TOP_LIBRARY_TAIL.len()..];
-    if !word_slice_starts_with(after_zone, CONDITION_PREFIX) {
-        return None;
-    }
-    let source_exiled = &after_zone[CONDITION_PREFIX.len()..];
-    if source_exiled.len() != SOURCE_EXILED_PREFIX.len() + 1
-        || !word_slice_starts_with(source_exiled, SOURCE_EXILED_PREFIX)
-    {
-        return None;
-    }
+
+    Some(OnceEachTurnTopLibrarySharedTypeCast {
+        subject_tokens: subject.tokens(),
+        source_reference_tokens: source_reference.tokens(),
+    })
+}
+
+fn source_reference_is_card_exiled_with_this(clause: LexedClause<'_>) -> bool {
+    const SOURCE_EXILED_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["a", "card", "exiled", "with", "this"]),
+        LexPattern::object("source_kind", LexCaptureKind::WordCount(1)),
+    ]);
+
+    SOURCE_EXILED_PATTERN.matches_clause(clause)
+}
+
+fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
+    tokens: &[OwnedLexToken],
+) -> Option<PermissionClauseSpec> {
+    let parsed = parse_once_each_turn_top_library_shared_type_cast_tokens(tokens)?;
+    let _subject_tokens = parsed.subject_tokens;
+    let _source_reference_tokens = parsed.source_reference_tokens;
 
     let mut filter = ObjectFilter::nonland();
     filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -1155,13 +1861,12 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         return Ok(None);
     }
 
-    if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens, &clause_refs)? {
+    if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens)? {
         return Ok(Some(spec));
     }
-    let parser_clause_refs = parser_token_word_refs(tokens);
-    if let Some(spec) = parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
-        &parser_clause_refs,
-    ) {
+    if let Some(spec) =
+        parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(tokens)
+    {
         return Ok(Some(spec));
     }
 
@@ -1173,15 +1878,21 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let player = lead.player;
     let allow_land = lead.allow_land;
 
+    if prefixed_lifetime.is_none()
+        && !allow_land
+        && matches!(player, PlayerAst::Implicit | PlayerAst::You)
+        && rest_is_singular_free_cast_from_hand(rest_tokens)
+    {
+        return Ok(None);
+    }
+
     if let Some((target_ref, tagged_tail_tokens)) =
         parse_tagged_cast_or_play_target_tokens(rest_tokens)
     {
         let target_len = rest_tokens.len() - tagged_tail_tokens.len();
         let target_tokens = &rest_tokens[..target_len];
-        let mut tail_tokens = tagged_tail_tokens;
-        if let Some(rest) = token_slice_strip_word_prefix(tail_tokens, &["from", "exile"]) {
-            tail_tokens = rest;
-        }
+        let tail = parse_tagged_permission_tail_tokens(tagged_tail_tokens);
+        let tail_tokens = tail.tail_tokens;
 
         let default_lifetime = prefixed_lifetime.unwrap_or(PermissionLifetime::Immediate);
         let Some((lifetime, without_paying_mana_cost)) =
@@ -1202,14 +1913,11 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
-        let single_tagged_target = matches!(
-            token_word_refs(target_tokens).as_slice(),
-            ["it"] | ["that", "card"] | ["that", "spell"]
-        );
-        let plural_tagged_cards_target = matches!(
-            token_word_refs(target_tokens).as_slice(),
-            ["those", "cards"]
-        );
+        let target_words = token_word_refs(target_tokens);
+        let single_tagged_target =
+            SINGLE_TAGGED_PERMISSION_TARGET_PATTERN.matches_words(&target_words);
+        let plural_tagged_cards_target =
+            PLURAL_TAGGED_PERMISSION_CARDS_TARGET_PATTERN.matches_words(&target_words);
         if matches!(
             lifetime,
             PermissionLifetime::ThisTurn
@@ -1268,58 +1976,14 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    let rest_words = token_word_refs(rest_tokens);
-    if let Some(after_source) = rest_words
-        .strip_prefix(&["this", "card", "from", "your", "graveyard", "by"])
-        .or_else(|| rest_words.strip_prefix(&["this", "spell", "from", "your", "graveyard", "by"]))
-    {
-        const ADDITIONAL_COST_SUFFIX: &[&str] =
-            &["in", "addition", "to", "paying", "its", "other", "costs"];
-        if word_slice_ends_with(after_source, ADDITIONAL_COST_SUFFIX) {
-            let cost_words = &after_source[..after_source.len() - ADDITIONAL_COST_SUFFIX.len()];
-            if let Some(cost) = parse_exiling_graveyard_additional_cost_words(cost_words)? {
-                return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                    player,
-                    spec: crate::grant::GrantSpec::new(
-                        crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
-                            vec![cost],
-                            false,
-                        ),
-                        ObjectFilter::source(),
-                        Zone::Graveyard,
-                    ),
-                    lifetime: PermissionLifetime::Static,
-                }));
-            }
-
-            let cost_start = rest_words.len() - after_source.len();
-            let cost_end = rest_words.len() - ADDITIONAL_COST_SUFFIX.len();
-            let Some(cost_tokens) = token_slice_for_word_range(rest_tokens, cost_start, cost_end)
-            else {
-                return Ok(None);
-            };
-            let Some(cost) =
-                parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
-            else {
-                return Ok(None);
-            };
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player,
-                spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(vec![cost], false),
-                    ObjectFilter::source(),
-                    Zone::Graveyard,
-                ),
-                lifetime: PermissionLifetime::Static,
-            }));
-        }
-    }
-
-    if SOURCE_CARD_OR_SPELL_FROM_GRAVEYARD_PATTERN.matches_words(&rest_words) {
+    if let Some(parsed) = parse_source_graveyard_cast_additional_cost_tokens(rest_tokens) {
+        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(parsed.cost_tokens)? else {
+            return Ok(None);
+        };
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::grant::GrantSpec::new(
-                crate::grant::Grantable::play_from(),
+                crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(vec![cost], false),
                 ObjectFilter::source(),
                 Zone::Graveyard,
             ),
@@ -1327,60 +1991,19 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if matches!(
-        rest_words.as_slice(),
-        ["this", "card", "from", "exile"] | ["this", "spell", "from", "exile"]
-    ) {
+    if let Some(parsed) = parse_source_cast_permission_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::grant::GrantSpec::new(
                 crate::grant::Grantable::play_from(),
                 ObjectFilter::source(),
-                Zone::Exile,
+                parsed.zone,
             ),
             lifetime: PermissionLifetime::Static,
         }));
     }
 
-    if matches!(
-        rest_words.as_slice(),
-        [
-            "this",
-            "card",
-            "from",
-            "your",
-            "graveyard",
-            "as",
-            "long",
-            "as",
-            "youve" | "you've",
-            "rolled",
-            "a",
-            result,
-            "this",
-            "turn",
-            "if",
-            "you",
-            "cast",
-            "it",
-            "this",
-            "way",
-            "and",
-            "it",
-            "would",
-            "be",
-            "put",
-            "into",
-            "your",
-            "graveyard",
-            "exile",
-            "it",
-            "instead",
-        ] if parse_named_number(result).is_some()
-    ) {
-        let result = parse_named_number(rest_words[11]).ok_or_else(|| {
-            CardTextError::ParseError("invalid die roll graveyard-cast condition".to_string())
-        })?;
+    if let Some(parsed) = parse_source_graveyard_die_roll_cast_permission_tokens(rest_tokens) {
         return Ok(Some(PermissionClauseSpec::GrantBySpec {
             player,
             spec: crate::grant::GrantSpec::new(
@@ -1388,9 +2011,9 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                     crate::static_abilities::ThisSpellCastCondition::ConditionExpr {
                         condition: crate::ConditionExpr::PlayerRolledResultThisTurn {
                             player: crate::target::PlayerFilter::You,
-                            result,
+                            result: parsed.result,
                         },
-                        display: format!("you've rolled a {result} this turn"),
+                        display: format!("you've rolled a {} this turn", parsed.result),
                     },
                     true,
                 ),
@@ -1401,59 +2024,45 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    if allow_land && let Some(after_lands) = token_slice_strip_word_prefix(rest_tokens, &["lands"])
-    {
-        let zone_words = token_word_refs(after_lands);
-        if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player,
-                spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::play_from(),
-                    ObjectFilter::land(),
-                    Zone::Library,
-                ),
-                lifetime: PermissionLifetime::Static,
-            }));
-        }
+    if allow_land && parse_lands_from_top_library_permission_rest_tokens(rest_tokens) {
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                ObjectFilter::land(),
+                Zone::Library,
+            ),
+            lifetime: PermissionLifetime::Static,
+        }));
     }
 
     if allow_land
-        && let Some(after_lands_and_cast) =
-            token_slice_strip_word_prefix(rest_tokens, &["lands", "and", "cast"])
-        && let Some(from_idx) = find_token_index(after_lands_and_cast, |token| {
-            token
-                .as_word()
-                .is_some_and(|word| FROM_WORD_PATTERN.matches_word(word))
-        })
+        && let Some(parsed) =
+            parse_lands_and_cast_from_top_library_permission_rest_tokens(rest_tokens)
     {
-        let zone_words = token_word_refs(&after_lands_and_cast[from_idx..]);
-        if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
-            let subject_tokens = trim_lexed_commas(&after_lands_and_cast[..from_idx]);
-            let subject_words = token_word_refs(subject_tokens);
-            let filter = if SPELL_WORD_PATTERN.matches_words(&subject_words) {
-                ObjectFilter::default()
-            } else {
-                let Some(spell_filter) =
-                    parse_permission_subject_filter_tokens_lexed(subject_tokens)?
-                else {
-                    return Ok(None);
-                };
-                ObjectFilter {
-                    any_of: vec![ObjectFilter::land(), spell_filter],
-                    ..ObjectFilter::default()
-                }
+        let subject_tokens = parsed.spell_filter_tokens;
+        let filter = if filter_tokens_are_generic_spell_subject(subject_tokens) {
+            ObjectFilter::default()
+        } else {
+            let Some(spell_filter) = parse_permission_subject_filter_tokens_lexed(subject_tokens)?
+            else {
+                return Ok(None);
             };
+            ObjectFilter {
+                any_of: vec![ObjectFilter::land(), spell_filter],
+                ..ObjectFilter::default()
+            }
+        };
 
-            return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                player,
-                spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::play_from(),
-                    filter,
-                    Zone::Library,
-                ),
-                lifetime: PermissionLifetime::Static,
-            }));
-        }
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::new(
+                crate::grant::Grantable::play_from(),
+                filter,
+                Zone::Library,
+            ),
+            lifetime: PermissionLifetime::Static,
+        }));
     }
 
     if !allow_land {
@@ -1466,89 +2075,55 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             } else {
                 (rest_tokens, prefixed_lifetime)
             };
-        if let Some(from_idx) = find_token_index(zone_grant_tokens, |token| {
-            token
-                .as_word()
-                .is_some_and(|word| FROM_WORD_PATTERN.matches_word(word))
-        }) {
-            let zone_words = token_word_refs(&zone_grant_tokens[from_idx..]);
-            let zone = if FROM_TOP_OF_YOUR_LIBRARY_PATTERN.matches_words(&zone_words) {
-                Some(Zone::Library)
-            } else if FROM_YOUR_GRAVEYARD_PATTERN.matches_words(&zone_words) {
-                Some(Zone::Graveyard)
-            } else if word_slice_eq(&zone_words, &["from", "exile"]) {
-                Some(Zone::Exile)
+        if let Some(parsed) = parse_play_from_zone_rest_tokens(zone_grant_tokens) {
+            let subject_tokens = parsed.filter_tokens;
+            let filter = if filter_tokens_are_generic_spell_subject(subject_tokens) {
+                ObjectFilter::default()
+            } else if let Some(filter) =
+                parse_permission_subject_filter_tokens_lexed(subject_tokens)?
+            {
+                filter
             } else {
-                None
+                return Ok(None);
             };
-            if let Some(zone) = zone {
-                let subject_tokens = trim_lexed_commas(&zone_grant_tokens[..from_idx]);
-                let subject_words = token_word_refs(subject_tokens);
-                let filter = if SPELL_WORD_PATTERN.matches_words(&subject_words) {
-                    ObjectFilter::default()
-                } else if let Some(filter) =
-                    parse_permission_subject_filter_tokens_lexed(subject_tokens)?
-                {
-                    filter
-                } else {
-                    return Ok(None);
-                };
-                return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                    player,
-                    spec: crate::grant::GrantSpec::new(
-                        crate::grant::Grantable::play_from(),
-                        filter,
-                        zone,
-                    ),
-                    lifetime: zone_grant_lifetime.unwrap_or(PermissionLifetime::Static),
-                }));
-            }
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec: crate::grant::GrantSpec::new(
+                    crate::grant::Grantable::play_from(),
+                    filter,
+                    parsed.zone,
+                ),
+                lifetime: zone_grant_lifetime.unwrap_or(PermissionLifetime::Static),
+            }));
         }
 
-        let (spec, subject_tokens) =
-            if let Some(rest) = token_slice_strip_word_prefix(rest_tokens, &["spells"]) {
-                (crate::grant::GrantSpec::flash_to_spells(), Some(rest))
-            } else if let Some(rest) =
-                token_slice_strip_word_prefix(rest_tokens, &["noncreature", "spells"])
+        if let Some(parsed) = parse_flash_grant_rest_tokens(rest_tokens) {
+            let spec = if filter_tokens_are_exact_words(parsed.filter_tokens, &["spells"]) {
+                crate::grant::GrantSpec::flash_to_spells()
+            } else if filter_tokens_are_exact_words(
+                parsed.filter_tokens,
+                &["noncreature", "spells"],
+            ) {
+                crate::grant::GrantSpec::flash_to_noncreature_spells()
+            } else if let Some(filter) =
+                parse_permission_subject_filter_tokens_lexed(parsed.filter_tokens)?
             {
-                (
-                    crate::grant::GrantSpec::flash_to_noncreature_spells(),
-                    Some(rest),
-                )
+                crate::grant::GrantSpec::flash_to_spells_matching(filter)
             } else {
-                (crate::grant::GrantSpec::flash_to_spells(), None)
+                return Ok(None);
             };
-        if let Some(tail_tokens) = subject_tokens {
-            if let Some(tail_lifetime) =
-                parse_exact_lexed_prefix(tail_tokens, parse_flash_tail_inner)
-            {
-                let lifetime = combine_flash_permission_lifetime(prefixed_lifetime, tail_lifetime);
-                return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                    player,
-                    spec,
-                    lifetime,
-                }));
-            }
-        }
-
-        if let Some((filter_tokens, lifetime)) = strip_flash_tail_tokens(rest_tokens) {
-            let filter_tokens = trim_lexed_commas(filter_tokens);
-            if !filter_tokens.is_empty()
-                && let Some(filter) = parse_permission_subject_filter_tokens_lexed(filter_tokens)?
-            {
-                let lifetime = combine_flash_permission_lifetime(prefixed_lifetime, lifetime);
-                return Ok(Some(PermissionClauseSpec::GrantBySpec {
-                    player,
-                    spec: crate::grant::GrantSpec::flash_to_spells_matching(filter),
-                    lifetime,
-                }));
-            }
+            let lifetime = combine_flash_permission_lifetime(prefixed_lifetime, parsed.lifetime);
+            return Ok(Some(PermissionClauseSpec::GrantBySpec {
+                player,
+                spec,
+                lifetime,
+            }));
         }
     }
 
     if prefixed_lifetime.is_none() && !allow_land {
         if let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)? {
-            if clause_is_singular_free_cast_from_hand(&clause_refs) {
+            if rest_is_singular_free_cast_from_hand(rest_tokens) {
                 return Ok(None);
             }
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
@@ -1727,32 +2302,85 @@ fn grant_spec_is_free_cast_from_hand(spec: &crate::grant::GrantSpec) -> bool {
         )
 }
 
-fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
-    if SINGULAR_FREE_CAST_FROM_HAND_PATTERN.matches_words(clause_words) {
-        return true;
+fn rest_is_singular_free_cast_from_hand(rest_tokens: &[OwnedLexToken]) -> bool {
+    if let Some(parsed) = parse_mana_value_limited_free_cast_from_your_zone_rest_tokens(rest_tokens)
+    {
+        return parsed.zone == Zone::Hand
+            && free_cast_filter_mentions_singular_spell(parsed.filter_tokens);
     }
+    if let Some(parsed) = parse_zone_first_mana_value_limited_free_cast_rest_tokens(rest_tokens) {
+        return parsed.zone == Zone::Hand
+            && free_cast_filter_mentions_singular_spell(parsed.filter_tokens);
+    }
+    if let Some(parsed) = parse_free_cast_from_your_zone_rest_tokens(rest_tokens) {
+        return parsed.zone == Zone::Hand
+            && free_cast_filter_mentions_singular_spell(parsed.filter_tokens);
+    }
+    false
+}
 
-    let Some(cast_idx) = clause_words.iter().position(|word| *word == "cast") else {
+fn clause_is_singular_free_cast_from_hand(tokens: &[OwnedLexToken]) -> bool {
+    let Some((lead, rest_tokens)) = parse_permission_lead_tokens(tokens) else {
         return false;
     };
-    let after_cast = &clause_words[cast_idx + 1..];
-    let Some(from_idx) = after_cast.windows(8).position(|window| {
-        matches!(
-            window,
-            [
-                "from", "your", "hand", "without", "paying", "its", "mana", "cost"
-            ] | [
-                "from", "your", "hand", "without", "paying", "their", "mana", "cost"
-            ] | [
-                "from", "your", "hand", "without", "paying", "their", "mana", "costs"
-            ]
-        )
-    }) else {
-        return false;
-    };
-    let subject_words = &after_cast[..from_idx];
-    subject_words.iter().any(|word| *word == "spell")
-        && !subject_words.iter().any(|word| *word == "spells")
+    !lead.allow_land
+        && matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
+        && rest_is_singular_free_cast_from_hand(rest_tokens)
+}
+
+fn mana_value_filter_comparison(
+    operator: ValueComparisonOperator,
+    rhs_value: Value,
+) -> crate::filter::Comparison {
+    match (operator, rhs_value) {
+        (ValueComparisonOperator::Equal, Value::Fixed(value)) => {
+            crate::filter::Comparison::Equal(value)
+        }
+        (ValueComparisonOperator::NotEqual, Value::Fixed(value)) => {
+            crate::filter::Comparison::NotEqual(value)
+        }
+        (ValueComparisonOperator::LessThan, Value::Fixed(value)) => {
+            crate::filter::Comparison::LessThan(value)
+        }
+        (ValueComparisonOperator::LessThanOrEqual, Value::Fixed(value)) => {
+            crate::filter::Comparison::LessThanOrEqual(value)
+        }
+        (ValueComparisonOperator::GreaterThan, Value::Fixed(value)) => {
+            crate::filter::Comparison::GreaterThan(value)
+        }
+        (ValueComparisonOperator::GreaterThanOrEqual, Value::Fixed(value)) => {
+            crate::filter::Comparison::GreaterThanOrEqual(value)
+        }
+        (ValueComparisonOperator::Equal, value) => {
+            crate::filter::Comparison::EqualExpr(Box::new(value))
+        }
+        (ValueComparisonOperator::NotEqual, value) => {
+            crate::filter::Comparison::NotEqualExpr(Box::new(value))
+        }
+        (ValueComparisonOperator::LessThan, value) => {
+            crate::filter::Comparison::LessThanExpr(Box::new(value))
+        }
+        (ValueComparisonOperator::LessThanOrEqual, value) => {
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(value))
+        }
+        (ValueComparisonOperator::GreaterThan, value) => {
+            crate::filter::Comparison::GreaterThanExpr(Box::new(value))
+        }
+        (ValueComparisonOperator::GreaterThanOrEqual, value) => {
+            crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(value))
+        }
+    }
+}
+
+fn value_is_tagged_it_mana_value(value: &Value) -> bool {
+    matches!(
+        value,
+        Value::ManaValueOf(spec)
+            if matches!(
+                spec.as_ref(),
+                crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+            )
+    )
 }
 
 fn parse_cast_with_tagged_mana_value_limit_clause(
@@ -1760,67 +2388,26 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     fn parse_cast_with_prefixed_mana_value_limit(
         rest_tokens: &[OwnedLexToken],
-        normalized_words: &[String],
         player: PlayerAst,
-        from_idx: usize,
         parse_simple_spell_type_list_filter: fn(&[OwnedLexToken]) -> Option<ObjectFilter>,
     ) -> Result<Option<EffectAst>, CardTextError> {
-        let Some(without_idx) = normalized_words
-            .iter()
-            .position(|word| word.as_str() == "without")
+        let Some(parsed) =
+            parse_mana_value_limited_free_cast_from_your_zone_rest_tokens(rest_tokens)
         else {
             return Ok(None);
         };
-        if from_idx + 3 != without_idx
-            || !normalized_words
-                .get(from_idx + 1)
-                .is_some_and(|word| word == "your")
-            || !normalized_words
-                .get(from_idx + 2)
-                .is_some_and(|word| matches!(word.as_str(), "graveyard" | "hand"))
-        {
-            return Ok(None);
-        }
-
-        let without_tail = normalized_words[without_idx..]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        if !word_slice_eq(&without_tail, &["without", "paying", "its", "mana", "cost"]) {
-            return Ok(None);
-        }
-
-        let Some(with_idx) = normalized_words[..from_idx]
-            .windows(3)
-            .position(|window| window == ["with", "mana", "value"])
+        let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(parsed.comparison_tokens)
         else {
             return Ok(None);
         };
-        if with_idx == 0 {
-            return Ok(None);
-        }
 
-        let Some(comparison_tokens_start) = token_index_for_word_index(rest_tokens, with_idx + 3)
-        else {
-            return Ok(None);
-        };
-        let Some(comparison_tokens_end) = token_index_for_word_index(rest_tokens, from_idx) else {
-            return Ok(None);
-        };
-        let comparison_tokens = &rest_tokens[comparison_tokens_start..comparison_tokens_end];
-        let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
-            return Ok(None);
-        };
-
-        let Some(filter_end) = token_index_for_word_index(rest_tokens, with_idx) else {
-            return Ok(None);
-        };
-        let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
+        let filter_tokens = parsed.filter_tokens;
         let Some(mut filter) = parse_simple_spell_type_list_filter(filter_tokens)
-            .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
+            .or(parse_cast_permission_filter_tokens(filter_tokens)?)
         else {
             return Ok(None);
         };
+        mark_generic_spell_filter_nonland(&mut filter, filter_tokens);
         filter.owner = Some(crate::target::PlayerFilter::You);
 
         let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
@@ -1834,36 +2421,15 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         {
             filter.mana_value_eq_counters_on_source = Some(*counter_type);
         } else {
-            filter.mana_value = Some(match operator {
-                ValueComparisonOperator::Equal => {
-                    crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::NotEqual => {
-                    crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::LessThan => {
-                    crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::LessThanOrEqual => {
-                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::GreaterThan => {
-                    crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::GreaterThanOrEqual => {
-                    crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
-                }
-            });
+            filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
         }
 
-        let zone = if normalized_words[from_idx + 2] == "hand" {
-            Zone::Hand
-        } else {
-            Zone::Graveyard
-        };
-
         Ok(Some(
-            EffectAst::may_cast_matching_spell_without_paying_mana_cost(player, filter, zone),
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                player,
+                filter,
+                parsed.zone,
+            ),
         ))
     }
 
@@ -1874,98 +2440,15 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
         return Ok(None);
     }
 
-    let rest_words = token_word_refs(rest_tokens);
-    let normalized_words: Vec<String> = rest_words
-        .iter()
-        .map(|word| {
-            word.to_ascii_lowercase()
-                .replace(['\'', '’'], "")
-                .to_string()
-        })
-        .collect();
-    let Some(from_idx) = crate::slice_primitives::find_index(&normalized_words, |word| {
-        FROM_WORD_PATTERN.matches_words(&[word.as_str()])
-    }) else {
-        return Ok(None);
-    };
-    if from_idx == 0 {
-        return Ok(None);
-    }
-
-    if let Some(without_idx) = normalized_words
-        .iter()
-        .position(|word| word.as_str() == "without")
-    {
-        let without_tail = normalized_words[without_idx..]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        if from_idx + 4 == without_idx
-            && normalized_words
-                .get(from_idx + 1)
-                .is_some_and(|word| word == "the")
-            && normalized_words
-                .get(from_idx + 2)
-                .is_some_and(|word| word == "command")
-            && normalized_words
-                .get(from_idx + 3)
-                .is_some_and(|word| word == "zone")
-            && WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail)
-        {
-            let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
-                return Ok(None);
-            };
-            let filter_words = token_word_refs(trim_lexed_commas(&rest_tokens[..filter_end]));
-            if filter_words == ["your", "commander"] {
-                return Ok(Some(
-                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(
-                        lead.player,
-                        ObjectFilter::default()
-                            .commander()
-                            .owned_by(crate::target::PlayerFilter::You),
-                        Zone::Command,
-                    ),
-                ));
-            }
-        }
-        if from_idx + 3 == without_idx
-            && normalized_words
-                .get(from_idx + 1)
-                .is_some_and(|word| word == "your")
-            && normalized_words
-                .get(from_idx + 2)
-                .is_some_and(|word| matches!(word.as_str(), "graveyard" | "hand"))
-            && WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail)
-        {
-            let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
-                return Ok(None);
-            };
-            let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
-            let Some(mut filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens)
-                .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
-            else {
-                return Ok(None);
-            };
-            filter.owner = Some(crate::target::PlayerFilter::You);
-            let zone = if normalized_words[from_idx + 2] == "hand" {
-                Zone::Hand
-            } else {
-                Zone::Graveyard
-            };
-            let filter_words = token_word_refs(filter_tokens);
-            if lead.player == PlayerAst::Implicit
-                && zone == Zone::Graveyard
-                && !filter_words
-                    .iter()
-                    .any(|word| matches!(*word, "spell" | "spells"))
-            {
-                return Ok(None);
-            }
+    if let Some(parsed) = parse_command_zone_free_cast_rest_tokens(rest_tokens) {
+        if filter_tokens_are_exact_words(parsed.filter_tokens, &["your", "commander"]) {
             return Ok(Some(
                 EffectAst::may_cast_matching_spell_without_paying_mana_cost(
                     lead.player,
-                    filter,
-                    zone,
+                    ObjectFilter::default()
+                        .commander()
+                        .owned_by(crate::target::PlayerFilter::You),
+                    Zone::Command,
                 ),
             ));
         }
@@ -1973,67 +2456,59 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
 
     if let Some(effect) = parse_cast_with_prefixed_mana_value_limit(
         rest_tokens,
-        &normalized_words,
         lead.player,
-        from_idx,
         parse_simple_spell_type_list_filter_tokens,
     )? {
         return Ok(Some(effect));
     }
 
-    let normalized_tail = &normalized_words[from_idx..];
-    let normalized_tail_refs: Vec<_> = normalized_tail.iter().map(String::as_str).collect();
-    if normalized_tail.len() < 12
-        || !FROM_YOUR_ZONE_WITH_MANA_VALUE_PREFIX_PATTERN.matches_words(&normalized_tail_refs)
-    {
-        return Ok(None);
+    if let Some(parsed) = parse_free_cast_from_your_zone_rest_tokens(rest_tokens) {
+        let filter_tokens = parsed.filter_tokens;
+        let Some(mut filter) = parse_cast_permission_filter_tokens(filter_tokens)? else {
+            return Ok(None);
+        };
+        mark_generic_spell_filter_nonland(&mut filter, filter_tokens);
+        filter.owner = Some(crate::target::PlayerFilter::You);
+        if lead.player == PlayerAst::Implicit
+            && parsed.zone == Zone::Graveyard
+            && !filter_tokens_contain_spell_subject(filter_tokens)
+        {
+            return Ok(None);
+        }
+        return Ok(Some(
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                lead.player,
+                filter,
+                parsed.zone,
+            ),
+        ));
     }
 
-    let Some(without_idx) = normalized_tail
-        .iter()
-        .position(|word| WITHOUT_WORD_PATTERN.matches_words(&[word.as_str()]))
+    let Some(parsed) = parse_zone_first_mana_value_limited_free_cast_rest_tokens(rest_tokens)
     else {
         return Ok(None);
     };
-    if without_idx <= 6 {
-        return Ok(None);
-    }
-    let without_tail = normalized_tail[without_idx..]
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if !WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail) {
-        return Ok(None);
-    }
-
-    let Some(comparison_tokens_start) = token_index_for_word_index(rest_tokens, from_idx + 6)
+    let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(parsed.comparison_tokens)
     else {
-        return Ok(None);
-    };
-    let Some(comparison_tokens_end) =
-        token_index_for_word_index(rest_tokens, from_idx + without_idx)
-    else {
-        return Ok(None);
-    };
-    let comparison_tokens = &rest_tokens[comparison_tokens_start..comparison_tokens_end];
-    let Some((operator, rhs_tokens)) = parse_value_comparison_tokens(comparison_tokens) else {
         return Ok(None);
     };
 
-    let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+    let filter_tokens = parsed.filter_tokens;
+    let Some(mut filter) = parse_cast_permission_filter_tokens(filter_tokens)? else {
         return Ok(None);
     };
-    let filter_tokens = trim_lexed_commas(&rest_tokens[..filter_end]);
-    let Some(mut filter) = parse_simple_spell_type_list_filter_tokens(filter_tokens)
-        .or(parse_permission_subject_filter_tokens_lexed(filter_tokens)?)
-    else {
-        return Ok(None);
-    };
+    mark_generic_spell_filter_nonland(&mut filter, filter_tokens);
     filter.owner = Some(crate::target::PlayerFilter::You);
 
-    let graveyard_uses_tagged_spell_mana_value = GRAVEYARD_WORD_PATTERN
-        .matches_word(normalized_tail[2].as_str())
-        && TAGGED_SPELL_MANA_VALUE_PATTERN.matches_words(&normalized_tail_refs);
+    let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
+        return Ok(None);
+    };
+    if used != rhs_tokens.len() {
+        return Ok(None);
+    }
+
+    let graveyard_uses_tagged_spell_mana_value =
+        parsed.zone == Zone::Graveyard && value_is_tagged_it_mana_value(&rhs_value);
     if graveyard_uses_tagged_spell_mana_value {
         filter.mana_value = None;
         filter
@@ -2043,48 +2518,21 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
                 relation: crate::filter::TaggedOpbjectRelation::ManaValueLteTagged,
             });
     } else {
-        let Some((rhs_value, used)) = parse_value_from_lexed(rhs_tokens) else {
-            return Ok(None);
-        };
-        if used != rhs_tokens.len() {
-            return Ok(None);
-        }
         if let (ValueComparisonOperator::Equal, Value::CountersOnSource(counter_type)) =
             (&operator, &rhs_value)
         {
             filter.mana_value_eq_counters_on_source = Some(*counter_type);
         } else {
-            filter.mana_value = Some(match operator {
-                ValueComparisonOperator::Equal => {
-                    crate::filter::Comparison::EqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::NotEqual => {
-                    crate::filter::Comparison::NotEqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::LessThan => {
-                    crate::filter::Comparison::LessThanExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::LessThanOrEqual => {
-                    crate::filter::Comparison::LessThanOrEqualExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::GreaterThan => {
-                    crate::filter::Comparison::GreaterThanExpr(Box::new(rhs_value))
-                }
-                ValueComparisonOperator::GreaterThanOrEqual => {
-                    crate::filter::Comparison::GreaterThanOrEqualExpr(Box::new(rhs_value))
-                }
-            });
+            filter.mana_value = Some(mana_value_filter_comparison(operator, rhs_value));
         }
     }
 
-    let zone = if HAND_WORD_PATTERN.matches_word(normalized_tail[2].as_str()) {
-        Zone::Hand
-    } else {
-        Zone::Graveyard
-    };
-
     Ok(Some(
-        EffectAst::may_cast_matching_spell_without_paying_mana_cost(lead.player, filter, zone),
+        EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+            lead.player,
+            filter,
+            parsed.zone,
+        ),
     ))
 }
 
@@ -2111,8 +2559,8 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     if let Some((lead, rest_tokens)) = parse_permission_lead_tokens(&trimmed)
         && matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
         && !lead.allow_land
-        && clause_is_singular_free_cast_from_hand(&token_word_refs(&trimmed))
-        && let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)?
+        && rest_is_singular_free_cast_from_hand(rest_tokens)
+        && let Some(spec) = parse_hand_free_cast_grant_spec_from_rest(rest_tokens, true)?
     {
         return Ok(Some(
             EffectAst::may_cast_matching_spell_without_paying_mana_cost(
@@ -2128,58 +2576,38 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         .and_then(|(lead, rest_tokens)| {
             parse_tagged_cast_or_play_target_tokens(rest_tokens).and_then(
                 |(target_ref, tail_tokens)| {
-                    let (lifetime, without_paying_mana_cost, condition_tokens) = if let Some(rest) =
-                        token_slice_strip_word_prefix(
-                            tail_tokens,
-                            &["without", "paying", "its", "mana", "cost"],
-                        ) {
-                        (PermissionLifetime::Immediate, true, rest)
-                    } else if let Some(rest) = token_slice_strip_word_prefix(
-                        tail_tokens,
-                        &["this", "turn", "without", "paying", "its", "mana", "cost"],
-                    ) {
-                        (PermissionLifetime::ThisTurn, true, rest)
-                    } else {
-                        (PermissionLifetime::Immediate, false, &tail_tokens[0..0])
-                    };
-
-                    without_paying_mana_cost.then(|| {
-                        parse_tagged_permission_mana_value_condition_tokens(condition_tokens).map(
-                            |(operator, right)| {
-                                let inner = if lifetime == PermissionLifetime::Immediate {
-                                    EffectAst::subject_verb_cast_tagged(
-                                        target_ref.tag.clone(),
-                                        lead.player,
-                                        lead.allow_land,
-                                        target_ref.as_copy,
-                                        without_paying_mana_cost,
-                                        None,
-                                    )
-                                } else {
-                                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-                                        target_ref.tag.clone(),
-                                        PlayerAst::Implicit,
-                                        lead.allow_land,
-                                        without_paying_mana_cost,
-                                        allow_any_color_for_cast,
-                                    )
-                                };
-                                EffectAst::Conditional {
-                                    predicate: PredicateAst::ValueComparison {
-                                        left: Value::ManaValueOf(Box::new(
-                                            crate::target::ChooseSpec::Tagged(
-                                                target_ref.tag.clone(),
-                                            ),
-                                        )),
-                                        operator,
-                                        right,
-                                    },
-                                    if_true: vec![inner],
-                                    if_false: Vec::new(),
-                                }
-                            },
+                    let tail = parse_conditional_tagged_free_cast_tail_tokens(tail_tokens)?;
+                    let (operator, right) =
+                        parse_tagged_permission_mana_value_condition_tokens(tail.condition_tokens)?;
+                    let inner = if tail.lifetime == PermissionLifetime::Immediate {
+                        EffectAst::subject_verb_cast_tagged(
+                            target_ref.tag.clone(),
+                            lead.player,
+                            lead.allow_land,
+                            target_ref.as_copy,
+                            true,
+                            None,
                         )
-                    })?
+                    } else {
+                        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                            target_ref.tag.clone(),
+                            PlayerAst::Implicit,
+                            lead.allow_land,
+                            true,
+                            allow_any_color_for_cast,
+                        )
+                    };
+                    Some(EffectAst::Conditional {
+                        predicate: PredicateAst::ValueComparison {
+                            left: Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(
+                                target_ref.tag.clone(),
+                            ))),
+                            operator,
+                            right,
+                        },
+                        if_true: vec![inner],
+                        if_false: Vec::new(),
+                    })
                 },
             )
         });
@@ -2264,7 +2692,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             lifetime: PermissionLifetime::Static,
         }) if (player == PlayerAst::Implicit || player == PlayerAst::You)
             && grant_spec_is_free_cast_from_hand(&spec)
-            && clause_is_singular_free_cast_from_hand(&token_word_refs(&trimmed)) =>
+            && clause_is_singular_free_cast_from_hand(&trimmed) =>
         {
             Ok(Some(
                 EffectAst::may_cast_matching_spell_without_paying_mana_cost(

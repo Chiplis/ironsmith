@@ -44,7 +44,6 @@ pub(crate) fn try_merge_modal_into_remove_mode(
         remove_mode.effects.push(modal_effect);
     }
 
-    #[cfg(not(test))]
     effects.push(crate::effect::Effect::new(
         crate::effects::ChooseModeEffect {
             modes,
@@ -60,35 +59,23 @@ pub(crate) fn try_merge_modal_into_remove_mode(
                 .disallow_previously_chosen_modes_this_turn,
         },
     ));
-    #[cfg(feature = "serialization")]
-    effects.push(crate::effect::Effect::new(
-        crate::effects::ChooseModeEffect {
-            modes,
-            choose_count: choose_mode.choose_count.clone(),
-            min_choose_count: choose_mode.min_choose_count.clone(),
-            allow_repeated_modes: choose_mode.allow_repeated_modes,
-            mode_point_costs: choose_mode.mode_point_costs.clone(),
-            disallow_previously_chosen_modes: choose_mode.disallow_previously_chosen_modes,
-            disallow_previously_chosen_modes_this_turn: choose_mode
-                .disallow_previously_chosen_modes_this_turn,
-        },
-    ));
     true
 }
 
 fn header_mentions_modal_point_cost(text: &str) -> bool {
-    let Ok(tokens) = lex_line(text, 0) else {
-        return false;
-    };
-    let words = token_word_refs(&tokens);
-    words
-        .windows(3)
-        .any(|window| matches!(window, ["worth", "of", "modes"]))
-        && words.iter().any(|word| *word == "p")
+    text.to_ascii_lowercase().contains("{p} worth of modes")
 }
 
 fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
     let mut rest = text.trim_start();
+    if let Some(stripped) = rest
+        .strip_prefix('•')
+        .or_else(|| rest.strip_prefix('-'))
+        .or_else(|| rest.strip_prefix('—'))
+    {
+        rest = stripped.trim_start();
+    }
+
     let mut count = 0u32;
     loop {
         let trimmed = rest.trim_start();
@@ -106,7 +93,46 @@ fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
         return None;
     }
     let rest = rest.trim_start();
-    rest.starts_with('—').then_some(count)
+    (rest.starts_with('—') || rest.starts_with('–') || rest.starts_with('-')).then_some(count)
+}
+
+fn parse_leading_modal_point_cost_lexed(text: &str) -> Option<u32> {
+    let tokens = lex_line(text, 0).ok()?;
+    let mut count = 0u32;
+    let mut idx = 0usize;
+    if tokens
+        .get(idx)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
+    {
+        idx += 1;
+    }
+    while let Some(point_count) = tokens.get(idx).and_then(pawprint_modal_label_count) {
+        count += point_count;
+        idx += 1;
+    }
+    if count == 0 {
+        return None;
+    }
+    tokens
+        .get(idx)
+        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        .then_some(count)
+}
+
+fn pawprint_modal_label_count(token: &OwnedLexToken) -> Option<u32> {
+    match token.kind {
+        TokenKind::ManaGroup => {
+            let mut rest = token.parser_text();
+            let mut count = 0u32;
+            while let Some(stripped) = rest.strip_prefix("{p}") {
+                count += 1;
+                rest = stripped;
+            }
+            (count > 0 && rest.is_empty()).then_some(count)
+        }
+        TokenKind::Word if token.parser_text() == "p" => Some(1),
+        _ => None,
+    }
 }
 
 pub(crate) fn rewrite_lower_parsed_modal(
@@ -165,11 +191,13 @@ pub(crate) fn rewrite_lower_parsed_modal(
         }
     };
 
-    let weighted_mode_points = header_mentions_modal_point_cost(line_text.as_str());
+    let mut weighted_mode_points = header_mentions_modal_point_cost(line_text.as_str());
     let mut compiled_modes = Vec::new();
     let mut mode_point_costs = Vec::new();
     for mode in modes {
-        let point_cost = parse_leading_modal_point_cost(mode.info.raw_line.as_str()).unwrap_or(1);
+        let point_cost = parse_leading_modal_point_cost_lexed(mode.info.raw_line.as_str())
+            .or_else(|| parse_leading_modal_point_cost(mode.info.raw_line.as_str()))
+            .unwrap_or(1);
         let effects = match rewrite_lower_prepared_statement_effects(&mode.prepared) {
             Ok(lowered) => lowered.effects,
             Err(err) if allow_unsupported => {
@@ -188,6 +216,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         });
         mode_point_costs.push(point_cost);
     }
+    weighted_mode_points |= mode_point_costs.iter().any(|point_cost| *point_cost != 1);
 
     if compiled_modes.is_empty() {
         return Ok(builder);

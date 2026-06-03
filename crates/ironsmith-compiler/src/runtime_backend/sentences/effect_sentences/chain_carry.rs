@@ -12,7 +12,7 @@ use super::super::grammar::structure::{
 };
 use super::super::lexer::{
     OwnedLexToken, TokenKind, token_slice_at_is, token_slice_first_is, token_word_refs,
-    trim_lexed_commas, word_slice_starts_with,
+    trim_lexed_commas,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -77,6 +77,7 @@ const CHAIN_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!
             &["choose", "land", "of", "each", "basic", "land", "type"],
         ]
 );
+const CHAIN_CHOOSE_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["choose", "to"]);
 const CHAIN_YOU_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -143,6 +144,8 @@ const CHAIN_TARGET_WITH_CARD_TYPE_WINDOW_PATTERN: ClauseShape<'static> =
 const CHAIN_ALL_ABILITIES_AND_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["all", "abilities", "and"]);
 const CHAIN_ROUNDED_UP_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["rounded", "up"]);
+const CHAIN_WHERE_X_IS_HALF_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["where", "x", "is", "half"]]);
 const CHAIN_END_OF_COMBAT_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
 const CHAIN_BEGINNING_END_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -151,6 +154,20 @@ const CHAIN_BEGINNING_END_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
             &["beginning", "of", "the", "end", "step"],
             &["beginning", "of", "next", "end", "step"],
             &["beginning", "of", "the", "next", "end", "step"],
+        ]]
+);
+const CHAIN_NEXT_END_STEP_REPEAT_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["next", "end", "step", "repeat"]]);
+const CHAIN_TOKEN_RULES_TAIL_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["when", "this", "token"],
+            &["whenever", "this", "token"],
+            &["this", "token"],
+            &["that", "token"],
+            &["those", "tokens"],
+            &["it", "has"],
+            &["they", "have"],
         ]]
 );
 
@@ -529,7 +546,7 @@ pub(crate) fn parse_effect_chain_lexed(
         {
             stripped.remove(0);
         }
-        if word_slice_starts_with(&token_word_refs(&stripped), &["choose", "to"]) {
+        if CHAIN_CHOOSE_TO_PREFIX_PATTERN.matches_words(&token_word_refs(&stripped)) {
             stripped = remove_through_first_word_tokens(&stripped, "to");
         }
         let mut effects = parse_effect_chain_lexed(&stripped)?;
@@ -1304,7 +1321,7 @@ fn is_orphan_rounded_up_where_x_tail(
         return true;
     }
     previous.is_some_and(|previous| {
-        grammar::words_find_phrase(previous, &["where", "x", "is", "half"]).is_some()
+        CHAIN_WHERE_X_IS_HALF_MARKER_PATTERN.matches_words(&token_word_refs(previous))
     }) || previous_effect.is_some_and(effect_uses_half_life_total_value)
 }
 
@@ -1762,7 +1779,7 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
     let chain_words = token_word_refs(tokens);
     if !grammar::contains_word(tokens, "sacrifice")
         || !grammar::contains_word(tokens, "token")
-        || grammar::words_find_phrase(tokens, &["next", "end", "step", "repeat"]).is_none()
+        || !CHAIN_NEXT_END_STEP_REPEAT_MARKER_PATTERN.matches_words(&chain_words)
             && !is_beginning_of_end_step_words(&chain_words)
     {
         return;
@@ -1973,19 +1990,12 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             expanded.push(segment);
             continue;
         };
-        let has_token_rules_tail = grammar::words_find_phrase(&segment, &["when", "this", "token"])
-            .is_some()
-            || grammar::words_find_phrase(&segment, &["whenever", "this", "token"]).is_some()
-            || grammar::words_find_phrase(&segment, &["this", "token"]).is_some()
-            || grammar::words_find_phrase(&segment, &["that", "token"]).is_some()
-            || grammar::words_find_phrase(&segment, &["those", "tokens"]).is_some()
-            || grammar::words_find_phrase(&segment, &["it", "has"]).is_some()
-            || grammar::words_find_phrase(&segment, &["they", "have"]).is_some();
+        let segment_words = token_word_refs(&segment);
+        let has_token_rules_tail = CHAIN_TOKEN_RULES_TAIL_MARKER_PATTERN.matches_words(&segment_words);
         if has_token_rules_tail {
             expanded.push(segment);
             continue;
         }
-        let segment_words = token_word_refs(&segment);
         let token_mentions = segment_words
             .iter()
             .filter(|word| CHAIN_TOKEN_OR_TOKENS_PATTERN.matches_word(word))

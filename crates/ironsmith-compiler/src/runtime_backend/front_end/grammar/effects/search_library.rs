@@ -6,6 +6,8 @@ use ironsmith_core::Value;
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
+const EACH_OF_THEM_SUBJECT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["each", "of", "them"]);
 const MAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["may"]);
 const SEARCH_OR_SEARCHES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["search"], &["searches"]]);
@@ -1441,10 +1443,7 @@ pub(crate) fn search_library_put_position_from_top_words(words: &[&str]) -> Opti
 pub(crate) fn search_library_subject_wraps_each_target_player_lexed(
     subject_tokens: &[OwnedLexToken],
 ) -> bool {
-    matches!(
-        token_word_refs(subject_tokens).as_slice(),
-        ["each", "of", "them"]
-    )
+    EACH_OF_THEM_SUBJECT_PATTERN.matches_words(&token_word_refs(subject_tokens))
 }
 
 pub(crate) fn parse_search_library_iterated_object_subject_lexed(
@@ -1464,10 +1463,7 @@ pub(crate) fn parse_search_library_iterated_object_subject_lexed(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    if matches!(
-        token_word_refs(subject_tokens).as_slice(),
-        ["each", "of", "them"]
-    ) {
+    if EACH_OF_THEM_SUBJECT_PATTERN.matches_words(&token_word_refs(subject_tokens)) {
         return Ok(None);
     }
 

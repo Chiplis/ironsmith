@@ -1939,10 +1939,9 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject_words = subject_word_view.to_word_refs();
         if let Some(activator) = parse_trigger_subject_player_filter(&subject_words) {
             let tail_words = &words[activate_idx + 1..];
-            if let Some(filter) = parse_loyalty_ability_trigger_tail_lexed(
-                &tokens[activate_idx + 1..],
-                tail_words,
-            )? {
+            if let Some(filter) =
+                parse_loyalty_ability_trigger_tail_lexed(&tokens[activate_idx + 1..], tail_words)?
+            {
                 return Ok(TriggerSpec::AbilityActivated {
                     activator,
                     filter,

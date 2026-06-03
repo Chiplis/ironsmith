@@ -134,18 +134,21 @@ const ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE: ClauseShape<'static> = c
 const STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE: ClauseShape<'static> = clause_shape!(
     exact
         & [
-            "starting", "with", "you", "each", "player", "may", "pay", "any", "amount",
-            "of", "life",
+            "starting", "with", "you", "each", "player", "may", "pay", "any", "amount", "of",
+            "life",
         ]
 );
 const REPEAT_UNTIL_NO_ONE_PAYS_LIFE: ClauseShape<'static> = clause_shape!(
-    exact & ["repeat", "this", "process", "until", "no", "one", "pays", "life"]
+    exact
+        & [
+            "repeat", "this", "process", "until", "no", "one", "pays", "life"
+        ]
 );
 const EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID: ClauseShape<'static> = clause_shape!(
     exact
         & [
-            "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for",
-            "each", "1", "life", "they", "paid", "this", "way",
+            "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for", "each",
+            "1", "life", "they", "paid", "this", "way",
         ]
 );
 

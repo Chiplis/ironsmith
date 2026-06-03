@@ -14,6 +14,7 @@ const EXILE_FACE_DOWN_WORD_PATTERN: ClauseShape<'static> =
 const EXILE_FACE_DOWN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["face", "down"]);
 const EXILE_HAND_OR_GRAVEYARD_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["hand"], &["hands"], &["graveyard"], &["graveyards"]]);
+const EXILE_IT_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
 const EXILE_GRAVEYARD_OWNER_YOU_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["your", "graveyard"]);
 const EXILE_GRAVEYARD_OWNER_THEIR_PATTERN: ClauseShape<'static> =
@@ -101,6 +102,8 @@ const EXILE_EACH_OPPONENT_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
         ]
 );
 const EXILE_THE_TOP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["the", "top"]);
+const EXILE_WITH_THAT_NAME_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["with", "that", "name"]]);
 
 pub(crate) fn parse_exile(
     tokens: &[OwnedLexToken],
@@ -295,7 +298,7 @@ fn parse_attached_object_exile_bundle(
         return Ok(None);
     }
     let attachment_target_words = crate::runtime_backend::token_word_refs(attachment_target_tokens);
-    if attachment_target_words.as_slice() != ["it"] {
+    if !EXILE_IT_REFERENCE_PATTERN.matches_words(&attachment_target_words) {
         return Ok(None);
     }
 
@@ -316,7 +319,7 @@ pub(crate) fn parse_same_name_exile_hand_and_graveyard_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, ALL_CARD_PREFIXES).is_none()
-        || grammar::words_find_phrase(tokens, &["with", "that", "name"]).is_none()
+        || !EXILE_WITH_THAT_NAME_PATTERN.matches_words(&clause_words)
     {
         return Ok(None);
     }

@@ -1061,18 +1061,6 @@ pub(crate) fn words_match_suffix<'a>(
     Some(&tokens[..token_start])
 }
 
-/// Finds the first occurrence of `expected` word sequence in `tokens`,
-/// using `TokenWordView` for proper multi-word token splitting.
-/// Returns the token index where the match starts.
-pub(crate) fn words_find_phrase(tokens: &[LexToken], expected: &[&str]) -> Option<usize> {
-    if expected.is_empty() {
-        return Some(0);
-    }
-    let view = TokenWordView::new(tokens);
-    let word_idx = view.find_phrase_start(expected)?;
-    view.token_index_for_word_index(word_idx)
-}
-
 /// Splits `tokens` at the first occurrence of word sequence `separator`,
 /// using `TokenWordView` for proper multi-word token splitting.
 /// Returns `(before, after)` where `before` ends just before the separator
@@ -1180,14 +1168,6 @@ mod tests {
             TokenWordView::new(rest).word_refs(),
             ["of", "the", "end", "step"]
         );
-    }
-
-    #[test]
-    fn words_find_phrase_basic() {
-        let tokens = lex_line("target creature gets big", 0).unwrap();
-        assert_eq!(words_find_phrase(&tokens, &["creature", "gets"]), Some(1));
-        assert_eq!(words_find_phrase(&tokens, &["target"]), Some(0));
-        assert_eq!(words_find_phrase(&tokens, &["nope"]), None);
     }
 
     #[test]

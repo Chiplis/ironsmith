@@ -58,11 +58,9 @@ fn compile_delayed_trigger_spec(
         TriggerSpec::Blocks(filter) => {
             Ok(ironsmith_core::DelayedTriggerSpec::Blocks(filter.clone()))
         }
-        TriggerSpec::BlocksOneOrMore(filter) => {
-            Ok(ironsmith_core::DelayedTriggerSpec::BlocksOneOrMore(
-                filter.clone(),
-            ))
-        }
+        TriggerSpec::BlocksOneOrMore(filter) => Ok(
+            ironsmith_core::DelayedTriggerSpec::BlocksOneOrMore(filter.clone()),
+        ),
         TriggerSpec::LeavesBattlefield(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::LeavesBattlefield(filter.clone()),
         ),

@@ -265,6 +265,13 @@ const CREATE_WHERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["
 const CREATE_EXILED_THIS_WAY_WORDS: &[&str] = &["exiled", "this", "way"];
 const CREATE_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & CREATE_EXILED_THIS_WAY_WORDS);
+const CREATE_THIS_WAY_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]);
+const CREATE_HASTE_GRANT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases & [&[&["has", "haste"], &["gain", "haste"], &["gains", "haste"]]]
+);
+const CREATE_OTHER_THAN_FIRST_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["other", "than", "the", "first"]]);
 const CREATE_TIME_OR_TIMES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["time"], &["times"]]);
 const CREATE_ONCE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["once"]);
@@ -286,6 +293,7 @@ const CREATE_CAST_OR_CASTS_MARKER_PATTERN: ClauseShape<'static> =
 const CREATE_TURN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["turn"]);
 const CREATE_INVESTIGATE_TRAILING_TIME_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["time"], &["times"]]);
+const CREATE_EQUAL_TO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal", "to"]);
 
 fn create_find_phrase_shape(
     words: &[&str],
@@ -308,7 +316,7 @@ fn reject_lossy_for_each_fallback(
             full_clause_words.join(" ")
         )));
     }
-    if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
+    if CREATE_THIS_WAY_MARKER_PATTERN.matches_words(&words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported this-way create count (clause: '{}')",
             full_clause_words.join(" ")
@@ -728,9 +736,7 @@ fn parse_create_equal_to_dynamic_count(
     tail_tokens: &[OwnedLexToken],
 ) -> Result<Option<(Value, usize)>, CardTextError> {
     let tail_words = token_word_refs(tail_tokens);
-    let Some(equal_word_idx) = tail_words
-        .windows(2)
-        .position(|words| words == ["equal", "to"])
+    let Some(equal_word_idx) = create_find_phrase_shape(&tail_words, 2, CREATE_EQUAL_TO_PATTERN)
     else {
         return Ok(None);
     };
@@ -1030,9 +1036,7 @@ pub(crate) fn parse_create(
             let half_pt = grammar::contains_word(&tail_tokens, "half")
                 && grammar::contains_word(&tail_tokens, "power")
                 && grammar::contains_word(&tail_tokens, "toughness");
-            let has_haste = grammar::words_find_phrase(&tail_tokens, &["has", "haste"]).is_some()
-                || grammar::words_find_phrase(&tail_tokens, &["gain", "haste"]).is_some()
-                || grammar::words_find_phrase(&tail_tokens, &["gains", "haste"]).is_some()
+            let has_haste = CREATE_HASTE_GRANT_MARKER_PATTERN.matches_words(&tail_words)
                 || grammar::contains_word(&tail_tokens, "haste");
             let mut enters_tapped = false;
             let mut enters_attacking = false;
@@ -1433,8 +1437,8 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
             PlayerFilter::Any
         };
 
-        let other_than_first =
-            grammar::words_find_phrase(tokens, &["other", "than", "the", "first"]).is_some();
+        let token_words = token_word_refs(tokens);
+        let other_than_first = CREATE_OTHER_THAN_FIRST_MARKER_PATTERN.matches_words(&token_words);
         if other_than_first {
             return Some(
                 Value::Add(
@@ -1557,7 +1561,7 @@ fn parse_investigate_for_each_count(tokens: &[OwnedLexToken]) -> Result<Value, C
         return Ok(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
     }
 
-    if grammar::words_find_phrase(tokens, &["this", "way"]).is_some() {
+    if CREATE_THIS_WAY_MARKER_PATTERN.matches_words(&words) {
         return Ok(
             Value::EventValue(EventValueSpec::Amount).with_surface_hint(ValueSurfaceHint::ForEach)
         );
@@ -1631,8 +1635,7 @@ pub(crate) fn parse_investigate(
             }
             (Value::Fixed(1), each_count) => each_count,
             (Value::Fixed(multiplier), Value::Count(filter)) => {
-                Value::CountScaled(filter, multiplier)
-                    .with_surface_hint(ValueSurfaceHint::ForEach)
+                Value::CountScaled(filter, multiplier).with_surface_hint(ValueSurfaceHint::ForEach)
             }
             (multiplier, each_count) => {
                 return Err(CardTextError::ParseError(format!(

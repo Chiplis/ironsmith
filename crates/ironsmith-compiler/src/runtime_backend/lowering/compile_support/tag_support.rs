@@ -499,9 +499,7 @@ pub(crate) fn value_references_event_derived_amount(value: &Value) -> bool {
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => {
-            value_references_event_derived_amount(value)
-        }
+        | Value::HalfRoundedDown(value) => value_references_event_derived_amount(value),
         _ => false,
     }
 }

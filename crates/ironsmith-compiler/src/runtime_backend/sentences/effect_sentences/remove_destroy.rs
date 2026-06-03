@@ -64,6 +64,24 @@ const DEALT_DAMAGE_THIS_TURN_FILTER_TAILS: &[&[&str]] = &[
     &["that", "was", "dealt", "damage", "this", "turn"],
     &["that", "were", "dealt", "damage", "this", "turn"],
 ];
+const THAT_DEALT_DAMAGE_TO_PHRASE: &[&str] = &["that", "dealt", "damage", "to"];
+const THAT_DEALT_DAMAGE_TO_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & THAT_DEALT_DAMAGE_TO_PHRASE);
+const END_OF_COMBAT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
+
+fn remove_find_exact_phrase_shape(
+    words: &[&str],
+    phrase: &[&str],
+    shape: &ClauseShape<'static>,
+) -> Option<usize> {
+    if phrase.is_empty() || words.len() < phrase.len() {
+        return None;
+    }
+    words
+        .windows(phrase.len())
+        .position(|window| shape.matches_words(window))
+}
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = find_index(tokens, |token| FROM_WORD_PATTERN.matches_token(token)) {
@@ -338,7 +356,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     if delayed_timing.is_none()
-        && (grammar::words_find_phrase(tokens, &["end", "of", "combat"]).is_some()
+        && (END_OF_COMBAT_PATTERN.matches_words(&original_clause_words)
             || (grammar::contains_word(tokens, "beginning")
                 && grammar::contains_word(tokens, "end")))
     {
@@ -632,10 +650,11 @@ fn parse_destroy_target_dealt_damage_to_player_this_turn(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<TargetAst>, CardTextError> {
-    let Some(that_idx) = clause_words
-        .windows(4)
-        .position(|window| window == ["that", "dealt", "damage", "to"])
-    else {
+    let Some(that_idx) = remove_find_exact_phrase_shape(
+        clause_words,
+        THAT_DEALT_DAMAGE_TO_PHRASE,
+        &THAT_DEALT_DAMAGE_TO_PATTERN,
+    ) else {
         return Ok(None);
     };
     if that_idx == 0

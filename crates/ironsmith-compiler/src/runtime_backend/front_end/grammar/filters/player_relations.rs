@@ -5,10 +5,6 @@ use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers:
 
 pub(super) type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
 
-pub(super) fn synth_words_as_tokens(words: &[&str]) -> Vec<OwnedLexToken> {
-    crate::runtime_backend::lexer::synthetic_word_tokens(words)
-}
-
 pub(super) fn push_unique_filter_value<T: Copy + PartialEq>(items: &mut Vec<T>, value: T) {
     crate::slice_primitives::push_unique(items, value);
 }

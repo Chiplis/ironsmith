@@ -369,12 +369,8 @@ fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
         return Ok(None);
     };
     if sacrifice_effect_targets_tagged_it(previous) {
-        *previous = EffectAst::subject_verb_sacrifice(
-            PlayerAst::You,
-            ObjectFilter::source(),
-            1,
-            None,
-        );
+        *previous =
+            EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::source(), 1, None);
     } else if !sacrifice_effect_targets_source(previous) {
         return Ok(None);
     }
@@ -390,7 +386,9 @@ fn pre_rule_return_source_exiled_cards_if_source_sacrificed(
     });
     Ok(Some(PreParseFollowupResult::Handled {
         consumed_sentences: 1,
-        route: Some("subject-verb verb=Return subject=source-exiled recognizer=source-sacrifice-followup"),
+        route: Some(
+            "subject-verb verb=Return subject=source-exiled recognizer=source-sacrifice-followup",
+        ),
     }))
 }
 

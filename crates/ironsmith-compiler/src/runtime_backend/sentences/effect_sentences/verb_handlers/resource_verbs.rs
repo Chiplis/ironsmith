@@ -62,6 +62,8 @@ const RESOURCE_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["o
 const RESOURCE_AS_YOU_CHOOSE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["as", "you", "choose"]);
 const RESOURCE_INTO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["into"]);
+const NOTE_YOUR_LIFE_TOTAL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["your", "life", "total"]);
 const RESOURCE_THE_REST_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["the", "rest"]);
 const RESOURCE_ALL_OTHER_REVEALED_OR_EXILED_CARDS_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -275,7 +277,7 @@ pub(crate) fn parse_effect_with_verb(
 
 fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.as_slice() == ["your", "life", "total"] {
+    if NOTE_YOUR_LIFE_TOTAL_PATTERN.matches_words(&words) {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,

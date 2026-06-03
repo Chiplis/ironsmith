@@ -73,6 +73,7 @@ use super::grammar::primitives::{
 pub(crate) use super::grammar::values::parse_add_mana_equal_amount_value_lexed as parse_add_mana_equal_amount_value;
 use super::grammar::values::parse_max_cards_in_hand_value_lexed;
 use super::keyword_static_helpers::*;
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom};
 use super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, contains_token_kind, find_token_kind,
     find_token_word_sequence_span, parser_token_word_refs, render_token_slice,
@@ -106,9 +107,9 @@ use super::util::{
     parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
     parse_counter_type_word, parse_filter_counter_constraint_words, parse_flashback_keyword_line,
     parse_for_each_count_value_words, parse_greater_than_or_equal_quantity_prefix,
-    parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible, parse_number_word_i32,
-    parse_quantity_comparison_prefix, parse_subtype_flexible, parse_value, parse_value_expr_words,
-    parse_zone_word, preserve_keyword_prefix_for_parse,
+    parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible,
+    parse_number_word_i32, parse_quantity_comparison_prefix, parse_subtype_flexible, parse_value,
+    parse_value_expr_words, parse_zone_word, preserve_keyword_prefix_for_parse,
     source_reference_surface_for_possessive_words, strip_leading_article_word_refs,
     strip_leading_token_words_any, strip_leading_word_refs_any, trim_commas,
     word_refs_at_is_article, words,
@@ -1399,6 +1400,17 @@ const YOU_HAVE_NO_OTHER_CREATURE_CARDS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "have", "no", "other", "creature", "cards"]);
 const OR_IF_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["or", "if"]]);
+const COUNT_AS_CARD_NAMED_GRAVEYARD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["if", "this", "card", "is", "in", "a", "graveyard"],
+            &["if", "this", "card", "is", "in", "your", "graveyard"],
+        ]
+);
+const EFFECTS_FROM_SPELLS_NAMED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["effects", "from", "spells", "named"]);
+const COUNT_IT_AS_A_CARD_NAMED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["count", "it", "as", "a", "card", "named"]);
 const ONLY_OTHER_CREATURE_CARDS_NAMED_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
         & [
@@ -3026,18 +3038,11 @@ fn title_case_count_as_card_name(words: &[&str]) -> String {
 }
 
 fn parse_count_as_card_named_for_spell_effect_line(words: &[&str]) -> Option<StaticAbility> {
-    const GRAVEYARD_PREFIXES: &[&[&str]] = &[
-        &["if", "this", "card", "is", "in", "a", "graveyard"],
-        &["if", "this", "card", "is", "in", "your", "graveyard"],
-    ];
-    if !GRAVEYARD_PREFIXES
-        .iter()
-        .any(|prefix| word_slice_starts_with(words, prefix))
-    {
+    if !COUNT_AS_CARD_NAMED_GRAVEYARD_PREFIX_PATTERN.matches_words(words) {
         return None;
     }
 
-    let effects_idx = word_slice_find_phrase_start(words, &["effects", "from", "spells", "named"])?;
+    let effects_idx = EFFECTS_FROM_SPELLS_NAMED_PATTERN.find_exact_window(words, 4)?;
     let spell_name_start = effects_idx + 4;
     let count_idx =
         word_slice_find_word(words.get(spell_name_start..).unwrap_or_default(), "count")?
@@ -3046,7 +3051,7 @@ fn parse_count_as_card_named_for_spell_effect_line(words: &[&str]) -> Option<Sta
     if spell_name_words.is_empty()
         || !words
             .get(count_idx..count_idx + 6)
-            .is_some_and(|tail| tail == ["count", "it", "as", "a", "card", "named"])
+            .is_some_and(|tail| COUNT_IT_AS_A_CARD_NAMED_PATTERN.matches_words(tail))
     {
         return None;
     }
@@ -7888,8 +7893,8 @@ pub(crate) fn parse_players_skip_upkeep_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let tokens = trim_edge_punctuation(tokens);
-    let tokens = super::grammar::effects::split_labeled_effect_prefix_lexed(&tokens)
-        .unwrap_or(&tokens);
+    let tokens =
+        super::grammar::effects::split_labeled_effect_prefix_lexed(&tokens).unwrap_or(&tokens);
     let words = parser_token_word_refs(tokens);
     if token_slice_starts_with(tokens, &["skip", "your", "upkeep", "step"]) {
         let mut ability = StaticAbility::player_skips_upkeep(crate::target::PlayerFilter::You);
@@ -10854,11 +10859,32 @@ pub(crate) fn parse_spend_mana_as_any_color_line(
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words.len() == 25
         && word_slice_eq(&clause_words[0..3], &["you", "may", "spend"])
-        && word_slice_eq(&clause_words[4..25], &[
-            "mana", "as", "though", "it", "were", "mana", "of", "any", "color", "you", "may",
-            "spend", "other", "mana", "only", "as", "though", "it", "were", "colorless",
-            "mana",
-        ])
+        && word_slice_eq(
+            &clause_words[4..25],
+            &[
+                "mana",
+                "as",
+                "though",
+                "it",
+                "were",
+                "mana",
+                "of",
+                "any",
+                "color",
+                "you",
+                "may",
+                "spend",
+                "other",
+                "mana",
+                "only",
+                "as",
+                "though",
+                "it",
+                "were",
+                "colorless",
+                "mana",
+            ],
+        )
         && let Some(symbol) = parse_mana_symbol_word_flexible(clause_words[3])
         && !matches!(symbol, ManaSymbol::Colorless)
     {

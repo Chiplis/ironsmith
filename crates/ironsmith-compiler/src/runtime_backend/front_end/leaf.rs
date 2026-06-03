@@ -919,9 +919,7 @@ fn parse_unattach_segment_tokens(
     }
 
     let from_tail = &tail[filter_end..];
-    if !from_tail.is_empty()
-        && !from_tail.get(1..).is_some_and(is_source_reference_words)
-    {
+    if !from_tail.is_empty() && !from_tail.get(1..).is_some_and(is_source_reference_words) {
         return Err(CardTextError::ParseError(format!(
             "rewrite unattach parser only supports unattach-from-source costs in '{raw}'"
         )));

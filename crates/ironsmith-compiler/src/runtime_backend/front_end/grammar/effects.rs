@@ -68,6 +68,7 @@ const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
 const WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
 const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
 const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "way"]);
+const MAX_SPEED_LABEL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["max", "speed"]);
 const COMPACT_NEGATED_ACTION_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["doesnt"], &["didnt"], &["doesn't"], &["didn't"]]);
 const SPLIT_NEGATED_ACTION_WORD_PATTERN: ClauseShape<'static> =
@@ -86,6 +87,15 @@ const YOU_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
 const LOSE_MANA_STEPS_PHASES_END_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["lose", "mana", "steps", "phases", "end"]);
 const THAT_MANY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "many"]);
+const TRAILING_THAT_PLAYER_SHUFFLE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["then", "that", "player", "shuffle"],
+            &["then", "that", "player", "shuffles"],
+            &["that", "player", "shuffle"],
+            &["that", "player", "shuffles"],
+        ]]
+);
 const REMAINS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["remains"]);
 const TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
 const PREVENT_DAMAGE_EXPLICIT_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
@@ -390,7 +400,7 @@ pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bo
     let Some(first) = words.first().copied() else {
         return false;
     };
-    if words.as_slice() == ["max", "speed"] {
+    if MAX_SPEED_LABEL_PATTERN.matches_words(&words) {
         return true;
     }
 
@@ -1117,14 +1127,8 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     parse_effect_clause_lexed: fn(&[OwnedLexToken]) -> Result<EffectAst, CardTextError>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn has_trailing_that_player_shuffle(tokens: &[OwnedLexToken]) -> bool {
-        super::primitives::words_find_phrase(tokens, &["then", "that", "player", "shuffle"])
-            .is_some()
-            || super::primitives::words_find_phrase(tokens, &["then", "that", "player", "shuffles"])
-                .is_some()
-            || super::primitives::words_find_phrase(tokens, &["that", "player", "shuffle"])
-                .is_some()
-            || super::primitives::words_find_phrase(tokens, &["that", "player", "shuffles"])
-                .is_some()
+        TRAILING_THAT_PLAYER_SHUFFLE_MARKER_PATTERN
+            .matches_words(&crate::runtime_backend::token_word_refs(tokens))
     }
 
     let words_all = parser_token_word_refs(tokens);

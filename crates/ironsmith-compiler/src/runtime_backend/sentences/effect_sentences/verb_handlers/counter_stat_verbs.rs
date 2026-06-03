@@ -3,6 +3,8 @@ const COUNTER_TARGET_WORD_PATTERN: ClauseShape<'static> =
 const COUNTER_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
 const COUNTER_AND_OR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["and"], &["or"]]);
+const COUNTER_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["for", "each"]);
 const COUNTER_YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["you", "control"], &["you", "controls"]]);
 const COUNTER_YOU_DONT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1012,7 +1014,7 @@ pub(crate) fn parse_life_amount_from_trailing(
 
 fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !word_slice_starts_with(&words, &["for", "each"]) {
+    if !COUNTER_FOR_EACH_PREFIX_PATTERN.matches_words(&words) {
         return None;
     }
     let counter_idx = find_index(words.as_slice(), |word| {

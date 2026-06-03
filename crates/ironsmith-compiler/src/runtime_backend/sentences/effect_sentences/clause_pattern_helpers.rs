@@ -1711,9 +1711,15 @@ pub(crate) fn parse_prevent_all_damage_clause(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PreventAllDamageClauseShape {
-    DurationFirstSource { prefix_len: usize },
-    DurationFirstTarget { prefix_len: usize },
-    TargetFirst { prefix_len: usize },
+    DurationFirstSource {
+        prefix_len: usize,
+    },
+    DurationFirstTarget {
+        prefix_len: usize,
+    },
+    TargetFirst {
+        prefix_len: usize,
+    },
     TargetFirstSource {
         prefix_len: usize,
         this_turn_idx: usize,
@@ -1738,10 +1744,8 @@ fn classify_prevent_all_damage_clause(words: &[&str]) -> Option<PreventAllDamage
         return Some(PreventAllDamageClauseShape::TargetFirst { prefix_len });
     }
     if let Some(prefix_len) = CLAUSE_PREVENT_ALL_DAMAGE_TO_PATTERN.matched_prefix_len(words)
-        && let Some(this_turn_rel) = CLAUSE_THIS_TURN_BY_PATTERN.find_exact_window(
-            words.get(prefix_len..).unwrap_or_default(),
-            3,
-        )
+        && let Some(this_turn_rel) = CLAUSE_THIS_TURN_BY_PATTERN
+            .find_exact_window(words.get(prefix_len..).unwrap_or_default(), 3)
     {
         let this_turn_idx = prefix_len + this_turn_rel;
         return Some(PreventAllDamageClauseShape::TargetFirstSource {
@@ -1805,15 +1809,14 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
         return Ok(None);
     };
     let clause_words = clause.word_refs();
-    let damage_target_start = if CLAUSE_DEAL_DAMAGE_TO_PREFIX_PATTERN
-        .matches_words(&clause_words[would_idx + 1..])
-    {
-        would_idx + 4
-    } else if word_slice_starts_with(&clause_words[would_idx + 1..], &["deal", "damage"]) {
-        would_idx + 3
-    } else {
-        return Ok(None);
-    };
+    let damage_target_start =
+        if CLAUSE_DEAL_DAMAGE_TO_PREFIX_PATTERN.matches_words(&clause_words[would_idx + 1..]) {
+            would_idx + 4
+        } else if word_slice_starts_with(&clause_words[would_idx + 1..], &["deal", "damage"]) {
+            would_idx + 3
+        } else {
+            return Ok(None);
+        };
 
     let this_turn_rel = CLAUSE_THIS_TURN_PATTERN
         .find_exact_window(&clause_words[damage_target_start..], 2)
@@ -2248,11 +2251,7 @@ pub(crate) fn parse_redirect_next_damage_sentence(
                 destination_target,
             )
         } else {
-            EffectAst::subject_verb_redirect_next_time_damage_to_source(
-                source,
-                target,
-                destination,
-            )
+            EffectAst::subject_verb_redirect_next_time_damage_to_source(source, target, destination)
         };
 
         return Ok(Some(vec![effect]));

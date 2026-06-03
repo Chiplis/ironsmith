@@ -82,6 +82,10 @@ const TURN_OR_COMBAT_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["turn"], &["combat"]]);
 const COUNTER_NOUN_CONTEXT_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["on"], &["from"], &["among"]]);
+const BACKREF_COUNTER_TARGET_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [&[&["on", "it"], &["on", "them"]]]);
+const AT_THE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["at", "the"]]);
 const VERB_SHAPES: &[VerbShapeEntry] = &[
     VerbShapeEntry {
         pattern: clause_shape!(exact_any & [&["adds"], &["add"]]),
@@ -1244,8 +1248,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 let allow_return_with_counter_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
                     && RETURN_WITH_COUNTER_FOLLOWUP_PATTERN.matches_words(&after_words)
-                    && (grammar::words_find_phrase(after_then, &["on", "it"]).is_some()
-                        || grammar::words_find_phrase(after_then, &["on", "them"]).is_some());
+                    && BACKREF_COUNTER_TARGET_MARKER_PATTERN.matches_words(&after_words);
                 let allow_put_battlefield_with_counter_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
@@ -1254,8 +1257,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                         && after_words
                             .iter()
                             .any(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
-                        && (grammar::words_find_phrase(after_then, &["on", "it"]).is_some()
-                            || grammar::words_find_phrase(after_then, &["on", "them"]).is_some());
+                        && BACKREF_COUNTER_TARGET_MARKER_PATTERN.matches_words(&after_words);
                 let allow_put_into_hand_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "into")
@@ -1336,7 +1338,7 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 .matches_first_word(&before_words)
                 && (grammar::contains_word(before, "whenever")
                     || grammar::contains_word(before, "when")
-                    || grammar::words_find_phrase(before, &["at", "the"]).is_some());
+                    || AT_THE_MARKER_PATTERN.matches_words(&before_words));
             if UNLESS_WORD_PATTERN.matches_first_word(&before_words) || duration_trigger_prefix {
                 continue;
             }

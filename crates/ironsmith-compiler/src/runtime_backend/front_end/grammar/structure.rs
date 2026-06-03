@@ -534,8 +534,7 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Vote);
     }
 
-    if primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with", "you"]))
-        .is_some()
+    if primitives::parse_prefix(tokens, primitives::phrase(&["starting", "with", "you"])).is_some()
         && primitives::contains_phrase(tokens, &["each", "player"])
         && primitives::contains_word(tokens, "pay")
     {
@@ -668,15 +667,33 @@ pub(crate) fn classify_static_line_family_lexed(
     if primitives::contains_any_phrase(
         tokens,
         &[
-            &["you", "may", "cast", "this", "card", "from", "your", "graveyard"],
-            &["you", "may", "cast", "this", "spell", "from", "your", "graveyard"],
             &[
-                "once", "each", "turn", "you", "may", "cast", "a", "spell", "from", "the",
-                "top", "of", "your", "library",
+                "you",
+                "may",
+                "cast",
+                "this",
+                "card",
+                "from",
+                "your",
+                "graveyard",
             ],
             &[
-                "once", "each", "turn", "you", "may", "cast", "spells", "from", "the", "top",
+                "you",
+                "may",
+                "cast",
+                "this",
+                "spell",
+                "from",
+                "your",
+                "graveyard",
+            ],
+            &[
+                "once", "each", "turn", "you", "may", "cast", "a", "spell", "from", "the", "top",
                 "of", "your", "library",
+            ],
+            &[
+                "once", "each", "turn", "you", "may", "cast", "spells", "from", "the", "top", "of",
+                "your", "library",
             ],
         ],
     ) {

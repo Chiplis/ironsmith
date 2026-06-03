@@ -138,9 +138,10 @@ const EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN: ClauseShape<'static> 
 );
 
 const CAST_EXILED_CARD_FREE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact & [
-        "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost"
-    ]
+    exact
+        & [
+            "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost"
+        ]
 );
 
 const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
@@ -148,9 +149,15 @@ const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
 const EXILED_CARD_HAND_FOLLOWUP_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
-            &["if", "you", "don't", "put", "that", "card", "into", "your", "hand"],
-            &["if", "you", "dont", "put", "that", "card", "into", "your", "hand"],
-            &["if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"],
+            &[
+                "if", "you", "don't", "put", "that", "card", "into", "your", "hand"
+            ],
+            &[
+                "if", "you", "dont", "put", "that", "card", "into", "your", "hand"
+            ],
+            &[
+                "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"
+            ],
         ]
 );
 

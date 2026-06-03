@@ -65,6 +65,9 @@ use crate::runtime_backend::lexer::{
     word_slice_contains_phrase_or_empty, word_slice_contains_word,
     word_slice_find_phrase_start_or_zero,
 };
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
 
 use super::effect_ast_traversal::{
     assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
@@ -101,6 +104,11 @@ use super::static_ability_helpers::{
 use super::util::{
     contains_until_end_of_turn, map_span_to_original, parse_card_type, parse_number_word_i32,
 };
+
+const EQUIPPED_CREATURE_PHRASE: &[&str] = &["equipped", "creature"];
+const EQUIPPED_CREATURE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & EQUIPPED_CREATURE_PHRASE);
+const SHAPESHIFTER_TOKEN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["shapeshifter"]);
 
 #[path = "compile_support/choose_effect_helpers.rs"]
 mod choose_effect_helpers;
@@ -2073,9 +2081,8 @@ fn inline_token_rules_start(tokens: &[OwnedLexToken]) -> Option<usize> {
 
 pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
     let has_equipped_subject = words
-        .iter()
-        .enumerate()
-        .any(|(idx, _)| idx + 2 <= words.len() && words[idx..idx + 2] == ["equipped", "creature"]);
+        .windows(EQUIPPED_CREATURE_PHRASE.len())
+        .any(|window| EQUIPPED_CREATURE_PATTERN.matches_words(window));
     if !has_equipped_subject {
         return None;
     }
@@ -3521,7 +3528,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Shapeshifter])
             .power_toughness(PowerToughness::fixed(3, 2));
-        if has_word("changeling") || words.as_slice() == ["shapeshifter"] {
+        if has_word("changeling") || SHAPESHIFTER_TOKEN_PATTERN.matches_words(&words) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
         return Some(builder.build());

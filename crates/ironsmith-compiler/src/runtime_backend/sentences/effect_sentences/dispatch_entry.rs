@@ -1098,9 +1098,7 @@ fn parse_effect_sentences_from_sentence_inputs(
     fn where_x_value_from_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
         let word_view = TokenWordView::new(tokens);
         let words = word_view.word_refs();
-        let where_idx = words
-            .windows(3)
-            .position(|window| window == ["where", "x", "is"])?;
+        let where_idx = WHERE_X_IS_PATTERN.find_exact_window(&words, 3)?;
         let where_token_idx = token_index_for_word_index(tokens, where_idx)?;
         parse_value_binding_clause(&tokens[where_token_idx..])
             .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))

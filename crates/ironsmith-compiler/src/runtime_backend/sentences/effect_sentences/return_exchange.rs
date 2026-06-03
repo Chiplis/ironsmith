@@ -41,6 +41,8 @@ const RETURN_TAPPED_DESTINATION_PATTERN: ClauseShape<'static> =
 const RETURN_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["under", "your", "control"]]);
 const RETURN_OWNER_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["control"]; contains_any_words & [&["owner", "owners", "owner's", "owners'"]]);
+const RETURN_END_OF_COMBAT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
 const RETURN_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const RETURN_AND_OR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["and"], &["or"]]);
@@ -352,7 +354,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     };
     let has_delayed_timing_words = grammar::contains_word(destination_tokens_full, "beginning")
         || grammar::contains_word(destination_tokens_full, "upkeep")
-        || grammar::words_find_phrase(destination_tokens_full, &["end", "of", "combat"]).is_some()
+        || RETURN_END_OF_COMBAT_PATTERN
+            .matches_words(&crate::runtime_backend::token_word_refs(destination_tokens_full))
         || grammar::contains_word(destination_tokens_full, "end")
             && (grammar::contains_word(destination_tokens_full, "next")
                 || grammar::contains_word(destination_tokens_full, "step"));

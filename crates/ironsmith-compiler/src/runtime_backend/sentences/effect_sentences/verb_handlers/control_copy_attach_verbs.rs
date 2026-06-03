@@ -93,12 +93,24 @@ const CCA_REST_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
 const CCA_LIBRARY_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["library"]);
 const CCA_POWER_NUMBER_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["power", "number"]);
+const CCA_ITS_SOURCE_STAT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["its", "power"],
+            &["its", "toughness"],
+            &["its", "mana", "value"],
+        ]]
+);
+const CCA_THEN_SHUFFLE_YOUR_GRAVEYARD_INTO_YOUR_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["then", "shuffle", "your", "graveyard", "into", "your"]]);
 const CCA_YOU_CONTROL_PHRASE_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["you", "control"]]);
 const CCA_IT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["it"]);
 const CCA_THEM_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["them"]);
 const CCA_HAND_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["hand"]);
 const CCA_INTO_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["into"]);
+const CCA_FROM_IT_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["from", "it"]]);
 const CCA_ATTACKING_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["attacking"]);
 const CCA_TAPPED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
@@ -170,9 +182,7 @@ pub(crate) fn parse_lose_life(
     }
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
         if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
-            && (grammar::words_find_phrase(tokens, &["its", "power"]).is_some()
-                || grammar::words_find_phrase(tokens, &["its", "toughness"]).is_some()
-                || grammar::words_find_phrase(tokens, &["its", "mana", "value"]).is_some())
+            && CCA_ITS_SOURCE_STAT_MARKER_PATTERN.matches_words(&clause_words)
         {
             amount = remap_source_stat_value_to_it(amount);
         }
@@ -253,12 +263,11 @@ pub(crate) fn parse_gain_life(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
 
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
         if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
-            && (grammar::words_find_phrase(tokens, &["its", "power"]).is_some()
-                || grammar::words_find_phrase(tokens, &["its", "toughness"]).is_some()
-                || grammar::words_find_phrase(tokens, &["its", "mana", "value"]).is_some())
+            && CCA_ITS_SOURCE_STAT_MARKER_PATTERN.matches_words(&clause_words)
         {
             amount = remap_source_stat_value_to_it(amount);
         }
@@ -275,14 +284,10 @@ pub(crate) fn parse_gain_life(
     validate_life_keyword(rest)?;
     let trailing = trim_commas(&rest[1..]);
     if !trailing.is_empty() {
-        if grammar::words_find_phrase(
-            &trailing,
-            &["then", "shuffle", "your", "graveyard", "into", "your"],
-        )
-        .is_some()
-            && CCA_LIBRARY_MARKER_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-                &trailing,
-            ))
+        let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
+        if CCA_THEN_SHUFFLE_YOUR_GRAVEYARD_INTO_YOUR_MARKER_PATTERN
+            .matches_words(&trailing_words)
+            && CCA_LIBRARY_MARKER_PATTERN.matches_words(&trailing_words)
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
@@ -1230,7 +1235,9 @@ pub(crate) fn parse_put_into_hand(
             .is_some_and(|token| CCA_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
         {
             let mut filter = parse_object_filter(&target_tokens[1..], false)?;
-            if grammar::words_find_phrase(&target_tokens[1..], &["from", "it"]).is_some() {
+            if CCA_FROM_IT_MARKER_PATTERN
+                .matches_words(&crate::runtime_backend::token_word_refs(&target_tokens[1..]))
+            {
                 filter.zone = Some(Zone::Hand);
                 if filter.owner.is_none() {
                     filter.owner = Some(PlayerFilter::You);

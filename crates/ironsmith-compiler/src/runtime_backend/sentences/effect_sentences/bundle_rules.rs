@@ -5,7 +5,7 @@ use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_you_choose_objects_clause,
 };
 use super::super::lexer::{
-    OwnedLexToken, TokenKind, parser_token_word_refs, split_lexed_sentences, word_slice_starts_with,
+    OwnedLexToken, TokenKind, parser_token_word_refs, split_lexed_sentences,
 };
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::permission_helpers::{
@@ -139,6 +139,14 @@ const BUNDLE_PUT_IT_INTO_YOUR_HAND_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["and", "put", "it", "into", "your", "hand"]);
 const BUNDLE_PUT_IT_INTO_YOUR_HAND_WORD_LEN: usize = 6;
 const BUNDLE_YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const BUNDLE_MAY_CAST_SPELL_WITH_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "may", "cast", "a", "spell", "with"]);
+const BUNDLE_FROM_YOUR_HAND_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["from", "your", "hand"]);
+const BUNDLE_IF_YOU_DO_PAY_ITS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["if", "you", "do", "pay", "its"]);
+const BUNDLE_ALTERNATIVE_COST_RATHER_THAN_MANA_COST_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["cost", "rather", "than", "its", "mana", "cost"]);
 const SEARCH_BASIC_LAND_CARD_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -239,6 +247,17 @@ const LIFE_BID_CONTROL_REWARD_PATTERN: ClauseShape<'static> = clause_shape!(
         & [
             "the", "high", "bidder", "loses", "life", "equal", "to", "the", "high", "bid", "and",
             "gains", "control", "of", "the", "creature"
+        ]
+);
+const LIFE_BID_CONTROL_OF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["control", "of"]);
+const SUSPENDED_PERMANENT_TARGET_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["target", "permanent", "or", "suspended", "card"]);
+const REGENERATES_THIS_WAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["if", "it", "regenerates", "this", "way"],
+            &["if", "that", "creature", "regenerates", "this", "way"],
         ]
 );
 const EXILE_TARGET_NONLAND_PERMANENT_PATTERN: ClauseShape<'static> =
@@ -691,21 +710,21 @@ fn parse_may_cast_spell_for_alternative_cost_bundle(
     let first_words = crate::runtime_backend::token_word_refs(first_sentence);
     let second_words = crate::runtime_backend::token_word_refs(second_sentence);
 
-    if !word_slice_starts_with(&first_words, &["you", "may", "cast", "a", "spell", "with"]) {
+    if !BUNDLE_MAY_CAST_SPELL_WITH_PREFIX_PATTERN.matches_words(&first_words) {
         return None;
     }
     let (kind, consumed) = parse_alternative_cast_words(&first_words[6..])?;
-    if first_words.get(6 + consumed..)? != ["from", "your", "hand"] {
+    if !BUNDLE_FROM_YOUR_HAND_TAIL_PATTERN.matches_words(first_words.get(6 + consumed..)?) {
         return None;
     }
 
-    if !word_slice_starts_with(&second_words, &["if", "you", "do", "pay", "its"]) {
+    if !BUNDLE_IF_YOU_DO_PAY_ITS_PREFIX_PATTERN.matches_words(&second_words) {
         return None;
     }
     let (second_kind, second_consumed) = parse_alternative_cast_words(&second_words[5..])?;
     if second_kind != kind
-        || second_words.get(5 + second_consumed..)?
-            != ["cost", "rather", "than", "its", "mana", "cost"]
+        || !BUNDLE_ALTERNATIVE_COST_RATHER_THAN_MANA_COST_TAIL_PATTERN
+            .matches_words(second_words.get(5 + second_consumed..)?)
     {
         return None;
     }
@@ -1229,7 +1248,7 @@ fn choose_counter_target(
     first: &[OwnedLexToken],
     first_words: &[&str],
 ) -> Result<TargetAst, CardTextError> {
-    if first_words[4..] == ["target", "permanent", "or", "suspended", "card"] {
+    if SUSPENDED_PERMANENT_TARGET_TAIL_PATTERN.matches_words(&first_words[4..]) {
         return Ok(TargetAst::Object(
             ObjectFilter {
                 any_of: vec![
@@ -2068,9 +2087,8 @@ fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<Eff
         return None;
     }
 
-    let control_of_idx = first_words
-        .windows(2)
-        .position(|window| window == ["control", "of"])?;
+    let control_of_idx =
+        bundle_find_phrase_start(&first_words, LIFE_BID_CONTROL_OF_PREFIX_PATTERN)?;
     let target_start = control_of_idx + 2;
     let target_token_start = super::super::util::token_index_for_word_index(first, target_start)?;
     let target = parse_target_phrase(&first[target_token_start..]).ok()?;
@@ -2113,34 +2131,27 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
         idx += 1;
     }
 
-    let if_idx = second_words
-        .windows(5)
-        .position(|window| window == ["if", "it", "regenerates", "this", "way"])
-        .or_else(|| {
-            second_words.windows(6).position(|window| {
-                window == ["if", "that", "creature", "regenerates", "this", "way"]
-            })
-        })?;
+    let if_idx = bundle_find_phrase_start(&second_words, REGENERATES_THIS_WAY_PREFIX_PATTERN)?;
     if if_idx <= idx {
         return None;
     }
 
     let target_token_start = token_index_for_word_index(second, idx)?;
     let target_token_end = token_index_for_word_index(second, if_idx)?;
-    let control_target = parse_target_phrase(&trim_commas(
-        &second[target_token_start..target_token_end],
-    ))
-    .ok()?;
+    let control_target =
+        parse_target_phrase(&trim_commas(&second[target_token_start..target_token_end])).ok()?;
     let follow_up = EffectAst::subject_verb_gain_control(
         PlayerAst::Implicit,
         control_target,
         crate::effect::Until::Forever,
     );
 
-    Some(vec![EffectAst::subject_verb_regenerate_with_follow_up_effects(
-        regenerate_target,
-        vec![follow_up],
-    )])
+    Some(vec![
+        EffectAst::subject_verb_regenerate_with_follow_up_effects(
+            regenerate_target,
+            vec![follow_up],
+        ),
+    ])
 }
 
 pub(crate) fn parse_exact_card_effect_bundle_lexed(

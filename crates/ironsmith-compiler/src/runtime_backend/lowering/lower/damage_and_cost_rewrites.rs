@@ -1,4 +1,8 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
+
+const NEXT_SPELL_COST_REDUCTION_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["the", "next"]);
 
 pub(crate) fn apply_pending_mana_restrictions(
     parsed: &mut ParsedAbility,
@@ -19,7 +23,7 @@ pub(crate) fn parse_next_spell_cost_reduction_sentence_rewrite(
     tokens: &[OwnedLexToken],
 ) -> Option<EffectAst> {
     let clause_words = token_word_refs(tokens);
-    if !word_slice_starts_with(clause_words.as_slice(), &["the", "next"]) {
+    if !NEXT_SPELL_COST_REDUCTION_PREFIX_PATTERN.matches_words(clause_words.as_slice()) {
         return None;
     }
 

@@ -32,6 +32,10 @@ const THE_NEXT_PREFIXES: &[&[&str]] = &[&["the", "next"]];
 const SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
 const COSTS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["costs"]);
 const LESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["less"]);
+const LESS_TO_ACTIVATE_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["less", "to", "activate"]]);
+const NEXT_SPELL_COST_REDUCTION_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["spell", "costs", "less", "cast"]);
 const NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["spell", "you", "cast", "this", "turn"]);
 const LESS_TO_CAST_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "to", "cast"]);
@@ -108,17 +112,15 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, THIS_ABILITY_COSTS_PREFIXES).is_some()
-        && grammar::words_find_phrase(tokens, &["less", "to", "activate"]).is_some()
+        && LESS_TO_ACTIVATE_MARKER_PATTERN.matches_words(&clause_words)
     {
         return true;
     }
 
     grammar::words_match_any_prefix(tokens, THE_NEXT_PREFIXES).is_some()
-        && grammar::words_find_phrase(tokens, &["spell"]).is_some()
-        && grammar::words_find_phrase(tokens, &["costs"]).is_some()
-        && grammar::words_find_phrase(tokens, &["less"]).is_some()
-        && grammar::words_find_phrase(tokens, &["cast"]).is_some()
+        && NEXT_SPELL_COST_REDUCTION_MARKER_PATTERN.matches_words(&clause_words)
 }
 
 fn parse_activated_sentence_modifier_lexed(

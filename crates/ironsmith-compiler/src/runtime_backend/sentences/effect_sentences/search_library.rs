@@ -78,6 +78,32 @@ const SEARCH_TARGET_OR_YOUR_OWNER_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const SEARCH_EXILE_OR_EXILES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["exile"], &["exiles"]]);
+const SEARCH_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["exiled", "this", "way"]]);
+const SEARCH_EXILED_WITH_THIS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["exiled", "with", "this"]]);
+const SEARCH_THEN_PUTS_ALL_PERMANENT_CARDS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["then", "puts", "all", "permanent", "cards"]]);
+const SEARCH_AMONG_THEM_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["among", "them", "onto", "battlefield"],
+            &["among", "them", "onto", "the", "battlefield"],
+        ]]
+);
+const SEARCH_DESTROYED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["destroyed", "this", "way"]]);
+const SEARCH_DIED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["died", "this", "way"]]);
+const SEARCH_PUT_INTO_GRAVEYARD_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["put", "into", "a", "graveyard", "this", "way"],
+            &["put", "into", "graveyard", "this", "way"],
+            &["put", "into", "their", "graveyard", "this", "way"],
+            &["put", "into", "its", "graveyard", "this", "way"],
+        ]]
+);
 const SEARCH_REVEAL_UNTIL_CONTROLLER_REVEALS_PREFIX: &[&str] = &[
     "its",
     "controller",
@@ -959,7 +985,7 @@ pub(crate) fn parse_for_each_exiled_this_way_sentence(
         return Ok(None);
     }
     let words_all = token_word_refs(tokens);
-    let refers_to_exiled = grammar::words_find_phrase(tokens, &["exiled", "this", "way"]).is_some()
+    let refers_to_exiled = SEARCH_EXILED_THIS_WAY_PATTERN.matches_words(&words_all)
         || grammar::words_match_prefix(tokens, &["for", "each", "of", "those", "creatures"])
             .is_some();
     if !refers_to_exiled {
@@ -1131,18 +1157,15 @@ pub(crate) fn parse_each_player_put_permanent_cards_exiled_with_source_sentence(
     if !starts_with_each_player_turns_face_up {
         return Ok(None);
     }
-    let has_exiled_with_this =
-        grammar::words_find_phrase(tokens, &["exiled", "with", "this"]).is_some();
+    let token_words = token_word_refs(tokens);
+    let has_exiled_with_this = SEARCH_EXILED_WITH_THIS_PATTERN.matches_words(&token_words);
     if !has_exiled_with_this {
         return Ok(None);
     }
     let has_puts_all_permanent_cards =
-        grammar::words_find_phrase(tokens, &["then", "puts", "all", "permanent", "cards"])
-            .is_some();
+        SEARCH_THEN_PUTS_ALL_PERMANENT_CARDS_PATTERN.matches_words(&token_words);
     let has_among_them_onto_battlefield =
-        grammar::words_find_phrase(tokens, &["among", "them", "onto", "battlefield"]).is_some()
-            || grammar::words_find_phrase(tokens, &["among", "them", "onto", "the", "battlefield"])
-                .is_some();
+        SEARCH_AMONG_THEM_ONTO_BATTLEFIELD_PATTERN.matches_words(&token_words);
     if !has_puts_all_permanent_cards || !has_among_them_onto_battlefield {
         return Ok(None);
     }
@@ -1178,10 +1201,9 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
         return Ok(None);
     }
-    let refers_to_destroyed =
-        grammar::words_find_phrase(tokens, &["destroyed", "this", "way"]).is_some();
-    let refers_to_died = grammar::words_find_phrase(tokens, &["died", "this", "way"]).is_some();
     let words_all = token_word_refs(tokens);
+    let refers_to_destroyed = SEARCH_DESTROYED_THIS_WAY_PATTERN.matches_words(&words_all);
+    let refers_to_died = SEARCH_DIED_THIS_WAY_PATTERN.matches_words(&words_all);
     if !refers_to_destroyed && !refers_to_died {
         return Ok(None);
     }
@@ -1220,21 +1242,9 @@ pub(crate) fn parse_for_each_put_into_graveyard_this_way_sentence(
     if grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
         return Ok(None);
     }
+    let token_words = token_word_refs(tokens);
     let refers_to_graveyard =
-        grammar::words_find_phrase(tokens, &["put", "into", "a", "graveyard", "this", "way"])
-            .is_some()
-            || grammar::words_find_phrase(tokens, &["put", "into", "graveyard", "this", "way"])
-                .is_some()
-            || grammar::words_find_phrase(
-                tokens,
-                &["put", "into", "their", "graveyard", "this", "way"],
-            )
-            .is_some()
-            || grammar::words_find_phrase(
-                tokens,
-                &["put", "into", "its", "graveyard", "this", "way"],
-            )
-            .is_some();
+        SEARCH_PUT_INTO_GRAVEYARD_THIS_WAY_PATTERN.matches_words(&token_words);
     if !refers_to_graveyard {
         return Ok(None);
     }

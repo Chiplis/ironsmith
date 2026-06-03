@@ -1259,7 +1259,7 @@ pub(crate) fn parse_attached_type_transform_line(
         if !preserve_other_types
             && !descriptor_has_card_types
             && add_subtypes.iter().all(crate::types::Subtype::is_creature_type)
-            && word_slice_starts_with(&line_words, &["enchanted", "creature"])
+            && ATTACHED_ENCHANTED_CREATURE_PREFIX_PATTERN.matches_words(&line_words)
         {
             out.push(StaticAbility::set_creature_subtypes(filter.clone(), add_subtypes).into());
         } else {

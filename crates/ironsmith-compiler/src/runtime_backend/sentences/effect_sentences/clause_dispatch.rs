@@ -20,8 +20,7 @@ use super::super::keyword_static::{
 };
 use super::super::lexer::{
     LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is,
-    token_slice_first_is_any, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
-    word_slice_first_is_any, word_slice_starts_with,
+    token_slice_first_is_any, word_slice_eq, word_slice_eq_any, word_slice_first_is_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
@@ -77,30 +76,62 @@ mod next_turn_cant;
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 
 const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
-const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any
-        &[
+const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
             &[
-                "only", "the", "chosen", "creatures", "can", "attack", "during", "that",
-                "combat", "phase",
-            ],
-            &[
-                "only", "chosen", "creatures", "can", "attack", "during", "that", "combat",
+                "only",
+                "the",
+                "chosen",
+                "creatures",
+                "can",
+                "attack",
+                "during",
+                "that",
+                "combat",
                 "phase",
             ],
-        ]);
-const ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any
-        &[
             &[
-                "only", "the", "chosen", "creatures", "can", "block", "during", "that",
-                "combat", "phase",
-            ],
-            &[
-                "only", "chosen", "creatures", "can", "block", "during", "that", "combat",
+                "only",
+                "chosen",
+                "creatures",
+                "can",
+                "attack",
+                "during",
+                "that",
+                "combat",
                 "phase",
             ],
-        ]);
+        ]
+);
+const ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "only",
+                "the",
+                "chosen",
+                "creatures",
+                "can",
+                "block",
+                "during",
+                "that",
+                "combat",
+                "phase",
+            ],
+            &[
+                "only",
+                "chosen",
+                "creatures",
+                "can",
+                "block",
+                "during",
+                "that",
+                "combat",
+                "phase",
+            ],
+        ]
+);
 const CONTROL_PLAYER_SUBJECT_PATTERNS: &[&[&str]] = &[
     &["you"],
     &["that", "player"],
@@ -121,6 +152,7 @@ const FROM_AMONG_NONLAND_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_
 const WITH_MANA_VALUE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["with", "mana", "value"]);
 const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
+const X_OR_LESS_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x", "or", "less"]);
 const ALL_ABILITIES_AND_GAIN_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["all", "abilities", "and"]; contains_any_words & [&["gain", "gains"]]);
 const HEXPROOF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["hexproof"]);
@@ -179,6 +211,8 @@ const FOR_EACH_OPPONENT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["for", "each", "opponent"]);
 const CHOOSE_ODD_OR_EVEN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["choose", "odd", "or", "even"]);
+const CHOOSE_LEFT_OR_RIGHT_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["choose", "left", "or", "right"]);
 const CHOOSE_OR_CHOOSES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["choose"], &["chooses"]]);
 const CHOOSE_TARGET_PATTERN: ClauseShape<'static> =
@@ -214,6 +248,9 @@ const PLANESWALK_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["planesw
 const CHAOS_ENSUES_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["chaos", "ensues"]);
 const PROTECTION_CHOICE_COLOR_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["protection", "choice"]; contains_any_words & [&["color", "colorless"]]);
 const COLORLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["colorless"]);
+const IN_ADDITION_TO_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["in", "addition", "to"]]);
+const IF_YOU_DO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if", "you", "do"]);
 const HEXPROOF_TARGETING_OVERRIDE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases & [
         &["can", "be", "the", "targets"],
@@ -325,7 +362,7 @@ fn parse_copular_base_pt_animation_clause(
         || !rest_words
             .iter()
             .any(|word| matches!(*word, "creature" | "creatures"))
-        || !word_slice_contains_phrase(rest_words, &["in", "addition", "to"])
+        || !IN_ADDITION_TO_PATTERN.matches_words(rest_words)
     {
         return Ok(None);
     }
@@ -684,8 +721,7 @@ fn parse_for_each_counter_group_removed_this_way_clause(
     else {
         return Ok(None);
     };
-    if words.get(counter_word_idx + 1..counter_word_idx + 4) != Some(&["removed", "this", "way"])
-    {
+    if words.get(counter_word_idx + 1..counter_word_idx + 4) != Some(&["removed", "this", "way"]) {
         return Ok(None);
     }
 
@@ -744,7 +780,7 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
                 .first()
                 .is_some_and(|word| X_WORD_PATTERN.matches_word(word))
             {
-                if value_words != ["x", "or", "less"] {
+                if !X_OR_LESS_PATTERN.matches_words(value_words) {
                     return None;
                 }
                 crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::X))
@@ -791,13 +827,13 @@ fn parse_cast_single_spell_from_among_hand_cards_clause(
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let mut words = clause_words.as_slice();
-    if word_slice_starts_with(words, &["if", "you", "do"]) {
+    if IF_YOU_DO_PREFIX_PATTERN.matches_words(words) {
         words = &words[3..];
         if word_slice_first_is_any(words, &["then", "and"]) {
             words = &words[1..];
         }
     }
-    let words = if word_slice_starts_with(words, &["you", "may"]) {
+    let words = if YOU_MAY_PREFIX_PATTERN.matches_words(words) {
         &words[2..]
     } else {
         words
@@ -1198,7 +1234,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
-    if clause_words == ["choose", "left", "or", "right"] {
+    if CHOOSE_LEFT_OR_RIGHT_PATTERN.matches_words(&clause_words) {
         return Ok(EffectAst::subject_verb_choose_named_option(
             PlayerAst::You,
             vec!["left".to_string(), "right".to_string()],
@@ -1455,7 +1491,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN.matches_words(&clause_words)
+    if ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN
+        .matches_words(&clause_words)
     {
         return Ok(EffectAst::subject_verb_cant(
             crate::effect::Restriction::attack(

@@ -4921,7 +4921,7 @@ fn test_parse_leonardo_the_balance_strictly_parses_character_select_partner_line
     assert!(
         rendered_lines
             .iter()
-            .any(|line| line.starts_with("Partner—Character select"))
+            .any(|line| line.eq_ignore_ascii_case("Partner—Character select"))
             && rendered.contains("Do this only once each turn")
             && rendered.contains(
                 "Creatures you control gain menace, trample, and lifelink until end of turn"
@@ -23937,10 +23937,7 @@ fn god_eternal_rhonas_etb_doubles_other_creatures_and_grants_vigilance() {
     assert!(game.object_has_static_ability_id(ally_id, StaticAbilityId::Vigilance));
     assert_eq!(game.calculated_power(second_ally_id), Some(2));
     assert_eq!(game.calculated_toughness(second_ally_id), Some(3));
-    assert!(game.object_has_static_ability_id(
-        second_ally_id,
-        StaticAbilityId::Vigilance
-    ));
+    assert!(game.object_has_static_ability_id(second_ally_id, StaticAbilityId::Vigilance));
     assert_eq!(game.calculated_power(rhonas_id), Some(5));
     assert!(
         !game.object_has_static_ability_id(rhonas_id, StaticAbilityId::Vigilance),
@@ -31513,7 +31510,9 @@ fn death_rattle_oni_destroy_filter(def: &CardDefinition) -> &crate::target::Obje
                 .and_then(|destroy| match &destroy.spec {
                     ChooseSpec::All(filter) => Some(filter),
                     other => {
-                        panic!("Death-Rattle Oni should destroy all matching creatures, got {other:?}")
+                        panic!(
+                            "Death-Rattle Oni should destroy all matching creatures, got {other:?}"
+                        )
                     }
                 }),
             _ => None,
@@ -31590,8 +31589,13 @@ fn death_rattle_oni_cost_reduction_counts_creatures_that_died_this_turn() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let oni_id = game.create_object_from_definition(&def, alice, Zone::Hand);
 
-    let oni = game.object(oni_id).expect("Death-Rattle Oni should be in hand");
-    let base_cost = oni.mana_cost.as_ref().expect("Death-Rattle Oni has a mana cost");
+    let oni = game
+        .object(oni_id)
+        .expect("Death-Rattle Oni should be in hand");
+    let base_cost = oni
+        .mana_cost
+        .as_ref()
+        .expect("Death-Rattle Oni has a mana cost");
     assert_eq!(
         crate::decision::calculate_effective_mana_cost(&game, alice, oni, base_cost).to_oracle(),
         "{6}{B}",
@@ -31610,8 +31614,13 @@ fn death_rattle_oni_cost_reduction_counts_creatures_that_died_this_turn() {
         "test setup should record exactly two creatures dying this turn"
     );
 
-    let oni = game.object(oni_id).expect("Death-Rattle Oni should remain in hand");
-    let base_cost = oni.mana_cost.as_ref().expect("Death-Rattle Oni has a mana cost");
+    let oni = game
+        .object(oni_id)
+        .expect("Death-Rattle Oni should remain in hand");
+    let base_cost = oni
+        .mana_cost
+        .as_ref()
+        .expect("Death-Rattle Oni has a mana cost");
     assert_eq!(
         crate::decision::calculate_effective_mana_cost(&game, alice, oni, base_cost).to_oracle(),
         "{2}{B}",

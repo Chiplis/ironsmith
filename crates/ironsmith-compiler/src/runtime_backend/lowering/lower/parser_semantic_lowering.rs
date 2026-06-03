@@ -8,7 +8,7 @@ use crate::runtime_backend::grammar::structure::{
 };
 use crate::runtime_backend::lexer::{
     parser_token_word_refs, word_slice_contains_any_phrase, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_contains_word, word_slice_starts_with,
+    word_slice_contains_phrase, word_slice_contains_word,
 };
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
@@ -16,6 +16,9 @@ use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers:
 
 const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
+const THIS_CREATURE_SOURCE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["this", "creature"]);
+const PARTNER_KEYWORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["partner"]);
 const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -130,6 +133,29 @@ const VOTE_ADDITIONAL_TIME_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const VOTE_ADDITIONAL_VOTE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["while", "voting", "you", "get", "an", "additional", "vote"]);
+const TRIGGER_CAP_SUFFIXES: &[&[&str]] = &[
+    &["this", "ability", "triggers", "only", "once", "each", "turn"],
+    &["this", "ability", "triggers", "only", "twice", "each", "turn"],
+    &["do", "this", "only", "once", "each", "turn"],
+    &["do", "this", "only", "twice", "each", "turn"],
+];
+const COMBAT_DEATH_TRIGGER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["when", "this", "creature", "dies", "during", "combat"]);
+const COMBAT_DEATH_DAMAGE_EFFECT_PREFIX: &[&str] = &["it", "deals"];
+const COMBAT_DEATH_DAMAGE_EFFECT_SUFFIX: &[&str] = &[
+    "damage", "to", "each", "creature", "it", "blocked", "this", "combat",
+];
+const COMBAT_DEATH_DAMAGE_EFFECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix COMBAT_DEATH_DAMAGE_EFFECT_PREFIX;
+    suffix COMBAT_DEATH_DAMAGE_EFFECT_SUFFIX
+);
+const DOESNT_UNTAP_DURING_YOUR_UNTAP_STEP_PATTERN: ClauseShape<'static> = clause_shape!(
+    suffix & ["untap", "during", "your", "untap", "step"];
+    contains_any_words & [&["doesnt", "doesn't"]]
+);
+const YOU_MAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "may"]);
+const OPTIONAL_BEHOLD_OR_BLIGHT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["you", "may", "behold"], &["you", "may", "blight"]]);
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -262,17 +288,8 @@ fn normalized_triggered_source_words_from_tokens(tokens: &[OwnedLexToken]) -> Ve
 }
 
 fn strip_trigger_cap_suffix_from_words<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    for suffix in [
-        &[
-            "this", "ability", "triggers", "only", "once", "each", "turn",
-        ][..],
-        &[
-            "this", "ability", "triggers", "only", "twice", "each", "turn",
-        ],
-        &["do", "this", "only", "once", "each", "turn"],
-        &["do", "this", "only", "twice", "each", "turn"],
-    ] {
-        if words.len() >= suffix.len() && word_slice_ends_with(words, suffix) {
+    for suffix in TRIGGER_CAP_SUFFIXES {
+        if ClauseShape::new().suffix(suffix).matches_words(words) {
             return &words[..words.len() - suffix.len()];
         }
     }
@@ -976,26 +993,21 @@ fn combat_death_blocked_damage_amount_lexed(
     trigger_parse_tokens: &[OwnedLexToken],
     effect_parse_tokens: &[OwnedLexToken],
 ) -> Option<String> {
-    const TRIGGER_WORDS: &[&str] = &["when", "this", "creature", "dies", "during", "combat"];
-    const EFFECT_PREFIX: &[&str] = &["it", "deals"];
-    const EFFECT_SUFFIX: &[&str] = &[
-        "damage", "to", "each", "creature", "it", "blocked", "this", "combat",
-    ];
-
     let trigger_words = token_word_refs(trigger_parse_tokens);
-    if trigger_words.as_slice() != TRIGGER_WORDS {
+    if !COMBAT_DEATH_TRIGGER_PATTERN.matches_words(&trigger_words) {
         return None;
     }
 
     let effect_words = token_word_refs(effect_parse_tokens);
-    if !word_slice_starts_with(effect_words.as_slice(), EFFECT_PREFIX)
-        || !word_slice_ends_with(effect_words.as_slice(), EFFECT_SUFFIX)
-        || effect_words.len() <= EFFECT_PREFIX.len() + EFFECT_SUFFIX.len()
+    if !COMBAT_DEATH_DAMAGE_EFFECT_PATTERN.matches_words(&effect_words)
+        || effect_words.len()
+            <= COMBAT_DEATH_DAMAGE_EFFECT_PREFIX.len() + COMBAT_DEATH_DAMAGE_EFFECT_SUFFIX.len()
     {
         return None;
     }
 
-    let amount_words = &effect_words[EFFECT_PREFIX.len()..effect_words.len() - EFFECT_SUFFIX.len()];
+    let amount_words = &effect_words[COMBAT_DEATH_DAMAGE_EFFECT_PREFIX.len()
+        ..effect_words.len() - COMBAT_DEATH_DAMAGE_EFFECT_SUFFIX.len()];
     Some(amount_words.join(" "))
 }
 
@@ -1452,12 +1464,7 @@ fn lower_rewrite_static_to_chunk_impl(
         }
     }
     let token_words = crate::runtime_backend::lexer::token_word_refs(&lexed);
-    if word_slice_ends_with(
-        token_words.as_slice(),
-        &["untap", "during", "your", "untap", "step"],
-    ) && token_words
-        .iter()
-        .any(|word| matches!(*word, "doesnt" | "doesn't"))
+    if DOESNT_UNTAP_DURING_YOUR_UNTAP_STEP_PATTERN.matches_words(&token_words)
     {
         let chunk =
             LineAst::StaticAbilities(vec![crate::cards::builders::StaticAbilityAst::Static(
@@ -1701,7 +1708,7 @@ pub(super) fn normalize_exert_followup_source_reference_tokens(
         } else if let Ok(source_tokens) = lex_line(source_ref, 0) {
             let source_words = token_word_refs(&source_tokens);
             if !source_words.is_empty()
-                && source_words != ["this", "creature"]
+                && !THIS_CREATURE_SOURCE_PATTERN.matches_words(&source_words)
                 && word_view_has_prefix(&followup_words, source_words.as_slice())
             {
                 followup_words.token_index_after_words(source_words.len())
@@ -2124,15 +2131,52 @@ fn try_lower_partner_variant_keyword(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Option<LineAst> {
-    let (label_tokens, _body_tokens) = split_em_dash_label_prefix_tokens(parse_tokens)?;
-    let label_words = parser_token_word_refs(label_tokens);
-    if label_words.as_slice() != ["partner"] {
+    if let Some((label_tokens, _body_tokens)) = split_em_dash_label_prefix_tokens(parse_tokens) {
+        let label_words = parser_token_word_refs(label_tokens);
+        if !PARTNER_KEYWORD_PATTERN.matches_words(&label_words) {
+            return None;
+        }
+    } else if !PARTNER_KEYWORD_PATTERN.matches_words(&parser_token_word_refs(parse_tokens))
+        || !visible_partner_label_is_variant(line.text.as_str())
+    {
         return None;
     }
 
+    let display = if PARTNER_KEYWORD_PATTERN.matches_words(&parser_token_word_refs(parse_tokens))
+        && visible_partner_label_is_variant(line.text.as_str())
+    {
+        visible_partner_variant_label(line.text.as_str())
+    } else {
+        render_tokens_before_reminder_or_period(parse_tokens)
+            .unwrap_or_else(|| line.text.trim().to_string())
+    };
     Some(LineAst::StaticAbility(
-        StaticAbility::partner_variant(line.text.as_str()).into(),
+        StaticAbility::partner_variant(display).into(),
     ))
+}
+
+fn visible_partner_label_is_variant(text: &str) -> bool {
+    let lower = text.trim().to_ascii_lowercase();
+    if lower == "partner" || lower.starts_with("partner with ") {
+        return false;
+    }
+    let Some(rest) = lower.strip_prefix("partner") else {
+        return lower.starts_with("character select");
+    };
+    rest.trim_start()
+        .chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, '-' | '\u{2013}' | '\u{2014}') || ch.is_alphanumeric())
+}
+
+fn visible_partner_variant_label(text: &str) -> String {
+    text.split_once('(')
+        .map(|(label, _)| label)
+        .unwrap_or(text)
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_string()
 }
 
 fn try_lower_hideaway_keyword(
@@ -2344,7 +2388,7 @@ pub(crate) fn try_lower_optional_cost_with_cast_trigger(
     };
     let stripped_head_tokens = trim_lexed_commas(&head_tokens[head_effect_start..]);
     let stripped_head_words = token_word_refs(stripped_head_tokens);
-    if !word_slice_starts_with(&stripped_head_words, &["you", "may"]) {
+    if !YOU_MAY_PREFIX_PATTERN.matches_words(&stripped_head_words) {
         return Ok(None);
     }
     let Some(optional_effect_start) = token_index_for_word_index(stripped_head_tokens, 2) else {
@@ -2426,9 +2470,7 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
     };
     let stripped = trim_lexed_commas(effect_tokens);
     let words = token_word_refs(stripped);
-    if !word_slice_starts_with(&words, &["you", "may", "behold"])
-        && !word_slice_starts_with(&words, &["you", "may", "blight"])
-    {
+    if !OPTIONAL_BEHOLD_OR_BLIGHT_PREFIX_PATTERN.matches_words(&words) {
         return Ok(None);
     }
 

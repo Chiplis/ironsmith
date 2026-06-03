@@ -67,12 +67,14 @@ const CONSULT_PAY_LIFE_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
             "than", "paying", "its", "mana", "cost",
         ]
 );
-const CONSULT_NOT_CAST_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
+const CONSULT_NOT_CAST_THIS_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["not", "cast", "this"],
+            &["were", "not", "cast", "this", "way"],
             &["werent", "cast", "this", "way"],
-            &["weren't", "cast", "this", "way"]
-        ]
+            &["weren't", "cast", "this", "way"],
+        ]]
 );
 const CONSULT_PUT_MATCH_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -670,13 +672,7 @@ pub(crate) fn parse_consult_bottom_remainder_clause(
     if !grammar::contains_word(tokens, mode_word) {
         return None;
     }
-    let mentions_cast_window = grammar::words_find_phrase(tokens, &["not", "cast", "this"])
-        .is_some()
-        || find_window_by(&clause_words, 4, |window| {
-            CONSULT_NOT_CAST_THIS_WAY_PATTERN.matches_words(window)
-        })
-        .is_some()
-        || grammar::words_find_phrase(tokens, &["were", "not", "cast", "this", "way"]).is_some();
+    let mentions_cast_window = CONSULT_NOT_CAST_THIS_MARKER_PATTERN.matches_words(&clause_words);
     let mentions_remainder =
         grammar::contains_word(tokens, "rest") || grammar::contains_word(tokens, "other");
 

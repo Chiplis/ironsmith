@@ -4,36 +4,20 @@ const ETB_TRIGGER_INTRO_AFTER_LABEL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["if"], &["when"], &["whenever"], &["as"], &["at"]]);
 const ETB_TRIGGER_INTRO_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["if"], &["when"], &["whenever"], &["as"]]);
-const ETB_AS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["as"]);
 const ETB_THIS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
-
-const ENTERS_WITH_COUNTERS_REQUIRED_WORDS: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["counter", "counters"]]);
 
 const SOURCE_PRONOUN_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["its"]]);
-const ETB_IT_OR_SPELL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["spell"]]);
-
 const ETB_IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const ETB_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const ETB_ENTER_OR_ENTERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enter"], &["enters"]]);
+const ETB_ENTER_OR_ENTERS_PHRASES: &[&[&str]] = &[&["enter"], &["enters"]];
 const ETB_ENTER_OR_ENTERS_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words & [&["enter", "enters"]]);
-const ETB_ENTERS_OR_ESCAPES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enters"], &["escapes"]]);
-const ETB_ESCAPES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["escapes"]);
+const ETB_ENTERS_OR_ESCAPES_PHRASES: &[&[&str]] = &[&["enters"], &["escapes"]];
 const ETB_ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
 const ETB_ONE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["one"]);
 const ETB_THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
 const ETB_POWER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["power"]);
 const ETB_TOUGHNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["toughness"]);
-const ETB_MANA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mana"]);
-const ETB_VALUE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["value"]);
-const ETB_MINUS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["minus"]);
-const ETB_GREATEST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["greatest"]);
-const ETB_MANA_VALUE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mana_value"]);
 const ETB_ADDITIONAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["additional"]);
 const ETB_COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["counter"], &["counters"]]);
@@ -49,8 +33,6 @@ const ETB_SOURCE_TAIL_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["permanent"],
         ]
 );
-const ETB_IF_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const ETB_UNLESS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
 const ETB_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const ETB_UNLESS_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["unless"]);
 const ETB_TAPPED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
@@ -72,9 +54,6 @@ const ETB_AS_THIS_LAND_ENTERS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["as", "this", "land", "enters"]);
 const ETB_REVEAL_FROM_HAND_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["reveal", "from", "hand"]);
-const ETB_REVEAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["reveal"]);
-const ETB_FROM_YOUR_HAND_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["from", "your", "hand"]);
 const ETB_IF_YOU_DONT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["if", "you", "dont"], &["if", "you", "don't"]]);
 const ETB_LAND_REVEAL_TRAILING_TAPPED_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -90,15 +69,8 @@ const ETB_LAND_REVEAL_TRAILING_TAPPED_PATTERN: ClauseShape<'static> = clause_sha
 );
 const ETB_ENTERS_TAPPED_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["enters", "tapped"], &["enter", "tapped"]]]);
-const ETB_CONTROL_OR_CONTROLS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["control"], &["controls"]]);
 const ETB_CONTROL_OWN_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["control"], &["controls"], &["own"], &["owns"]]);
-const ETB_A_PLAYER_HAS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["a", "player", "has"]);
-const ETB_LIFE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
-const ETB_YOU_HAVE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "have"]);
-const ETB_OPPONENTS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["opponents"]);
 const ETB_FIRST_THREE_TURNS_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -196,63 +168,17 @@ const ETB_NOT_CAST_OR_NO_MANA_SPENT_CONDITION_PATTERN: ClauseShape<'static> = cl
             "it", "wasnt", "cast", "or", "no", "mana", "was", "spent", "to", "cast", "it",
         ]
 );
-const ETB_X_IS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["x", "is"]);
-const ETB_YOU_CAST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["youve", "cast"],
-            &["you've", "cast"],
-            &["you", "ve", "cast"],
-            &["you", "cast"],
-            &["you", "have", "cast"],
-        ]
-);
-const ETB_YOU_CAST_COUNT_AT_THIRD_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "ve", "cast"], &["you", "have", "cast"]]);
 const ETB_SPELLS_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["this", "turn"]; contains_any_words & [&["spell", "spells"]]);
 const ETB_COLORS_MANA_SPENT_CONDITION_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases & [&["of", "mana"], &["spent", "to", "cast"]];
     contains_any_words & [&["color", "colors"], &["it", "this"]]
 );
-const ETB_COLORS_MANA_SPENT_TO_CAST_SOURCE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["color", "of", "mana", "was", "spent", "to", "cast", "it",],
-            &["color", "of", "mana", "was", "spent", "to", "cast", "this",],
-            &["color", "of", "mana", "were", "spent", "to", "cast", "it",],
-            &["color", "of", "mana", "were", "spent", "to", "cast", "this",],
-            &["colors", "of", "mana", "was", "spent", "to", "cast", "it",],
-            &["colors", "of", "mana", "was", "spent", "to", "cast", "this",],
-            &["colors", "of", "mana", "were", "spent", "to", "cast", "it",],
-            &[
-                "colors", "of", "mana", "were", "spent", "to", "cast", "this",
-            ],
-        ]
-);
+const ETB_COLOR_OF_MANA_PHRASES: &[&[&str]] =
+    &[&["color", "of", "mana"], &["colors", "of", "mana"]];
 const ETB_WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["where", "x", "is"]);
-const ETB_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["equal", "to"]);
 const ETB_EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
-const ETB_EQUAL_TO_MANA_SPENT_TO_CAST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "equal", "to", "the", "amount", "of", "mana", "spent", "to", "cast"
-        ]
-);
-const ETB_PLUS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["plus"]);
-const ETB_PLUS_OR_MINUS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["plus"], &["minus"]]);
-const ETB_NUMBER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["number"]);
-const ETB_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const ETB_OF_OR_AMONG_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["of"], &["among"]]);
-const ETB_DIFFERENTLY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["differently"]);
-const ETB_NAMED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["named"]);
-const ETB_DIFFERENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["different"]);
-const ETB_POWER_OR_POWERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["power"], &["powers"]]);
-const ETB_AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
 const ETB_DEVOTION_VALUE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["devotion"]);
 const ETB_ALL_PLAYERS_HAND_COUNT_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -421,12 +347,16 @@ const ETB_AS_LONG_AS_THIS_IN_YOUR_GRAVEYARD_PATTERN: ClauseShape<'static> = clau
     prefix & ["as", "long", "as", "this"];
     contains_phrases & [&["is", "in", "your", "graveyard"]]
 );
+const ETB_AS_LONG_AS_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["as", "long", "as"]);
 const ETB_WITH_ADDITIONAL_COUNTERS_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_words & ["with", "additional"];
     contains_any_words & [&["counter", "counters"]]
 );
 const ETB_IT_BECOMES_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["it", "becomes"]);
+const ETB_IT_BECOMES_YOUR_CHOICE_OF_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["it", "becomes", "your", "choice", "of"]);
 const ETB_IN_ADDITION_TO_ITS_OTHER_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases
         & [&[
@@ -461,113 +391,6 @@ const ETB_YOUR_PARTY_SIZE_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_words & [&["creature", "creatures"]]
 );
 
-const ENTERS_WITH_COUNTER_PLUS_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["plus"]);
-
-const ENTERS_WITH_COUNTER_DIED_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["for", "each", "creature", "that", "died", "this", "turn"],
-            &["for", "each", "creatures", "that", "died", "this", "turn",],
-        ]
-);
-
-const ENTERS_WITH_COUNTER_MANA_COLORS_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "for", "each", "color", "of", "mana", "spent", "to", "cast", "it"
-            ],
-            &[
-                "for", "each", "colour", "of", "mana", "spent", "to", "cast", "it",
-            ],
-        ]
-);
-
-const ENTERS_WITH_COUNTER_CONTROLLED_DIED_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "for", "each", "creature", "that", "died", "under", "your", "control", "this",
-                "turn",
-            ],
-            &[
-                "for",
-                "each",
-                "creatures",
-                "that",
-                "died",
-                "under",
-                "your",
-                "control",
-                "this",
-                "turn",
-            ],
-        ]
-);
-
-const ENTERS_WITH_COUNTER_KICKED_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["for", "each", "time", "it", "was", "kicked"],
-            &["for", "each", "time", "this", "spell", "was", "kicked"],
-        ]
-);
-
-const ENTERS_WITH_COUNTER_MAGIC_LOSSES_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "for",
-                "each",
-                "magic",
-                "game",
-                "you",
-                "have",
-                "lost",
-                "to",
-                "one",
-                "of",
-                "your",
-                "opponents",
-                "since",
-                "you",
-                "last",
-                "won",
-                "a",
-                "game",
-                "against",
-                "them",
-            ],
-            &[
-                "for",
-                "each",
-                "magic",
-                "games",
-                "you",
-                "have",
-                "lost",
-                "to",
-                "one",
-                "of",
-                "your",
-                "opponents",
-                "since",
-                "you",
-                "last",
-                "won",
-                "a",
-                "game",
-                "against",
-                "them",
-            ],
-        ]
-);
-
-const ENTERS_WITH_COUNTER_FOR_EACH_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each"]);
-const ENTERS_WITH_COUNTER_EQUAL_TO_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["equal", "to"]);
 const ENTERS_WITH_ADDED_ABILITIES_AND_WITH_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["and", "with"]);
 const ENTERS_WITH_ADDED_ABILITIES_WITH_TAIL_PATTERN: ClauseShape<'static> =
@@ -594,6 +417,244 @@ const CAN_ATTACK_AS_THOUGH_NO_DEFENDER_PATTERN: ClauseShape<'static> = clause_sh
         ]
 );
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EntersTappedWithCountersClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    action_tokens: &'a [OwnedLexToken],
+    entry_modifier_tokens: &'a [OwnedLexToken],
+    with_tokens: &'a [OwnedLexToken],
+    counter_clause_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EntersWithCountersClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    action_tokens: &'a [OwnedLexToken],
+    counter_clause_tokens: &'a [OwnedLexToken],
+    escaped: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EntersWithCounterConditionTailKind {
+    If,
+    Unless,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EntersWithCounterConditionTail<'a> {
+    kind: EntersWithCounterConditionTailKind,
+    condition_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct EntersWithCounterKnownForEachTail {
+    value: Value,
+    scale_by_base_count: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum EntersWithCounterPlusTail {
+    Supported(Value),
+    Unsupported,
+}
+
+fn parse_enters_with_counter_condition_tail_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<EntersWithCounterConditionTail<'a>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::capture("marker", LexCaptureKind::OneOf(&["if", "unless"])),
+        LexPattern::role_capture(
+            "condition",
+            LexCaptureRole::Condition,
+            LexCaptureKind::Rest,
+        ),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let marker = matched.capture_clause("marker", clause)?.trimmed();
+    let condition = matched
+        .capture_clause_by_role(LexCaptureRole::Condition, clause)?
+        .trimmed();
+    if condition.is_empty() {
+        return None;
+    }
+    let kind = enters_with_counter_condition_tail_kind(marker)?;
+
+    Some(EntersWithCounterConditionTail {
+        kind,
+        condition_tokens: condition.tokens(),
+    })
+}
+
+fn enters_with_counter_condition_tail_kind(
+    marker: LexedClause<'_>,
+) -> Option<EntersWithCounterConditionTailKind> {
+    if clause_matches_phrase(marker, &["if"]) {
+        return Some(EntersWithCounterConditionTailKind::If);
+    }
+    if clause_matches_phrase(marker, &["unless"]) {
+        return Some(EntersWithCounterConditionTailKind::Unless);
+    }
+    None
+}
+
+fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
+    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
+}
+
+fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
+    LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
+}
+
+fn is_etb_source_reference_clause(clause: LexedClause<'_>) -> bool {
+    let words = clause.word_refs();
+    is_source_reference_words(&words) || SOURCE_PRONOUN_SUBJECT_PATTERN.matches_words(&words)
+}
+
+fn is_enters_with_counters_clause(clause: LexedClause<'_>) -> bool {
+    const COUNTER_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_word(&[
+        "counter", "counters",
+    ])]);
+
+    COUNTER_WORD_PATTERN.find_in_clause(clause).is_some()
+}
+
+fn is_enters_tapped_modifier_clause(clause: LexedClause<'_>) -> bool {
+    const TAPPED_WORD_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::word("tapped")]);
+
+    TAPPED_WORD_PATTERN.find_in_clause(clause).is_some()
+}
+
+fn enters_with_counter_action_escaped(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["escapes"])
+}
+
+fn is_kicked_source_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["it"], &["this", "spell"]])
+}
+
+fn is_mana_spent_cast_source_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["it"], &["spell"], &["this", "spell"]])
+}
+
+fn is_opponent_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["opponent"])
+}
+
+fn is_you_or_youve_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(clause, &[&["you"], &["youve"]])
+}
+
+fn is_your_opponents_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["your", "opponents"])
+}
+
+fn is_opponents_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_phrase(clause, &["opponents"])
+}
+
+fn parse_enters_with_counters_clause_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<EntersWithCountersClause<'a>> {
+    const ACTION_WORDS: &[&str] = &["enters", "escapes"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(ETB_ENTERS_OR_ESCAPES_PHRASES),
+        ),
+        LexPattern::action("action", LexCaptureKind::OneOf(ACTION_WORDS)),
+        LexPattern::capture("with", LexCaptureKind::OneOf(&["with"])),
+        LexPattern::object("counter_clause", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let action = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)?
+        .trimmed();
+    let counter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+
+    if subject
+        .tokens()
+        .iter()
+        .any(|token| token.is_period() || token.is_colon() || token.is_semicolon())
+    {
+        return None;
+    }
+
+    if !is_etb_source_reference_clause(subject) {
+        return None;
+    }
+    if !is_enters_with_counters_clause(counter_clause) {
+        return None;
+    }
+
+    Some(EntersWithCountersClause {
+        subject_tokens: subject.tokens(),
+        action_tokens: action.tokens(),
+        counter_clause_tokens: counter_clause.tokens(),
+        escaped: enters_with_counter_action_escaped(action),
+    })
+}
+
+fn parse_enters_tapped_with_counters_clause_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<EntersTappedWithCountersClause<'a>> {
+    const ACTION_WORDS: &[&str] = &["enter", "enters"];
+    const WITH_PHRASE: &[&str] = &["with"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(ETB_ENTER_OR_ENTERS_PHRASES),
+        ),
+        LexPattern::action("action", LexCaptureKind::OneOf(ACTION_WORDS)),
+        LexPattern::modifier("entry_modifier", LexCaptureKind::UntilPhrase(WITH_PHRASE)),
+        LexPattern::capture("with", LexCaptureKind::OneOf(&["with"])),
+        LexPattern::object("counter_clause", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let entry_modifier = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)?
+        .trimmed();
+    let action = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)?
+        .trimmed();
+    let with = matched.capture_clause("with", clause)?.trimmed();
+    let counter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+
+    if !is_etb_source_reference_clause(subject) {
+        return None;
+    }
+    if !is_enters_tapped_modifier_clause(entry_modifier) {
+        return None;
+    }
+    if !is_enters_with_counters_clause(counter_clause) {
+        return None;
+    }
+
+    Some(EntersTappedWithCountersClause {
+        subject_tokens: subject.tokens(),
+        action_tokens: action.tokens(),
+        entry_modifier_tokens: entry_modifier.tokens(),
+        with_tokens: with.tokens(),
+        counter_clause_tokens: counter_clause.tokens(),
+    })
+}
+
 fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
     let Some((_, body_tokens)) = split_em_dash_label_prefix(tokens) else {
         return false;
@@ -605,39 +666,27 @@ fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_enters_tapped_with_counters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
-    let clause_words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if clause_words.is_empty() {
+    if tokens.is_empty() {
         return Ok(None);
     }
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
 
-    let enters_idx = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words);
-    let Some(enters_idx) = enters_idx else {
+    let Some(captured) = parse_enters_tapped_with_counters_clause_tokens(tokens) else {
         return Ok(None);
     };
-    let with_idx = ETB_WITH_WORD_PATTERN.find_word(&clause_words);
-    let Some(with_idx) = with_idx else {
-        return Ok(None);
-    };
-    if with_idx <= enters_idx {
-        return Ok(None);
-    }
+    let _subject_tokens = captured.subject_tokens;
+    let _entry_modifier_tokens = captured.entry_modifier_tokens;
+    let _counter_clause_tokens = captured.counter_clause_tokens;
 
-    let tapped_between =
-        ETB_TAPPED_MARKER_PATTERN.matches_words(&clause_words[enters_idx + 1..with_idx]);
-    if !tapped_between {
-        return Ok(None);
-    }
-    if !ENTERS_WITH_COUNTERS_REQUIRED_WORDS.matches_words(&clause_words) {
-        return Ok(None);
-    }
-    if !is_source_reference_words(&clause_words[..enters_idx]) {
-        return Ok(None);
-    }
+    let mut counter_line_tokens = Vec::new();
+    counter_line_tokens.extend_from_slice(captured.subject_tokens);
+    counter_line_tokens.extend_from_slice(captured.action_tokens);
+    counter_line_tokens.extend_from_slice(captured.with_tokens);
+    counter_line_tokens.extend_from_slice(captured.counter_clause_tokens);
 
-    let Some(counters) = parse_enters_with_counters_line(tokens)? else {
+    let Some(counters) = parse_enters_with_counters_line(&counter_line_tokens)? else {
         return Ok(None);
     };
 
@@ -676,50 +725,20 @@ pub(crate) fn parse_enters_with_counters_line(
         }
     }
 
-    let clause_words = crate::runtime_backend::lexer::token_word_refs(&clause_tokens);
-    let Some(verb_idx) = ETB_ENTERS_OR_ESCAPES_WORD_PATTERN.find_word(&clause_words) else {
+    let Some(captured) = parse_enters_with_counters_clause_tokens(&clause_tokens) else {
         return Ok(None);
     };
-    let escaped_line = clause_words
-        .get(verb_idx)
-        .is_some_and(|word| ETB_ESCAPES_WORD_PATTERN.matches_word(word));
-    if escaped_line {
+    let _subject_tokens = captured.subject_tokens;
+    let _action_tokens = captured.action_tokens;
+    if captured.escaped {
         condition = Some((
             crate::ConditionExpr::ThisSpellEscaped,
             "it escaped".to_string(),
         ));
     }
-    let Some(enter_token_idx) = token_index_for_word_index(&clause_tokens, verb_idx) else {
-        return Ok(None);
-    };
-    if clause_tokens[..enter_token_idx]
-        .iter()
-        .any(|token| token.is_period() || token.is_colon() || token.is_semicolon())
-    {
-        return Ok(None);
-    }
-    let subject_words = clause_words.get(..verb_idx).unwrap_or_default();
-    let source_pronoun_subject = SOURCE_PRONOUN_SUBJECT_PATTERN.matches_words(subject_words);
-    if !is_source_reference_words(subject_words) && !source_pronoun_subject {
-        return Ok(None);
-    }
-    if !clause_words
-        .iter()
-        .any(|word| ETB_WITH_WORD_PATTERN.matches_word(word))
-        || !ENTERS_WITH_COUNTERS_REQUIRED_WORDS.matches_words(&clause_words)
-    {
-        return Ok(None);
-    }
 
-    let with_idx =
-        crate::runtime_backend::grammar::primitives::find_token_index(&clause_tokens, |token| {
-            ETB_WITH_WORD_PATTERN.matches_token(token)
-        })
-        .ok_or_else(|| {
-            CardTextError::ParseError("missing 'with' in enters-with-counters clause".to_string())
-        })?;
     let mut added_abilities: Vec<Ability> = Vec::new();
-    let mut after_with = &clause_tokens[with_idx + 1..];
+    let mut after_with = captured.counter_clause_tokens;
     if let Some((and_with_idx, and_with_end)) =
         crate::runtime_backend::lexer::find_token_word_sequence_span(after_with, &["and", "with"])
     {
@@ -798,95 +817,79 @@ pub(crate) fn parse_enters_with_counters_line(
         };
         if let Some(abilities) = parse_enters_with_added_abilities_tail(&tail) {
             added_abilities = abilities;
-        } else if tail_words
-            .first()
-            .is_some_and(|word| ETB_IF_TAIL_PATTERN.matches_word(word))
+        } else if let Some(condition_tail) = parse_enters_with_counter_condition_tail_tokens(&tail)
         {
-            let condition_tokens = trim_commas(&tail[1..]);
             let parsed =
-                parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported enters-with-counter condition (clause: '{}')",
-                        full_words.join(" ")
-                    ))
-                })?;
-            let display =
-                crate::runtime_backend::lexer::token_word_refs(&condition_tokens).join(" ");
-            condition = Some(combine_enters_with_counter_conditions(
-                condition,
-                (parsed, display),
-            ));
-        } else if tail_words
-            .first()
-            .is_some_and(|word| ETB_UNLESS_TAIL_PATTERN.matches_word(word))
-        {
-            let condition_tokens = trim_commas(&tail[1..]);
-            let parsed =
-                parse_enters_with_counter_condition_clause(&condition_tokens).ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported enters-with-counter unless condition (clause: '{}')",
-                        full_words.join(" ")
-                    ))
-                })?;
-            let display = parse_unless_enters_with_counter_condition_display(&condition_tokens)
-                .unwrap_or_else(|| {
-                    format!(
-                        "not {}",
-                        crate::runtime_backend::lexer::token_word_refs(&condition_tokens).join(" ")
-                    )
-                });
-            condition = Some(combine_enters_with_counter_conditions(
-                condition,
-                (crate::ConditionExpr::Not(Box::new(parsed)), display),
-            ));
-        } else if ENTERS_WITH_COUNTER_PLUS_TAIL_PATTERN.matches_words(&tail_words) {
-            let for_each_idx = crate::runtime_backend::lexer::find_token_word_sequence_span(
-                &tail,
-                &["for", "each"],
-            )
-            .map(|(idx, _)| idx);
-            if let Some(for_each_idx) = for_each_idx {
-                let extra =
-                    parse_dynamic_cost_modifier_value(&tail[for_each_idx..])?.ok_or_else(|| {
+                parse_enters_with_counter_condition_clause(condition_tail.condition_tokens)
+                    .ok_or_else(|| {
                         CardTextError::ParseError(format!(
-                            "unsupported additional self ETB counter clause (clause: '{}')",
+                            "unsupported enters-with-counter condition (clause: '{}')",
                             full_words.join(" ")
                         ))
                     })?;
-                count = Value::Add(Box::new(count), Box::new(extra));
-            } else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported plus-self ETB counter clause (clause: '{}')",
-                    full_words.join(" ")
-                )));
+            match condition_tail.kind {
+                EntersWithCounterConditionTailKind::If => {
+                    let display = crate::runtime_backend::lexer::token_word_refs(
+                        condition_tail.condition_tokens,
+                    )
+                    .join(" ");
+                    condition = Some(combine_enters_with_counter_conditions(
+                        condition,
+                        (parsed, display),
+                    ));
+                }
+                EntersWithCounterConditionTailKind::Unless => {
+                    let display = parse_unless_enters_with_counter_condition_display(
+                        condition_tail.condition_tokens,
+                    )
+                    .unwrap_or_else(|| {
+                        format!(
+                            "not {}",
+                            crate::runtime_backend::lexer::token_word_refs(
+                                condition_tail.condition_tokens,
+                            )
+                            .join(" ")
+                        )
+                    });
+                    condition = Some(combine_enters_with_counter_conditions(
+                        condition,
+                        (crate::ConditionExpr::Not(Box::new(parsed)), display),
+                    ));
+                }
             }
-        } else if ENTERS_WITH_COUNTER_DIED_THIS_TURN_TAIL_PATTERN.matches_words(&tail_words) {
-            count = scaled_for_each_count(Value::CreaturesDiedThisTurn, &count);
-        } else if ENTERS_WITH_COUNTER_MANA_COLORS_TAIL_PATTERN.matches_words(&tail_words) {
-            count = scaled_for_each_count(Value::ColorsOfManaSpentToCastThisSpell, &count);
-        } else if ENTERS_WITH_COUNTER_CONTROLLED_DIED_TAIL_PATTERN.matches_words(&tail_words) {
-            count = scaled_for_each_count(
-                Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You),
-                &count,
-            );
-        } else if ENTERS_WITH_COUNTER_KICKED_TAIL_PATTERN.matches_words(&tail_words) {
-            count = scaled_for_each_count(Value::KickCount, &count);
-        } else if ENTERS_WITH_COUNTER_MAGIC_LOSSES_TAIL_PATTERN.matches_words(&tail_words) {
-            count = Value::MagicGamesLostToOpponentsSinceLastWin;
-        } else if ENTERS_WITH_COUNTER_FOR_EACH_TAIL_PATTERN.matches_words(&tail_words) {
-            count = parse_dynamic_cost_modifier_value(&tail)?.ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported for-each self ETB counter clause (clause: '{}')",
-                    full_words.join(" ")
-                ))
-            })?;
-        } else if ENTERS_WITH_COUNTER_EQUAL_TO_TAIL_PATTERN.matches_words(&tail_words) {
-            count = parse_enters_with_counter_equal_to_value_clause(&tail).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported equal-to self ETB counter clause (clause: '{}')",
-                    full_words.join(" ")
-                ))
-            })?;
+        } else if let Some(plus_tail) = parse_enters_with_counter_plus_tail_tokens(&tail)? {
+            match plus_tail {
+                EntersWithCounterPlusTail::Supported(extra) => {
+                    count = Value::Add(Box::new(count), Box::new(extra));
+                }
+                EntersWithCounterPlusTail::Unsupported => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported plus-self ETB counter clause (clause: '{}')",
+                        full_words.join(" ")
+                    )));
+                }
+            }
+        } else if let Some(known_tail) = parse_enters_with_counter_known_for_each_tail_tokens(&tail)
+        {
+            count = if known_tail.scale_by_base_count {
+                scaled_for_each_count(known_tail.value, &count)
+            } else {
+                known_tail.value
+            };
+        } else if let Some(dynamic) = parse_enters_with_counter_for_each_tail_tokens(&tail)? {
+            count = dynamic;
+        } else if tail_words.starts_with(&["for", "each"]) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported for-each self ETB counter clause (clause: '{}')",
+                full_words.join(" ")
+            )));
+        } else if let Some(dynamic) = parse_enters_with_counter_equal_to_tail_tokens(&tail) {
+            count = dynamic;
+        } else if tail_words.starts_with(&["equal", "to"]) {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported equal-to self ETB counter clause (clause: '{}')",
+                full_words.join(" ")
+            )));
         } else {
             count = parse_value_binding_clause(&tail)
                 .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
@@ -963,6 +966,207 @@ fn parse_enters_with_added_abilities_prefix(tokens: &[OwnedLexToken]) -> Option<
     (!abilities.is_empty()).then_some(abilities)
 }
 
+fn parse_enters_with_counter_known_for_each_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EntersWithCounterKnownForEachTail> {
+    let clause = LexedClause::new(tokens);
+
+    const CREATURES_DIED_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each"]),
+        LexPattern::object("creature", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::phrase(&["that", "died", "this", "turn"]),
+    ]);
+    if CREATURES_DIED_PATTERN.match_clause(clause).is_some() {
+        return Some(EntersWithCounterKnownForEachTail {
+            value: Value::CreaturesDiedThisTurn,
+            scale_by_base_count: true,
+        });
+    }
+
+    const MANA_COLORS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each"]),
+        LexPattern::object("mana_color", LexCaptureKind::OneOf(&["color", "colour"])),
+        LexPattern::phrase(&["of", "mana", "spent", "to", "cast"]),
+        LexPattern::subject("source", LexCaptureKind::OneOf(&["it", "this"])),
+    ]);
+    if MANA_COLORS_PATTERN.match_clause(clause).is_some() {
+        return Some(EntersWithCounterKnownForEachTail {
+            value: Value::ColorsOfManaSpentToCastThisSpell,
+            scale_by_base_count: true,
+        });
+    }
+
+    const CONTROLLED_DIED_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each"]),
+        LexPattern::object("creature", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::phrase(&["that", "died", "under"]),
+        LexPattern::subject("controller", LexCaptureKind::OneOf(&["your"])),
+        LexPattern::phrase(&["control", "this", "turn"]),
+    ]);
+    if CONTROLLED_DIED_PATTERN.match_clause(clause).is_some() {
+        return Some(EntersWithCounterKnownForEachTail {
+            value: Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You),
+            scale_by_base_count: true,
+        });
+    }
+
+    const KICKED_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each", "time"]),
+        LexPattern::subject("source", LexCaptureKind::UntilPhrase(&["was", "kicked"])),
+        LexPattern::phrase(&["was", "kicked"]),
+    ]);
+    if let Some(matched) = KICKED_PATTERN.match_clause(clause) {
+        let source = matched
+            .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+            .trimmed();
+        if is_kicked_source_clause(source) {
+            return Some(EntersWithCounterKnownForEachTail {
+                value: Value::KickCount,
+                scale_by_base_count: true,
+            });
+        }
+    }
+
+    const MAGIC_LOSSES_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each"]),
+        LexPattern::modifier("game_type", LexCaptureKind::OneOf(&["magic"])),
+        LexPattern::object("game", LexCaptureKind::OneOf(&["game", "games"])),
+        LexPattern::phrase(&[
+            "you",
+            "have",
+            "lost",
+            "to",
+            "one",
+            "of",
+            "your",
+            "opponents",
+            "since",
+            "you",
+            "last",
+            "won",
+            "a",
+            "game",
+            "against",
+            "them",
+        ]),
+    ]);
+    if MAGIC_LOSSES_PATTERN.match_clause(clause).is_some() {
+        return Some(EntersWithCounterKnownForEachTail {
+            value: Value::MagicGamesLostToOpponentsSinceLastWin,
+            scale_by_base_count: false,
+        });
+    }
+
+    None
+}
+
+fn parse_enters_with_counter_for_each_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["for", "each"]),
+        LexPattern::object("dynamic_object", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(dynamic_object_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+    else {
+        return Ok(None);
+    };
+    if dynamic_object_clause.trimmed().is_empty() {
+        return Ok(None);
+    }
+
+    parse_dynamic_cost_modifier_value(tokens)
+}
+
+fn parse_enters_with_counter_equal_to_tail_tokens(tokens: &[OwnedLexToken]) -> Option<Value> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["equal", "to"]),
+        LexPattern::amount("value_body", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let value_body_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    if value_body_clause.is_empty() {
+        return None;
+    }
+
+    parse_enters_with_counter_equal_to_value_clause(tokens)
+}
+
+fn parse_enters_with_counter_plus_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EntersWithCounterPlusTail>, CardTextError> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("plus"),
+        LexPattern::modifier("plus_body", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(plus_body_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+    else {
+        return Ok(None);
+    };
+    if plus_body_clause.trimmed().is_empty() {
+        return Ok(Some(EntersWithCounterPlusTail::Unsupported));
+    }
+
+    if let Some(extra) = parse_enters_with_counter_plus_for_each_tail_tokens(tokens)? {
+        return Ok(Some(EntersWithCounterPlusTail::Supported(extra)));
+    }
+
+    Ok(Some(EntersWithCounterPlusTail::Unsupported))
+}
+
+fn parse_enters_with_counter_plus_for_each_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Value>, CardTextError> {
+    const FOR_EACH_PHRASE: &[&str] = &["for", "each"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("plus"),
+        LexPattern::modifier(
+            "additional_counter",
+            LexCaptureKind::UntilPhrase(FOR_EACH_PHRASE),
+        ),
+        LexPattern::object("for_each", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(additional_counter_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+    else {
+        return Ok(None);
+    };
+    let additional_counter_clause = additional_counter_clause.trimmed();
+    let Some(for_each_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+    else {
+        return Ok(None);
+    };
+    let for_each_clause = for_each_clause.trimmed();
+    if additional_counter_clause.is_empty()
+        || !for_each_clause.word_refs().starts_with(FOR_EACH_PHRASE)
+    {
+        return Ok(None);
+    }
+
+    parse_dynamic_cost_modifier_value(for_each_clause.tokens())
+}
+
 fn combine_enters_with_counter_conditions(
     existing: Option<(crate::ConditionExpr, String)>,
     next: (crate::ConditionExpr, String),
@@ -984,24 +1188,123 @@ fn combine_enters_with_counter_conditions(
     }
 }
 
-fn parse_etb_at_least_quantity_at(tokens: &[OwnedLexToken], start: usize) -> Option<(u32, usize)> {
+fn parse_enters_with_counter_colors_mana_spent_condition_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<u32> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::amount(
+            "amount",
+            LexCaptureKind::UntilAnyPhrase(ETB_COLOR_OF_MANA_PHRASES),
+        ),
+        LexPattern::object("spent_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let amount_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    let spent_tail_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if amount_clause.is_empty()
+        || !ETB_COLORS_MANA_SPENT_CONDITION_TAIL_PATTERN
+            .matches_words(&spent_tail_clause.word_refs())
+    {
+        return None;
+    }
+
     let (comparison, used) = parse_quantity_comparison_prefix(
-        tokens.get(start..).unwrap_or_default(),
+        amount_clause.tokens(),
         false,
         false,
         "enters-with condition",
     )
     .ok()?;
-    let count = crate::runtime_backend::util::comparison_to_strict_at_least_threshold(&comparison)?;
-    Some((count, start + used))
+    if used != amount_clause.tokens().len() {
+        return None;
+    }
+    crate::runtime_backend::util::comparison_to_strict_at_least_threshold(&comparison)
+}
+
+fn parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<u32> {
+    const YOU_CAST_PREFIXES: &[&[&str]] = &[
+        &["youve", "cast"],
+        &["you", "ve", "cast"],
+        &["you", "cast"],
+        &["you", "have", "cast"],
+    ];
+    const SPELLS_THIS_TURN_PHRASES: &[&[&str]] =
+        &[&["spell", "this", "turn"], &["spells", "this", "turn"]];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(YOU_CAST_PREFIXES),
+        LexPattern::amount(
+            "amount",
+            LexCaptureKind::UntilAnyPhrase(SPELLS_THIS_TURN_PHRASES),
+        ),
+        LexPattern::object("spell_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let amount_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    let spell_tail_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if amount_clause.is_empty()
+        || !ETB_SPELLS_THIS_TURN_TAIL_PATTERN.matches_words(&spell_tail_clause.word_refs())
+    {
+        return None;
+    }
+
+    let (comparison, used) = parse_quantity_comparison_prefix(
+        amount_clause.tokens(),
+        false,
+        false,
+        "enters-with condition",
+    )
+    .ok()?;
+    if used != amount_clause.tokens().len() {
+        return None;
+    }
+    crate::runtime_backend::util::comparison_to_strict_at_least_threshold(&comparison)
+}
+
+fn parse_enters_with_counter_x_value_threshold_condition_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<u32> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["x", "is"]),
+        LexPattern::amount("amount", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let amount_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    if amount_clause.is_empty() {
+        return None;
+    }
+    let (comparison, used) = parse_quantity_comparison_prefix(
+        amount_clause.tokens(),
+        false,
+        false,
+        "enters-with condition",
+    )
+    .ok()?;
+    if used != amount_clause.tokens().len() {
+        return None;
+    }
+    crate::runtime_backend::util::comparison_to_strict_at_least_threshold(&comparison)
 }
 
 fn parse_unless_enters_with_counter_condition_display(tokens: &[OwnedLexToken]) -> Option<String> {
-    let condition_words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if condition_words.len() >= 9
-        && let Some((amount, rest_start)) = parse_etb_at_least_quantity_at(tokens, 0)
-        && ETB_COLORS_MANA_SPENT_TO_CAST_SOURCE_TAIL_PATTERN
-            .matches_words(&condition_words[rest_start..])
+    if let Some(amount) = parse_enters_with_counter_colors_mana_spent_condition_tokens(tokens)
     {
         return Some(format!(
             "fewer than {amount} colors of mana were spent to cast it"
@@ -1054,43 +1357,23 @@ fn parse_enters_with_counter_condition_clause(
         ));
     }
 
-    if condition_words.len() >= 4
-        && ETB_X_IS_PREFIX_PATTERN.matches_words(&condition_words)
-        && let Some((amount, rest_start)) = parse_etb_at_least_quantity_at(&condition_tokens, 2)
-        && rest_start == condition_words.len()
+    if let Some(amount) =
+        parse_enters_with_counter_x_value_threshold_condition_tokens(&condition_tokens)
     {
         return Some(crate::ConditionExpr::XValueAtLeast(amount));
     }
 
-    if condition_words.len() >= 7 {
-        let (count_word_idx, valid_prefix) =
-            if ETB_YOU_CAST_PREFIX_PATTERN.matches_words(&condition_words) {
-                let count_word_idx =
-                    if ETB_YOU_CAST_COUNT_AT_THIRD_WORD_PATTERN.matches_words(&condition_words) {
-                        3usize
-                    } else {
-                        2usize
-                    };
-                (count_word_idx, true)
-            } else {
-                (0usize, false)
-            };
-        if valid_prefix
-            && let Some((amount, rest_start)) =
-                parse_etb_at_least_quantity_at(&condition_tokens, count_word_idx)
-            && ETB_SPELLS_THIS_TURN_TAIL_PATTERN.matches_words(&condition_words[rest_start..])
-        {
-            return Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
-                player: PlayerFilter::You,
-                count: amount,
-            });
-        }
+    if let Some(amount) =
+        parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(&condition_tokens)
+    {
+        return Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+            player: PlayerFilter::You,
+            count: amount,
+        });
     }
 
-    if condition_words.len() >= 9
-        && let Some((amount, rest_start)) = parse_etb_at_least_quantity_at(&condition_tokens, 0)
-        && ETB_COLORS_MANA_SPENT_CONDITION_TAIL_PATTERN
-            .matches_words(&condition_words[rest_start..])
+    if let Some(amount) =
+        parse_enters_with_counter_colors_mana_spent_condition_tokens(&condition_tokens)
     {
         return Some(crate::ConditionExpr::ColorsOfManaSpentToCastThisSpellOrMore(amount));
     }
@@ -1108,20 +1391,9 @@ fn parse_enters_with_counter_condition_clause(
 
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     let trimmed = trim_edge_punctuation(tokens);
-    let words_all = crate::runtime_backend::token_word_refs(&trimmed);
-    if !ETB_EQUAL_TO_PREFIX_PATTERN.matches_words(&words_all) {
-        return None;
-    }
-    if ETB_EQUAL_TO_MANA_SPENT_TO_CAST_PREFIX_PATTERN.matches_words(&words_all)
-        && words_all
-            .last()
-            .is_some_and(|word| ETB_IT_OR_SPELL_WORD_PATTERN.matches_word(word))
-    {
-        return Some(Value::ManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::EqualTo));
-    }
-
-    if trimmed.len() < 2 {
-        return None;
+    let value_body = parse_equal_to_value_body_clause(&trimmed)?;
+    if let Some(value) = parse_equal_to_mana_spent_to_cast_value(&trimmed) {
+        return Some(value);
     }
 
     let mut where_tokens = Vec::with_capacity(trimmed.len() + 1);
@@ -1131,7 +1403,7 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
     ));
     where_tokens.push(OwnedLexToken::word("x".to_string(), TextSpan::synthetic()));
     where_tokens.push(OwnedLexToken::word("is".to_string(), TextSpan::synthetic()));
-    where_tokens.extend_from_slice(&trimmed[2..]);
+    where_tokens.extend_from_slice(value_body.tokens());
 
     parse_value_binding_clause(&where_tokens)
         .or_else(|| parse_equal_to_greatest_cards_drawn_this_turn_value(&trimmed))
@@ -1148,22 +1420,66 @@ fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> 
         })
 }
 
-fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words_all = crate::runtime_backend::token_word_refs(tokens);
-    if words_all
-        == [
-            "equal", "to", "the", "greatest", "number", "of", "cards", "an", "opponent", "has",
-            "drawn", "this", "turn",
-        ]
-        || words_all
-            == [
-                "equal", "to", "greatest", "number", "of", "cards", "an", "opponent", "has",
-                "drawn", "this", "turn",
-            ]
-    {
-        return Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent));
+fn parse_equal_to_value_body_clause<'a>(tokens: &'a [OwnedLexToken]) -> Option<LexedClause<'a>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["equal", "to"]),
+        LexPattern::amount("value_body", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let value_body = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    (!value_body.is_empty()).then_some(value_body)
+}
+
+fn parse_equal_to_mana_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&[
+            "equal", "to", "the", "amount", "of", "mana", "spent", "to", "cast",
+        ]),
+        LexPattern::subject("cast_source", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let cast_source_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    if is_mana_spent_cast_source_clause(cast_source_clause) {
+        Some(Value::ManaSpentToCastThisSpell.with_surface_hint(ValueSurfaceHint::EqualTo))
+    } else {
+        None
     }
-    None
+}
+
+fn parse_equal_to_greatest_cards_drawn_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["equal", "to", "the", "greatest", "number", "of", "cards"]),
+        LexPattern::modifier("article", LexCaptureKind::OneOf(&["an"])),
+        LexPattern::subject("drawer", LexCaptureKind::OneOf(&["opponent"])),
+        LexPattern::phrase(&["has", "drawn", "this", "turn"]),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["equal", "to", "greatest", "number", "of", "cards"]),
+        LexPattern::modifier("article", LexCaptureKind::OneOf(&["an"])),
+        LexPattern::subject("drawer", LexCaptureKind::OneOf(&["opponent"])),
+        LexPattern::phrase(&["has", "drawn", "this", "turn"]),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let drawer = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    if is_opponent_clause(drawer) {
+        Some(Value::MaxCardsDrawnThisTurn(PlayerFilter::Opponent))
+    } else {
+        None
+    }
 }
 
 pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -1674,30 +1990,23 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
 pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
+    let captured = parse_where_x_fixed_plus_reference_clause(tokens)?;
+    let (fixed_value, fixed_used) = parse_number(captured.fixed_tokens)?;
+    if fixed_used != captured.fixed_tokens.len() {
         return None;
     }
-
-    let fixed_value = parse_number_word_i32(*clause_words.get(3)?)?;
+    let fixed_value = fixed_value as i32;
     if fixed_value < 0 {
         return None;
     }
-    let plus_word_idx = 4usize;
-    if !clause_words
-        .get(plus_word_idx)
-        .is_some_and(|word| ETB_PLUS_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
 
-    let value_words = clause_words.get(plus_word_idx + 1..)?;
-    let reference_value = if ETB_SACRIFICED_CREATURE_POWER_PREFIX_PATTERN.matches_words(value_words)
+    let value_words = captured.reference_clause.word_refs();
+    let reference_value = if ETB_SACRIFICED_CREATURE_POWER_PREFIX_PATTERN.matches_words(&value_words)
     {
         Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-    } else if ETB_SACRIFICED_CREATURE_TOUGHNESS_PREFIX_PATTERN.matches_words(value_words) {
+    } else if ETB_SACRIFICED_CREATURE_TOUGHNESS_PREFIX_PATTERN.matches_words(&value_words) {
         Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-    } else if ETB_TAGGED_CREATURE_MANA_VALUE_PREFIX_PATTERN.matches_words(value_words) {
+    } else if ETB_TAGGED_CREATURE_MANA_VALUE_PREFIX_PATTERN.matches_words(&value_words) {
         Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
     } else {
         return None;
@@ -1709,214 +2018,298 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
     ))
 }
 
-pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
+#[derive(Debug, Clone, Copy)]
+struct FixedPlusReferenceClause<'a> {
+    fixed_tokens: &'a [OwnedLexToken],
+    reference_clause: LexedClause<'a>,
+}
+
+fn parse_where_x_fixed_plus_reference_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<FixedPlusReferenceClause<'a>> {
+    const PLUS_PHRASE: &[&str] = &["plus"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::amount("fixed", LexCaptureKind::UntilPhrase(PLUS_PHRASE)),
+        LexPattern::phrase(PLUS_PHRASE),
+        LexPattern::object("reference", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let fixed = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    let reference = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if fixed.is_empty() || reference.is_empty() {
         return None;
     }
-    match words.get(3..) {
-        Some(
-            [
-                "the",
-                "amount",
-                "of",
-                "life",
-                "you",
-                "gained",
-                "this",
-                "turn",
-            ],
-        )
-        | Some(["amount", "of", "life", "you", "gained", "this", "turn"]) => {
-            Some(Value::LifeGainedThisTurn(PlayerFilter::You))
-        }
-        Some(
-            [
-                "the",
-                "amount",
-                "of",
-                "life",
-                "youve",
-                "gained",
-                "this",
-                "turn",
-            ],
-        )
-        | Some(["amount", "of", "life", "youve", "gained", "this", "turn"]) => {
-            Some(Value::LifeGainedThisTurn(PlayerFilter::You))
-        }
-        _ => None,
+
+    Some(FixedPlusReferenceClause {
+        fixed_tokens: fixed.tokens(),
+        reference_clause: reference,
+    })
+}
+
+pub(crate) fn parse_where_x_life_gained_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let subject = parse_where_x_life_gained_this_turn_clause(tokens)?;
+    if is_you_or_youve_clause(subject) {
+        Some(Value::LifeGainedThisTurn(PlayerFilter::You))
+    } else {
+        None
     }
 }
 
+fn parse_where_x_life_gained_this_turn_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "the", "amount", "of", "life"]),
+        LexPattern::subject("player", LexCaptureKind::OneOf(&["you", "youve"])),
+        LexPattern::phrase(&["gained", "this", "turn"]),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "amount", "of", "life"]),
+        LexPattern::subject("player", LexCaptureKind::OneOf(&["you", "youve"])),
+        LexPattern::phrase(&["gained", "this", "turn"]),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .map(LexedClause::trimmed)
+}
+
 pub(crate) fn parse_where_x_life_lost_this_turn_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
-        return None;
+    let player = parse_where_x_life_lost_this_turn_clause(tokens)?;
+    if is_your_opponents_clause(player) {
+        Some(Value::LifeLostThisTurn(PlayerFilter::Opponent))
+    } else {
+        None
     }
-    match words.get(3..) {
-        Some(
-            [
-                "the",
-                "total",
-                "life",
-                "lost",
-                "by",
-                "your",
-                "opponents",
-                "this",
-                "turn",
-            ],
-        )
-        | Some(
-            [
-                "total",
-                "life",
-                "lost",
-                "by",
-                "your",
-                "opponents",
-                "this",
-                "turn",
-            ],
-        ) => Some(Value::LifeLostThisTurn(PlayerFilter::Opponent)),
-        _ => None,
-    }
+}
+
+fn parse_where_x_life_lost_this_turn_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "the", "total", "life", "lost", "by"]),
+        LexPattern::subject("player", LexCaptureKind::UntilPhrase(THIS_TURN_PHRASE)),
+        LexPattern::phrase(THIS_TURN_PHRASE),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "total", "life", "lost", "by"]),
+        LexPattern::subject("player", LexCaptureKind::UntilPhrase(THIS_TURN_PHRASE)),
+        LexPattern::phrase(THIS_TURN_PHRASE),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let player = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    (!player.is_empty()).then_some(player)
 }
 
 pub(crate) fn parse_where_x_opponents_dealt_combat_damage_this_turn_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
-        return None;
+    let players = parse_where_x_opponents_dealt_combat_damage_this_turn_clause(tokens)?;
+    if is_opponents_clause(players) {
+        Some(Value::CountPlayers(PlayerFilter::Opponent))
+    } else {
+        None
     }
-    match words.get(3..) {
-        Some(
-            [
-                "the",
-                "number",
-                "of",
-                "opponents",
-                "that",
-                "were",
-                "dealt",
-                "combat",
-                "damage",
-                "this",
-                "turn",
-            ],
-        )
-        | Some(
-            [
-                "number",
-                "of",
-                "opponents",
-                "that",
-                "were",
-                "dealt",
-                "combat",
-                "damage",
-                "this",
-                "turn",
-            ],
-        ) => Some(Value::CountPlayers(PlayerFilter::Opponent)),
-        _ => None,
-    }
+}
+
+fn parse_where_x_opponents_dealt_combat_damage_this_turn_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const DAMAGE_TAIL: &[&str] = &["that", "were", "dealt", "combat", "damage", "this", "turn"];
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "the", "number", "of"]),
+        LexPattern::subject("players", LexCaptureKind::UntilPhrase(DAMAGE_TAIL)),
+        LexPattern::phrase(DAMAGE_TAIL),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "number", "of"]),
+        LexPattern::subject("players", LexCaptureKind::UntilPhrase(DAMAGE_TAIL)),
+        LexPattern::phrase(DAMAGE_TAIL),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let players = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    (!players.is_empty()).then_some(players)
 }
 
 pub(crate) fn parse_where_x_noncombat_damage_to_opponents_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
-        return None;
-    }
-    match words.get(3..) {
-        Some(
-            [
-                "the",
-                "total",
-                "amount",
-                "of",
-                "noncombat",
-                "damage",
-                "dealt",
-                "to",
-                "your",
-                "opponents",
-                "this",
-                "turn",
-            ],
-        )
-        | Some(
-            [
-                "total",
-                "amount",
-                "of",
-                "noncombat",
-                "damage",
-                "dealt",
-                "to",
-                "your",
-                "opponents",
-                "this",
-                "turn",
-            ],
-        ) => Some(Value::NoncombatDamageDealtToPlayersThisTurn(
+    let damaged_player = parse_where_x_noncombat_damage_to_opponents_clause(tokens)?;
+    if is_your_opponents_clause(damaged_player) {
+        Some(Value::NoncombatDamageDealtToPlayersThisTurn(
             PlayerFilter::Opponent,
-        )),
-        _ => None,
+        ))
+    } else {
+        None
     }
 }
 
+fn parse_where_x_noncombat_damage_to_opponents_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&[
+            "where",
+            "x",
+            "is",
+            "the",
+            "total",
+            "amount",
+            "of",
+            "noncombat",
+            "damage",
+            "dealt",
+            "to",
+        ]),
+        LexPattern::subject("damaged_player", LexCaptureKind::UntilPhrase(THIS_TURN_PHRASE)),
+        LexPattern::phrase(THIS_TURN_PHRASE),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&[
+            "where",
+            "x",
+            "is",
+            "total",
+            "amount",
+            "of",
+            "noncombat",
+            "damage",
+            "dealt",
+            "to",
+        ]),
+        LexPattern::subject("damaged_player", LexCaptureKind::UntilPhrase(THIS_TURN_PHRASE)),
+        LexPattern::phrase(THIS_TURN_PHRASE),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let damaged_player = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    (!damaged_player.is_empty()).then_some(damaged_player)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EtbAggregateKind {
+    Total,
+    Greatest,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EtbAggregateValueKind {
+    Power,
+    Toughness,
+    ManaValue,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EtbWhereXAggregateFilterClause<'a> {
+    aggregate: EtbAggregateKind,
+    value_kind: EtbAggregateValueKind,
+    filter_clause: LexedClause<'a>,
+}
+
+fn parse_etb_aggregate_kind_clause(clause: LexedClause<'_>) -> Option<EtbAggregateKind> {
+    if clause_matches_phrase(clause, &["total"]) {
+        return Some(EtbAggregateKind::Total);
+    }
+    if clause_matches_phrase(clause, &["greatest"]) {
+        return Some(EtbAggregateKind::Greatest);
+    }
+    None
+}
+
+fn parse_etb_aggregate_value_kind_clause(
+    clause: LexedClause<'_>,
+) -> Option<EtbAggregateValueKind> {
+    if clause_matches_phrase(clause, &["power"]) {
+        return Some(EtbAggregateValueKind::Power);
+    }
+    if clause_matches_phrase(clause, &["toughness"]) {
+        return Some(EtbAggregateValueKind::Toughness);
+    }
+    if clause_matches_phrase(clause, &["mana", "value"]) {
+        return Some(EtbAggregateValueKind::ManaValue);
+    }
+    None
+}
+
+fn parse_where_x_aggregate_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<EtbWhereXAggregateFilterClause<'a>> {
+    const OPTIONAL_THE: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+    const RELATION_PHRASES: &[&[&str]] = &[&["of"], &["among"]];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::optional(OPTIONAL_THE),
+        LexPattern::action("aggregate", LexCaptureKind::OneOf(&["total", "greatest"])),
+        LexPattern::amount("value_kind", LexCaptureKind::UntilAnyPhrase(RELATION_PHRASES)),
+        LexPattern::any_phrase(RELATION_PHRASES),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let aggregate_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let value_kind_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if filter_clause.is_empty() {
+        return None;
+    }
+
+    let aggregate = parse_etb_aggregate_kind_clause(aggregate_clause)?;
+    let value_kind = parse_etb_aggregate_value_kind_clause(value_kind_clause)?;
+
+    Some(EtbWhereXAggregateFilterClause {
+        aggregate,
+        value_kind,
+        filter_clause,
+    })
+}
+
 pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
+    let parsed = parse_where_x_aggregate_filter_clause(tokens)?;
 
-    let mut idx = 3usize;
-    if ETB_THE_WORD_PATTERN.matches_word_at(&clause_words, idx) {
-        idx += 1;
-    }
-    let aggregate = match clause_words.get(idx).copied() {
-        Some("total") => "total",
-        Some("greatest") => "greatest",
-        _ => return None,
-    };
-    idx += 1;
-
-    let value_kind = if ETB_POWER_WORD_PATTERN.matches_word_at(&clause_words, idx) {
-        idx += 1;
-        "power"
-    } else if ETB_TOUGHNESS_WORD_PATTERN.matches_word_at(&clause_words, idx) {
-        idx += 1;
-        "toughness"
-    } else if ETB_MANA_WORD_PATTERN.matches_word_at(&clause_words, idx)
-        && ETB_VALUE_WORD_PATTERN.matches_word_at(&clause_words, idx + 1)
+    if parsed.aggregate == EtbAggregateKind::Greatest
+        && parsed.value_kind == EtbAggregateValueKind::ManaValue
     {
-        idx += 2;
-        "mana_value"
-    } else {
-        return None;
-    };
-
-    if !ETB_OF_OR_AMONG_WORD_PATTERN.matches_word_at(&clause_words, idx) {
-        return None;
-    }
-    idx += 1;
-
-    if ETB_GREATEST_WORD_PATTERN.matches_words(&[aggregate])
-        && ETB_MANA_VALUE_WORD_PATTERN.matches_words(&[value_kind])
-    {
-        if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
+        if let Some(value) =
+            parse_where_x_greatest_commander_mana_value_filter(parsed.filter_clause.tokens())
+        {
             return Some(value);
         }
     }
 
-    let object_start_token_idx = token_index_for_word_index(tokens, idx)?;
-    let filter_tokens = &tokens[object_start_token_idx..];
+    let filter_tokens = parsed.filter_clause.tokens();
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
     let should_try_split = ETB_AND_GRAVEYARD_MARKER_PATTERN.matches_words(&filter_words)
         && filter_words
@@ -1972,24 +2365,30 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
         filter.card_types = ObjectFilter::permanent_card().card_types;
     }
 
-    match (aggregate, value_kind) {
-        ("total", "power") => Some(Value::TotalPower(filter)),
-        ("total", "toughness") => Some(Value::TotalToughness(filter)),
-        ("total", "mana_value") => Some(Value::TotalManaValue(filter)),
-        ("greatest", "power") => Some(Value::GreatestPower(filter)),
-        ("greatest", "toughness") => Some(Value::GreatestToughness(filter)),
-        ("greatest", "mana_value") => Some(Value::GreatestManaValue(filter)),
-        _ => None,
+    match (parsed.aggregate, parsed.value_kind) {
+        (EtbAggregateKind::Total, EtbAggregateValueKind::Power) => Some(Value::TotalPower(filter)),
+        (EtbAggregateKind::Total, EtbAggregateValueKind::Toughness) => {
+            Some(Value::TotalToughness(filter))
+        }
+        (EtbAggregateKind::Total, EtbAggregateValueKind::ManaValue) => {
+            Some(Value::TotalManaValue(filter))
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::Power) => {
+            Some(Value::GreatestPower(filter))
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::Toughness) => {
+            Some(Value::GreatestToughness(filter))
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::ManaValue) => {
+            Some(Value::GreatestManaValue(filter))
+        }
     }
 }
 
-pub(crate) fn parse_where_x_greatest_commander_mana_value(
-    tokens: &[OwnedLexToken],
-    commander_start_word_idx: usize,
+pub(crate) fn parse_where_x_greatest_commander_mana_value_filter(
+    commander_tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let commander_start_token_idx = token_index_for_word_index(tokens, commander_start_word_idx)?;
-    let commander_words =
-        crate::runtime_backend::token_word_refs(&tokens[commander_start_token_idx..]);
+    let commander_words = crate::runtime_backend::token_word_refs(commander_tokens);
     let normalized = crate::runtime_backend::util::non_article_word_refs(&commander_words);
     if normalized
         != [
@@ -2024,146 +2423,99 @@ pub(crate) fn parse_where_x_greatest_commander_mana_value(
 pub(crate) fn parse_where_x_is_number_of_differently_named_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
-
-    let number_idx = ETB_NUMBER_WORD_PATTERN.find_word(&clause_words)?;
-    if !clause_words
-        .get(number_idx + 1)
-        .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-    if !clause_words
-        .get(number_idx + 2)
-        .is_some_and(|word| ETB_DIFFERENTLY_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-    if !clause_words
-        .get(number_idx + 3)
-        .is_some_and(|word| ETB_NAMED_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let object_start_word_idx = number_idx + 4;
-    let object_start_token_idx = token_index_for_word_index(tokens, object_start_word_idx)?;
-    let filter_tokens = &tokens[object_start_token_idx..];
-    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    let filter_clause = parse_where_x_differently_named_filter_clause(tokens)?;
+    let filter = parse_object_filter_lexed(filter_clause.tokens(), false).ok()?;
     Some(Value::DistinctNames(filter))
+}
+
+fn parse_where_x_differently_named_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const OPTIONAL_THE: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::optional(OPTIONAL_THE),
+        LexPattern::phrase(&["number", "of", "differently", "named"]),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let filter_clause = PATTERN
+        .match_clause(clause)?
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    (!filter_clause.is_empty()).then_some(filter_clause)
 }
 
 pub(crate) fn parse_where_x_is_number_of_different_powers_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
-
-    let number_idx = ETB_NUMBER_WORD_PATTERN.find_word(&clause_words)?;
-    if !clause_words
-        .get(number_idx + 1)
-        .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-    if !clause_words
-        .get(number_idx + 2)
-        .is_some_and(|word| ETB_DIFFERENT_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-    if !clause_words
-        .get(number_idx + 3)
-        .is_some_and(|word| ETB_POWER_OR_POWERS_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-    if !clause_words
-        .get(number_idx + 4)
-        .is_some_and(|word| ETB_AMONG_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let object_start_word_idx = number_idx + 5;
-    let object_start_token_idx = token_index_for_word_index(tokens, object_start_word_idx)?;
-    let filter_tokens = &tokens[object_start_token_idx..];
-    let filter = parse_object_filter(filter_tokens, false).ok()?;
+    let filter_clause = parse_where_x_different_powers_filter_clause(tokens)?;
+    let filter = parse_object_filter_lexed(filter_clause.tokens(), false).ok()?;
     Some(Value::DistinctPowers(filter))
+}
+
+fn parse_where_x_different_powers_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const OPTIONAL_THE: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::optional(OPTIONAL_THE),
+        LexPattern::phrase(&["number", "of", "different"]),
+        LexPattern::object("power", LexCaptureKind::OneOf(&["power", "powers"])),
+        LexPattern::phrase(&["among"]),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let filter_clause = PATTERN
+        .match_clause(clause)?
+        .capture_clause("filter", clause)?
+        .trimmed();
+    (!filter_clause.is_empty()).then_some(filter_clause)
 }
 
 pub(crate) fn parse_where_x_is_greatest_number_of_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
-
-    let greatest_idx = ETB_GREATEST_WORD_PATTERN.find_word(&clause_words)?;
-    if !clause_words
-        .get(greatest_idx + 1)
-        .is_some_and(|word| ETB_NUMBER_WORD_PATTERN.matches_word(word))
-        || !clause_words
-            .get(greatest_idx + 2)
-            .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let object_start_token_idx = token_index_for_word_index(tokens, greatest_idx + 3)?;
-    let filter_tokens = &tokens[object_start_token_idx..];
-    let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    let filter_clause = parse_where_x_greatest_number_filter_clause(tokens)?;
+    let filter = parse_object_filter_lexed(filter_clause.tokens(), false).ok()?;
     filter.controller.as_ref()?;
     Some(Value::GreatestCount(filter))
 }
 
+fn parse_where_x_greatest_number_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "the", "greatest", "number", "of"]),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "greatest", "number", "of"]),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let filter = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    (!filter.is_empty()).then_some(filter)
+}
+
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
+    let captured = parse_where_x_number_of_filter_clause(tokens)?;
+
+    if ETB_COMMON_CREATURE_TYPE_VALUE_PATTERN.matches_words(&LexedClause::new(tokens).word_refs()) {
         return None;
     }
 
-    if ETB_COMMON_CREATURE_TYPE_VALUE_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
-
-    let number_idx = ETB_NUMBER_WORD_PATTERN.find_word(&clause_words)?;
-    let multiplier = match clause_words.get(3..number_idx) {
-        Some([]) | Some(["the"]) | Some(["the", "total"]) => 1,
-        Some(["twice"])
-        | Some(["twice", "the"])
-        | Some(["two", "times"])
-        | Some(["two", "times", "the"]) => 2,
-        _ => return None,
-    };
-    if !clause_words
-        .get(number_idx + 1)
-        .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let object_start_word_idx = number_idx + 2;
-    let mut seen_words = 0usize;
-    let mut object_start_token_idx = None;
-    for (idx, token) in tokens.iter().enumerate() {
-        if token.as_word().is_none() {
-            continue;
-        }
-        if seen_words == object_start_word_idx {
-            object_start_token_idx = Some(idx);
-            break;
-        }
-        seen_words += 1;
-    }
-    let object_start_token_idx = object_start_token_idx?;
-    let filter_tokens = &tokens[object_start_token_idx..];
+    let multiplier = parse_number_of_filter_multiplier_clause(captured.multiplier_clause)?;
+    let filter_tokens = captured.filter_tokens;
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
     if let Some(value) = parse_number_of_counters_on_source_value(&filter_words) {
         return Some(value);
@@ -2300,6 +2652,41 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct WhereXNumberOfFilterClause<'a> {
+    multiplier_clause: LexedClause<'a>,
+    filter_tokens: &'a [OwnedLexToken],
+}
+
+fn parse_where_x_number_of_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<WhereXNumberOfFilterClause<'a>> {
+    const NUMBER_OF_PHRASE: &[&str] = &["number", "of"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::amount("multiplier", LexCaptureKind::UntilPhrase(NUMBER_OF_PHRASE)),
+        LexPattern::phrase(NUMBER_OF_PHRASE),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let multiplier = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    let filter = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if filter.is_empty() {
+        return None;
+    }
+
+    Some(WhereXNumberOfFilterClause {
+        multiplier_clause: multiplier,
+        filter_tokens: filter.tokens(),
+    })
+}
+
 fn scale_where_x_number_value(value: Value, multiplier: i32) -> Value {
     if multiplier == 1 {
         return value;
@@ -2367,37 +2754,12 @@ fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Val
 pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
+    let captured = parse_where_x_fixed_plus_number_of_filter_clause(tokens)?;
+    let (fixed_value, fixed_used) = parse_number(captured.fixed_tokens)?;
+    if fixed_used != captured.fixed_tokens.len() {
         return None;
     }
-
-    let value_start_idx = token_index_for_word_index(tokens, 3)?;
-    let (fixed_value, fixed_used) = parse_number(&tokens[value_start_idx..])?;
-    let plus_word_idx = 3 + fixed_used;
-    if !clause_words
-        .get(plus_word_idx)
-        .is_some_and(|word| ETB_PLUS_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let mut number_word_idx = plus_word_idx + 1;
-    if ETB_THE_WORD_PATTERN.matches_word_at(&clause_words, number_word_idx) {
-        number_word_idx += 1;
-    }
-    if !clause_words
-        .get(number_word_idx)
-        .is_some_and(|word| ETB_NUMBER_WORD_PATTERN.matches_word(word))
-        || !clause_words
-            .get(number_word_idx + 1)
-            .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let filter_start_idx = token_index_for_word_index(tokens, number_word_idx + 2)?;
-    let filter_tokens = &tokens[filter_start_idx..];
+    let filter_tokens = captured.filter_tokens;
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
     if let Some(counter_value) = parse_number_of_counters_on_source_value(&filter_words) {
         return Some(Value::Add(
@@ -2440,37 +2802,47 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
     ))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct FixedPlusNumberOfFilterClause<'a> {
+    fixed_tokens: &'a [OwnedLexToken],
+    filter_tokens: &'a [OwnedLexToken],
+}
+
+fn parse_where_x_fixed_plus_number_of_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<FixedPlusNumberOfFilterClause<'a>> {
+    const PLUS_NUMBER_OF_PHRASES: &[&[&str]] =
+        &[&["plus", "number", "of"], &["plus", "the", "number", "of"]];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is"]),
+        LexPattern::amount("fixed", LexCaptureKind::UntilAnyPhrase(PLUS_NUMBER_OF_PHRASES)),
+        LexPattern::any_phrase(PLUS_NUMBER_OF_PHRASES),
+        LexPattern::object("filter", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let fixed = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    let filter = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    if fixed.is_empty() || filter.is_empty() {
+        return None;
+    }
+
+    Some(FixedPlusNumberOfFilterClause {
+        fixed_tokens: fixed.tokens(),
+        filter_tokens: filter.tokens(),
+    })
+}
+
 pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_WHERE_X_IS_PREFIX_PATTERN.matches_words(&clause_words) {
-        return None;
-    }
-
-    let mut number_word_idx = 3usize;
-    if ETB_THE_WORD_PATTERN.matches_word_at(&clause_words, number_word_idx) {
-        number_word_idx += 1;
-    }
-    if !clause_words
-        .get(number_word_idx)
-        .is_some_and(|word| ETB_NUMBER_WORD_PATTERN.matches_word(word))
-        || !clause_words
-            .get(number_word_idx + 1)
-            .is_some_and(|word| ETB_OF_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let filter_start_word_idx = number_word_idx + 2;
-    let operator_word_idx = ETB_PLUS_OR_MINUS_WORD_PATTERN
-        .find_word(&clause_words[filter_start_word_idx + 1..])
-        .map(|idx| filter_start_word_idx + 1 + idx)?;
-    let operator = clause_words[operator_word_idx];
-
-    let filter_start_token_idx = token_index_for_word_index(tokens, filter_start_word_idx)?;
-    let operator_token_idx = token_index_for_word_index(tokens, operator_word_idx)?;
-    let filter_tokens = trim_commas(&tokens[filter_start_token_idx..operator_token_idx]);
+    let captured = parse_where_x_number_of_filter_plus_or_minus_fixed_clause(tokens)?;
+    let filter_tokens = trim_commas(captured.filter_tokens);
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     let count_value = if ETB_YOUR_HAND_COUNT_VALUE_PATTERN.matches_words(&filter_words) {
         Value::CardsInHand(PlayerFilter::You)
@@ -2479,23 +2851,100 @@ pub(crate) fn parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
         Value::Count(filter)
     };
 
-    let offset_start_token_idx = token_index_for_word_index(tokens, operator_word_idx + 1)?;
-    let offset_tokens = trim_commas(&tokens[offset_start_token_idx..]);
+    let offset_tokens = trim_commas(captured.offset_tokens);
     let (offset_value, used) = parse_number(&offset_tokens)?;
     let trailing_words = crate::runtime_backend::token_word_refs(&offset_tokens[used..]);
     if !trailing_words.is_empty() {
         return None;
     }
 
-    let signed_offset = if ETB_MINUS_WORD_PATTERN.matches_words(&[operator]) {
-        -(offset_value as i32)
-    } else {
-        offset_value as i32
-    };
+    let signed_offset =
+        signed_offset_from_number_of_filter_operator_clause(captured.operator_clause, offset_value)?;
     Some(Value::Add(
         Box::new(count_value),
         Box::new(Value::Fixed(signed_offset)),
     ))
+}
+
+fn signed_offset_from_number_of_filter_operator_clause(
+    clause: LexedClause<'_>,
+    offset_value: u32,
+) -> Option<i32> {
+    if clause_matches_phrase(clause, &["minus"]) {
+        return Some(-(offset_value as i32));
+    }
+    if clause_matches_phrase(clause, &["plus"]) {
+        return Some(offset_value as i32);
+    }
+    None
+}
+
+fn parse_number_of_filter_multiplier_clause(clause: LexedClause<'_>) -> Option<i32> {
+    if clause.is_empty()
+        || clause_matches_any_phrase(clause, &[&["the"], &["the", "total"]])
+    {
+        return Some(1);
+    }
+    if clause_matches_any_phrase(
+        clause,
+        &[
+            &["twice"],
+            &["twice", "the"],
+            &["two", "times"],
+            &["two", "times", "the"],
+        ],
+    ) {
+        return Some(2);
+    }
+    None
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NumberOfFilterPlusOrMinusFixedClause<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    operator_clause: LexedClause<'a>,
+    offset_tokens: &'a [OwnedLexToken],
+}
+
+fn parse_where_x_number_of_filter_plus_or_minus_fixed_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<NumberOfFilterPlusOrMinusFixedClause<'a>> {
+    const OPERATOR_PHRASES: &[&[&str]] = &[&["plus"], &["minus"]];
+    const WITH_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "the", "number", "of"]),
+        LexPattern::object("filter", LexCaptureKind::UntilAnyPhrase(OPERATOR_PHRASES)),
+        LexPattern::action("operator", LexCaptureKind::OneOf(&["plus", "minus"])),
+        LexPattern::amount("offset", LexCaptureKind::Rest),
+    ]);
+    const WITHOUT_THE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["where", "x", "is", "number", "of"]),
+        LexPattern::object("filter", LexCaptureKind::UntilAnyPhrase(OPERATOR_PHRASES)),
+        LexPattern::action("operator", LexCaptureKind::OneOf(&["plus", "minus"])),
+        LexPattern::amount("offset", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = WITH_THE_PATTERN
+        .match_clause(clause)
+        .or_else(|| WITHOUT_THE_PATTERN.match_clause(clause))?;
+    let filter = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    let operator = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)?
+        .trimmed();
+    let offset = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    if filter.is_empty() || offset.is_empty() {
+        return None;
+    }
+
+    Some(NumberOfFilterPlusOrMinusFixedClause {
+        filter_tokens: filter.tokens(),
+        operator_clause: operator,
+        offset_tokens: offset.tokens(),
+    })
 }
 
 pub(crate) fn token_index_for_word_index(
@@ -2504,6 +2953,40 @@ pub(crate) fn token_index_for_word_index(
 ) -> Option<usize> {
     crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens)
         .token_index_for_word_index(word_index)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct EtbEntryFilterClause<'a> {
+    filter_tokens: &'a [OwnedLexToken],
+    tail_clause: LexedClause<'a>,
+}
+
+fn parse_entry_filter_clause<'a>(tokens: &'a [OwnedLexToken]) -> Option<EtbEntryFilterClause<'a>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "filter",
+            LexCaptureKind::UntilAnyPhrase(ETB_ENTER_OR_ENTERS_PHRASES),
+        ),
+        LexPattern::action("entry_action", LexCaptureKind::OneOf(&["enter", "enters"])),
+        LexPattern::tail("entry_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let filter_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    let tail_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)?
+        .trimmed();
+    if filter_clause.is_empty() || tail_clause.is_empty() {
+        return None;
+    }
+
+    Some(EtbEntryFilterClause {
+        filter_tokens: filter_clause.tokens(),
+        tail_clause,
+    })
 }
 
 pub(crate) fn parse_enters_tapped_for_filter_line(
@@ -2533,14 +3016,10 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     if ETB_UNLESS_MARKER_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
-    let enter_word_idx = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words);
-    let Some(enter_word_idx) = enter_word_idx else {
+    let Some(entry_clause) = parse_entry_filter_clause(tokens) else {
         return Ok(None);
     };
-    let Some(enter_token_idx) = token_index_for_word_index(tokens, enter_word_idx) else {
-        return Ok(None);
-    };
-    if !ETB_TAPPED_MARKER_PATTERN.matches_words(&clause_words[enter_word_idx + 1..]) {
+    if !ETB_TAPPED_MARKER_PATTERN.matches_words(&entry_clause.tail_clause.word_refs()) {
         return Ok(None);
     }
     if ETB_THIS_WORD_PATTERN.matches_word_at(&clause_words, 0) {
@@ -2552,7 +3031,7 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
             clause_words.join(" ")
         )));
     }
-    let before_enter = &tokens[..enter_token_idx];
+    let before_enter = entry_clause.filter_tokens;
     let before_word_view =
         crate::runtime_backend::grammar::primitives::TokenWordView::new(before_enter);
     let before_words = before_word_view.word_refs();
@@ -2615,22 +3094,36 @@ pub(crate) fn parse_enters_untapped_for_filter_line(
         return Ok(None);
     }
 
-    let Some(enter_word_idx) = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words) else {
+    let Some(entry_clause) = parse_entry_filter_clause(tokens) else {
         return Ok(None);
     };
-    let Some(enter_token_idx) = token_index_for_word_index(tokens, enter_word_idx) else {
-        return Ok(None);
-    };
-    if !ETB_UNTAPPED_MARKER_PATTERN.matches_words(&clause_words[enter_word_idx + 1..]) {
+    if !ETB_UNTAPPED_MARKER_PATTERN.matches_words(&entry_clause.tail_clause.word_refs()) {
         return Ok(None);
     }
 
-    let before_enter = &tokens[..enter_token_idx];
+    let before_enter = entry_clause.filter_tokens;
     if before_enter.is_empty() {
         return Ok(None);
     }
     let filter = parse_object_filter(before_enter, false)?;
     Ok(Some(StaticAbility::enters_untapped_for_filter(filter)))
+}
+
+fn parse_reveal_from_hand_filter_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const FROM_YOUR_HAND_PHRASE: &[&str] = &["from", "your", "hand"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("reveal"),
+        LexPattern::object("reveal_filter", LexCaptureKind::UntilPhrase(FROM_YOUR_HAND_PHRASE)),
+        LexPattern::phrase(FROM_YOUR_HAND_PHRASE),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    PATTERN
+        .find_in_clause(clause)?
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .map(LexedClause::trimmed)
 }
 
 pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
@@ -2644,27 +3137,9 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
         return Ok(None);
     }
 
-    let Some(reveal_word_idx) = ETB_REVEAL_WORD_PATTERN.find_word(&clause_words) else {
-        return Err(CardTextError::ParseError(format!(
-            "missing 'reveal' keyword in land ETB reveal clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    };
-    let Some(from_hand_word_idx) = etb_find_prefix_shape_start(
-        &clause_words[reveal_word_idx + 1..],
-        &ETB_FROM_YOUR_HAND_PREFIX_PATTERN,
-    )
-    .map(|idx| reveal_word_idx + 1 + idx) else {
+    let Some(reveal_filter_clause) = parse_reveal_from_hand_filter_clause(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported reveal source in land ETB reveal clause (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    };
-    let Some(reveal_filter_clause) =
-        LexedClause::new(tokens).between_word_range(reveal_word_idx + 1, from_hand_word_idx)
-    else {
-        return Err(CardTextError::ParseError(format!(
-            "missing reveal filter start in land ETB reveal clause (clause: '{}')",
             clause_words.join(" ")
         )));
     };
@@ -2697,53 +3172,30 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     }
 
     // Pattern B: "... This land enters tapped unless you revealed ... this way or you control ..."
-    let Some(unless_idx) = ETB_UNLESS_TAIL_PATTERN.find_word(&clause_words) else {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported land ETB reveal clause (expected 'if you don't' or 'unless') (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    };
-    let before_unless = &clause_words[..unless_idx];
-    if !ETB_ENTERS_TAPPED_PHRASE_PATTERN.matches_words(before_unless) {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported land ETB reveal unless-prefix (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
-
-    let mut condition = reveal_condition;
-    if let Some(or_idx_rel) = ETB_OR_WORD_PATTERN.find_word(&clause_words[unless_idx + 1..]) {
-        let or_idx = unless_idx + 1 + or_idx_rel;
-        let Some(control_word_idx) = ETB_CONTROL_OR_CONTROLS_WORD_PATTERN
-            .find_word(&clause_words[or_idx + 1..])
-            .map(|idx| or_idx + 1 + idx)
-        else {
+    let condition_clause = parse_enters_tapped_unless_condition_clause(tokens);
+    if condition_clause.is_none() {
+        if ETB_UNLESS_MARKER_PATTERN.matches_words(&clause_words) {
             return Err(CardTextError::ParseError(format!(
-                "unsupported land ETB reveal disjunction (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
-        let Some(control_filter_start_token_idx) =
-            token_index_for_word_index(tokens, control_word_idx + 1)
-        else {
-            return Err(CardTextError::ParseError(format!(
-                "missing control filter in land ETB reveal clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
-        let control_filter_tokens =
-            trim_edge_punctuation(&tokens[control_filter_start_token_idx..]);
-        if control_filter_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing control filter in land ETB reveal clause (clause: '{}')",
+                "unsupported land ETB reveal unless-prefix (clause: '{}')",
                 clause_words.join(" ")
             )));
         }
-        let control_filter = parse_object_filter(&control_filter_tokens, false)?;
-        condition = crate::ConditionExpr::Or(
-            Box::new(condition),
-            Box::new(crate::ConditionExpr::YouControl(control_filter)),
-        );
+        return Ok(None);
+    }
+
+    let mut condition = reveal_condition;
+    if let Some(condition_clause) = condition_clause
+        && ETB_OR_WORD_PATTERN.matches_words(&condition_clause.word_refs())
+    {
+        let Some(parsed_condition) =
+            parse_revealed_this_way_or_control_condition(condition_clause.tokens())
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported control condition in land ETB reveal clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        condition = parsed_condition;
     }
 
     parser_trace("parse_static:land-reveal-or-enter-tapped:matched", tokens);
@@ -2753,15 +3205,114 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     )))
 }
 
-fn parse_enters_tapped_unless_control_quantity_condition(
+fn parse_revealed_this_way_or_control_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<crate::ConditionExpr> {
+    const THIS_WAY_OR_PHRASE: &[&str] = &["this", "way", "or"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["you", "revealed"]),
+        LexPattern::object(
+            "reveal_filter",
+            LexCaptureKind::UntilPhrase(THIS_WAY_OR_PHRASE),
+        ),
+        LexPattern::phrase(THIS_WAY_OR_PHRASE),
+        LexPattern::role_capture(
+            "control_condition",
+            LexCaptureRole::Condition,
+            LexCaptureKind::Rest,
+        ),
+    ]);
+
+    let condition_clause = LexedClause::new(condition_tokens);
+    let matched = PATTERN.match_clause(condition_clause)?;
+    let reveal_filter_clause = matched.capture_clause_by_role(
+        LexCaptureRole::Object,
+        condition_clause,
+    )?;
+    let reveal_filter_tokens = trim_edge_punctuation(reveal_filter_clause.tokens());
+    if reveal_filter_tokens.is_empty() {
+        return None;
+    }
+    let reveal_filter = parse_object_filter(&reveal_filter_tokens, false).ok()?;
+
+    let control_clause = matched.capture_clause_by_role(
+        LexCaptureRole::Condition,
+        condition_clause,
+    )?;
+    let control_tokens = trim_edge_punctuation(control_clause.tokens());
+    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
+        &control_tokens,
+        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            allow_defending_player: false,
+            bind_filter_controller_to_subject: false,
+            allow_different_powers_tail: false,
+            default_filter_zone: Some(Zone::Battlefield),
+        },
+    )?;
+    if control_condition.player_filter != Some(PlayerFilter::You)
+        || control_condition
+            .at_least_count()
+            .map_or(true, |count| count > 1)
+    {
+        return None;
+    }
+
+    Some(crate::ConditionExpr::Or(
+        Box::new(crate::ConditionExpr::YouHaveCardInHandMatching(
+            reveal_filter,
+        )),
+        Box::new(crate::ConditionExpr::YouControl(control_condition.filter)),
+    ))
+}
+
+fn captured_enters_tapped_unless_control_quantity_static_ability(
+    control_condition: &crate::runtime_backend::grammar::conditions::ControlConditionAst,
+) -> Option<StaticAbility> {
+    let mut filter = control_condition.filter.clone();
+    filter.zone = None;
+
+    let normalize_template = |mut filter: ObjectFilter| {
+        filter.zone = None;
+        filter
+    };
+    let other_lands = normalize_template(
+        ObjectFilter::land()
+            .controlled_by(PlayerFilter::You)
+            .other(),
+    );
+    let basic_lands = normalize_template(
+        ObjectFilter::land()
+            .controlled_by(PlayerFilter::You)
+            .with_supertype(Supertype::Basic),
+    );
+
+    match (control_condition.comparison, filter) {
+        (crate::effect::Comparison::GreaterThanOrEqual(2), filter) if filter == other_lands => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_more_other_lands())
+        }
+        (crate::effect::Comparison::LessThanOrEqual(2), filter) if filter == other_lands => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_fewer_other_lands())
+        }
+        (crate::effect::Comparison::GreaterThanOrEqual(2), filter) if filter == basic_lands => {
+            Some(StaticAbility::enters_tapped_unless_control_two_or_more_basic_lands())
+        }
+        _ => None,
+    }
+}
+
+fn parse_enters_tapped_unless_control_quantity_static_ability(
+    condition_tokens: &[OwnedLexToken],
+    display: String,
+) -> Option<StaticAbility> {
     let condition_words = crate::runtime_backend::lexer::token_word_refs(condition_tokens);
     let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
         condition_tokens,
         crate::runtime_backend::grammar::conditions::ControlConditionOptions {
             allow_that_player: false,
             allow_opponent_players: false,
+            allow_defending_player: false,
             bind_filter_controller_to_subject: true,
             allow_different_powers_tail: false,
             default_filter_zone: Some(Zone::Battlefield),
@@ -2770,53 +3321,496 @@ fn parse_enters_tapped_unless_control_quantity_condition(
     if control_condition.quantity_token_count == 0 {
         return None;
     }
+    if let Some(ability) =
+        captured_enters_tapped_unless_control_quantity_static_ability(&control_condition)
+    {
+        return Some(ability);
+    }
+
     let mut filter = control_condition.filter;
     if filter.zone.is_none() {
         filter.zone = Some(Zone::Battlefield);
     }
-    Some(crate::ConditionExpr::CountComparison {
+    let condition = crate::ConditionExpr::CountComparison {
         count: AnthemCountExpression::MatchingFilter(filter),
         comparison: control_condition.comparison,
         display: Some(condition_words.join(" ")),
-    })
+    };
+    Some(StaticAbility::enters_tapped_unless_condition(
+        condition, display,
+    ))
 }
 
-fn parse_legacy_enters_tapped_unless_control_quantity_static_ability(
-    condition_tokens: &[OwnedLexToken],
-) -> Option<StaticAbility> {
-    let condition_words = crate::runtime_backend::lexer::token_word_refs(condition_tokens);
-    match condition_words.as_slice() {
-        ["you", "control", "two", "or", "more", "other", "lands"] => {
-            Some(StaticAbility::enters_tapped_unless_control_two_or_more_other_lands())
+#[cfg(test)]
+mod etb_enters_tapped_with_counters_tests {
+    use super::*;
+
+    #[test]
+    fn enters_tapped_with_counters_uses_capture_parser() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "this creature enters tapped with one +1/+1 counter on it.",
+            0,
+        )
+        .expect("lex");
+
+        let captured = parse_enters_tapped_with_counters_clause_tokens(&tokens)
+            .expect("capture parser should recognize tapped-with-counters clause");
+        assert_eq!(
+            LexedClause::new(captured.subject_tokens).word_refs(),
+            ["this", "creature"]
+        );
+        assert!(
+            LexedClause::new(captured.entry_modifier_tokens)
+                .word_refs()
+                .contains(&"tapped")
+        );
+
+        let abilities = parse_enters_tapped_with_counters_line(&tokens)
+            .expect("parser should not error")
+            .expect("enters tapped with counters should parse");
+        let ids = abilities.iter().map(StaticAbility::id).collect::<Vec<_>>();
+
+        assert_eq!(abilities.len(), 2, "expected tapped plus counters");
+        assert!(ids.contains(&crate::static_abilities::StaticAbilityId::EntersTapped));
+        assert!(
+            ids.contains(&crate::static_abilities::StaticAbilityId::EnterWithCounters),
+            "expected enters-with-counters ability, got {ids:?}"
+        );
+    }
+
+    #[test]
+    fn enters_with_counters_uses_capture_parser_for_normalized_subjects() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "This creature enters with one +1/+1 counter on it.",
+            0,
+        )
+        .expect("lex");
+
+        let captured = parse_enters_with_counters_clause_tokens(&tokens)
+            .expect("capture parser should normalize source subject");
+        assert_eq!(
+            LexedClause::new(captured.subject_tokens).word_refs(),
+            ["this", "creature"]
+        );
+
+        let ability = parse_enters_with_counters_line(&tokens)
+            .expect("parser should not error")
+            .expect("enters with counters should parse");
+        assert_eq!(
+            ability.id(),
+            crate::static_abilities::StaticAbilityId::EnterWithCounters
+        );
+    }
+
+    #[test]
+    fn colors_of_mana_spent_condition_uses_capture_parser() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "Two or more colors of mana were spent to cast it.",
+            0,
+        )
+        .expect("lex");
+
+        assert_eq!(
+            parse_enters_with_counter_colors_mana_spent_condition_tokens(&tokens),
+            Some(2)
+        );
+        assert_eq!(
+            parse_unless_enters_with_counter_condition_display(&tokens),
+            Some("fewer than 2 colors of mana were spent to cast it".to_string())
+        );
+        assert!(matches!(
+            parse_enters_with_counter_condition_clause(&tokens),
+            Some(crate::ConditionExpr::ColorsOfManaSpentToCastThisSpellOrMore(2))
+        ));
+    }
+
+    #[test]
+    fn you_cast_spells_this_turn_condition_uses_capture_parser() {
+        for text in [
+            "you've cast two or more spells this turn",
+            "you have cast three or more spells this turn",
+            "you cast four or more spells this turn",
+        ] {
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+            let expected = if text.contains("three") {
+                3
+            } else if text.contains("four") {
+                4
+            } else {
+                2
+            };
+
+            assert_eq!(
+                parse_enters_with_counter_you_cast_spells_this_turn_condition_tokens(&tokens),
+                Some(expected),
+                "{text}"
+            );
+            assert!(matches!(
+                parse_enters_with_counter_condition_clause(&tokens),
+                Some(crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore {
+                    player: PlayerFilter::You,
+                    count
+                }) if count == expected
+            ));
         }
-        ["you", "control", "two", "or", "fewer", "other", "lands"] => {
-            Some(StaticAbility::enters_tapped_unless_control_two_or_fewer_other_lands())
+    }
+
+    #[test]
+    fn x_value_threshold_condition_uses_capture_parser() {
+        for (text, expected) in [("X is 5 or more", 5), ("x is five or more", 5)] {
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+
+            assert_eq!(
+                parse_enters_with_counter_x_value_threshold_condition_tokens(&tokens),
+                Some(expected),
+                "{text}"
+            );
+            assert!(matches!(
+                parse_enters_with_counter_condition_clause(&tokens),
+                Some(crate::ConditionExpr::XValueAtLeast(amount)) if amount == expected
+            ));
         }
-        ["you", "control", "two", "or", "more", "basic", "lands"] => {
-            Some(StaticAbility::enters_tapped_unless_control_two_or_more_basic_lands())
+    }
+
+    #[test]
+    fn plus_for_each_counter_tail_uses_capture_parser() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "plus an additional +1/+1 counter on it for each other creature you control",
+            0,
+        )
+        .expect("lex");
+
+        let value = parse_enters_with_counter_plus_for_each_tail_tokens(&tokens)
+            .expect("tail parser should not error")
+            .expect("plus for-each tail should parse");
+        let debug = format!("{value:?}");
+        assert!(
+            debug.contains("other: true") && debug.contains("Creature"),
+            "expected other-creature dynamic counter value, got {debug}"
+        );
+    }
+
+    #[test]
+    fn plus_counter_tail_gate_uses_capture_parser() {
+        let supported_tokens = crate::runtime_backend::lexer::lex_line(
+            "plus an additional +1/+1 counter on it for each other creature you control",
+            0,
+        )
+        .expect("lex");
+        let supported = parse_enters_with_counter_plus_tail_tokens(&supported_tokens)
+            .expect("plus tail parser should not error")
+            .expect("plus tail should be recognized");
+        assert!(
+            matches!(supported, EntersWithCounterPlusTail::Supported(_)),
+            "expected supported plus-for-each tail, got {supported:?}"
+        );
+
+        let unsupported_tokens =
+            crate::runtime_backend::lexer::lex_line("plus a mystery counter", 0).expect("lex");
+        let unsupported = parse_enters_with_counter_plus_tail_tokens(&unsupported_tokens)
+            .expect("unsupported plus tail should not hard-error")
+            .expect("plus tail should be recognized");
+        assert!(matches!(
+            unsupported,
+            EntersWithCounterPlusTail::Unsupported
+        ));
+
+        let unrelated_tokens =
+            crate::runtime_backend::lexer::lex_line("for each creature you control", 0)
+                .expect("lex");
+        assert!(
+            parse_enters_with_counter_plus_tail_tokens(&unrelated_tokens)
+                .expect("unrelated tail should not error")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn for_each_counter_tail_uses_capture_parser() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "for each creature card in your graveyard",
+            0,
+        )
+        .expect("lex");
+
+        let value = parse_enters_with_counter_for_each_tail_tokens(&tokens)
+            .expect("tail parser should not error")
+            .expect("for-each tail should parse");
+        let debug = format!("{value:?}");
+        assert!(
+            debug.contains("Graveyard") && debug.contains("Creature"),
+            "expected creature-card-in-graveyard dynamic value, got {debug}"
+        );
+    }
+
+    #[test]
+    fn equal_to_counter_tail_uses_capture_parser() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "equal to the number of creature cards in your graveyard",
+            0,
+        )
+        .expect("lex");
+
+        let value = parse_enters_with_counter_equal_to_tail_tokens(&tokens)
+            .expect("equal-to tail should parse");
+        let debug = format!("{value:?}");
+        assert!(
+            debug.contains("Graveyard") && debug.contains("Creature"),
+            "expected creature-card-in-graveyard equal-to value, got {debug}"
+        );
+    }
+
+    #[test]
+    fn equal_to_mana_spent_value_uses_capture_parser() {
+        for text in [
+            "equal to the amount of mana spent to cast it",
+            "equal to the amount of mana spent to cast this spell",
+            "equal to the amount of mana spent to cast spell",
+        ] {
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+            let value = parse_equal_to_mana_spent_to_cast_value(&tokens)
+                .unwrap_or_else(|| panic!("mana-spent value should parse: {text}"));
+            let debug = format!("{value:?}");
+            assert!(
+                debug.contains("ManaSpentToCastThisSpell") && debug.contains("EqualTo"),
+                "expected equal-to mana-spent value for {text}, got {debug}"
+            );
         }
-        _ => None,
+
+        let unrelated_tokens =
+            crate::runtime_backend::lexer::lex_line(
+                "equal to the amount of mana spent to cast that permanent",
+                0,
+            )
+            .expect("lex");
+        assert!(parse_equal_to_mana_spent_to_cast_value(&unrelated_tokens).is_none());
+    }
+
+    #[test]
+    fn known_for_each_counter_tails_use_capture_parser() {
+        let cases = [
+            (
+                "for each creature that died this turn",
+                "CreaturesDiedThisTurn",
+                true,
+            ),
+            (
+                "for each color of mana spent to cast it",
+                "ColorsOfManaSpentToCastThisSpell",
+                true,
+            ),
+            (
+                "for each creature that died under your control this turn",
+                "CreaturesDiedThisTurnControlledBy",
+                true,
+            ),
+            ("for each time this spell was kicked", "KickCount", true),
+            (
+                "for each Magic game you have lost to one of your opponents since you last won a game against them",
+                "MagicGamesLostToOpponentsSinceLastWin",
+                false,
+            ),
+        ];
+
+        for (text, expected_debug, expected_scaled) in cases {
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+            let parsed = parse_enters_with_counter_known_for_each_tail_tokens(&tokens)
+                .unwrap_or_else(|| panic!("known for-each tail should parse: {text}"));
+            let debug = format!("{:?}", parsed.value);
+            assert!(
+                debug.contains(expected_debug),
+                "expected {expected_debug} value for {text}, got {debug}"
+            );
+            assert_eq!(
+                parsed.scale_by_base_count, expected_scaled,
+                "unexpected scaling flag for {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn counter_condition_tail_uses_capture_parser() {
+        let if_tokens =
+            crate::runtime_backend::lexer::lex_line("if you attacked this turn", 0).expect("lex");
+        let if_tail = parse_enters_with_counter_condition_tail_tokens(&if_tokens)
+            .expect("if condition tail should parse");
+        assert_eq!(if_tail.kind, EntersWithCounterConditionTailKind::If);
+        assert_eq!(
+            LexedClause::new(if_tail.condition_tokens).word_refs(),
+            ["you", "attacked", "this", "turn"]
+        );
+
+        let unless_tokens = crate::runtime_backend::lexer::lex_line(
+            "unless two or more colors of mana were spent to cast it",
+            0,
+        )
+        .expect("lex");
+        let unless_tail = parse_enters_with_counter_condition_tail_tokens(&unless_tokens)
+            .expect("unless condition tail should parse");
+        assert_eq!(
+            unless_tail.kind,
+            EntersWithCounterConditionTailKind::Unless
+        );
+        assert_eq!(
+            parse_unless_enters_with_counter_condition_display(unless_tail.condition_tokens),
+            Some("fewer than 2 colors of mana were spent to cast it".to_string())
+        );
+    }
+
+}
+
+#[cfg(test)]
+mod etb_control_quantity_tests {
+    use super::*;
+
+    fn parse_control_quantity_condition(text: &str) -> StaticAbility {
+        let tokens = crate::runtime_backend::lexer::lex_line(text, 0).expect("lex");
+        parse_enters_tapped_unless_control_quantity_static_ability(&tokens, text.to_string())
+            .expect("control quantity condition should parse")
+    }
+
+    #[test]
+    fn enters_tapped_unless_control_quantity_special_cases_use_capture_parser() {
+        let cases = [
+            (
+                "you control two or more other lands",
+                crate::static_abilities::StaticAbilityId::EntersTappedUnlessControlTwoOrMoreOtherLands,
+            ),
+            (
+                "you control two or fewer other lands",
+                crate::static_abilities::StaticAbilityId::EntersTappedUnlessControlTwoOrFewerOtherLands,
+            ),
+            (
+                "you control two or more basic lands",
+                crate::static_abilities::StaticAbilityId::EntersTappedUnlessControlTwoOrMoreBasicLands,
+            ),
+        ];
+
+        for (text, expected_id) in cases {
+            let ability = parse_control_quantity_condition(text);
+            assert_eq!(ability.id(), expected_id, "{text}");
+        }
+    }
+
+    #[test]
+    fn enters_tapped_unless_control_quantity_generic_case_keeps_count_condition() {
+        let ability = parse_control_quantity_condition("you control three or more artifacts");
+        let debug = format!("{ability:?}");
+
+        assert!(
+            debug.contains("EntersTappedUnlessCondition"),
+            "expected generic conditional ETB ability, got {debug}"
+        );
+        assert!(debug.contains("CountComparison"), "{debug}");
+        assert!(debug.contains("Artifact"), "{debug}");
+        assert!(debug.contains("GreaterThanOrEqual(3)"), "{debug}");
+    }
+
+    #[test]
+    fn reveal_unless_revealed_or_control_disjunction_uses_capture_parser() {
+        let reveal_tokens = crate::runtime_backend::lexer::lex_line(
+            "As this land enters, you may reveal a Dragon card from your hand.",
+            0,
+        )
+        .expect("lex");
+        assert!(
+            parse_reveal_from_hand_or_enters_tapped_line(&reveal_tokens)
+                .expect("standalone reveal clause should not hard-error")
+                .is_none()
+        );
+
+        let tapped_tokens = crate::runtime_backend::lexer::lex_line(
+            "This land enters tapped unless you revealed a Dragon card this way or you control a Dragon.",
+            0,
+        )
+        .expect("lex");
+
+        let ability = parse_conditional_enters_tapped_unless_line(&tapped_tokens)
+            .expect("reveal-or-control clause should parse")
+            .expect("expected static ability");
+        let debug = format!("{ability:?}");
+
+        assert!(debug.contains("YouHaveCardInHandMatching"), "{debug}");
+        assert!(debug.contains("YouControl"), "{debug}");
+        assert!(debug.contains("Dragon"), "{debug}");
+    }
+
+    #[test]
+    fn enters_tapped_unless_opponents_condition_uses_capture_parser() {
+        let condition_tokens =
+            crate::runtime_backend::lexer::lex_line("you have two or more opponents", 0)
+                .expect("lex");
+        assert!(
+            parse_enters_tapped_unless_two_or_more_opponents_condition(&condition_tokens).is_some()
+        );
+
+        let wrong_amount_tokens =
+            crate::runtime_backend::lexer::lex_line("you have three or more opponents", 0)
+                .expect("lex");
+        assert!(
+            parse_enters_tapped_unless_two_or_more_opponents_condition(&wrong_amount_tokens)
+                .is_none()
+        );
+
+        let line_tokens = crate::runtime_backend::lexer::lex_line(
+            "This land enters tapped unless you have two or more opponents.",
+            0,
+        )
+        .expect("lex");
+        let ability = parse_conditional_enters_tapped_unless_line(&line_tokens)
+            .expect("opponents condition should parse")
+            .expect("expected static ability");
+
+        assert_eq!(
+            ability.id(),
+            crate::static_abilities::StaticAbilityId::EntersTappedUnlessTwoOrMoreOpponents
+        );
+    }
+
+    #[test]
+    fn enters_tapped_unless_life_condition_uses_capture_parser() {
+        let condition_tokens =
+            crate::runtime_backend::lexer::lex_line("a player has 13 or less life", 0)
+                .expect("lex");
+        assert!(
+            parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&condition_tokens)
+                .is_some()
+        );
+
+        let wrong_amount_tokens =
+            crate::runtime_backend::lexer::lex_line("a player has 12 or less life", 0)
+                .expect("lex");
+        assert!(
+            parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&wrong_amount_tokens)
+                .is_none()
+        );
+
+        let line_tokens = crate::runtime_backend::lexer::lex_line(
+            "This land enters tapped unless a player has 13 or less life.",
+            0,
+        )
+        .expect("lex");
+        let ability = parse_conditional_enters_tapped_unless_line(&line_tokens)
+            .expect("life condition should parse")
+            .expect("expected static ability");
+
+        assert_eq!(
+            ability.id(),
+            crate::static_abilities::StaticAbilityId::EntersTappedUnlessAPlayerHas13OrLessLife
+        );
     }
 }
 
 fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<()> {
-    let condition_words = crate::runtime_backend::lexer::token_word_refs(condition_tokens);
-    if !ETB_A_PLAYER_HAS_PREFIX_PATTERN.matches_words(&condition_words) {
+    let condition = crate::runtime_backend::grammar::conditions::parse_player_life_total_condition(
+        condition_tokens,
+    )?;
+    if condition.player != PlayerFilter::Any {
         return None;
     }
-    let (comparison, used) = parse_quantity_comparison_prefix(
-        condition_tokens.get(3..)?,
-        false,
-        false,
-        "enters-tapped life condition",
-    )
-    .ok()?;
-    if !ETB_LIFE_TAIL_PATTERN.matches_words(condition_words.get(3 + used..).unwrap_or_default()) {
-        return None;
-    }
-    match comparison {
+    match condition.comparison {
         crate::effect::Comparison::LessThanOrEqual(13)
         | crate::effect::Comparison::LessThan(14) => Some(()),
         _ => None,
@@ -2826,16 +3820,46 @@ fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(
 fn parse_enters_tapped_unless_two_or_more_opponents_condition(
     condition_tokens: &[OwnedLexToken],
 ) -> Option<()> {
-    let condition_words = crate::runtime_backend::lexer::token_word_refs(condition_tokens);
-    if !ETB_YOU_HAVE_PREFIX_PATTERN.matches_words(&condition_words) {
+    let opponent_phrases: &[&[&str]] = &[&["opponents"]];
+    let condition =
+        crate::runtime_backend::grammar::conditions::parse_player_has_quantity_object_condition(
+            condition_tokens,
+            opponent_phrases,
+            "enters-tapped opponents condition",
+        )?;
+    if condition.player != PlayerFilter::You {
         return None;
     }
-    let (count, rest_start) = parse_etb_at_least_quantity_at(condition_tokens, 2)?;
-    if count == 2 && ETB_OPPONENTS_TAIL_PATTERN.matches_words(&condition_words[rest_start..]) {
-        Some(())
-    } else {
-        None
+    let count = crate::runtime_backend::util::comparison_to_strict_at_least_threshold(
+        &condition.comparison,
+    )?;
+    if count == 2 { Some(()) } else { None }
+}
+
+fn parse_enters_tapped_unless_condition_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<LexedClause<'a>> {
+    const UNLESS_PHRASE: &[&str] = &["unless"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::modifier("entry_prefix", LexCaptureKind::UntilPhrase(UNLESS_PHRASE)),
+        LexPattern::phrase(UNLESS_PHRASE),
+        LexPattern::role_capture(
+            "condition",
+            LexCaptureRole::Condition,
+            LexCaptureKind::Rest,
+        ),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let entry_prefix = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+    if !ETB_ENTERS_TAPPED_PHRASE_PATTERN.matches_words(&entry_prefix.word_refs()) {
+        return None;
     }
+    let condition_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Condition, clause)?
+        .trimmed();
+    (!condition_clause.is_empty()).then_some(condition_clause)
 }
 
 pub(crate) fn parse_conditional_enters_tapped_unless_line(
@@ -2851,27 +3875,22 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
         return Ok(None);
     }
 
-    let Some(unless_idx) =
-        crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ETB_UNLESS_TAIL_PATTERN.matches_token(token)
-        })
-    else {
+    let Some(condition_clause) = parse_enters_tapped_unless_condition_clause(tokens) else {
         return Ok(None);
     };
-    let condition_tokens = trim_edge_punctuation(&tokens[unless_idx + 1..]);
+    let condition_tokens = trim_edge_punctuation(condition_clause.tokens());
     let condition_words = crate::runtime_backend::token_word_refs(&condition_tokens);
-    if let Some(ability) =
-        parse_legacy_enters_tapped_unless_control_quantity_static_ability(&condition_tokens)
-    {
-        return Ok(Some(ability));
-    }
-    if let Some(condition) =
-        parse_enters_tapped_unless_control_quantity_condition(&condition_tokens)
-    {
+    if let Some(condition) = parse_revealed_this_way_or_control_condition(&condition_tokens) {
         return Ok(Some(StaticAbility::enters_tapped_unless_condition(
             condition,
             clause_words.join(" "),
         )));
+    }
+    if let Some(ability) = parse_enters_tapped_unless_control_quantity_static_ability(
+        &condition_tokens,
+        clause_words.join(" "),
+    ) {
+        return Ok(Some(ability));
     }
     if parse_enters_tapped_unless_a_player_has_13_or_less_life_condition(&condition_tokens)
         .is_some()
@@ -2899,6 +3918,7 @@ pub(crate) fn parse_conditional_enters_tapped_unless_line(
             crate::runtime_backend::grammar::conditions::ControlConditionOptions {
                 allow_that_player: false,
                 allow_opponent_players: false,
+                allow_defending_player: false,
                 bind_filter_controller_to_subject: false,
                 allow_different_powers_tail: false,
                 default_filter_zone: None,
@@ -2931,7 +3951,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     }
 
     if clause_words.len() > 6
-        && word_slice_starts_with(&clause_words, &["as", "long", "as"])
+        && ETB_AS_LONG_AS_PREFIX_PATTERN.matches_words(&clause_words)
         && let Some(comma_idx) = find_token_kind(tokens, TokenKind::Comma)
     {
         let condition_tokens = trim_edge_punctuation(&tokens[3..comma_idx]);
@@ -2945,21 +3965,17 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let enter_word_idx = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words);
-    let Some(enter_word_idx) = enter_word_idx else {
+    let Some(entry_clause) = parse_entry_filter_clause(tokens) else {
         return Ok(None);
     };
-    let Some(enter_token_idx) = token_index_for_word_index(tokens, enter_word_idx) else {
-        return Ok(None);
-    };
-    if tokens[..enter_token_idx]
+    let subject_tokens = trim_commas(entry_clause.filter_tokens);
+    if subject_tokens
         .iter()
         .any(|token| token.is_period() || token.is_colon() || token.is_semicolon())
     {
         return Ok(None);
     }
 
-    let subject_tokens = trim_commas(&tokens[..enter_token_idx]);
     if subject_tokens.is_empty() {
         return Ok(None);
     }
@@ -3059,22 +4075,51 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     ))
 }
 
+#[derive(Debug, Clone, Copy)]
+struct AsEntersClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    tail_clause: LexedClause<'a>,
+}
+
+fn parse_as_enters_clause<'a>(tokens: &'a [OwnedLexToken]) -> Option<AsEntersClause<'a>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::word("as"),
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(ETB_ENTER_OR_ENTERS_PHRASES),
+        ),
+        LexPattern::action("entry_action", LexCaptureKind::OneOf(&["enter", "enters"])),
+        LexPattern::tail("entry_tail", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let tail_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)?
+        .trimmed();
+    if subject_clause.is_empty() || tail_clause.is_empty() {
+        return None;
+    }
+
+    Some(AsEntersClause {
+        subject_tokens: subject_clause.tokens(),
+        tail_clause,
+    })
+}
+
 pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_AS_WORD_PATTERN.matches_word_at(&clause_words, 0) {
-        return Ok(None);
-    }
-
-    let Some(enter_word_idx) = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words) else {
+    let Some(as_enters) = parse_as_enters_clause(tokens) else {
         return Ok(None);
     };
-    if enter_word_idx <= 1 {
-        return Ok(None);
-    }
 
-    let after_enter = clause_words.get(enter_word_idx + 1..).unwrap_or_default();
+    let after_enter_words = as_enters.tail_clause.word_refs();
+    let after_enter = after_enter_words.as_slice();
     if !ETB_IT_BECOMES_PREFIX_PATTERN.matches_words(after_enter) {
         return Ok(None);
     }
@@ -3107,11 +4152,7 @@ pub(crate) fn parse_as_enters_becomes_characteristics_for_filter_line(
         return Ok(None);
     }
 
-    let subject_start = token_index_for_word_index(tokens, 1)
-        .ok_or_else(|| CardTextError::ParseError("missing as-enters subject".to_string()))?;
-    let enter_token_idx = token_index_for_word_index(tokens, enter_word_idx)
-        .ok_or_else(|| CardTextError::ParseError("missing as-enters enter token".to_string()))?;
-    let subject_tokens = trim_commas(&tokens[subject_start..enter_token_idx]);
+    let subject_tokens = trim_commas(as_enters.subject_tokens);
     let filter = parse_object_filter(&subject_tokens, false)?;
 
     let descriptor_words = &after_enter[descriptor_idx..addition_idx];
@@ -3154,24 +4195,19 @@ pub(crate) fn parse_as_enters_or_turns_face_up_pt_choice_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !ETB_AS_WORD_PATTERN.matches_word_at(&clause_words, 0) {
-        return Ok(None);
-    }
-
-    let Some(enter_word_idx) = ETB_ENTER_OR_ENTERS_WORD_PATTERN.find_word(&clause_words) else {
+    let Some(as_enters) = parse_as_enters_clause(tokens) else {
         return Ok(None);
     };
-    if enter_word_idx <= 1 {
-        return Ok(None);
-    }
 
-    let subject_words = &clause_words[1..enter_word_idx];
+    let subject_words_vec = crate::runtime_backend::token_word_refs(as_enters.subject_tokens);
+    let subject_words = subject_words_vec.as_slice();
     if !ETB_SELF_SUBJECT_PATTERN.matches_words(subject_words) {
         return Ok(None);
     }
 
-    let after_enter = clause_words.get(enter_word_idx + 1..).unwrap_or_default();
-    if word_slice_starts_with(after_enter, &["it", "becomes", "your", "choice", "of"]) {
+    let after_enter_words = as_enters.tail_clause.word_refs();
+    let after_enter = after_enter_words.as_slice();
+    if ETB_IT_BECOMES_YOUR_CHOICE_OF_PREFIX_PATTERN.matches_words(after_enter) {
         let options = parse_pt_choice_characteristic_options(&after_enter[5..], &clause_words)?;
         if options.is_empty() {
             return Ok(None);

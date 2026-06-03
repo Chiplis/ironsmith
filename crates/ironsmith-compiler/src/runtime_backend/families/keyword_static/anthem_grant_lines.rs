@@ -85,6 +85,50 @@ fn anthem_cant_be_blocked_max_blockers(words: &[&str]) -> Option<(u32, usize)> {
 
 type AnthemNormalizedWords<'a> = crate::runtime_backend::grammar::primitives::TokenWordView<'a>;
 
+#[derive(Debug, Clone, Copy)]
+struct CantBeBlockedAsLongAsClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    condition_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CantBeBlockedClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KeywordsAndCantBeBlockedClause<'a> {
+    keyword_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LandwalkBlockOverrideClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    ability_word: &'a str,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GrantedEscapeCostTail<'a> {
+    exile_count_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct GrantedMiracleCostReductionTail<'a> {
+    reduction_cost_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CantBeBlockedByMoreThanClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    blocker_threshold_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+struct CanBlockAdditionalCreatureClause<'a> {
+    subject_tokens: &'a [OwnedLexToken],
+    additional_count_tokens: &'a [OwnedLexToken],
+}
+
 const POWER_OR_TOUGHNESS_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases & [&[&["power", "or", "toughness"], &["toughness", "or", "power"],]]
 );
@@ -99,6 +143,63 @@ const FIRST_SPELL_EACH_TURN_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape
 
 const CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["as", "long", "as"]);
+const CANT_BE_BLOCKED_PHRASES: &[&[&str]] = &[
+    &["cant", "be", "blocked"],
+    &["can't", "be", "blocked"],
+    &["cannot", "be", "blocked"],
+    &["can", "t", "be", "blocked"],
+];
+const CANT_BE_BLOCKED_AS_LONG_AS_PHRASES: &[&[&str]] = &[
+    &["cant", "be", "blocked", "as", "long", "as"],
+    &["can't", "be", "blocked", "as", "long", "as"],
+    &["cannot", "be", "blocked", "as", "long", "as"],
+    &["can", "t", "be", "blocked", "as", "long", "as"],
+];
+const AND_CANT_BE_BLOCKED_PHRASES: &[&[&str]] = &[
+    &["and", "cant", "be", "blocked"],
+    &["and", "can't", "be", "blocked"],
+    &["and", "cannot", "be", "blocked"],
+    &["and", "can", "t", "be", "blocked"],
+];
+const CAN_BE_BLOCKED_AS_THOUGH_NO_ABILITY_PHRASES: &[&[&str]] = &[
+    &["can", "be", "blocked", "as", "though", "they", "didnt", "have"],
+    &["can", "be", "blocked", "as", "though", "they", "didn't", "have"],
+];
+const CANT_BE_BLOCKED_BY_PHRASES: &[&[&str]] = &[
+    &["cant", "be", "blocked", "by"],
+    &["can't", "be", "blocked", "by"],
+    &["cannot", "be", "blocked", "by"],
+    &["can", "t", "be", "blocked", "by"],
+];
+const CAN_BLOCK_PHRASE: &[&str] = &["can", "block"];
+const ADDITIONAL_CREATURE_TAIL_PHRASES: &[&[&str]] =
+    &[&["additional", "creature"], &["additional", "creatures"]];
+const CREATURE_NOUN_PHRASES: &[&[&str]] = &[&["creature"], &["creatures"]];
+const EACH_COMBAT_PHRASE: &[&str] = &["each", "combat"];
+const GRANTED_ESCAPE_COST_PREFIX_PHRASES: &[&[&str]] = &[
+    &[
+        "the", "escape", "cost", "is", "equal", "to", "the", "cards", "mana", "cost", "plus",
+    ],
+    &[
+        "its", "escape", "cost", "is", "equal", "to", "its", "mana", "cost", "plus",
+    ],
+];
+const GRANTED_ESCAPE_EXILE_TAIL_PHRASE: &[&str] =
+    &["other", "cards", "from", "your", "graveyard"];
+const GRANTED_ESCAPE_EXILE_SINGULAR_TAIL_PHRASE: &[&str] =
+    &["other", "card", "from", "your", "graveyard"];
+const GRANTED_ESCAPE_EXILE_TAIL_PHRASES: &[&[&str]] = &[
+    GRANTED_ESCAPE_EXILE_TAIL_PHRASE,
+    GRANTED_ESCAPE_EXILE_SINGULAR_TAIL_PHRASE,
+];
+const GRANTED_MIRACLE_COST_REDUCED_PREFIX_PHRASES: &[&[&str]] = &[
+    &[
+        "the", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
+    ],
+    &[
+        "its", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced", "by",
+    ],
+];
 const UNTIL_YOUR_NEXT_TURN_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["until", "your", "next", "turn"]);
 const ALL_CREATURES_BLOCK_THIS_CREATURE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -165,16 +266,6 @@ const CAN_ATTACK_AS_NO_DEFENDER_PREFIX_PATTERN: ClauseShape<'static> = clause_sh
             "can", "attack", "as", "though", "it", "didnt", "have", "defender"
         ]
 );
-
-const LANDWALK_BLOCK_OVERRIDE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["as", "though", "they", "didnt", "have"],
-            &["as", "though", "they", "didn't", "have"],
-        ]
-);
-const DEFENDING_PLAYER_CONTROLS_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["as", "long", "as", "defending", "player", "controls"]);
 
 const ALL_CREATURES_LOSE_FLYING_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["all", "creatures", "lose", "flying"]);
@@ -299,38 +390,6 @@ const ANTHEM_SPELL_CAST_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["spell", "cast"]);
 const ANTHEM_IGNORED_REMINDER_KEYWORD_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["unearth"], &["conspire"]]);
-const ANTHEM_ESCAPE_COST_THE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "the", "escape", "cost", "is", "equal", "to", "the", "cards", "mana", "cost", "plus",
-        ]
-);
-const ANTHEM_ESCAPE_COST_ITS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "its", "escape", "cost", "is", "equal", "to", "its", "mana", "cost", "plus"
-        ]
-);
-const ANTHEM_ESCAPE_EXILE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["other", "cards", "from", "your", "graveyard"],
-            &["other", "card", "from", "your", "graveyard"],
-        ]
-);
-const ANTHEM_MIRACLE_COST_REDUCED_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "the", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced",
-                "by",
-            ],
-            &[
-                "its", "miracle", "cost", "is", "equal", "to", "its", "mana", "cost", "reduced",
-                "by",
-            ],
-        ]
-);
 const ANTHEM_FLASHBACK_COST_EQUALS_MANA_COST_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -396,11 +455,6 @@ const EQUIPMENT_YOU_CONTROL_HAVE_EQUIP_PREFIX_PATTERN: ClauseShape<'static> =
 
 const EACH_CREATURE_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["each", "creature"]);
-const EACH_CREATURE_YOU_CONTROL_CAN_BLOCK_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["each", "creature", "you", "control", "can", "block"]);
-const EACH_CREATURE_CAN_BLOCK_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["each", "creature", "can", "block"]);
-const EACH_COMBAT_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["each", "combat"]);
 const ANTHEM_IT_OR_THEM_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["them"]]);
 const ANTHEM_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
@@ -573,12 +627,6 @@ const YOUR_LIFE_HALF_STARTING_CONDITION_PATTERN: ClauseShape<'static> = clause_s
             "starting", "life", "total",
         ]
 );
-const CANT_BE_BLOCKED_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["cant", "be", "blocked"]);
-const CAN_BE_BLOCKED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["can", "be", "blocked"]);
-const CANT_BE_BLOCKED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["cant", "be", "blocked"]);
 const ANTHEM_AS_LONG_AS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["as", "long", "as"]);
 const WITH_BASE_POWER_TOUGHNESS_PREFIX_PATTERN: ClauseShape<'static> =
@@ -671,7 +719,6 @@ const ANTHEM_ALL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["al
 const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
 const CREATURE_OR_CREATURES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["creature"], &["creatures"]]);
-const ADDITIONAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["additional"]);
 const AN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["an"]);
 const EVERY_SUBTYPE_FAMILY_TAILS: &[(&[&str], crate::types::SubtypeFamily)] = &[
     (
@@ -781,36 +828,23 @@ fn first_spell_each_turn_subject(filter_words: &[&str]) -> Option<AnthemSubjectA
 fn first_spell_each_turn_subject_tokens(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<AnthemSubjectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 6 {
-        return Ok(None);
-    }
+    const THE_PREFIX: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+    const TAIL: &[&str] = &["you", "cast", "each", "turn"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::optional(THE_PREFIX),
+        LexPattern::word("first"),
+        LexPattern::object("spell_filter", LexCaptureKind::UntilPhrase(TAIL)),
+        LexPattern::phrase(TAIL),
+    ]);
 
-    let first_word_idx = if words.first().copied() == Some("the") {
-        1
-    } else {
-        0
-    };
-    if words.get(first_word_idx).copied() != Some("first") {
-        return Ok(None);
-    }
-
-    let Some(tail_start_word_idx) = words.len().checked_sub(4) else {
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    if words.get(tail_start_word_idx..) != Some(&["you", "cast", "each", "turn"][..])
-        || tail_start_word_idx <= first_word_idx + 1
-    {
-        return Ok(None);
-    }
-
-    let Some(filter_start) = token_index_for_word_index(tokens, first_word_idx + 1) else {
+    let Some(filter_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
         return Ok(None);
     };
-    let Some(filter_end) = token_index_for_word_index(tokens, tail_start_word_idx) else {
-        return Ok(None);
-    };
-    let filter_tokens = trim_commas(&tokens[filter_start..filter_end]);
+    let filter_tokens = filter_clause.trimmed().tokens();
     if filter_tokens.is_empty() {
         return Ok(None);
     }
@@ -824,6 +858,207 @@ fn first_spell_each_turn_subject_tokens(
     filter.cast_by = Some(PlayerFilter::You);
     filter.first_spell_cast_each_turn = true;
     Ok(Some(AnthemSubjectAst::Filter(filter)))
+}
+
+fn parse_cant_be_blocked_as_long_as_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<CantBeBlockedAsLongAsClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(CANT_BE_BLOCKED_AS_LONG_AS_PHRASES),
+        ),
+        LexPattern::any_phrase(CANT_BE_BLOCKED_AS_LONG_AS_PHRASES),
+        LexPattern::role_capture("condition", LexCaptureRole::Condition, LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let condition_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Condition, clause)?
+        .trimmed();
+    (!subject_clause.tokens().is_empty() && !condition_clause.tokens().is_empty()).then_some(
+        CantBeBlockedAsLongAsClause {
+            subject_tokens: subject_clause.tokens(),
+            condition_tokens: condition_clause.tokens(),
+        },
+    )
+}
+
+fn parse_cant_be_blocked_clause(tokens: &[OwnedLexToken]) -> Option<CantBeBlockedClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(CANT_BE_BLOCKED_PHRASES),
+        ),
+        LexPattern::any_phrase(CANT_BE_BLOCKED_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    (!subject_clause.tokens().is_empty()).then_some(CantBeBlockedClause {
+        subject_tokens: subject_clause.tokens(),
+    })
+}
+
+fn parse_keywords_and_cant_be_blocked_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<KeywordsAndCantBeBlockedClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object(
+            "keywords",
+            LexCaptureKind::UntilLastAnyPhrase(AND_CANT_BE_BLOCKED_PHRASES),
+        ),
+        LexPattern::any_phrase(AND_CANT_BE_BLOCKED_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let keyword_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    (!keyword_clause.tokens().is_empty()).then_some(KeywordsAndCantBeBlockedClause {
+        keyword_tokens: keyword_clause.tokens(),
+    })
+}
+
+fn parse_landwalk_block_override_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<LandwalkBlockOverrideClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(CAN_BE_BLOCKED_AS_THOUGH_NO_ABILITY_PHRASES),
+        ),
+        LexPattern::any_phrase(CAN_BE_BLOCKED_AS_THOUGH_NO_ABILITY_PHRASES),
+        LexPattern::object("ability", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let ability_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)?
+        .trimmed();
+    let ability_words = ability_clause.word_refs();
+    let [ability_word] = ability_words.as_slice() else {
+        return None;
+    };
+    (!subject_clause.tokens().is_empty()).then_some(LandwalkBlockOverrideClause {
+        subject_tokens: subject_clause.tokens(),
+        ability_word,
+    })
+}
+
+fn parse_granted_escape_cost_tail_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<GrantedEscapeCostTail<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(GRANTED_ESCAPE_COST_PREFIX_PHRASES),
+        LexPattern::word("exile"),
+        LexPattern::amount(
+            "exile_count",
+            LexCaptureKind::UntilAnyPhrase(GRANTED_ESCAPE_EXILE_TAIL_PHRASES),
+        ),
+        LexPattern::any_phrase(GRANTED_ESCAPE_EXILE_TAIL_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let count_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    (!count_clause.tokens().is_empty()).then_some(GrantedEscapeCostTail {
+        exile_count_tokens: count_clause.tokens(),
+    })
+}
+
+fn parse_granted_miracle_cost_reduction_tail_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<GrantedMiracleCostReductionTail<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(GRANTED_MIRACLE_COST_REDUCED_PREFIX_PHRASES),
+        LexPattern::amount("reduction_cost", LexCaptureKind::Rest),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let cost_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    (!cost_clause.tokens().is_empty()).then_some(GrantedMiracleCostReductionTail {
+        reduction_cost_tokens: cost_clause.tokens(),
+    })
+}
+
+fn parse_cant_be_blocked_by_more_than_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<CantBeBlockedByMoreThanClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(CANT_BE_BLOCKED_BY_PHRASES),
+        ),
+        LexPattern::any_phrase(CANT_BE_BLOCKED_BY_PHRASES),
+        LexPattern::amount(
+            "blocker_threshold",
+            LexCaptureKind::UntilAnyPhrase(CREATURE_NOUN_PHRASES),
+        ),
+        LexPattern::any_phrase(CREATURE_NOUN_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let threshold_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    (!subject_clause.tokens().is_empty() && !threshold_clause.tokens().is_empty()).then_some(
+        CantBeBlockedByMoreThanClause {
+            subject_tokens: subject_clause.tokens(),
+            blocker_threshold_tokens: threshold_clause.tokens(),
+        },
+    )
+}
+
+fn parse_can_block_additional_creature_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<CanBlockAdditionalCreatureClause<'_>> {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(CAN_BLOCK_PHRASE)),
+        LexPattern::phrase(CAN_BLOCK_PHRASE),
+        LexPattern::amount(
+            "additional_count",
+            LexCaptureKind::UntilAnyPhrase(ADDITIONAL_CREATURE_TAIL_PHRASES),
+        ),
+        LexPattern::any_phrase(ADDITIONAL_CREATURE_TAIL_PHRASES),
+        LexPattern::phrase(EACH_COMBAT_PHRASE),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = PATTERN.match_clause(clause)?;
+    let subject_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)?
+        .trimmed();
+    let count_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Amount, clause)?
+        .trimmed();
+    (!subject_clause.tokens().is_empty() && !count_clause.tokens().is_empty()).then_some(
+        CanBlockAdditionalCreatureClause {
+            subject_tokens: subject_clause.tokens(),
+            additional_count_tokens: count_clause.tokens(),
+        },
+    )
 }
 
 fn triggered_grant_effects_and_condition(
@@ -860,25 +1095,10 @@ fn triggered_grant_effects_and_condition(
 pub(crate) fn parse_subject_cant_be_blocked_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if normalized.len() < 4 || !CANT_BE_BLOCKED_TAIL_PATTERN.matches_words(&normalized) {
+    let Some(parsed) = parse_cant_be_blocked_clause(tokens) else {
         return Ok(None);
-    }
-
-    let tail_start = token_index_for_word_index(tokens, normalized.len() - 3).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unable to map cant-be-blocked tail (clause: '{}')",
-            normalized.join(" ")
-        ))
-    })?;
-    let subject_tokens = trim_commas(&tokens[..tail_start]);
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
+    };
+    let subject_tokens = parsed.subject_tokens;
     if subject_tokens
         .iter()
         .any(|token| token.is_comma() || AND_WORD_PATTERN.matches_token(token))
@@ -938,22 +1158,10 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
     }
 
     let ability_tokens = trim_edge_punctuation(&tokens[has_idx + 1..]);
-    let ability_words = crate::runtime_backend::token_word_refs(&ability_tokens);
-    let Some(and_idx) = AND_WORD_PATTERN.find_word(&ability_words) else {
+    let Some(parsed_tail) = parse_keywords_and_cant_be_blocked_clause(&ability_tokens) else {
         return Ok(None);
     };
-    let suffix = &ability_words[and_idx + 1..];
-    if !CANT_BE_BLOCKED_WORDS_PATTERN.matches_words(suffix) {
-        return Ok(None);
-    }
-
-    let and_token_idx = token_index_for_word_index(&ability_tokens, and_idx).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unable to map cant-be-blocked conjunction (clause: '{}')",
-            clause_words.join(" ")
-        ))
-    })?;
-    let keyword_tokens = trim_edge_punctuation(&ability_tokens[..and_token_idx]);
+    let keyword_tokens = parsed_tail.keyword_tokens;
     let Some(actions) = parse_ability_line(&keyword_tokens) else {
         return Ok(None);
     };
@@ -1006,33 +1214,18 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
 pub(crate) fn parse_landwalk_as_though_block_override_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let normalized = normalize_cant_words(tokens);
-    let normalized_refs = normalized.iter().map(String::as_str).collect::<Vec<_>>();
-    let Some(can_idx) =
-        anthem_find_prefix_shape_start(&normalized_refs, &CAN_BE_BLOCKED_PREFIX_PATTERN)
-    else {
+    let Some(parsed) = parse_landwalk_block_override_clause(tokens) else {
         return Ok(None);
     };
-    if can_idx == 0 {
-        return Ok(None);
-    }
-    let tail = &normalized_refs[can_idx + 3..];
-    if tail.len() != 6
-        || !LANDWALK_BLOCK_OVERRIDE_TAIL_PATTERN.matches_words(tail)
-        || !is_landwalk_ability_word(tail[5])
-    {
+    if !is_landwalk_ability_word(parsed.ability_word) {
         return Ok(None);
     }
 
-    let Some(subject_end) = token_index_for_word_index(tokens, can_idx) else {
-        return Ok(None);
-    };
-    let subject_tokens = trim_commas(&tokens[..subject_end]);
-    let AnthemSubjectAst::Filter(filter) = parse_anthem_subject(&subject_tokens)? else {
+    let AnthemSubjectAst::Filter(filter) = parse_anthem_subject(parsed.subject_tokens)? else {
         return Ok(None);
     };
 
-    let removed = StaticAbility::keyword_marker(tail[5]);
+    let removed = StaticAbility::keyword_marker(parsed.ability_word);
     Ok(Some(StaticAbilityAst::Static(
         StaticAbility::remove_ability(filter, removed),
     )))
@@ -1048,45 +1241,11 @@ fn is_landwalk_ability_word(word: &str) -> bool {
 pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-
-    let Some(cant_idx) =
-        anthem_find_prefix_shape_start(&normalized, &CANT_BE_BLOCKED_PREFIX_PATTERN)
-    else {
+    let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
         return Ok(None);
     };
-
-    let tail = &normalized[cant_idx + 3..];
-    if !CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN.matches_words(tail) {
-        return Ok(None);
-    }
-
-    let subject_end = token_index_for_word_index(tokens, cant_idx).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unable to map cant-be-blocked subject (clause: '{}')",
-            normalized.join(" ")
-        ))
-    })?;
-    let subject_tokens = trim_commas(&tokens[..subject_end]);
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let condition_start = token_index_for_word_index(tokens, cant_idx + 6).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unable to map cant-be-blocked condition (clause: '{}')",
-            normalized.join(" ")
-        ))
-    })?;
-    let condition_tokens = trim_commas(&tokens[condition_start..]);
-    if condition_tokens.is_empty() {
-        return Ok(None);
-    }
-    let condition = parse_static_condition_clause(&condition_tokens)?;
+    let subject_tokens = parsed.subject_tokens;
+    let condition = parse_static_condition_clause(parsed.condition_tokens)?;
 
     let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
     let subject = first_spell_each_turn_subject(&subject_words)
@@ -1106,67 +1265,89 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
     Ok(Some(granted))
 }
 
+fn simple_card_types_from_control_filter(mut filter: ObjectFilter) -> Option<Vec<CardType>> {
+    let mut card_types = if filter.all_card_types.is_empty() {
+        Vec::new()
+    } else {
+        std::mem::take(&mut filter.all_card_types)
+    };
+
+    if !filter.card_types.is_empty() {
+        if card_types.is_empty() {
+            card_types = std::mem::take(&mut filter.card_types);
+        } else if filter.card_types.len() == card_types.len()
+            && filter
+                .card_types
+                .iter()
+                .all(|card_type| card_types.contains(card_type))
+        {
+            filter.card_types.clear();
+        } else {
+            return None;
+        }
+    }
+
+    if card_types.is_empty()
+        || !card_types.iter().all(|card_type| {
+            matches!(
+                card_type,
+                CardType::Artifact
+                    | CardType::Battle
+                    | CardType::Creature
+                    | CardType::Enchantment
+                    | CardType::Land
+                    | CardType::Planeswalker
+            )
+        })
+    {
+        return None;
+    }
+
+    filter.zone = None;
+    (filter == ObjectFilter::default()).then_some(card_types)
+}
+
+fn defending_player_controlled_card_types_from_condition_tokens(
+    condition_tokens: &[OwnedLexToken],
+) -> Option<Vec<CardType>> {
+    let condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
+        condition_tokens,
+        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+            allow_that_player: false,
+            allow_opponent_players: false,
+            allow_defending_player: true,
+            bind_filter_controller_to_subject: false,
+            allow_different_powers_tail: false,
+            default_filter_zone: Some(Zone::Battlefield),
+        },
+    )?;
+
+    if condition.player_filter != Some(PlayerFilter::Defending)
+        || condition.requires_different_powers
+        || condition.at_least_count()? > 1
+    {
+        return None;
+    }
+
+    simple_card_types_from_control_filter(condition.filter)
+}
+
 pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let normalized_storage = normalize_cant_words(tokens);
-    let normalized = normalized_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-
-    let Some(cant_idx) =
-        anthem_find_prefix_shape_start(&normalized, &CANT_BE_BLOCKED_PREFIX_PATTERN)
+    let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
+        return Ok(None);
+    };
+    let Some(card_types) =
+        defending_player_controlled_card_types_from_condition_tokens(parsed.condition_tokens)
     else {
         return Ok(None);
     };
 
-    let tail = &normalized[cant_idx + 3..];
-    if tail.len() < 7 || !DEFENDING_PLAYER_CONTROLS_TAIL_PATTERN.matches_words(tail) {
-        return Ok(None);
-    }
-
-    let mut type_words = &tail[6..];
-    if ANTHEM_ARTICLE_WORD_PATTERN.matches_first_word(type_words) {
-        type_words = &type_words[1..];
-    }
-    if type_words.is_empty() {
-        return Ok(None);
-    }
-    let mut card_types = Vec::with_capacity(type_words.len());
-    for type_word in type_words {
-        let Some(card_type) = parse_card_type(type_word) else {
-            return Ok(None);
-        };
-        if !matches!(
-            card_type,
-            CardType::Artifact
-                | CardType::Battle
-                | CardType::Creature
-                | CardType::Enchantment
-                | CardType::Land
-                | CardType::Planeswalker
-        ) {
-            return Ok(None);
-        }
-        card_types.push(card_type);
-    }
-
-    let tail_start = token_index_for_word_index(tokens, cant_idx).ok_or_else(|| {
-        CardTextError::ParseError(format!(
-            "unable to map cant-be-blocked conditional tail (clause: '{}')",
-            normalized.join(" ")
-        ))
-    })?;
-    let subject_tokens = trim_commas(&tokens[..tail_start]);
-    if subject_tokens.is_empty() {
-        return Ok(None);
-    }
-
-    let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
     let subject = first_spell_each_turn_subject(&subject_words)
         .map(Ok)
-        .unwrap_or_else(|| parse_anthem_subject(&subject_tokens))?;
+        .unwrap_or_else(|| parse_anthem_subject(parsed.subject_tokens))?;
     let unblockable = if card_types.len() == 1 {
         StaticAbility::cant_be_blocked_as_long_as_defending_player_controls_card_type(card_types[0])
     } else {
@@ -1202,43 +1383,18 @@ pub(crate) fn parse_granted_keyword_static_line(
     fn parse_granted_escape_cost_tail(
         trailing_tokens: &[OwnedLexToken],
     ) -> Result<Option<u32>, CardTextError> {
-        let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
-        let trailing_word_refs = trailing_words.word_refs();
-        let Some(prefix_len) = ({
-            if ANTHEM_ESCAPE_COST_THE_PREFIX_PATTERN.matches_words(&trailing_word_refs) {
-                Some(11usize)
-            } else if ANTHEM_ESCAPE_COST_ITS_PREFIX_PATTERN.matches_words(&trailing_word_refs) {
-                Some(10usize)
-            } else {
-                None
-            }
-        }) else {
+        let trailing_word_refs = crate::runtime_backend::token_word_refs(trailing_tokens);
+        let Some(parsed) = parse_granted_escape_cost_tail_clause(trailing_tokens) else {
             return Ok(None);
         };
 
-        let Some(exile_idx) = trailing_words.token_index_for_word_index(prefix_len) else {
-            return Ok(None);
-        };
-        let exile_tokens = trailing_tokens.get(exile_idx..).unwrap_or_default();
-        if !exile_tokens
-            .first()
-            .is_some_and(|token| EXILE_WORD_PATTERN.matches_token(token))
-        {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported escape cost clause (clause: '{}')",
-                trailing_word_refs.join(" ")
-            )));
-        }
-        let Some((count, used)) = parse_number(exile_tokens.get(1..).unwrap_or_default()) else {
+        let Some((count, used)) = parse_number(parsed.exile_count_tokens) else {
             return Err(CardTextError::ParseError(format!(
                 "escape cost clause missing exile count (clause: '{}')",
                 trailing_word_refs.join(" ")
             )));
         };
-        let tail = crate::runtime_backend::token_word_refs(
-            exile_tokens.get(1 + used..).unwrap_or_default(),
-        );
-        if !ANTHEM_ESCAPE_EXILE_TAIL_PATTERN.matches_words(&tail) {
+        if used != parsed.exile_count_tokens.len() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported escape cost clause (clause: '{}')",
                 trailing_word_refs.join(" ")
@@ -1250,20 +1406,14 @@ pub(crate) fn parse_granted_keyword_static_line(
     fn parse_granted_miracle_cost_reduction_tail(
         trailing_tokens: &[OwnedLexToken],
     ) -> Result<Option<u32>, CardTextError> {
-        let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
-        let trailing_word_refs = trailing_words.word_refs();
-        if !ANTHEM_MIRACLE_COST_REDUCED_PREFIX_PATTERN.matches_words(&trailing_word_refs) {
-            return Ok(None);
-        }
-        let prefix_len = 11usize;
-
-        let Some(cost_idx) = trailing_words.token_index_for_word_index(prefix_len) else {
+        let trailing_word_refs = crate::runtime_backend::token_word_refs(trailing_tokens);
+        let Some(parsed) = parse_granted_miracle_cost_reduction_tail_clause(trailing_tokens) else {
             return Ok(None);
         };
-        let cost_tokens = trailing_tokens.get(cost_idx..).unwrap_or_default();
+
         let Some((cost, used)) =
             crate::runtime_backend::front_end::shared::util::leading_mana_cost_from_tokens(
-                cost_tokens,
+                parsed.reduction_cost_tokens,
             )
         else {
             return Err(CardTextError::ParseError(format!(
@@ -1271,7 +1421,7 @@ pub(crate) fn parse_granted_keyword_static_line(
                 trailing_word_refs.join(" ")
             )));
         };
-        if used != cost_tokens.len() {
+        if used != parsed.reduction_cost_tokens.len() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported miracle cost reduction clause (clause: '{}')",
                 trailing_word_refs.join(" ")
@@ -1776,38 +1926,35 @@ pub(crate) fn parse_subject_loses_keywords_line(
 pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
-    let clause_words_storage = normalize_cant_words(tokens);
-    let clause_words = clause_words_storage
-        .iter()
-        .map(String::as_str)
-        .collect::<Vec<_>>();
-    if clause_words.len() < 10 {
+    let Some(parsed) = parse_cant_be_blocked_by_more_than_clause(tokens) else {
+        return Ok(None);
+    };
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    if !EACH_CREATURE_SUBJECT_PREFIX_PATTERN.matches_words(&subject_words) {
         return Ok(None);
     }
-    let Some(cant_idx) =
-        anthem_find_prefix_shape_start(&clause_words, &CANT_BE_BLOCKED_PREFIX_PATTERN)
+    let Some((minimum_blockers, used)) = parse_greater_than_or_equal_quantity_prefix(
+        parsed.blocker_threshold_tokens,
+        false,
+        false,
+        "cant-be-blocked blocker threshold",
+    )?
     else {
         return Ok(None);
     };
-    if cant_idx < 2 || !EACH_CREATURE_SUBJECT_PREFIX_PATTERN.matches_words(&clause_words) {
+    if minimum_blockers == 0 || used != parsed.blocker_threshold_tokens.len() {
         return Ok(None);
     }
-    let tail = &clause_words[cant_idx..];
-    let Some((amount, used)) = anthem_cant_be_blocked_max_blockers(tail) else {
-        return Ok(None);
-    };
-    if used != tail.len() {
-        return Ok(None);
-    }
-    let Some(subject_end) = token_index_for_word_index(tokens, cant_idx) else {
-        return Ok(None);
-    };
-    let mut filter_tokens = trim_commas(&tokens[..subject_end]);
+    let amount = minimum_blockers - 1;
+    let filter_tokens_storage;
+    let mut filter_tokens = parsed.subject_tokens;
     if filter_tokens
         .first()
         .is_some_and(|token| EACH_WORD_PATTERN.matches_token(token))
     {
-        filter_tokens = trim_commas(&filter_tokens[1..]);
+        filter_tokens_storage = trim_commas(&filter_tokens[1..]);
+        filter_tokens = &filter_tokens_storage;
     }
     if filter_tokens.is_empty() {
         return Ok(None);
@@ -1830,44 +1977,45 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     // High Ground: "Each creature can block an additional creature each combat."
+    let Some(parsed) = parse_can_block_additional_creature_clause(tokens) else {
+        return Ok(None);
+    };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.len() < 9 {
-        return Ok(None);
-    }
-    let (_subject_len, you_control) =
-        if EACH_CREATURE_YOU_CONTROL_CAN_BLOCK_PREFIX_PATTERN.matches_words(&clause_words) {
-            (4usize, true)
-        } else if EACH_CREATURE_CAN_BLOCK_PREFIX_PATTERN.matches_words(&clause_words) {
-            (2usize, false)
-        } else {
-            return Ok(None);
-        };
-    if !EACH_COMBAT_SUFFIX_PATTERN.matches_words(&clause_words) {
-        return Ok(None);
-    }
-    let Some(additional_word_idx) = ADDITIONAL_WORD_PATTERN.find_word(&clause_words) else {
+    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    if !EACH_CREATURE_SUBJECT_PREFIX_PATTERN.matches_words(&subject_words) {
         return Ok(None);
     };
-    if additional_word_idx == 0 {
-        return Ok(None);
-    }
 
-    let mut additional = 1usize;
-    let prev = clause_words[additional_word_idx - 1];
-    if !AN_WORD_PATTERN.matches_word(prev) {
-        if let Some(prev_token_idx) = token_index_for_word_index(tokens, additional_word_idx - 1)
-            && let Some((count, used)) = parse_number(&tokens[prev_token_idx..])
-            && used > 0
-        {
-            additional = count as usize;
-        }
-    }
-
-    let filter = if you_control {
-        ObjectFilter::creature().you_control()
+    let additional = if parsed
+        .additional_count_tokens
+        .first()
+        .is_some_and(|token| AN_WORD_PATTERN.matches_token(token))
+        && parsed.additional_count_tokens.len() == 1
+    {
+        1usize
+    } else if let Some((count, used)) = parse_number(parsed.additional_count_tokens)
+        && used == parsed.additional_count_tokens.len()
+    {
+        count as usize
     } else {
-        ObjectFilter::creature()
+        return Ok(None);
     };
+
+    let filter_tokens_storage;
+    let mut filter_tokens = parsed.subject_tokens;
+    if filter_tokens
+        .first()
+        .is_some_and(|token| EACH_WORD_PATTERN.matches_token(token))
+    {
+        filter_tokens_storage = trim_commas(&filter_tokens[1..]);
+        filter_tokens = &filter_tokens_storage;
+    }
+    let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported can-block-additional subject (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
     let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
     Ok(Some(StaticAbilityAst::GrantStaticAbility {
         filter,
@@ -2952,6 +3100,7 @@ pub(crate) fn parse_static_condition_clause(
             crate::runtime_backend::grammar::conditions::ControlConditionOptions {
                 allow_that_player: false,
                 allow_opponent_players: true,
+                allow_defending_player: false,
                 bind_filter_controller_to_subject: true,
                 allow_different_powers_tail: false,
                 default_filter_zone: None,
@@ -7231,6 +7380,107 @@ fn attached_object_anthem_subject_uses_tagged_constraints() {
 
     let creature = AnthemSubjectAst::Filter(ObjectFilter::creature());
     assert!(attached_object_anthem_subject_filter(&creature).is_none());
+}
+
+#[test]
+fn keyword_and_unblockable_tail_keeps_multiple_captured_keywords() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "This creature has flying and vigilance and can't be blocked.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_subject_has_keywords_and_cant_be_blocked_line(&tokens)
+        .expect("parser should not error")
+        .expect("line should parse");
+
+    assert!(matches!(
+        parsed.as_slice(),
+        [
+            StaticAbilityAst::KeywordAction(KeywordAction::Flying),
+            StaticAbilityAst::KeywordAction(KeywordAction::Vigilance),
+            StaticAbilityAst::KeywordAction(KeywordAction::Unblockable),
+        ]
+    ));
+}
+
+#[test]
+fn granted_escape_tail_captures_dynamic_exile_count() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "The escape cost is equal to the card's mana cost plus exile three other cards from your graveyard.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_granted_escape_cost_tail_clause(&tokens)
+        .expect("escape tail should parse");
+    let (count, used) =
+        parse_number(parsed.exile_count_tokens).expect("captured count should parse");
+
+    assert_eq!(count, 3);
+    assert_eq!(used, parsed.exile_count_tokens.len());
+}
+
+#[test]
+fn granted_miracle_tail_captures_dynamic_cost_reduction() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Its miracle cost is equal to its mana cost reduced by {4}.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_granted_miracle_cost_reduction_tail_clause(&tokens)
+        .expect("miracle tail should parse");
+    let (cost, used) =
+        crate::runtime_backend::front_end::shared::util::leading_mana_cost_from_tokens(
+            parsed.reduction_cost_tokens,
+        )
+        .expect("captured cost should parse");
+
+    assert_eq!(cost.generic_mana_total(), 4);
+    assert_eq!(used, parsed.reduction_cost_tokens.len());
+}
+
+#[test]
+fn cant_be_blocked_by_more_than_clause_captures_subject_and_threshold() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Each creature you control with a +1/+1 counter on it can't be blocked by more than one creature.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_cant_be_blocked_by_more_than_clause(&tokens)
+        .expect("max-blockers clause should parse");
+    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let (minimum_blockers, used) = parse_greater_than_or_equal_quantity_prefix(
+        parsed.blocker_threshold_tokens,
+        false,
+        false,
+        "test blocker threshold",
+    )
+    .expect("threshold should parse")
+    .expect("threshold should be present");
+
+    assert_eq!(
+        subject_words.as_slice(),
+        &["each", "creature", "you", "control", "with", "+1/+1", "counter", "on", "it"]
+    );
+    assert_eq!(minimum_blockers, 2);
+    assert_eq!(used, parsed.blocker_threshold_tokens.len());
+}
+
+#[test]
+fn can_block_additional_creature_clause_captures_subject_and_count() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Each creature you control can block two additional creatures each combat.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_can_block_additional_creature_clause(&tokens)
+        .expect("additional-blocker clause should parse");
+    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let (count, used) = parse_number(parsed.additional_count_tokens)
+        .expect("captured additional blocker count should parse");
+
+    assert_eq!(subject_words.as_slice(), &["each", "creature", "you", "control"]);
+    assert_eq!(count, 2);
+    assert_eq!(used, parsed.additional_count_tokens.len());
 }
 
 #[test]

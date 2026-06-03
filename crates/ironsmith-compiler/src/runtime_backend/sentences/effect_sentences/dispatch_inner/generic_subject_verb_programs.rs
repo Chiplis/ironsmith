@@ -282,6 +282,12 @@ const PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_sh
 const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
 const EXILE_THAT_CARD_INSTEAD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["exile", "that", "card", "instead"]);
+const YOUR_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["your", "graveyard"]);
+const CARD_WOULD_BE_PUT_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["card", "would", "be", "put"]]);
+const THIS_TURN_MARKER_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_words & ["this", "turn"]);
 const EACH_PLAYER_CHOOSES_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["each", "player", "chooses"], &["each", "player", "choose"]]);
 const SACRIFICE_THE_REST_PREFIX_PATTERN: ClauseShape<'static> =
@@ -1230,15 +1236,9 @@ pub(crate) fn parse_zone_replacement_subject_verb(
     {
         return Ok(None);
     }
-    let has_graveyard_clause =
-        grammar::words_find_phrase(tokens, &["into", "your", "graveyard", "from"]).is_some()
-            || grammar::words_find_phrase(tokens, &["your", "graveyard", "from"]).is_some()
-            || (grammar::contains_word(tokens, "your")
-                && grammar::contains_word(tokens, "graveyard"));
-    let has_would_put =
-        grammar::words_find_phrase(tokens, &["card", "would", "be", "put"]).is_some();
-    let has_this_turn =
-        grammar::contains_word(tokens, "this") && grammar::contains_word(tokens, "turn");
+    let has_graveyard_clause = YOUR_GRAVEYARD_MARKER_PATTERN.matches_words(&line_words);
+    let has_would_put = CARD_WOULD_BE_PUT_MARKER_PATTERN.matches_words(&line_words);
+    let has_this_turn = THIS_TURN_MARKER_PATTERN.matches_words(&line_words);
     if !has_graveyard_clause || !has_would_put || !has_this_turn {
         return Ok(None);
     }

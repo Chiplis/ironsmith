@@ -20,18 +20,3 @@ pub(crate) fn parse_spell_filter_with_grammar_entrypoint(tokens: &[OwnedLexToken
 
     parse_spell_filter_from_words(&words)
 }
-
-pub(super) fn parse_meld_subject_filter(words: &[&str]) -> Result<ObjectFilter, CardTextError> {
-    if words.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing meld predicate subject".to_string(),
-        ));
-    }
-    if is_source_reference_words(words) {
-        return Ok(ObjectFilter::source());
-    }
-
-    let tokens = synth_words_as_tokens(words);
-    parse_object_filter(&tokens, false)
-        .or_else(|_| Ok(ObjectFilter::default().named(words.join(" "))))
-}

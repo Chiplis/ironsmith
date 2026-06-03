@@ -468,11 +468,13 @@ pub(crate) fn split_em_dash_label_prefix_tokens<'a>(
             inside_quotes = !inside_quotes;
             return None;
         }
-        (token.kind == TokenKind::EmDash && !inside_quotes).then_some(idx)
+        (matches!(token.kind, TokenKind::Dash | TokenKind::EmDash) && !inside_quotes).then_some(idx)
     })?;
     let label_tokens = &tokens[..split_idx];
     let body_tokens = &tokens[split_idx + 1..];
-    if label_tokens.is_empty() || body_tokens.is_empty() || label_has_disallowed_period(label_tokens)
+    if label_tokens.is_empty()
+        || body_tokens.is_empty()
+        || label_has_disallowed_period(label_tokens)
     {
         return None;
     }
