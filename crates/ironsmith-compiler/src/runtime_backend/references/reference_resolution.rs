@@ -80,7 +80,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsCombatDamage(_)
             | TriggerSpec::DealsCombatDamageTo { .. }
-            | TriggerSpec::ThisDealsCombatDamageToPlayer
+            | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::AttacksOneOrMore(_)

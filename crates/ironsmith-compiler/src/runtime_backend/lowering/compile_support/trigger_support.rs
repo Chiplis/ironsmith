@@ -417,7 +417,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             surface.clone(),
             destination_name.clone(),
         ),
-        TriggerSpec::ThisDealsCombatDamageToPlayer => Trigger::this_deals_combat_damage_to_player(),
+        TriggerSpec::ThisDealsCombatDamageToPlayer { player } => {
+            Trigger::this_deals_combat_damage_to_player(player.clone())
+        }
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
         }
@@ -500,7 +502,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
-        | TriggerSpec::ThisDealsCombatDamageToPlayer
+        | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. }
         | TriggerSpec::BeginningOfUpkeep(_)
         | TriggerSpec::BeginningOfDrawStep(_)
@@ -574,7 +576,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
-        | TriggerSpec::ThisDealsCombatDamageToPlayer
+        | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
         | TriggerSpec::DealsCombatDamageToPlayer { .. } => Some(PlayerFilter::DamagedPlayer),
         TriggerSpec::ThisAttacks | TriggerSpec::ThisBecomesBlocked => Some(PlayerFilter::Defending),
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
@@ -655,7 +657,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsCombatDamage(_)
             | TriggerSpec::DealsCombatDamageTo { .. }
-            | TriggerSpec::ThisDealsCombatDamageToPlayer
+            | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::AttacksOneOrMore(_)

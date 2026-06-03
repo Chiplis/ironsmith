@@ -636,7 +636,9 @@ impl CardDefinitionBuilder {
     pub fn toxic(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
                 effects: vec![crate::effect::Effect::poison_counters_player(
                     amount as i32,
                     crate::target::PlayerFilter::DamagedPlayer,
@@ -845,7 +847,9 @@ impl CardDefinitionBuilder {
 
     pub fn ingest(self) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                crate::target::PlayerFilter::Any,
+            ),
             vec![crate::effect::Effect::exile_top_of_library_player(
                 1,
                 crate::target::PlayerFilter::DamagedPlayer,
@@ -1173,7 +1177,9 @@ impl CardDefinitionBuilder {
 
     pub fn renown(self, amount: u32) -> Self {
         self.with_ability(crate::ability::Ability::triggered(
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                crate::target::PlayerFilter::Any,
+            ),
             vec![crate::effect::Effect::renown_source(amount)],
         ))
     }

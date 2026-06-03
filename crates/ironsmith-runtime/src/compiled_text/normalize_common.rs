@@ -13134,7 +13134,9 @@ mod tests {
     fn toxic_token_blueprint_keeps_toxic_as_keyword() {
         let toxic = Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    PlayerFilter::Any,
+                ),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
                 )]),
@@ -13168,7 +13170,9 @@ mod tests {
     fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
         let toxic = Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    PlayerFilter::Any,
+                ),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
                 )]),

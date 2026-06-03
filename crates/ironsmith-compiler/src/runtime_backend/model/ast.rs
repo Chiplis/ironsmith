@@ -347,7 +347,9 @@ pub(crate) enum TriggerSpec {
         surface: crate::target::SourceReferenceSurface,
         destination_name: Option<String>,
     },
-    ThisDealsCombatDamageToPlayer,
+    ThisDealsCombatDamageToPlayer {
+        player: PlayerFilter,
+    },
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,

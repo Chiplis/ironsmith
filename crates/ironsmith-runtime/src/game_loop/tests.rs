@@ -26756,7 +26756,7 @@ fn test_combat_damage_with_triggers() {
     let attacker_id = create_creature(&mut game, "Ninja", alice, 2, 2);
     if let Some(obj) = game.object_mut(attacker_id) {
         obj.abilities.push(Ability::triggered(
-            Trigger::this_deals_combat_damage_to_player(),
+            Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             vec![Effect::draw(1)],
         ));
     }
