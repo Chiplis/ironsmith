@@ -56,6 +56,7 @@ impl EffectExecutor for AddManaOfAnyColorEffect {
             player_id,
             amount,
             false,
+            self.distinct_colors,
             self.available_colors.as_deref(),
             Color::Green,
         );
@@ -191,5 +192,20 @@ mod tests {
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).unwrap().mana_pool.red, 2);
         assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
+    }
+
+    #[test]
+    fn test_add_mana_of_any_color_distinct_defaults_to_different_choices() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = AddManaOfAnyColorEffect::you_distinct(2);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(game.player(alice).unwrap().mana_pool.white, 1);
+        assert_eq!(game.player(alice).unwrap().mana_pool.blue, 1);
     }
 }

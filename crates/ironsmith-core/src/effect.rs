@@ -4101,6 +4101,7 @@ pub struct AddManaOfAnyColorEffect {
     pub amount: Value,
     pub player: PlayerFilter,
     pub available_colors: Option<Vec<Color>>,
+    pub distinct_colors: bool,
 }
 
 impl AddManaOfAnyColorEffect {
@@ -4109,6 +4110,16 @@ impl AddManaOfAnyColorEffect {
             amount: amount.into(),
             player,
             available_colors: None,
+            distinct_colors: false,
+        }
+    }
+
+    pub fn distinct(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            available_colors: None,
+            distinct_colors: true,
         }
     }
 
@@ -4121,6 +4132,20 @@ impl AddManaOfAnyColorEffect {
             amount: amount.into(),
             player,
             available_colors: Some(available_colors),
+            distinct_colors: false,
+        }
+    }
+
+    pub fn restricted_distinct(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        available_colors: Vec<Color>,
+    ) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            available_colors: Some(available_colors),
+            distinct_colors: true,
         }
     }
 
@@ -4128,8 +4153,19 @@ impl AddManaOfAnyColorEffect {
         Self::new(amount, PlayerFilter::You)
     }
 
+    pub fn you_distinct(amount: impl Into<Value>) -> Self {
+        Self::distinct(amount, PlayerFilter::You)
+    }
+
     pub fn you_restricted(amount: impl Into<Value>, available_colors: Vec<Color>) -> Self {
         Self::restricted(amount, PlayerFilter::You, available_colors)
+    }
+
+    pub fn you_restricted_distinct(
+        amount: impl Into<Value>,
+        available_colors: Vec<Color>,
+    ) -> Self {
+        Self::restricted_distinct(amount, PlayerFilter::You, available_colors)
     }
 }
 

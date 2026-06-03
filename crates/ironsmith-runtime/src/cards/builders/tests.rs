@@ -7726,6 +7726,39 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
     );
 }
 
+#[test]
+fn component_pouch_strict_parser_compiled_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Component Pouch");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered.join("\n"),
+        "{T}, Remove a component counter from this artifact: Add two mana of different colors.\n{T}: Roll a d20.\n1—9 | Put a component counter on this artifact.\n10—20 | Put two component counters on this artifact.",
+        "Component Pouch should compile back to its strict oracle text"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    let compact_debug = debug.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        compact_debug.contains("RemoveCountersEffect")
+            && compact_debug.contains("Named( \"component\"")
+            && compact_debug.contains("distinct_colors: true"),
+        "expected Component Pouch mana ability to remove a component counter and add distinct-color mana, got {debug}"
+    );
+    assert!(
+        compact_debug.contains("RollDieEffect")
+            && compact_debug.contains("sides: 20")
+            && compact_debug.contains("BetweenInclusive( 1, 9")
+            && compact_debug.contains("BetweenInclusive( 10, 20"),
+        "expected Component Pouch d20 branches for 1-9 and 10-20, got {debug}"
+    );
+    assert!(
+        compact_debug.contains("PutCountersEffect")
+            && compact_debug.contains("Named( \"component\"")
+            && compact_debug.contains("Fixed( 2"),
+        "expected Component Pouch d20 high branch to put two component counters, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_arden_angel_rolls_four_sided_die_and_returns_itself_from_graveyard() {

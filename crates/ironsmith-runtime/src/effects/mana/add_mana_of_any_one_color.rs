@@ -47,7 +47,7 @@ impl EffectExecutor for AddManaOfAnyOneColorEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let color = choose_mana_colors(game, ctx, player_id, 1, true, None, Color::Green)
+        let color = choose_mana_colors(game, ctx, player_id, 1, true, false, None, Color::Green)
             .into_iter()
             .next()
             .unwrap_or(Color::Green);

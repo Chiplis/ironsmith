@@ -36,7 +36,7 @@ impl EffectExecutor for AddManaOfChosenColorEffect {
                 fixed
             } else {
                 let options = [fixed, chosen];
-                choose_mana_colors(game, ctx, player_id, 1, true, Some(&options), fixed)
+                choose_mana_colors(game, ctx, player_id, 1, true, false, Some(&options), fixed)
                     .into_iter()
                     .next()
                     .unwrap_or(fixed)

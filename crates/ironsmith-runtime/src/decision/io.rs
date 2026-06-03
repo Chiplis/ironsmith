@@ -1031,12 +1031,24 @@ impl DecisionMaker for SelectFirstDecisionMaker {
         _game: &GameState,
         ctx: &crate::decisions::context::ColorsContext,
     ) -> Vec<crate::color::Color> {
-        let default_color = ctx
+        let available = ctx
             .available_colors
-            .as_ref()
-            .and_then(|colors| colors.first().copied())
-            .unwrap_or(crate::color::Color::Green);
-        vec![default_color; ctx.count as usize]
+            .as_deref()
+            .unwrap_or(&crate::color::Color::ALL);
+        let default_color = available.first().copied().unwrap_or(crate::color::Color::Green);
+        if ctx.distinct_colors && !ctx.same_color {
+            let mut colors = available
+                .iter()
+                .copied()
+                .take(ctx.count as usize)
+                .collect::<Vec<_>>();
+            while colors.len() < ctx.count as usize {
+                colors.push(default_color);
+            }
+            colors
+        } else {
+            vec![default_color; ctx.count as usize]
+        }
     }
 
     fn decide_counters(
@@ -1979,11 +1991,13 @@ impl DecisionMaker for CliDecisionMaker {
             ctx.count,
             if ctx.same_color {
                 " (must be same)"
+            } else if ctx.distinct_colors {
+                " (must be different)"
             } else {
                 ""
             }
         );
-        prompt_choose_colors(ctx.count, ctx.same_color)
+        prompt_choose_colors(ctx.count, ctx.same_color, ctx.distinct_colors)
     }
 
     fn decide_counters(
@@ -3111,7 +3125,11 @@ fn prompt_distribute(
 }
 
 /// Prompt for choosing colors, returning Vec<Color> directly.
-fn prompt_choose_colors(count: u32, same_color: bool) -> Vec<crate::color::Color> {
+fn prompt_choose_colors(
+    count: u32,
+    same_color: bool,
+    distinct_colors: bool,
+) -> Vec<crate::color::Color> {
     use crate::color::Color;
 
     println!("Choose {} color(s):", count);
@@ -3144,6 +3162,10 @@ fn prompt_choose_colors(count: u32, same_color: bool) -> Vec<crate::color::Color
                 // Check same_color constraint
                 if same_color && !result.is_empty() && result[0] != c {
                     println!("All colors must be the same.");
+                    continue;
+                }
+                if distinct_colors && result.contains(&c) {
+                    println!("Colors must be different.");
                     continue;
                 }
                 result.push(c);

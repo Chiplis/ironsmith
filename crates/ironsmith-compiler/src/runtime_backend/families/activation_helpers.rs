@@ -55,6 +55,8 @@ const ADD_MANA_ANY_ONE_COLOR_OR_TYPE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["any", "one", "color"], &["any", "one", "type"]]]);
 const ADD_MANA_ANY_COLOR_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["any", "color"], &["one", "color"]]]);
+const ADD_MANA_DIFFERENT_COLORS_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["different", "colors"]]);
 const ADD_MANA_ANY_TYPE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_phrases & [&[&["any", "type"], &["one", "type"]]]);
 const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
@@ -216,6 +218,15 @@ pub(crate) fn parse_add_mana(
             .unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_commander_identity(
             player, amount,
+        ));
+    }
+
+    if ADD_MANA_DIFFERENT_COLORS_PATTERN.matches_words(&clause_words) {
+        let amount = parse_value(tokens)
+            .map(|(value, _)| value)
+            .unwrap_or(Value::Fixed(1));
+        return Ok(EffectAst::subject_verb_add_mana_any_color_with_distinct(
+            player, amount, None, true,
         ));
     }
 
