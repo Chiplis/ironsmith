@@ -7035,10 +7035,13 @@ fn gilded_light_compiled_text_includes_player_shroud_and_cycling() {
         )
         .expect("Gilded Light should parse strictly");
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert!(
-        rendered.contains("You can't be targeted this turn") && rendered.contains("Cycling {2}"),
-        "expected Gilded Light compiled text to keep player shroud and cycling, got {rendered}"
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "You gain shroud until end of turn.".to_string(),
+            "Cycling {2}".to_string(),
+        ],
+        "expected Gilded Light compiled text to preserve player shroud and cycling"
     );
 }
 

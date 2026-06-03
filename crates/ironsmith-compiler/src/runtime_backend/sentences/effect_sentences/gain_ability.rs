@@ -260,13 +260,6 @@ fn display_text_for_tokens(tokens: &[OwnedLexToken]) -> String {
     text
 }
 
-fn grants_protection_from_everything(ability: &GrantedAbilityAst) -> bool {
-    matches!(
-        ability,
-        GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything)
-    )
-}
-
 fn append_shared_subject_pump_to_target(
     effects: &mut Vec<EffectAst>,
     target: &TargetAst,
@@ -1765,23 +1758,20 @@ pub(crate) fn parse_gain_ability_sentence(
     }
 
     if !losing && YOU_SUBJECT_PATTERN.matches_words(&real_subject_words) {
-        let has_protection_from_everything =
-            abilities.iter().any(grants_protection_from_everything);
-        if has_protection_from_everything {
-            let player_target =
-                TargetAst::Player(PlayerFilter::You, span_from_tokens(&real_subject_tokens));
-            effects.push(EffectAst::subject_verb_cant(
-                crate::effect::Restriction::be_targeted_player(PlayerFilter::You),
-                duration.clone(),
-                None,
-            ));
-            effects.push(EffectAst::subject_verb_prevent_all_damage_to_target(
-                player_target,
-                duration.clone(),
-            ));
-            effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
-            return Ok(Some(effects));
-        }
+        let Some(mut player_effects) = player_gain_effects_for_abilities(
+            &abilities,
+            &duration,
+            &real_subject_tokens,
+            PlayerFilter::You,
+        ) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported player gain-ability clause (clause: '{}')",
+                word_list.join(" ")
+            )));
+        };
+        effects.append(&mut player_effects);
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
     }
 
     if !losing && YOU_AND_PERMANENTS_YOU_CONTROL_PATTERN.matches_words(&real_subject_words) {
