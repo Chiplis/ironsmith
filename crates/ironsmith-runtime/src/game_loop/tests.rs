@@ -6197,6 +6197,232 @@ fn party_dude_can_activate_level(game: &GameState, party_dude_id: ObjectId, leve
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn case_of_the_shattered_pact_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_300), "Case of the Shattered Pact")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this Case enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle.\n\
+             To solve — There are five colors among permanents you control. (If unsolved, solve at the beginning of your end step.)\n\
+             Solved — At the beginning of combat on your turn, target creature you control gains flying, double strike, and vigilance until end of turn.",
+        )
+        .expect("Case of the Shattered Pact should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn case_of_the_shattered_pact_zone_change_event(case_id: ObjectId) -> TriggerEvent {
+    TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            case_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn case_of_the_shattered_pact_end_step_event(player: PlayerId) -> TriggerEvent {
+    TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn case_of_the_shattered_pact_combat_event(player: PlayerId) -> TriggerEvent {
+    TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfCombatEvent::new(player),
+        crate::provenance::ProvNodeId::default(),
+    )
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_case_color_permanent(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    colors: crate::color::ColorSet,
+) {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Artifact])
+        .color_indicator(colors)
+        .build();
+    game.create_object_from_card(&card, player, Zone::Battlefield);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_five_case_colors(game: &mut GameState, player: PlayerId) {
+    for (name, colors) in [
+        ("Case White Permanent", crate::color::ColorSet::WHITE),
+        ("Case Blue Permanent", crate::color::ColorSet::BLUE),
+        ("Case Black Permanent", crate::color::ColorSet::BLACK),
+        ("Case Red Permanent", crate::color::ColorSet::RED),
+        ("Case Green Permanent", crate::color::ColorSet::GREEN),
+    ] {
+        create_case_color_permanent(game, player, name, colors);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn case_of_the_shattered_pact_enters_searches_basic_land_into_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let basic_land = CardBuilder::new(CardId::from_raw(72_301), "Case Search Basic")
+        .card_types(vec![CardType::Land])
+        .supertypes(vec![Supertype::Basic])
+        .build();
+    game.create_object_from_card(&basic_land, alice, Zone::Library);
+    let nonland = CardBuilder::new(CardId::from_raw(72_302), "Case Search Nonland")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_card(&nonland, alice, Zone::Library);
+    let case = case_of_the_shattered_pact_definition();
+    let case_id = game.create_object_from_definition(&case, alice, Zone::Battlefield);
+
+    let event = case_of_the_shattered_pact_zone_change_event(case_id);
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == case_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(trigger_queue.entries.len(), 1, "Case should trigger when it enters");
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Case ETB trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Case ETB trigger should resolve");
+
+    let basic_land_in_hand = game.player(alice).expect("alice exists").hand.iter().any(|&id| {
+        game.object(id).is_some_and(|object| {
+            object.name == "Case Search Basic"
+                && object.card_types.contains(&CardType::Land)
+                && object.supertypes.contains(&Supertype::Basic)
+        })
+    });
+    assert!(
+        basic_land_in_hand,
+        "Case should put the searched basic land into its controller's hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn case_of_the_shattered_pact_solves_only_with_five_colors() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let case = case_of_the_shattered_pact_definition();
+    let case_id = game.create_object_from_definition(&case, alice, Zone::Battlefield);
+    create_case_color_permanent(
+        &mut game,
+        alice,
+        "Case White Permanent",
+        crate::color::ColorSet::WHITE,
+    );
+
+    let event = case_of_the_shattered_pact_end_step_event(alice);
+    assert!(
+        crate::triggers::check_triggers(&game, &event)
+            .into_iter()
+            .all(|trigger| trigger.source != case_id),
+        "Case should not solve with fewer than five colors among permanents you control"
+    );
+    assert!(!game.is_case_solved(case_id));
+
+    create_five_case_colors(&mut game, alice);
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == case_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Case should solve at end step with five colors"
+    );
+
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Case solve trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Case solve trigger should resolve");
+
+    assert!(
+        game.is_case_solved(case_id),
+        "Case solving should mark the Case as solved"
+    );
+    assert!(
+        !game
+            .object(case_id)
+            .expect("Case should exist")
+            .counters
+            .contains_key(&crate::object::CounterType::Level),
+        "Case solving must not use level counters"
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &event)
+            .into_iter()
+            .all(|trigger| trigger.source != case_id),
+        "Case should not try to solve again once already solved"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn case_of_the_shattered_pact_solved_combat_trigger_is_gated_and_grants_keywords() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let case = case_of_the_shattered_pact_definition();
+    let case_id = game.create_object_from_definition(&case, alice, Zone::Battlefield);
+    let target = create_creature(&mut game, "Case Target Creature", alice, 2, 2);
+    let event = case_of_the_shattered_pact_combat_event(alice);
+
+    assert!(
+        crate::triggers::check_triggers(&game, &event)
+            .into_iter()
+            .all(|trigger| trigger.source != case_id),
+        "Case solved ability should not trigger before the Case is solved"
+    );
+
+    assert!(game.solve_case(case_id));
+    let mut trigger_queue = TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &event) {
+        if trigger.source == case_id {
+            trigger_queue.add(trigger);
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Solved Case should trigger at combat"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Solved Case combat trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Solved Case combat trigger should resolve");
+    game.refresh_continuous_state();
+
+    assert!(
+        game.object_has_ability(target, &StaticAbility::flying()),
+        "target should gain flying"
+    );
+    assert!(
+        game.object_has_ability(target, &StaticAbility::double_strike()),
+        "target should gain double strike"
+    );
+    assert!(
+        game.object_has_ability(target, &StaticAbility::vigilance()),
+        "target should gain vigilance"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn party_dude_pumps_target_attacking_creature_when_an_opponent_is_attacked() {
     let mut game = setup_three_player_game();

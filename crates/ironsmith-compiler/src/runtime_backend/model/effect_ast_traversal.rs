@@ -119,6 +119,7 @@ macro_rules! nested_effects_variants {
 pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
     match effect {
         EffectAst::SubjectVerb(_) => {}
+        EffectAst::SolveCase => {}
         EffectAst::Sequence { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}

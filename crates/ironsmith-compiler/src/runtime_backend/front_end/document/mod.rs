@@ -847,7 +847,7 @@ fn trigger_presentation_label_from_line_tokens(tokens: &[OwnedLexToken]) -> Opti
     if !looks_like_ability_word_label(label_tokens, false) {
         return None;
     }
-    line_starts_with_trigger_intro_tokens(body_tokens).then_some(label)
+    line_starts_with_trigger_intro_tokens(body_tokens).then(|| trigger_presentation_label(&label))
 }
 
 fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) -> Option<String> {
@@ -863,6 +863,53 @@ fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
         !preserve_keyword_prefix_for_parse(label.as_str())
             && !is_named_ability_label(label.as_str())
     })
+}
+
+fn trigger_presentation_label(label: &str) -> String {
+    if label.trim().eq_ignore_ascii_case("solved") {
+        "__ironsmith_case_solved".to_string()
+    } else {
+        label.trim().to_string()
+    }
+}
+
+fn is_case_ability_label(label: &str) -> bool {
+    matches!(
+        label.trim().to_ascii_lowercase().as_str(),
+        "to solve" | "solved"
+    )
+}
+
+fn parse_case_to_solve_line_cst(
+    line: &PreprocessedLine,
+    label: &str,
+    body_tokens: &[OwnedLexToken],
+) -> Result<Option<TriggeredLineCst>, CardTextError> {
+    if !label.trim().eq_ignore_ascii_case("to solve") {
+        return Ok(None);
+    }
+
+    let condition = render_token_slice(body_tokens)
+        .trim()
+        .trim_end_matches('.')
+        .trim()
+        .to_string();
+    if condition.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "case solve line is missing a condition: '{}'",
+            line.info.raw_line
+        )));
+    }
+
+    let rewritten = rewrite_line_normalized(
+        line,
+        &format!(
+            "At the beginning of your end step, if {condition}, put a level counter on this."
+        ),
+    )?;
+    let mut triggered = parse_triggered_line_cst(&rewritten)?;
+    triggered.presentation_label = Some("__ironsmith_case_to_solve".to_string());
+    Ok(Some(triggered))
 }
 
 fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool {
@@ -3045,6 +3092,13 @@ fn try_parse_labeled_line_dispatch(
         return Ok(None);
     }
 
+    if let Some(triggered) = parse_case_to_solve_line_cst(line, &label, body_tokens)? {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Triggered(triggered),
+            idx + 1,
+        )));
+    }
+
     let body_line = rewrite_line_tokens(line, body_tokens);
     let labeled_activation = if (!line_starts_with_lparen_token(line)
         || is_fully_parenthetical_line(line))
@@ -3066,11 +3120,11 @@ fn try_parse_labeled_line_dispatch(
             line,
             body_line.info.normalized.normalized.as_str(),
         )? {
-            if preserve_as_choice_label {
+            if preserve_as_choice_label && !is_case_ability_label(&label) {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(trigger_presentation_label(&label));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3080,11 +3134,11 @@ fn try_parse_labeled_line_dispatch(
             )));
         }
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
-            if preserve_as_choice_label {
+            if preserve_as_choice_label && !is_case_ability_label(&label) {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(trigger_presentation_label(&label));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
@@ -3098,11 +3152,11 @@ fn try_parse_labeled_line_dispatch(
             line,
             body_line.info.normalized.normalized.as_str(),
         )? {
-            if preserve_as_choice_label {
+            if preserve_as_choice_label && !is_case_ability_label(&label) {
                 triggered.chosen_option_label = Some(label.to_ascii_lowercase());
             }
             if looks_like_ability_word_label(label_tokens, preserve_as_choice_label) {
-                triggered.presentation_label = Some(label.trim().to_string());
+                triggered.presentation_label = Some(trigger_presentation_label(&label));
             }
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);

@@ -9634,6 +9634,8 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
     .expect("rewrite lexer should classify enter-or-transform trigger probe");
     let transforms_tokens = lex_line("this creature transforms into Trystan, Penitent Culler", 0)
         .expect("rewrite lexer should classify standalone transforms trigger probe");
+    let this_case_enters_tokens = lex_line("this Case enters", 0)
+        .expect("rewrite lexer should classify case ETB trigger probe");
 
     assert!(matches!(
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
@@ -9685,6 +9687,19 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
                 | crate::cards::builders::TriggerSpec::EntersBattlefield { .. }
         )
     ));
+    let this_case_enters =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &this_case_enters_tokens,
+        );
+    assert!(
+        matches!(
+            this_case_enters,
+            Ok(crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(
+                crate::target::SourceReferenceSurface::ThisPermanentType(ref surface),
+            )) if surface == "this case"
+        ),
+        "expected this Case ETB to parse as a source ETB trigger, got {this_case_enters:?}"
+    );
     let enters_or_transforms =
         super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
             &enters_or_transforms_tokens,
@@ -9693,7 +9708,11 @@ fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
         matches!(
             enters_or_transforms,
             Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
-                if matches!(left.as_ref(), crate::cards::builders::TriggerSpec::ThisEntersBattlefield)
+                if matches!(
+                    left.as_ref(),
+                    crate::cards::builders::TriggerSpec::ThisEntersBattlefield
+                        | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface(_)
+                )
                     && matches!(
                         right.as_ref(),
                         crate::cards::builders::TriggerSpec::ThisTransforms { destination_name }

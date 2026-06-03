@@ -3385,6 +3385,7 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
+    SolveCase,
     Sequence {
         effects: Vec<EffectAst>,
     },

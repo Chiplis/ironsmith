@@ -2762,6 +2762,28 @@ fn party_dude_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn case_of_the_shattered_pact_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Case of the Shattered Pact");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("SearchLibraryEffect")
+            && ability_debug.contains("__ironsmith_case_to_solve")
+            && ability_debug.contains("__ironsmith_case_solved")
+            && ability_debug.contains("SolveCaseEffect")
+            && !ability_debug.contains("PutCountersEffect"),
+        "Case of the Shattered Pact should strictly parse its ETB search, solve trigger, and solved trigger labels, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("When this case enters, search your library for a basic land card, reveal it, put it into your hand, then shuffle.")
+            && rendered.contains("To solve — There are five colors among permanents you control.")
+            && rendered.contains("Solved — At the beginning of combat on your turn, target creature you control gains flying, double strike, and vigilance until end of turn."),
+        "expected Case of the Shattered Pact compiled text to preserve its Case clauses, got {rendered}"
+    );
+}
+
+#[test]
 fn rootpath_purifier_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rootpath Purifier");
     let ability_debug = format!("{:#?}", def.abilities);

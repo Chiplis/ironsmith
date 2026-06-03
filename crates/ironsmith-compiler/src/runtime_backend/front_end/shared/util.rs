@@ -650,7 +650,8 @@ const SOURCE_REFERENCE_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["spell"],
             &["permanent"],
             &["card"],
-            &["creature"]
+            &["creature"],
+            &["case"]
         ]
 );
 const OUTLAW_WORD_PATTERN: ClauseShape<'static> =

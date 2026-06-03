@@ -186,6 +186,12 @@ fn compile_effect_inner(
     if let EffectAst::SubjectVerb(subject_verb) = effect {
         return compile_subject_verb_effect(subject_verb, ctx);
     }
+    if let EffectAst::SolveCase = effect {
+        return Ok((
+            vec![Effect::new(crate::effects::SolveCaseEffect::new())],
+            Vec::new(),
+        ));
+    }
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }

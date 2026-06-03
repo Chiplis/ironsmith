@@ -578,6 +578,9 @@ where
     if let Some(converted) = clone_direct_effect::<M, crate::effects::RenownEffect>(&effect) {
         return Ok(converted);
     }
+    if let Some(converted) = clone_direct_effect::<M, crate::effects::SolveCaseEffect>(&effect) {
+        return Ok(converted);
+    }
     if let Some(converted) = clone_direct_effect::<M, crate::effects::BolsterEffect>(&effect) {
         return Ok(converted);
     }
