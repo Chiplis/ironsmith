@@ -186,6 +186,16 @@ fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
     }
 }
 
+fn scaled_creatures_died_this_turn(value: &Value) -> Option<i32> {
+    match value {
+        Value::CreaturesDiedThisTurn => Some(1),
+        Value::Add(left, right) => Some(
+            scaled_creatures_died_this_turn(left)? + scaled_creatures_died_this_turn(right)?,
+        ),
+        _ => None,
+    }
+}
+
 fn basic_land_type_count_filter(value: &Value) -> Option<&ObjectFilter> {
     match value {
         Value::BasicLandTypesAmong(filter) => Some(filter),
@@ -302,6 +312,18 @@ fn describe_cost_modifier_amount(amount: &Value) -> (String, Option<String>) {
                 describe_types_among_scope(filter)
             )),
         ),
+        Value::CreaturesDiedThisTurn => (
+            "{1}".to_string(),
+            Some("for each creature that died this turn".to_string()),
+        ),
+        Value::Add(_, _) if scaled_creatures_died_this_turn(amount).is_some() => {
+            let multiplier = scaled_creatures_died_this_turn(amount)
+                .expect("checked is_some above for scaled creatures-died count");
+            (
+                format!("{{{multiplier}}}"),
+                Some("for each creature that died this turn".to_string()),
+            )
+        }
         Value::Add(_, _) if scaled_basic_land_type_count(amount).is_some() => {
             let (multiplier, filter) = scaled_basic_land_type_count(amount)
                 .expect("checked is_some above for scaled basic land type count");
