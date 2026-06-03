@@ -122,6 +122,7 @@ const THAT_ENCHANTMENT_PREFIX_PATTERN: ClauseShape<'static> =
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const IT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
 const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
+const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
 const PREDICATE_REFERENCE_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
