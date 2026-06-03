@@ -21352,6 +21352,40 @@ fn parse_add_any_color_for_each_removed_counter_with_unsupported_tail_fails_stri
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_touch_of_the_eternal_counted_permanents_life_total_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(278_197), "Touch of the Eternal")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, count the number of permanents you control. Your life total becomes that number.",
+        )
+        .expect("Touch of the Eternal should parse strictly");
+
+    let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(debug.contains("SetLifeTotalEffect"), "{debug}");
+    assert!(
+        compact_debug.contains("Count(") && compact_debug.contains("controller:Some(You"),
+        "expected Touch of the Eternal to count permanents you control, got {debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("at the beginning of your upkeep")
+            && joined.contains("count the number of permanents you control")
+            && joined.contains("your life total becomes that number"),
+        "expected counted-permanents life-total wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_starting_life_total_amount_in_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Endstone Variant")
         .card_types(vec![CardType::Artifact])
@@ -41595,6 +41629,208 @@ fn parse_grand_abolisher_conditioned_or_restrictions_keep_opponent_subject() {
             && abilities_debug.contains("Opponent")
             && abilities_debug.contains("ActivateAbilitiesOf"),
         "expected cast and activation restrictions for opponents, got {abilities_debug}"
+    );
+}
+
+fn academic_probation_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    def.spell_effect
+        .as_ref()
+        .expect("Academic Probation should compile to spell effects")
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Academic Probation should compile to one modal choice effect")
+}
+
+#[test]
+fn academic_probation_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Academic Probation");
+
+    let def = parse_oracle_card_definition("Academic Probation");
+    let modal = academic_probation_modal_effect(&def);
+    let modal_debug = format!("{modal:#?}");
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let oracle = oracle_text_by_name()
+        .get("Academic Probation")
+        .expect("Academic Probation oracle text");
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert_eq!(modal.min_choose_count, Value::Fixed(1));
+    assert_eq!(modal.choose_count, Value::Fixed(1));
+    assert_eq!(modal.modes.len(), 2);
+    assert!(
+        modal_debug.contains("ChooseCardNameEffect")
+            && modal_debug.contains("CastSpellsMatching")
+            && modal_debug.contains("name: Some")
+            && modal_debug.contains("{chosen name}")
+            && modal_debug.contains("AttackOrBlock")
+            && modal_debug.contains("ActivateAbilitiesOf"),
+        "Academic Probation should structurally lower both modes, got {modal_debug}"
+    );
+    assert!(
+        rendered_lower.contains("opponents can't cast spells with the chosen name")
+            && rendered_lower.contains("until your next turn")
+            && rendered_lower.contains("choose target nonland permanent")
+            && rendered_lower.contains("it can't attack or block")
+            && rendered_lower.contains("activated abilities can't be activated"),
+        "expected Academic Probation compiled text to cover both restriction modes, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Academic Probation semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+fn academic_probation_chosen_name_mode_restricts_only_opponents_matching_spell_name() {
+    struct ChooseLightningBolt;
+
+    impl crate::decision::DecisionMaker for ChooseLightningBolt {
+        fn decide_text(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::TextInputContext,
+        ) -> String {
+            "Lightning Bolt".to_string()
+        }
+    }
+
+    let def = parse_oracle_card_definition("Academic Probation");
+    let modal = academic_probation_modal_effect(&def).clone();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = ChooseLightningBolt;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Academic Probation chosen-name mode should resolve");
+
+    let bob_filters = game
+        .effect_store
+        .cant_effects
+        .cast_filters_for_player(bob)
+        .expect("Bob should receive a cast restriction");
+    assert!(
+        bob_filters
+            .iter()
+            .any(|filter| filter.name.as_deref() == Some("Lightning Bolt")),
+        "chosen-name mode should restrict Bob from casting Lightning Bolt, got {bob_filters:#?}"
+    );
+    assert!(
+        bob_filters
+            .iter()
+            .all(|filter| filter.name.as_deref() != Some("Opt")),
+        "chosen-name mode should not restrict Bob from casting a different spell, got {bob_filters:#?}"
+    );
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(alice)
+            .is_none(),
+        "Academic Probation should not restrict its controller from casting the chosen name"
+    );
+
+    let lightning = CardDefinitionBuilder::new(CardId::new(), "Lightning Bolt")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .build();
+    let opt = CardDefinitionBuilder::new(CardId::new(), "Opt")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .build();
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    let bob_opt = game.create_object_from_definition(&opt, bob, Zone::Hand);
+    let alice_lightning = game.create_object_from_definition(&lightning, alice, Zone::Hand);
+    assert!(
+        !crate::decision::can_cast_spell(
+            &game,
+            bob,
+            game.object(bob_lightning)
+                .expect("Bob's Lightning Bolt should be in hand"),
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Bob should not be able to cast the chosen Lightning Bolt"
+    );
+    assert!(
+        crate::decision::can_cast_spell(
+            &game,
+            bob,
+            game.object(bob_opt).expect("Bob's Opt should be in hand"),
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Bob should still be able to cast a spell with a different name"
+    );
+    assert!(
+        crate::decision::can_cast_spell(
+            &game,
+            alice,
+            game.object(alice_lightning)
+                .expect("Alice's Lightning Bolt should be in hand"),
+            &crate::alternative_cast::CastingMethod::Normal,
+        ),
+        "Academic Probation should not stop its controller from casting the chosen name"
+    );
+}
+
+#[test]
+fn academic_probation_target_permanent_mode_restricts_only_chosen_permanent() {
+    let def = parse_oracle_card_definition("Academic Probation");
+    let modal = academic_probation_modal_effect(&def).clone();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = CardDefinitionBuilder::new(CardId::new(), "Target Grizzly")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other = CardDefinitionBuilder::new(CardId::new(), "Other Grizzly")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target_id = game.create_object_from_definition(&target, bob, Zone::Battlefield);
+    let other_id = game.create_object_from_definition(&other, bob, Zone::Battlefield);
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_permanent(),
+            range: 0..1,
+        }]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Academic Probation target-permanent mode should resolve");
+
+    assert!(!game.can_attack(target_id), "target should not be able to attack");
+    assert!(!game.can_block(target_id), "target should not be able to block");
+    assert!(
+        !game.can_activate_abilities_of(target_id),
+        "target's activated abilities should not be activatable"
+    );
+    assert!(game.can_attack(other_id), "other creature should still be able to attack");
+    assert!(game.can_block(other_id), "other creature should still be able to block");
+    assert!(
+        game.can_activate_abilities_of(other_id),
+        "other creature's activated abilities should remain unrestricted"
     );
 }
 

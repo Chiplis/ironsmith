@@ -34886,9 +34886,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_possessive_player_filter(&set_life.player)
             );
         }
+        if let Value::Count(filter) = &set_life.amount
+            && matches!(set_life.player, PlayerFilter::You)
+        {
+            return format!(
+                "Count the number of {}. Your life total becomes that number",
+                describe_count_filter_value_subject(filter)
+            );
+        }
         return format!(
-            "{}'s life total becomes {}",
-            describe_player_filter(&set_life.player),
+            "{} life total becomes {}",
+            describe_possessive_player_filter(&set_life.player),
             describe_value(&set_life.amount)
         );
     }
