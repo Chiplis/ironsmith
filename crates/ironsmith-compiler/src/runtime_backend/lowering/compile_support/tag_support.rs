@@ -810,6 +810,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::MayMoveToZone { .. }
         | SubjectVerbActionAst::RegisterZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+        | SubjectVerbActionAst::RegisterDrawReplacement { .. }
         | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
         | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
         | SubjectVerbActionAst::Enchant { .. }

@@ -4591,7 +4591,7 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
         || choose_exact_count(choose) != Some(1)
         || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
         || exile.face_down
-        || grant.tag != choose.tag
+        || (grant.tag != choose.tag && grant.tag.as_str() != crate::tag::SOURCE_EXILED_TAG)
         || grant.player != PlayerFilter::You
         || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
     {
@@ -4601,6 +4601,60 @@ fn describe_choose_top_exile_then_play_structural(effects: &[Effect]) -> Option<
     let verb = if grant.allow_land { "play" } else { "cast" };
     Some(format!(
         "Exile the top card of your library. You may {verb} that card this turn"
+    ))
+}
+
+fn describe_draw_replacement_exile_top_play(
+    player: &PlayerFilter,
+    effects: &[Effect],
+) -> Option<String> {
+    let [choose_effect, exile_effect, grant_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    if &choose.chooser != player
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || choose.filter.owner.as_ref() != Some(player)
+        || !choose.top_only
+        || choose_exact_count(choose) != Some(1)
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || exile.face_down
+        || (grant.tag != choose.tag && grant.tag.as_str() != crate::tag::SOURCE_EXILED_TAG)
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || !grant.allow_land
+    {
+        return None;
+    }
+    let grants_to_replacement_player = grant.player == *player
+        || matches!(
+            &grant.player,
+            PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
+                if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+        );
+    if !grants_to_replacement_player {
+        return None;
+    }
+
+    let subject = if *player == PlayerFilter::IteratedPlayer {
+        "they".to_string()
+    } else {
+        describe_player_filter(player)
+    };
+    let possessive = if *player == PlayerFilter::IteratedPlayer {
+        "their".to_string()
+    } else {
+        describe_possessive_player_filter(player)
+    };
+    let verb = if subject == "they" {
+        "exile"
+    } else {
+        player_verb(&subject, "exile", "exiles")
+    };
+    Some(format!(
+        "{subject} {verb} the top card of {possessive} library. {} may play it this turn",
+        capitalize_first(&subject)
     ))
 }
 
@@ -36418,6 +36472,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!(
             "If {target} would go{from}{to}{duration}, it goes to {replacement} instead"
+        );
+    }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterDrawReplacementEffect>() {
+        let player = if register.player == PlayerFilter::IteratedPlayer {
+            "they".to_string()
+        } else {
+            describe_player_filter(&register.player)
+        };
+        let duration = match register.mode {
+            crate::effects::ReplacementApplyMode::OneShot
+            | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
+            crate::effects::ReplacementApplyMode::Resolution => "",
+        };
+        if let Some(replacement) =
+            describe_draw_replacement_exile_top_play(&register.player, &register.replacement_effects)
+        {
+            return format!(
+                "The next time {player} would draw a card{duration}, instead {replacement}"
+            );
+        }
+        let replacement = lowercase_first(&describe_effect_list(&register.replacement_effects));
+        return format!(
+            "The next time {player} would draw a card{duration}, instead {replacement}"
         );
     }
     if let Some(register) =

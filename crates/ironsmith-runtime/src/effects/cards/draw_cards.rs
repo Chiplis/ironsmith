@@ -41,6 +41,7 @@ fn execute_draw_replacement_effects(
     let original_source = ctx.source;
     let original_controller = ctx.controller;
     let original_cause = ctx.cause.clone();
+    let original_iterated_player = ctx.iteration.iterated_player;
     let was_suppressed = !ctx
         .replacement
         .suppressed_replacement_effects
@@ -57,6 +58,7 @@ fn execute_draw_replacement_effects(
     ctx.controller = replacement_controller;
     ctx.cause =
         crate::events::cause::EventCause::from_effect(replacement_source, replacement_controller);
+    ctx.iteration.iterated_player.get_or_insert(replaced_player);
 
     let execution_result = (|| -> Result<EffectOutcome, ExecutionError> {
         let mut outcomes = Vec::new();
@@ -69,6 +71,7 @@ fn execute_draw_replacement_effects(
     ctx.source = original_source;
     ctx.controller = original_controller;
     ctx.cause = original_cause;
+    ctx.iteration.iterated_player = original_iterated_player;
     if !was_suppressed {
         ctx.replacement
             .suppressed_replacement_effects

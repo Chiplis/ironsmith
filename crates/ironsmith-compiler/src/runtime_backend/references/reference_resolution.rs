@@ -2154,6 +2154,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDrawReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
@@ -2766,6 +2767,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::RegisterFutureZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
+            SubjectVerbActionAst::RegisterDrawReplacement {
+                replacement_effects,
+                ..
+            } => replacement_effects
+                .iter_mut()
+                .map(|effect| bind_unresolved_it_in_effect(effect, seed_tag))
+                .sum(),
             SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
