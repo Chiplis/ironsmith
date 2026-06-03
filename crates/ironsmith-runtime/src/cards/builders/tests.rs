@@ -31145,6 +31145,202 @@ fn parse_destroy_target_creature_dealt_damage_this_turn() {
     );
 }
 
+fn death_rattle_oni_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_500), "Death-Rattle Oni")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Demon, Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .parse_text(
+            "Flash\nThis spell costs {2} less to cast for each creature that died this turn.\nWhen this creature enters, destroy all other creatures that were dealt damage this turn.",
+        )
+        .expect("Death-Rattle Oni should parse strictly")
+}
+
+fn death_rattle_oni_destroy_filter(def: &CardDefinition) -> &crate::target::ObjectFilter {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<DestroyEffect>())
+                .and_then(|destroy| match &destroy.spec {
+                    ChooseSpec::All(filter) => Some(filter),
+                    other => {
+                        panic!("Death-Rattle Oni should destroy all matching creatures, got {other:?}")
+                    }
+                }),
+            _ => None,
+        })
+        .expect("Death-Rattle Oni should have an enters destroy trigger")
+}
+
+fn create_death_rattle_runtime_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+fn record_death_rattle_damage(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    target: ObjectId,
+) {
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source,
+            crate::events::DamageTarget::Object(target),
+            1,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&event);
+}
+
+fn zone_has_named_object(game: &crate::game_state::GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone)
+        .iter()
+        .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[test]
+fn death_rattle_oni_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Death-Rattle Oni");
+    let def = parse_oracle_card_definition("Death-Rattle Oni");
+    let rendered = crate::compiled_text::compiled_text_lines(&def);
+    let destroy_filter = death_rattle_oni_destroy_filter(&def);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Flash".to_string(),
+            "This spell costs {2} less to cast for each creature that died this turn.".to_string(),
+            "When this creature enters, destroy all other creatures that were dealt damage this turn.".to_string(),
+        ],
+        "Death-Rattle Oni compiled text should preserve flash, the dynamic cost reduction, and the dealt-damage destroy clause"
+    );
+    assert!(
+        destroy_filter.other,
+        "Death-Rattle Oni destroy filter should exclude the source creature"
+    );
+    assert!(
+        destroy_filter.was_dealt_damage_this_turn,
+        "Death-Rattle Oni destroy filter should structurally require damage dealt this turn"
+    );
+}
+
+#[test]
+fn death_rattle_oni_cost_reduction_counts_creatures_that_died_this_turn() {
+    let def = death_rattle_oni_definition();
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let oni_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+    let oni = game.object(oni_id).expect("Death-Rattle Oni should be in hand");
+    let base_cost = oni.mana_cost.as_ref().expect("Death-Rattle Oni has a mana cost");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, oni, base_cost).to_oracle(),
+        "{6}{B}",
+        "Death-Rattle Oni should not be reduced before any creatures die this turn"
+    );
+
+    let first = create_death_rattle_runtime_creature(&mut game, alice, "First Doomed Creature");
+    let second = create_death_rattle_runtime_creature(&mut game, alice, "Second Doomed Creature");
+    game.move_object_by_effect(first, Zone::Graveyard);
+    game.move_object_by_effect(second, Zone::Graveyard);
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_creatures_died_this_turn(),
+        2,
+        "test setup should record exactly two creatures dying this turn"
+    );
+
+    let oni = game.object(oni_id).expect("Death-Rattle Oni should remain in hand");
+    let base_cost = oni.mana_cost.as_ref().expect("Death-Rattle Oni has a mana cost");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, oni, base_cost).to_oracle(),
+        "{2}{B}",
+        "two dead creatures should reduce {{6}}{{B}} by {{4}}"
+    );
+}
+
+#[test]
+fn death_rattle_oni_enters_destroy_trigger_destroys_only_other_damaged_creatures() {
+    let def = death_rattle_oni_definition();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let oni_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let damaged_alice =
+        create_death_rattle_runtime_creature(&mut game, alice, "Damaged Alice Creature");
+    let damaged_bob = create_death_rattle_runtime_creature(&mut game, bob, "Damaged Bob Creature");
+    let undamaged_bob =
+        create_death_rattle_runtime_creature(&mut game, bob, "Undamaged Bob Creature");
+    let damage_source = create_death_rattle_runtime_creature(&mut game, bob, "Damage Source");
+
+    record_death_rattle_damage(&mut game, damage_source, damaged_alice);
+    record_death_rattle_damage(&mut game, damage_source, damaged_bob);
+    record_death_rattle_damage(&mut game, damage_source, oni_id);
+
+    let enters_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            oni_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(&game, &enters_event) {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Death-Rattle Oni enters trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Death-Rattle Oni entering should create exactly one destroy trigger"
+    );
+
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Death-Rattle Oni destroy trigger should resolve");
+
+    assert!(
+        zone_has_named_object(&game, Zone::Graveyard, "Damaged Alice Creature"),
+        "Death-Rattle Oni should destroy a damaged creature controlled by its controller"
+    );
+    assert!(
+        zone_has_named_object(&game, Zone::Graveyard, "Damaged Bob Creature"),
+        "Death-Rattle Oni should destroy a damaged creature controlled by an opponent"
+    );
+    assert!(
+        game.object(undamaged_bob)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "Death-Rattle Oni should not destroy undamaged creatures"
+    );
+    assert!(
+        game.object(oni_id)
+            .is_some_and(|object| object.zone == Zone::Battlefield),
+        "Death-Rattle Oni should not destroy itself even if it was dealt damage this turn"
+    );
+}
+
 fn spear_of_heliod_destroy_activated_ability(
     def: &CardDefinition,
 ) -> &crate::ability::ActivatedAbility {

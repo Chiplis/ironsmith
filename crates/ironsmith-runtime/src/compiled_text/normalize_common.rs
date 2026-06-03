@@ -11043,6 +11043,7 @@ fn pluralize_relative_object_phrase(phrase: &str) -> String {
             &format!(" {plural_noun} that player controls"),
         );
     }
+    plural = plural.replace(" that was dealt damage ", " that were dealt damage ");
     plural
 }
 

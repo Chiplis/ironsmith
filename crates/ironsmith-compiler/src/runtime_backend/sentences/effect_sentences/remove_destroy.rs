@@ -60,6 +60,10 @@ const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target
 const BLOCKED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["blocked"]);
 const DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "was", "dealt", "damage", "this", "turn"]);
+const DEALT_DAMAGE_THIS_TURN_FILTER_TAILS: &[&[&str]] = &[
+    &["that", "was", "dealt", "damage", "this", "turn"],
+    &["that", "were", "dealt", "damage", "this", "turn"],
+];
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if let Some(from_idx) = find_index(tokens, |token| FROM_WORD_PATTERN.matches_token(token)) {
@@ -276,6 +280,32 @@ fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, Ca
     parse_object_filter(tokens, false)
 }
 
+fn parse_destroy_all_combat_history_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(suffix_len) = DEALT_DAMAGE_THIS_TURN_FILTER_TAILS
+        .iter()
+        .find_map(|suffix| {
+            (words.len() > suffix.len() && words[words.len() - suffix.len()..] == **suffix)
+                .then_some(suffix.len())
+        })
+    else {
+        return Ok(None);
+    };
+
+    let base_word_len = words.len() - suffix_len;
+    let token_cutoff = token_index_for_word_index(tokens, base_word_len).unwrap_or(tokens.len());
+    let base_tokens = trim_commas(&tokens[..token_cutoff]);
+    if base_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let mut filter = parse_destroy_all_filter(&base_tokens)?;
+    filter.was_dealt_damage_this_turn = true;
+    Ok(Some(filter))
+}
+
 pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let original_clause_words = crate::runtime_backend::token_word_refs(tokens);
     let mut delayed_timing = None;
@@ -320,6 +350,14 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if let Some(target) = parse_destroy_combat_history_target(&core_tokens)? {
         return Ok(wrap_destroy_with_delayed_timing(
             EffectAst::subject_verb_destroy(target),
+            delayed_timing,
+        ));
+    }
+    if ALL_OR_EACH_WORD_PATTERN.matches_word_at(&clause_words, 0)
+        && let Some(filter) = parse_destroy_all_combat_history_filter(&core_tokens[1..])?
+    {
+        return Ok(wrap_destroy_with_delayed_timing(
+            EffectAst::subject_verb_destroy_all(filter),
             delayed_timing,
         ));
     }
