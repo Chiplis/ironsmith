@@ -54700,6 +54700,122 @@ fn nighthawk_scavenger_characteristic_runtime_scaling_regression() {
     );
 }
 
+#[test]
+fn polygoyf_strict_parser_and_compiled_text_preserves_all_graveyards_card_types() {
+    assert_oracle_card_parses_strict("Polygoyf");
+
+    let def = parse_oracle_card_definition("Polygoyf");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT =>
+            {
+                Some(static_ability)
+            }
+            _ => None,
+        })
+        .expect("Polygoyf should have a characteristic-defining P/T ability");
+    let game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let effects = static_ability.generate_effects(
+        crate::ids::ObjectId::from_raw(1),
+        crate::ids::PlayerId::from_index(0),
+        &game,
+    );
+    let crate::continuous::Modification::SetPowerToughness {
+        power,
+        toughness,
+        sublayer: _,
+    } = &effects[0].modification
+    else {
+        panic!("expected Polygoyf to use a SetPowerToughness CDA");
+    };
+
+    assert!(
+        matches!(
+            power,
+            crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any)
+        ),
+        "Polygoyf should structurally count card types across all graveyards, got {power:?}"
+    );
+    assert!(
+        matches!(
+            toughness,
+            crate::effect::Value::Add(left, right)
+                if matches!(&**left, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(&**right, crate::effect::Value::Fixed(1))
+        ) || matches!(
+            toughness,
+            crate::effect::Value::Add(left, right)
+                if matches!(&**right, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(&**left, crate::effect::Value::Fixed(1))
+        ),
+        "Polygoyf toughness should be card types across all graveyards plus 1, got {toughness:?}"
+    );
+    assert!(
+        rendered.contains("trample") && rendered.contains("myriad"),
+        "Polygoyf compiled text should preserve keyword identity, got {rendered}"
+    );
+    assert!(
+        rendered.contains("number of card types among cards in all graveyards"),
+        "Polygoyf compiled text should preserve the all-graveyards card-types-among clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("toughness is equal to that number plus 1"),
+        "Polygoyf compiled text should render the shared toughness value as that number plus 1, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("number of cards in all graveyards"),
+        "Polygoyf must not collapse card types among graveyards into a plain card count, got {rendered}"
+    );
+}
+
+#[test]
+fn polygoyf_runtime_counts_distinct_card_types_in_all_graveyards() {
+    let def = parse_oracle_card_definition("Polygoyf");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let polygoyf = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(
+        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (Some(0), Some(1)),
+        "with empty graveyards, Polygoyf should be 0/1"
+    );
+
+    let artifact_creature = CardDefinitionBuilder::new(CardId::new(), "Artifact Creature Probe")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .build();
+    let enchantment = CardDefinitionBuilder::new(CardId::new(), "Enchantment Probe")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let duplicate_artifact = CardDefinitionBuilder::new(CardId::new(), "Duplicate Artifact Probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    game.create_object_from_definition(&artifact_creature, alice, Zone::Graveyard);
+    game.create_object_from_definition(&enchantment, bob, Zone::Graveyard);
+    game.create_object_from_definition(&duplicate_artifact, bob, Zone::Graveyard);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (Some(3), Some(4)),
+        "Polygoyf should count distinct card types across both players' graveyards and add 1 toughness"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {

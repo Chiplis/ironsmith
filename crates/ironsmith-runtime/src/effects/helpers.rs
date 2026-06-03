@@ -1462,21 +1462,19 @@ pub fn resolve_value(
         }
 
         Value::CardTypesInGraveyard(player_spec) => {
-            use crate::types::CardType;
-
-            let player_id = resolve_player_filter(game, player_spec, ctx)?;
-            let player = game
-                .player(player_id)
-                .ok_or(ExecutionError::PlayerNotFound(player_id))?;
-
-            let mut types: Vec<CardType> = Vec::new();
-            for &card_id in &player.graveyard {
-                let Some(obj) = game.object(card_id) else {
-                    continue;
-                };
-                for card_type in &obj.card_types {
-                    if !types.contains(card_type) {
-                        types.push(*card_type);
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            let mut types = HashSet::new();
+            for player_id in player_ids {
+                let player = game
+                    .player(player_id)
+                    .ok_or(ExecutionError::PlayerNotFound(player_id))?;
+                for &card_id in &player.graveyard {
+                    let Some(obj) = game.object(card_id) else {
+                        continue;
+                    };
+                    for card_type in &obj.card_types {
+                        types.insert(*card_type);
                     }
                 }
             }

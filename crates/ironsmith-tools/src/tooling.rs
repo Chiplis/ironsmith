@@ -3167,15 +3167,18 @@ CardDefinition {
     }
 
     #[test]
-    fn authoritative_snapshot_rejects_dropped_card_types_among_marker() {
+    fn authoritative_snapshot_accepts_preserved_card_types_among_marker() {
         let snapshot = compile_authoritative_snapshot_from_payload(&tarmogoyf_payload());
 
-        assert_eq!(snapshot.parse_status, ParseStatus::ParseFailed);
-        assert_eq!(
-            snapshot.parse_error.as_deref(),
-            Some("compiled text dropped required semantic marker: card-types-among")
+        assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
+        assert_eq!(snapshot.parse_error, None);
+        let compiled = snapshot
+            .compiled_text
+            .expect("Tarmogoyf-style card-types-among text should compile");
+        assert!(
+            compiled.contains("number of card types among cards in all graveyards"),
+            "compiled text should preserve card-types-among marker, got: {compiled}"
         );
-        assert!(snapshot.compiled_text.is_none());
     }
 
     #[test]
