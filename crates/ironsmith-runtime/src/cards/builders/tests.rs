@@ -54099,7 +54099,8 @@ fn resolve_mob_verdict_with_votes(
     let bob_creature = mob_test_creature(91_302, "Bob Mob Creature");
     let charlie_creature = mob_test_creature(91_303, "Charlie Mob Creature");
     let filler = mob_test_card(91_304, "Mob Draw Filler");
-    let alice_creature_id = game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
+    let alice_creature_id =
+        game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
     let bob_creature_id = game.create_object_from_definition(&bob_creature, bob, Zone::Battlefield);
     let charlie_creature_id =
         game.create_object_from_definition(&charlie_creature, charlie, Zone::Battlefield);
@@ -54157,6 +54158,58 @@ fn mob_verdict_runtime_votes_you_received_draw_cards_without_opponent_damage_to_
     assert_eq!(game.damage_on(bob_creature), 0, "Bob's creature should not be damaged without Bob receiving votes");
     assert_eq!(game.player(charlie).unwrap().life, 18, "Charlie received Alice's vote and should take 2 damage");
     assert_eq!(game.damage_on(charlie_creature), 2, "Charlie's creature should be damaged for Charlie's received vote");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mob_verdict_runtime_another_player_vote_has_no_legal_self_vote() {
+    let def = parse_oracle_card_definition("Mob Verdict");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Mob Verdict should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice_creature = mob_test_creature(91_305, "Solo Mob Creature");
+    let filler = mob_test_card(91_306, "Solo Mob Draw Filler");
+    let alice_creature_id =
+        game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
+    game.create_object_from_definition(&filler, alice, Zone::Library);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = MobVerdictDecisionMaker { votes: vec![0] };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Mob Verdict should resolve even when no another-player vote is legal");
+
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "Alice should not damage herself when another-player voting has no legal candidate"
+    );
+    assert_eq!(
+        game.damage_on(alice_creature_id),
+        0,
+        "Alice's creature should not be damaged when Alice cannot vote for herself"
+    );
+    assert_eq!(
+        mob_owner_zone_count(&game, alice, Zone::Hand),
+        0,
+        "Alice should not draw because no player received a vote"
+    );
+    assert_eq!(
+        mob_owner_zone_count(&game, alice, Zone::Library),
+        1,
+        "the draw followup should not consume Alice's library card when no vote was cast"
+    );
 }
 
 #[test]
