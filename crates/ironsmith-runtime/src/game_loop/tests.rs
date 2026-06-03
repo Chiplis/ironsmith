@@ -909,6 +909,23 @@ fn mighty_servant_two_creature_crew_grants_damage_draw_until_cleanup() {
         1,
         "granted combat-damage trigger should be present after exact two-creature crew"
     );
+
+    let defending_creature = create_vanilla_creature(&mut game, "Defending Creature", bob, 2, 2);
+    let creature_damage = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            vehicle_id,
+            crate::events::DamageTarget::Object(defending_creature),
+            6,
+            true,
+            crate::events::cause::EventCause::combat_damage(vehicle_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &creature_damage).is_empty(),
+        "Mighty Servant's granted trigger should only trigger on combat damage to a player"
+    );
+
     let hand_before = game.player(alice).expect("alice exists").hand.len();
     put_triggers_on_stack(&mut game, &mut damage_trigger_queue)
         .expect("granted combat-damage trigger should go on the stack");
@@ -959,6 +976,34 @@ fn mighty_servant_crew_condition_requires_exactly_two_on_first_crew() {
     assert!(
         later_trigger_queue.entries.is_empty(),
         "Mighty Servant should not trigger on a later crew activation even if that activation used exactly two creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mighty_servant_first_crew_by_three_creatures_does_not_grant_damage_draw() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mighty = mighty_servant_of_leuk_o_definition();
+    let vehicle_id = game.create_object_from_definition(&mighty, alice, Zone::Battlefield);
+    create_vanilla_creature(&mut game, "Crew One", alice, 2, 2);
+    create_vanilla_creature(&mut game, "Crew Two", alice, 1, 1);
+    create_vanilla_creature(&mut game, "Crew Three", alice, 1, 1);
+
+    let trigger_queue = activate_mighty_servant_crew(
+        &mut game,
+        vehicle_id,
+        alice,
+        vec!["Crew One", "Crew Two", "Crew Three"],
+    );
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Mighty Servant should not trigger when first crewed by three creatures"
     );
 }
 
