@@ -49577,6 +49577,284 @@ fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
     );
 }
 
+fn krang_master_mind_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(955_852), "Krang, Master Mind")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(6)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 4))
+        .parse_text(
+            "Affinity for artifacts (This spell costs {1} less to cast for each artifact you control.)\n\
+             When Krang enters, if you have fewer than four cards in hand, draw cards equal to the difference.\n\
+             Krang gets +1/+0 for each other artifact you control.",
+        )
+        .expect("Krang, Master Mind should parse strictly")
+}
+
+#[test]
+fn krang_master_mind_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Krang, Master Mind");
+    let def = parse_oracle_card_definition("Krang, Master Mind");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Affinity for artifacts"),
+        "Krang should preserve affinity keyword text, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("draw cards equal to the difference"),
+        "Krang should render the conditional difference draw count, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains("gets +1/+0 for each other artifact you control"),
+        "Krang should render its other-artifact power bonus, got {rendered}"
+    );
+    assert!(
+        debug.contains("PlayerCardsInHandOrFewer")
+            && debug.contains("CardsInHand")
+            && debug.contains("Difference"),
+        "Krang should lower the fewer-than-four hand condition and difference draw structurally, got {debug}"
+    );
+}
+
+#[test]
+fn krang_master_mind_etb_draws_up_to_four_cards_in_hand() {
+    let def = krang_master_mind_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for idx in 0..5 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(955_860 + idx), &format!("Library Card {idx}"))
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            krang_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, krang_id, &event),
+        1,
+        "Krang should trigger when its controller has fewer than four cards in hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        4,
+        "Krang should draw exactly the difference up to four cards in hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").library.len(),
+        1,
+        "Krang should draw four cards from a five-card library"
+    );
+}
+
+#[test]
+fn krang_master_mind_etb_does_not_trigger_with_four_cards_in_hand() {
+    let def = krang_master_mind_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for idx in 0..4 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(955_870 + idx), &format!("Hand Card {idx}"))
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Hand,
+        );
+    }
+    for idx in 0..3 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(955_880 + idx), &format!("Library Card {idx}"))
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            krang_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, krang_id, &event),
+        0,
+        "Krang should use the hand-size condition as an intervening-if trigger gate"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").hand.len(), 4);
+    assert_eq!(game.player(alice).expect("alice exists").library.len(), 3);
+}
+
+#[test]
+fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() {
+    let def = krang_master_mind_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    for idx in 0..3 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(955_883 + idx), &format!("Library Card {idx}"))
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Library,
+        );
+    }
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_cause(
+            krang_id,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::EventCause::from_game_rule(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert_eq!(
+        triggers.iter().filter(|entry| entry.source == krang_id).count(),
+        1,
+        "Krang should initially trigger while its controller has fewer than four cards in hand"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers.into_iter().filter(|entry| entry.source == krang_id) {
+        trigger_queue.add(trigger);
+    }
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Krang trigger should go on the stack");
+    for idx in 0..4 {
+        game.create_object_from_definition(
+            &CardDefinitionBuilder::new(CardId::from_raw(955_886 + idx), &format!("Hand Card {idx}"))
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Hand,
+        );
+    }
+
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Krang trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        4,
+        "Krang should not draw if the intervening-if condition fails on resolution"
+    );
+    assert_eq!(game.player(alice).expect("alice exists").library.len(), 3);
+}
+
+#[test]
+fn krang_master_mind_affinity_reduces_only_for_your_artifacts() {
+    let def = krang_master_mind_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let krang_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let krang = game.object(krang_id).expect("Krang should be in hand");
+    let base_cost = krang.mana_cost.as_ref().expect("Krang has a mana cost").clone();
+
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost).mana_value(),
+        8,
+        "Krang should cost eight mana with no artifacts you control"
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(955_890), "Alice Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(955_891), "Bob Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(955_892), "Alice Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let krang = game.object(krang_id).expect("Krang should still be in hand");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost).mana_value(),
+        7,
+        "Krang affinity should count only artifacts controlled by its controller"
+    );
+}
+
+#[test]
+fn krang_master_mind_gets_plus_one_power_for_each_other_artifact_you_control() {
+    let def = krang_master_mind_definition();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(game.current_power(krang_id), Some(1));
+    assert_eq!(game.current_toughness(krang_id), Some(4));
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(955_900), "Bob Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    assert_eq!(
+        game.current_power(krang_id),
+        Some(1),
+        "Krang should not count artifacts controlled by opponents"
+    );
+
+    game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(955_901), "Alice Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    assert_eq!(
+        game.current_power(krang_id),
+        Some(2),
+        "Krang should get +1/+0 for one other artifact you control"
+    );
+    assert_eq!(game.current_toughness(krang_id), Some(4));
+}
+
 #[test]
 fn polliwallop_targets_and_deals_twice_source_creature_power() {
     let def = polliwallop_definition();
