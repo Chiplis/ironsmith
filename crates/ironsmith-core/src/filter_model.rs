@@ -2513,6 +2513,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 )
             }
             Value::LifeTotal(player) => format!("{player:?}'s life total"),
+            Value::LifeTotalAsTurnBegan(player) => {
+                format!("{player:?}'s life total as the turn began")
+            }
             Value::LifeTotalDifference(player) => {
                 format!("difference between {player:?} players' life totals")
             }

@@ -8370,6 +8370,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::LifeTotal(filter) => {
             format!("{} life total", describe_possessive_player_filter(filter))
         }
+        Value::LifeTotalAsTurnBegan(filter) => format!(
+            "{} life total as the turn began",
+            describe_possessive_player_filter(filter)
+        ),
         Value::LifeTotalDifference(filter) => match filter {
             PlayerFilter::Target(_) => "the difference between those players' life totals".to_string(),
             _ => format!(

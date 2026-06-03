@@ -3221,6 +3221,29 @@ impl GameState {
         0
     }
 
+    /// Marks a player as having lost the game and emits the trigger-visible event once.
+    pub fn mark_player_lost(&mut self, player: PlayerId) -> bool {
+        let should_emit = if let Some(p) = self.player_mut(player) {
+            if !p.is_in_game() {
+                false
+            } else {
+                p.has_lost = true;
+                true
+            }
+        } else {
+            false
+        };
+
+        if should_emit {
+            self.queue_trigger_event(
+                crate::provenance::ProvNodeId::default(),
+                crate::events::Event::player_loses_game(player).into_raw(),
+            );
+        }
+
+        should_emit
+    }
+
     /// Pays life as a cost.
     ///
     /// Returns true if the player could pay and life was deducted.

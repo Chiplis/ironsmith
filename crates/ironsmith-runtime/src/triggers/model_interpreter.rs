@@ -281,6 +281,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerLosesLife { player } => {
             crate::triggers::Trigger::player_loses_life(player)
         }
+        TriggerKind::PlayerLosesGame { player } => {
+            crate::triggers::Trigger::player_loses_game(player)
+        }
         TriggerKind::PlayerLosesLifeDuringTurn {
             player,
             during_turn,

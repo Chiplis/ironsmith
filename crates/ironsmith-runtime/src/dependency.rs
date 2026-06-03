@@ -1373,6 +1373,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
         | Value::Speed(_)

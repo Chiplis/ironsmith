@@ -219,6 +219,7 @@ pub(crate) enum TriggerSpec {
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
+    PlayerLosesGame(PlayerFilter),
     PlayerLosesLifeDuringTurn {
         player: PlayerFilter,
         during_turn: PlayerFilter,

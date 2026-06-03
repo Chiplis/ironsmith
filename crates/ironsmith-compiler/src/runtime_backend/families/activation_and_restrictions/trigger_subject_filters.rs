@@ -11,6 +11,14 @@ const RELATIVE_PRONOUN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["that"], &["which"], &["who"], &["whom"]]);
 const EACH_WITH_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each", "with"]);
 const YOU_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const ANOTHER_PLAYER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["another", "player"],
+            &["a", "player", "other", "than", "you"],
+            &["a", "player", "other", "than", "yourself"],
+        ]
+);
 const CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["the", "chosen", "player"], &["chosen", "player"]]);
 const ENCHANTED_PLAYER_TRIGGER_SUBJECT_PATTERN: ClauseShape<'static> =
@@ -587,6 +595,9 @@ pub(crate) fn contains_your_team_words(words: &[&str]) -> bool {
 pub(crate) fn parse_trigger_subject_player_filter(subject: &[&str]) -> Option<PlayerFilter> {
     if YOU_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
         return Some(PlayerFilter::You);
+    }
+    if ANOTHER_PLAYER_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
+        return Some(PlayerFilter::NotYou);
     }
     if CHOSEN_PLAYER_TRIGGER_SUBJECT_PATTERN.matches_words(subject) {
         return Some(PlayerFilter::ChosenPlayer);

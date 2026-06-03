@@ -4456,6 +4456,7 @@ fn resolve_value_with_context(
         | Value::ToughnessOf(_)
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
+        | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
         | Value::LastNotedLifeTotal
         | Value::Speed(_)
