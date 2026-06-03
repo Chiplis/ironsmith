@@ -1219,12 +1219,12 @@ pub(crate) fn check_triggers_with_view(
 
     // Check objects in all public non-battlefield zones.
     for_each_public_nonbattlefield_trigger_object_id(game, |obj_id| {
-        check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
+        check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
 
     // Hand is hidden, but some mechanics (for example Miracle) legitimately trigger there.
     for_each_hidden_trigger_object_id(game, |obj_id| {
-        check_triggers_in_zone(game, obj_id, trigger_event, &mut triggered);
+        check_triggers_in_zone(game, obj_id, trigger_event, view, &mut triggered);
     });
 
     // Note: Undying/Persist/Miracle triggers are handled through the normal trigger system.
@@ -1870,6 +1870,7 @@ fn check_triggers_in_zone(
     game: &GameState,
     obj_id: ObjectId,
     trigger_event: &TriggerEvent,
+    view: &crate::derived_view::DerivedGameView<'_>,
     triggered: &mut Vec<TriggeredAbilityEntry>,
 ) {
     let Some(obj) = game.object(obj_id) else {
@@ -1878,7 +1879,11 @@ fn check_triggers_in_zone(
 
     let ctx = TriggerContext::for_source(obj_id, game.controller_of(obj), game);
 
-    for ability in &obj.abilities {
+    let calculated_abilities = view
+        .abilities_rc(obj_id)
+        .unwrap_or_else(|| Rc::new(obj.abilities.clone()));
+
+    for ability in calculated_abilities.iter() {
         let AbilityKind::Triggered(trigger_ability) = &ability.kind else {
             continue;
         };

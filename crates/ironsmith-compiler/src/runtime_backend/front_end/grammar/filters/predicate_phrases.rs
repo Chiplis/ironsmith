@@ -5351,6 +5351,21 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(reference_len) = demonstrative_reference_len {
         let mut descriptor_words = filtered[reference_len..].to_vec();
+        let mut negative = false;
+        if descriptor_words.len() >= 2
+            && matches!(descriptor_words[0], "doesnt" | "doesn't")
+            && HAVE_WORD_PATTERN.matches_word(descriptor_words[1])
+        {
+            descriptor_words.drain(0..2);
+            negative = true;
+        } else if descriptor_words.len() >= 3
+            && descriptor_words[0] == "does"
+            && NOT_WORD_PATTERN.matches_word(descriptor_words[1])
+            && HAVE_WORD_PATTERN.matches_word(descriptor_words[2])
+        {
+            descriptor_words.drain(0..3);
+            negative = true;
+        }
         if descriptor_words.len() >= 2
             && POWER_OR_TOUGHNESS_WORD_PATTERN.matches_word(descriptor_words[0])
         {
@@ -5468,7 +5483,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                         filter,
                     ));
                 }
-                return Ok(PredicateAst::ItMatches(filter));
+                let predicate = PredicateAst::ItMatches(filter);
+                return Ok(if negative {
+                    PredicateAst::Not(Box::new(predicate))
+                } else {
+                    predicate
+                });
             }
         }
     }

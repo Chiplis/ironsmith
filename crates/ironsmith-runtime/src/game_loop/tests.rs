@@ -8165,6 +8165,124 @@ fn test_suspend_declined_cast_does_not_keep_triggering_without_time_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn jhoira_of_the_ghitu_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(73_200), "Jhoira of the Ghitu")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it doesn't have suspend, it gains suspend.",
+        )
+        .expect("Jhoira of the Ghitu should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let jhoira_def = jhoira_of_the_ghitu_definition();
+    let jhoira_id = game.create_object_from_definition(&jhoira_def, alice, Zone::Battlefield);
+    let land_def = CardDefinitionBuilder::new(CardId::from_raw(73_201), "Island Probe")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_definition(&land_def, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 2);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if source == jhoira_id
+            )),
+        "Jhoira should not be activatable when the only card in hand is a land"
+    );
+
+    let spell_def = CardDefinitionBuilder::new(CardId::from_raw(73_202), "Suspend Gift Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let spell_id = game.create_object_from_definition(&spell_def, alice, Zone::Hand);
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateAbility { source, .. }
+                if *source == jhoira_id
+        ))
+        .expect("Jhoira should be activatable with a nonland card in hand");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Jhoira activation should be paid and put on the stack");
+    resolve_stack_entry(&mut game).expect("Jhoira activation should resolve");
+
+    assert!(
+        game.player(alice)
+            .expect("Alice should exist")
+            .hand
+            .contains(&land_id),
+        "Jhoira's exile cost must not choose the land card"
+    );
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice should exist")
+            .hand
+            .contains(&spell_id),
+        "Jhoira should move the nonland card out of hand"
+    );
+    let exiled_id = *game
+        .exile
+        .iter()
+        .find(|&&id| game.object(id).is_some_and(|object| object.name == "Suspend Gift Probe"))
+        .expect("Jhoira should exile the chosen nonland card");
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Time),
+        4,
+        "Jhoira should put four time counters on the exiled card"
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "the suspend ability granted by Jhoira should trigger from exile"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("granted suspend upkeep trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("granted suspend upkeep trigger should resolve");
+    assert_eq!(
+        game.counter_count(exiled_id, crate::object::CounterType::Time),
+        3,
+        "the granted suspend upkeep trigger should remove a time counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn the_face_of_boe_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(73_100), "The Face of Boe")
         .mana_cost(ManaCost::from_pips(vec![

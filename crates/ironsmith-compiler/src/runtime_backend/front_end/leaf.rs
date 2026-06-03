@@ -1061,18 +1061,40 @@ fn parse_exile_segment_tokens(
             idx += 1;
         }
 
-        if !subject
+        if subject
             .get(idx)
             .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+            && idx + 1 == subject.len()
         {
+            return Ok(ActivationCostSegmentCst::ExileFromHand {
+                count,
+                color_filter,
+            });
+        }
+
+        let Some(subject_tokens) =
+            token_slice_for_word_range(tokens, &words, 1, lowered.len().saturating_sub(3))
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "rewrite exile-from-hand parser found empty selector in '{raw}'"
+            )));
+        };
+        let (choice_count, filter_tokens) = parse_generic_choice_prefix_tokens(subject_tokens)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "rewrite exile-from-hand parser expected card selector in '{raw}'"
+                ))
+            })?;
+        let filter_text = render_lower_lexed_tokens(filter_tokens);
+        if filter_text.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "rewrite exile-from-hand parser expected card selector in '{raw}'"
             )));
         }
 
-        return Ok(ActivationCostSegmentCst::ExileFromHand {
-            count,
-            color_filter,
+        return Ok(ActivationCostSegmentCst::ExileChosen {
+            choice_count,
+            filter_text: format!("{filter_text} from your hand"),
         });
     }
 

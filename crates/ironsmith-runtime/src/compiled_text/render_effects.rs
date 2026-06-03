@@ -3527,6 +3527,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return Some(compact);
     }
 
+    if let Some(compact) = describe_put_counters_then_gain_suspend(effects) {
+        return Some(compact);
+    }
+
     if effects.len() == 3 {
         let refs = effects.iter().collect::<Vec<_>>();
         if let Some(compact) = describe_discard_hand_add_mana_draw_sequence(&refs) {
@@ -23786,6 +23790,108 @@ fn describe_choose_exile_then_put_counter(
     let exile_text = describe_choose_then_exile(choose, exile)?;
     Some(format!(
         "{exile_text} and put {} on it",
+        describe_put_counter_phrase(&put.amount, put.counter_type)
+    ))
+}
+
+fn choose_spec_references_tagged_object(spec: &ChooseSpec, tag: &crate::TagKey) -> bool {
+    match spec.base() {
+        ChooseSpec::Tagged(found) => found == tag,
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        }
+        _ => false,
+    }
+}
+
+fn filter_checks_for_suspend(filter: &ObjectFilter) -> bool {
+    filter.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
+}
+
+fn condition_is_tagged_object_without_suspend(condition: &Condition, tag: &crate::TagKey) -> bool {
+    let Condition::Not(inner) = condition else {
+        return false;
+    };
+    matches!(
+        inner.as_ref(),
+        Condition::TaggedObjectMatches(found, filter)
+            if found == tag && filter_checks_for_suspend(filter)
+    )
+}
+
+fn ability_is_suspend_exile_trigger(ability: &crate::ability::Ability) -> bool {
+    let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    triggered.presentation_label.as_deref() == Some("keyword:suspend")
+        && ability.functional_zones == [Zone::Exile]
+}
+
+fn modification_adds_suspend_exile_trigger(
+    modification: &crate::continuous::Modification,
+) -> bool {
+    matches!(
+        modification,
+        crate::continuous::Modification::AddAbilityGeneric(ability)
+            if ability_is_suspend_exile_trigger(ability)
+    )
+}
+
+fn apply_grants_suspend_to_tag(
+    apply: &crate::effects::ApplyContinuousEffect,
+    tag: &crate::TagKey,
+) -> bool {
+    if apply.until != Until::Forever
+        || apply.condition.is_some()
+        || !apply.runtime_modifications.is_empty()
+        || !matches!(apply.target_spec.as_ref(), Some(spec) if choose_spec_references_tagged_object(spec, tag))
+    {
+        return false;
+    }
+
+    let modifications = apply
+        .modification
+        .iter()
+        .chain(apply.additional_modifications.iter())
+        .collect::<Vec<_>>();
+    modifications.len() == 2
+        && modifications
+            .iter()
+            .all(|modification| modification_adds_suspend_exile_trigger(modification))
+}
+
+fn describe_put_counters_then_gain_suspend(effects: &[Effect]) -> Option<String> {
+    let [put_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let tagged_put = put_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let put = tagged_put
+        .effect
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.counter_type != CounterType::Time
+        || put.target_count.is_some()
+        || put.distributed
+    {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+        || !condition_is_tagged_object_without_suspend(&conditional.condition, &tagged_put.tag)
+    {
+        return None;
+    }
+    let apply = conditional.if_true[0].downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !apply_grants_suspend_to_tag(apply, &tagged_put.tag) {
+        return None;
+    }
+
+    Some(format!(
+        "Put {} on the exiled card. If it doesn't have suspend, it gains suspend",
         describe_put_counter_phrase(&put.amount, put.counter_type)
     ))
 }

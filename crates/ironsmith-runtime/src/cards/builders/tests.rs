@@ -11423,6 +11423,34 @@ fn test_parse_suspend_keyword_line_with_reminder_text_keeps_suspend_clause() {
     );
 }
 
+#[test]
+fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regression() {
+    assert_oracle_card_parses_strict("Jhoira of the Ghitu");
+
+    let def = parse_oracle_card_definition("Jhoira of the Ghitu");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it doesn't have suspend, it gains suspend"
+        ),
+        "expected Jhoira's activated ability to render with compact gained suspend text, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ExileEffect")
+            && debug.contains("nonland")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("keyword:suspend")
+            && debug.contains("AddAbilityGeneric"),
+        "expected Jhoira to lower exile-from-hand, time counters, and real suspend triggers, got {debug}"
+    );
+    assert!(
+        !debug.contains("KeywordFallbackText") && !debug.contains("unsupported"),
+        "Jhoira should not rely on unsupported fallback text, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_the_face_of_boe_suspend_cost_activation() {
