@@ -695,6 +695,11 @@ impl Trigger {
         Self::new(PlayerLosesLifeTrigger::during_turn(player, during_turn))
     }
 
+    /// Create a "whenever [player] loses the game" trigger.
+    pub fn player_lost_game(player: PlayerFilter) -> Self {
+        Self::new(PlayerLostGameTrigger::new(player))
+    }
+
     /// Create a "when [target] is dealt damage" trigger.
     pub fn is_dealt_damage(target: ChooseSpec) -> Self {
         Self::new(IsDealtDamageTrigger::new(target))

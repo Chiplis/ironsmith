@@ -125,6 +125,8 @@ pub enum EventKind {
     StateTrigger,
     /// A Saga chapter ability resolved
     ChapterAbilityResolved,
+    /// A player lost the game
+    PlayerLostGame,
 }
 
 /// A target within an event that can potentially be redirected.

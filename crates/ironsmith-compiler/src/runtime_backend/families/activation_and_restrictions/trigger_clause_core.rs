@@ -640,6 +640,8 @@ const YOU_GAIN_LIFE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "gain", "life"]);
 const LOSE_LIFE_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["lose", "life"], &["loses", "life"]]);
+const LOSE_GAME_TRIGGER_SUFFIX: ClauseShape<'static> =
+    clause_shape!(suffix_any & [&["lose", "the", "game"], &["loses", "the", "game"]]);
 const DRAW_A_CARD_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix_any & [&["draw", "a", "card"], &["draws", "a", "card"]]);
 const OPPONENT_EFFECT_DISCARDS_THIS_CARD_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -3487,6 +3489,13 @@ pub(crate) fn parse_trigger_clause_lexed(
         let subject = &words[..words.len().saturating_sub(2)];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
             return Ok(TriggerSpec::PlayerLosesLife(player));
+        }
+    }
+
+    if LOSE_GAME_TRIGGER_SUFFIX.matches_words(&words) {
+        let subject = &words[..words.len().saturating_sub(3)];
+        if let Some(player) = parse_trigger_subject_player_filter(subject) {
+            return Ok(TriggerSpec::PlayerLostGame(player));
         }
     }
 

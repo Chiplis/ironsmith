@@ -4971,6 +4971,13 @@ fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let [first, second] = effects
+        && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
+        && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
@@ -18432,6 +18439,30 @@ mod tests {
     }
 
     #[test]
+    fn target_then_must_be_blocked_renders_single_target_sentence() {
+        let target_tag = TagKey::from("targeted_0");
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(ObjectFilter::creature()),
+        )))
+        .tag(target_tag.clone());
+
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: target_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::cant_until(
+            crate::effect::Restriction::must_be_blocked(filter),
+            Until::EndOfTurn,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[target, cant]),
+            "Target creature must be blocked this turn if able"
+        );
+    }
+
+    #[test]
     fn tap_it_then_cant_untap_keeps_it_reference() {
         let tag = TagKey::from("__it__");
         let tap = Effect::tap(ChooseSpec::Tagged(tag.clone()));
@@ -20114,6 +20145,24 @@ fn loyalty_cost_amount_text(text: &str) -> Option<String> {
 fn loyalty_cost_amount_word(text: &str) -> Option<i32> {
     let text = text.trim();
     ironsmith_core::parse_cardinal_word(text).and_then(|value| value.try_into().ok())
+}
+
+fn life_lost_this_way_group_size(value: &Value) -> Option<i32> {
+    match value.unhinted() {
+        Value::EffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::EventValue(EventValueSpec::LifeAmount) => Some(1),
+        Value::DividedRoundedDown(inner, divisor) if *divisor > 1 => {
+            life_lost_this_way_group_size(inner).map(|_| *divisor)
+        }
+        _ => None,
+    }
 }
 
 fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Option<String> {
@@ -22389,6 +22438,9 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
     let (filter, restriction_text) = match &cant.restriction {
         crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),
         crate::effect::Restriction::BeBlocked(filter) => (filter, "can't be blocked this turn"),
+        crate::effect::Restriction::MustBeBlocked(filter) => {
+            (filter, "must be blocked this turn if able")
+        }
         _ => return None,
     };
     if !filter.tagged_constraints.iter().any(|constraint| {
@@ -31675,6 +31727,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_for_each_count_filter(&filter)
             );
         }
+        if let Some(group_size) = life_lost_this_way_group_size(&put_counters.amount) {
+            return format!(
+                "Put {} on {target} for each {group_size} life lost this way",
+                describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+            );
+        }
         if let Some((counter_text, where_x)) =
             describe_counter_count_with_where_x(&put_counters.amount, put_counters.counter_type)
         {
@@ -31716,6 +31774,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         }
                         crate::effect::EffectMetric::ChosenCount => {
                             Some("object chosen this way".to_string())
+                        }
+                        crate::effect::EffectMetric::LifeLost => {
+                            Some("1 life lost this way".to_string())
                         }
                         _ => None,
                     }

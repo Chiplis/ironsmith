@@ -756,9 +756,17 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
         return Ok(None);
     }
     if starts_with_target_indicator(subject_clause.tokens()) {
-        // We only support source/tagged subjects here; explicit "target ..." needs
-        // a target+restriction sequence that this single-clause parser cannot encode.
-        return Ok(None);
+        let attacker_target = parse_target_phrase(subject_clause.tokens())?;
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_target_only(attacker_target),
+                EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(IT_TAG)),
+                    Until::EndOfTurn,
+                    None,
+                ),
+            ],
+        }));
     }
 
     let attacker_target = parse_target_phrase(subject_clause.tokens())?;

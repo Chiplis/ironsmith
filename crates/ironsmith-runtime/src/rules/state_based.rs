@@ -885,8 +885,24 @@ fn apply_single_sba_with_snapshots(
         }
 
         StateBasedAction::PlayerLoses { player, reason: _ } => {
-            if let Some(p) = game.player_mut(player) {
-                p.has_lost = true;
+            let lost_now = if let Some(p) = game.player_mut(player) {
+                if p.has_lost {
+                    false
+                } else {
+                    p.has_lost = true;
+                    true
+                }
+            } else {
+                false
+            };
+            if lost_now {
+                game.queue_trigger_event(
+                    crate::provenance::ProvNodeId::default(),
+                    crate::triggers::TriggerEvent::new_with_provenance(
+                        crate::events::other::PlayerLostGameEvent::new(player),
+                        crate::provenance::ProvNodeId::default(),
+                    ),
+                );
             }
         }
 

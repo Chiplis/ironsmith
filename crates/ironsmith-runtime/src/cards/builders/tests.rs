@@ -46632,6 +46632,34 @@ fn parse_oracle_card_definition(name: &str) -> CardDefinition {
         .unwrap_or_else(|err| panic!("strict parser regression failed for '{name}': {err:?}"))
 }
 
+fn blood_tyrant_game() -> (crate::game_state::GameState, PlayerId, PlayerId, ObjectId) {
+    let def = parse_oracle_card_definition("Blood Tyrant");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tyrant_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    (game, alice, bob, tyrant_id)
+}
+
+fn resolve_triggers_for_source(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    event: &crate::triggers::TriggerEvent,
+) -> usize {
+    let triggers = crate::triggers::check_triggers(game, event);
+    let matching_count = triggers.iter().filter(|entry| entry.source == source).count();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in triggers.into_iter().filter(|entry| entry.source == source) {
+        trigger_queue.add(trigger);
+    }
+    if matching_count > 0 {
+        crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+            .expect("trigger should go on the stack");
+        crate::game_loop::resolve_stack_entry(game).expect("trigger should resolve");
+    }
+    matching_count
+}
+
 fn assert_oracle_card_parses_strict(name: &str) {
     let oracle = oracle_text_by_name()
         .get(name)
@@ -46643,6 +46671,269 @@ fn assert_oracle_card_parses_strict(name: &str) {
         "strict parser regression failed for '{name}': {:?}\nOracle text:\n{}",
         result.err(),
         oracle
+    );
+}
+
+#[test]
+fn irresistible_prey_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Irresistible Prey");
+    let rendered = unprocessed_compiled_lines(&def);
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let compact_debug = spell_debug.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    assert_eq!(
+        rendered,
+        vec!["Target creature must be blocked this turn if able. Draw a card."],
+        "expected exact Irresistible Prey oracle-shaped compiled text"
+    );
+    assert!(
+        spell_debug.contains("TargetOnlyEffect")
+            && spell_debug.contains("CantEffect")
+            && spell_debug.contains("MustBeBlocked")
+            && spell_debug.contains("DrawCardsEffect"),
+        "expected direct targeted must-be-blocked restriction plus card draw, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("AddAbility") && !spell_debug.contains("RuleRestriction"),
+        "Irresistible Prey must not grant a removable ability, got {spell_debug}"
+    );
+    assert!(
+        compact_debug.contains("Target( Object(")
+            && compact_debug.contains("card_types: [ Creature"),
+        "expected Irresistible Prey to require a target creature, got {spell_debug}"
+    );
+}
+
+fn resolve_irresistible_prey_targeting_attacker(
+    blocker_tapped: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
+    let prey = parse_oracle_card_definition("Irresistible Prey");
+    let attacker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Blocker")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let draw_card = CardDefinitionBuilder::new(CardId::new(), "Irresistible Prey Draw Card")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&prey, alice, Zone::Stack);
+    let attacker = game.create_object_from_definition(&attacker_def, alice, Zone::Battlefield);
+    let blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    game.create_object_from_definition(&draw_card, alice, Zone::Library);
+    let hand_size_before = game.objects_in_zone(Zone::Hand).len();
+    game.remove_summoning_sickness(attacker);
+    if blocker_tapped {
+        game.tap(blocker);
+    }
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(attacker)]);
+    ctx.snapshot_targets(&game);
+    for effect in prey
+        .spell_effect
+        .as_ref()
+        .expect("Irresistible Prey should compile to spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Irresistible Prey spell effect should resolve");
+    }
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey should mark the targeted creature as must-be-blocked"
+    );
+    assert_eq!(
+        game.objects_in_zone(Zone::Hand).len(),
+        hand_size_before + 1,
+        "Irresistible Prey should draw a card as its second spell effect"
+    );
+
+    (game, alice, bob, attacker, blocker)
+}
+
+#[test]
+fn irresistible_prey_runtime_requirement_survives_ability_removal() {
+    let (mut game, alice, bob, attacker, _blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+
+    let remove_abilities = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(crate::target::ObjectFilter::specific(attacker)),
+        crate::continuous::Modification::RemoveAllAbilities,
+        crate::effect::Until::EndOfTurn,
+    ));
+    let mut removal_ctx = crate::effects::ExecutionContext::new_default(attacker, alice);
+    crate::effects::execute_effect(&mut game, &remove_abilities, &mut removal_ctx)
+        .expect("remove all abilities effect should resolve");
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey's direct restriction should survive effects that remove abilities"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should still be able to attack after ability removal");
+
+    let missing_block = crate::combat_state::declare_blockers(&mut game, &mut combat, vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should still require a block after ability removal, got {missing_block:?}"
+    );
+}
+
+#[test]
+fn irresistible_prey_runtime_requires_available_blocker_and_honors_if_able() {
+    let (mut game, _alice, bob, attacker, blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack");
+
+    let missing_block =
+        crate::combat_state::declare_blockers(&mut game, &mut combat.clone(), vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should require a block while a blocker can block, got {missing_block:?}"
+    );
+
+    crate::combat_state::declare_blockers(&mut game, &mut combat, vec![(blocker, attacker)])
+        .expect("blocking the Irresistible Prey target should satisfy the requirement");
+
+    let (mut unable_game, _alice, unable_bob, unable_attacker, _tapped_blocker) =
+        resolve_irresistible_prey_targeting_attacker(true);
+    let mut unable_combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut unable_game,
+        &mut unable_combat,
+        vec![(unable_attacker, crate::combat_state::AttackTarget::Player(unable_bob))],
+    )
+    .expect("Irresistible Prey target should be able to attack in tapped-blocker branch");
+    crate::combat_state::declare_blockers(&mut unable_game, &mut unable_combat, vec![])
+        .expect("Irresistible Prey should not require an impossible block");
+}
+
+#[test]
+fn blood_tyrant_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Blood Tyrant");
+    let def = parse_oracle_card_definition("Blood Tyrant");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "At the beginning of your upkeep, each player loses 1 life, then put a +1/+1 counter on this creature for each 1 life lost this way"
+        ),
+        "Blood Tyrant should render the life-lost counter clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever a player loses the game, put five +1/+1 counters on this creature"
+        ),
+        "Blood Tyrant should render the player-loses-game trigger, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("EffectMetric")
+            && abilities_debug.contains("LifeLost")
+            && abilities_debug.contains("PlayerLostGameTrigger"),
+        "Blood Tyrant should lower to life-lost metrics and a player-lost-game trigger, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn blood_tyrant_upkeep_life_loss_adds_counter_for_each_life_lost() {
+    let (mut game, alice, bob, tyrant_id) = blood_tyrant_game();
+    game.turn.active_player = alice;
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(resolve_triggers_for_source(&mut game, tyrant_id, &event), 1);
+    assert_eq!(game.life_total(alice), 19, "controller should lose 1 life");
+    assert_eq!(game.life_total(bob), 19, "opponent should lose 1 life");
+    assert_eq!(
+        game.counter_count(tyrant_id, CounterType::PlusOnePlusOne),
+        2,
+        "Blood Tyrant should get one counter for each 1 life lost this way"
+    );
+}
+
+#[test]
+fn blood_tyrant_player_loses_game_trigger_adds_five_counters_from_sba() {
+    let (mut game, _alice, bob, tyrant_id) = blood_tyrant_game();
+    game.player_mut(bob).expect("bob exists").life = 0;
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("state-based player loss should apply");
+    assert!(
+        game.player(bob).expect("bob exists").has_lost,
+        "Bob should lose the game at 0 life"
+    );
+
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Blood Tyrant player-loss trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Blood Tyrant player-loss trigger should resolve");
+    assert_eq!(
+        game.counter_count(tyrant_id, CounterType::PlusOnePlusOne),
+        5,
+        "Blood Tyrant should get five counters when a player loses the game"
+    );
+}
+
+#[test]
+fn blood_tyrant_does_not_treat_life_loss_as_losing_the_game() {
+    let (game, _alice, bob, tyrant_id) = blood_tyrant_game();
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::life::LifeLossEvent::from_effect(bob, 3),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    let triggers = crate::triggers::check_triggers(&game, &event);
+    assert!(
+        triggers.iter().all(|entry| entry.source != tyrant_id),
+        "Blood Tyrant should trigger on losing the game, not on life-loss events"
     );
 }
 

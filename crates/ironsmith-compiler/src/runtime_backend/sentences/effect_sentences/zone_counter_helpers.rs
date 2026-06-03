@@ -160,6 +160,9 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
+    if let Some(value) = parse_life_lost_this_way_count(tokens) {
+        return Some(value);
+    }
     if grammar::words_match_any_prefix(tokens, CREATURES_DIED_THIS_TURN_PREFIXES).is_some() {
         return Some(Value::CreaturesDiedThisTurn);
     }
@@ -250,6 +253,32 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
         ));
     }
     None
+}
+
+fn parse_life_lost_this_way_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = ZoneCounterCompatWords::new(tokens).to_word_refs();
+    let mut idx = 0usize;
+    let mut group_size = 1i32;
+    if let Some((amount, used)) = parse_number(tokens) {
+        group_size = amount as i32;
+        idx += used;
+    }
+
+    let tail = words.get(idx..)?;
+    if !matches!(
+        tail,
+        ["life", "lost", "this", "way"] | ["lives", "lost", "this", "way"]
+    )
+    {
+        return None;
+    }
+
+    let life_lost = Value::EventValue(EventValueSpec::LifeAmount);
+    if group_size <= 1 {
+        Some(life_lost)
+    } else {
+        Some(Value::DividedRoundedDown(Box::new(life_lost), group_size))
+    }
 }
 
 pub(crate) fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
