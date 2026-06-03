@@ -156,6 +156,17 @@ fn describe_protection_permanent_filter(filter: &ObjectFilter) -> String {
     if *filter == cast_this_turn_permanent_filter {
         return "permanents that were cast this turn".to_string();
     }
+    if filter.mana_value.is_some() {
+        let mut without_mana_value = filter.clone();
+        without_mana_value.mana_value = None;
+        if without_mana_value == ObjectFilter::default() {
+            let description = filter.description();
+            if let Some(stripped) = description.strip_prefix("permanent with ") {
+                return stripped.to_string();
+            }
+        }
+    }
+
     if filter.card_types.is_empty()
         && filter.all_card_types.is_empty()
         && filter.subtypes.len() == 1

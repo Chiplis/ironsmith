@@ -7872,6 +7872,24 @@ fn rewrite_lexed_keyword_line_parses_protection_from_permanents_with_named_count
 }
 
 #[test]
+fn rewrite_lexed_keyword_line_parses_protection_from_mana_value_comparison() {
+    let protection_tokens = lex_line("Protection from mana value 3 or greater", 0)
+        .expect("rewrite lexer should classify mana-value protection");
+
+    let parsed = super::clause_support::parse_ability_line_lexed(&protection_tokens)
+        .expect("mana-value protection should parse");
+    assert_eq!(parsed.len(), 1, "{parsed:?}");
+
+    let crate::cards::builders::KeywordAction::ProtectionFromFilter(filter) = &parsed[0] else {
+        panic!("expected protection-from-filter action, got {parsed:?}");
+    };
+    assert_eq!(
+        filter.mana_value,
+        Some(crate::filter::Comparison::GreaterThanOrEqual(3))
+    );
+}
+
+#[test]
 fn rewrite_lexed_keyword_line_routes_separator_lists_through_grammar_primitives() {
     let keyword_tokens = lex_line("Flying, vigilance; trample and haste", 0)
         .expect("rewrite lexer should classify mixed keyword separator line");

@@ -30,6 +30,7 @@ use super::util::{
     parse_card_type, parse_color, parse_filter_counter_constraint_words,
     parse_flashback_keyword_line, parse_subtype_flexible, strip_leading_word_refs_any, trim_commas,
 };
+use super::value_helpers::parse_filter_comparison_tokens;
 
 const PROTECTION_FROM_COLORED_SPELLS_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
@@ -261,6 +262,20 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             let mut filter = ObjectFilter::permanent();
             filter.cast_this_turn = true;
             return Some(KeywordAction::ProtectionFromFilter(filter));
+        }
+        if value == "mana" && words.get(idx + 2).copied() == Some("value") {
+            let comparison_tail = words.get(idx + 3..)?;
+            let (comparison, consumed) = parse_filter_comparison_tokens(
+                "mana value",
+                comparison_tail,
+                words,
+            )
+            .ok()??;
+            if consumed == comparison_tail.len() {
+                let mut filter = ObjectFilter::default();
+                filter.mana_value = Some(comparison);
+                return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
         }
         if PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
             && words
@@ -627,6 +642,20 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
                 let mut filter = ObjectFilter::permanent();
                 filter.cast_this_turn = true;
                 return Some(KeywordAction::ProtectionFromFilter(filter));
+            }
+            if value == "mana" && words.get(idx + 2).copied() == Some("value") {
+                let comparison_tail = words.get(idx + 3..)?;
+                let (comparison, consumed) = parse_filter_comparison_tokens(
+                    "mana value",
+                    comparison_tail,
+                    &words,
+                )
+                .ok()??;
+                if consumed == comparison_tail.len() {
+                    let mut filter = ObjectFilter::default();
+                    filter.mana_value = Some(comparison);
+                    return Some(KeywordAction::ProtectionFromFilter(filter));
+                }
             }
             if PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
                 && words
