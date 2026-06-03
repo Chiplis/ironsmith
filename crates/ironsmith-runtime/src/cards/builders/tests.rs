@@ -3714,6 +3714,206 @@ fn parse_shiny_impetus_oracle_and_compiled_text() {
     );
 }
 
+#[test]
+fn ordeal_of_erebos_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Ordeal of Erebos");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Enchant creature"),
+        "Ordeal of Erebos should keep its Aura restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever enchanted creature attacks, put a +1/+1 counter on it"),
+        "Ordeal of Erebos should render the enchanted-creature attack trigger, got {rendered}"
+    );
+    assert!(
+        rendered.contains("+1/+1 counters on it"),
+        "Ordeal of Erebos should render the counter threshold clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target player discards two cards"),
+        "Ordeal of Erebos should render its sacrifice trigger discard branch, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("ValueComparison")
+            && ability_debug.contains("CountersOn")
+            && ability_debug.contains("GreaterThanOrEqual")
+            && ability_debug.contains("SacrificeTargetEffect")
+            && ability_debug.contains("PlayerSacrificesTrigger")
+            && ability_debug.contains("DiscardEffect"),
+        "Ordeal of Erebos should structurally model counters, threshold sacrifice, and discard trigger, got {ability_debug}"
+    );
+}
+
+struct OrdealTargetBob {
+    bob: PlayerId,
+}
+
+impl crate::decision::DecisionMaker for OrdealTargetBob {
+    fn decide_targets(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<crate::game_state::Target> {
+        ctx.requirements
+            .iter()
+            .filter_map(|requirement| {
+                requirement.legal_targets.iter().find_map(|target| match target {
+                    crate::game_state::Target::Player(player) if *player == self.bob => {
+                        Some(target.clone())
+                    }
+                    _ => None,
+                })
+            })
+            .take(1)
+            .collect()
+    }
+}
+
+fn ordeal_of_erebos_game(
+    starting_counters: u32,
+    bob_hand_size: u32,
+) -> (crate::game_state::GameState, PlayerId, PlayerId, ObjectId, ObjectId) {
+    let ordeal = parse_oracle_card_definition("Ordeal of Erebos");
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(91_124), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let discard_card = CardDefinitionBuilder::new(CardId::from_raw(91_125), "Discard Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
+        20,
+    );
+
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&ordeal, alice, Zone::Battlefield);
+    assert!(
+        game.object(aura)
+            .is_some_and(|object| object.subtypes.contains(&Subtype::Aura)
+                && object.aura_attach_filter.is_some()),
+        "parsed Ordeal should enter the runtime scenario as an Aura with an enchant restriction"
+    );
+    assert!(
+        game.calculated_subtypes(aura).contains(&Subtype::Aura),
+        "calculated Ordeal characteristics should preserve the Aura subtype before attachment"
+    );
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    game.add_counters(
+        enchanted_creature,
+        CounterType::PlusOnePlusOne,
+        starting_counters,
+    );
+    for _ in 0..bob_hand_size {
+        game.create_object_from_definition(&discard_card, bob, Zone::Hand);
+    }
+    game.remove_summoning_sickness(enchanted_creature);
+    game.turn.active_player = bob;
+    assert_eq!(charlie, PlayerId::from_index(2));
+
+    (game, alice, bob, aura, enchanted_creature)
+}
+
+fn resolve_ordeal_attack_trigger(
+    game: &mut crate::game_state::GameState,
+    enchanted_creature: ObjectId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) {
+    let charlie = PlayerId::from_index(2);
+    let mut combat = crate::combat_state::CombatState::default();
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let attack = [crate::AttackerDeclaration {
+        creature: enchanted_creature,
+        target: crate::combat_state::AttackTarget::Player(charlie),
+    }];
+    crate::game_loop::apply_attacker_declarations(game, &mut combat, &mut trigger_queue, &attack)
+        .expect("enchanted creature should be able to attack");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ordeal of Erebos should queue exactly one attack trigger"
+    );
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Ordeal of Erebos attack trigger should go on the stack");
+    game.turn.priority_player = Some(game.turn.active_player);
+    crate::game_loop::run_priority_loop_with(game, &mut trigger_queue, decision_maker)
+        .expect("Ordeal of Erebos attack trigger should resolve through priority");
+}
+
+#[test]
+fn ordeal_of_erebos_below_threshold_keeps_aura_attached() {
+    let (mut game, _alice, bob, aura, enchanted_creature) = ordeal_of_erebos_game(1, 2);
+    let bob_hand_before = game.player(bob).expect("Bob should exist").hand.len();
+    let mut dm = OrdealTargetBob { bob };
+
+    resolve_ordeal_attack_trigger(&mut game, enchanted_creature, &mut dm);
+
+    assert_eq!(
+        game.counter_count(enchanted_creature, CounterType::PlusOnePlusOne),
+        2,
+        "attack trigger should put one +1/+1 counter on the enchanted creature"
+    );
+    assert_eq!(
+        game.object(aura).expect("Aura should remain").zone,
+        Zone::Battlefield,
+        "Aura should remain on the battlefield below the three-counter threshold"
+    );
+    assert_eq!(
+        game.object(aura).and_then(|object| object.attached_to),
+        Some(crate::object::AttachmentTarget::Object(enchanted_creature)),
+        "Aura should stay attached below the threshold"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").hand.len(),
+        bob_hand_before,
+        "below-threshold attack should not trigger the discard branch"
+    );
+}
+
+#[test]
+fn ordeal_of_erebos_threshold_sacrifices_aura_and_discards_two() {
+    let (mut game, _alice, bob, aura, enchanted_creature) = ordeal_of_erebos_game(2, 3);
+    let mut dm = OrdealTargetBob { bob };
+
+    resolve_ordeal_attack_trigger(&mut game, enchanted_creature, &mut dm);
+
+    assert_eq!(
+        game.counter_count(enchanted_creature, CounterType::PlusOnePlusOne),
+        3,
+        "attack trigger should put the third +1/+1 counter on the enchanted creature"
+    );
+    assert!(
+        !game.battlefield.contains(&aura)
+            && game.objects_in_zone(Zone::Graveyard).into_iter().any(|id| {
+                game.object(id)
+                    .is_some_and(|object| object.name == "Ordeal of Erebos")
+            }),
+        "Aura should be sacrificed once the enchanted creature has three +1/+1 counters"
+    );
+
+    assert_eq!(
+        game.player(bob).expect("Bob should exist").hand.len(),
+        1,
+        "target player should discard exactly two cards"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_equipment_attached_goaded_anthem_preserves_equipped_subject() {
@@ -47935,38 +48135,22 @@ fn oracle_text_by_name() -> &'static HashMap<String, String> {
     })
 }
 
-fn card_types_from_type_line(type_line: &str) -> Vec<CardType> {
-    type_line
-        .split('—')
-        .next()
-        .unwrap_or(type_line)
-        .split_whitespace()
-        .filter_map(
-            |word| match word.trim_matches(|ch: char| !ch.is_ascii_alphabetic()) {
-                "Artifact" => Some(CardType::Artifact),
-                "Battle" => Some(CardType::Battle),
-                "Creature" => Some(CardType::Creature),
-                "Enchantment" => Some(CardType::Enchantment),
-                "Instant" => Some(CardType::Instant),
-                "Land" => Some(CardType::Land),
-                "Planeswalker" => Some(CardType::Planeswalker),
-                "Sorcery" => Some(CardType::Sorcery),
-                "Kindred" => Some(CardType::Kindred),
-                _ => None,
-            },
-        )
-        .collect()
-}
-
 fn parse_oracle_card_definition(name: &str) -> CardDefinition {
     let info = oracle_card_info_by_name()
         .get(name)
         .unwrap_or_else(|| panic!("missing oracle text for regression card '{name}'"));
     let mut builder = CardDefinitionBuilder::new(CardId::new(), name);
     if let Some(type_line) = info.type_line.as_deref() {
-        let card_types = card_types_from_type_line(type_line);
+        let (supertypes, card_types, subtypes) = parse_type_line(type_line)
+            .unwrap_or_else(|err| panic!("type-line regression failed for '{name}': {err:?}"));
+        if !supertypes.is_empty() {
+            builder = builder.supertypes(supertypes);
+        }
         if !card_types.is_empty() {
             builder = builder.card_types(card_types);
+        }
+        if !subtypes.is_empty() {
+            builder = builder.subtypes(subtypes);
         }
     }
     builder
@@ -49704,11 +49888,13 @@ fn parse_garna_bloodfist_card_definition() -> CardDefinition {
     let info = oracle_card_info_by_name()
         .get("Garna, Bloodfist of Keld")
         .expect("Garna, Bloodfist of Keld should exist in cards.json");
+    let (supertypes, card_types, subtypes) =
+        parse_type_line(info.type_line.as_deref().unwrap_or_default())
+            .expect("Garna, Bloodfist of Keld type line should parse");
     CardDefinitionBuilder::new(CardId::new(), "Garna, Bloodfist of Keld")
-        .card_types(card_types_from_type_line(
-            info.type_line.as_deref().unwrap_or_default(),
-        ))
-        .supertypes(vec![Supertype::Legendary])
+        .supertypes(supertypes)
+        .card_types(card_types)
+        .subtypes(subtypes)
         .parse_text(info.oracle_text.clone())
         .expect("Garna, Bloodfist of Keld should parse strictly")
 }

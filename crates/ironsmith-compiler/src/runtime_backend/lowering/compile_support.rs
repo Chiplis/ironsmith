@@ -171,8 +171,8 @@ pub(crate) use tag_support::{
     effects_reference_its_controller, effects_reference_tag, filter_references_tag,
     is_exile_cost_collection_tag, is_revealed_collection_tag, is_searched_collection_tag,
     is_sentence_helper_exiled_collection_tag, object_ref_references_tag,
-    player_filter_references_tag, restriction_references_tag, target_references_tag,
-    value_references_event_derived_amount, value_references_tag,
+    player_filter_references_tag, predicate_references_tag, restriction_references_tag,
+    target_references_tag, value_references_event_derived_amount, value_references_tag,
 };
 pub(crate) use trigger_support::{
     compile_trigger_effects, compile_trigger_effects_with_imports, compile_trigger_spec,

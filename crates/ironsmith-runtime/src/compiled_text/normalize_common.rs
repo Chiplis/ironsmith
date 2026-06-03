@@ -12528,6 +12528,22 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 return format!("{subject} drawn {count_text} or more cards this turn");
             }
             if let (
+                Value::CountersOn(spec, Some(counter_type)),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                return format!(
+                    "{} has {} or more {} counters on it",
+                    describe_choose_spec(spec),
+                    count_text,
+                    counter_type.description()
+                );
+            }
+            if let (
                 Value::Count(filter),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),

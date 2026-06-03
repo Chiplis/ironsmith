@@ -711,7 +711,7 @@ fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_reference_words(&source_clause.word_refs()) {
+    if !is_source_state_subject_words(&source_clause.word_refs()) {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
@@ -728,7 +728,7 @@ fn parse_source_has_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_reference_words(&source_clause.word_refs()) {
+    if !is_source_state_subject_words(&source_clause.word_refs()) {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
@@ -977,6 +977,61 @@ fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {
             &["on", "this"],
             &["on", "that"],
         ],
+    )
+}
+
+fn parse_source_verbless_counted_counter_predicate(words: &[&str]) -> Option<PredicateAst> {
+    for source_len in 1..words.len() {
+        if !is_source_state_subject_words(&words[..source_len]) {
+            continue;
+        }
+        let mut rest = &words[source_len..];
+        if rest
+            .first()
+            .is_some_and(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
+        {
+            rest = &rest[1..];
+        }
+        let (count, used) = if let Some((comparison, used)) = predicate_quantity_prefix(rest) {
+            (comparison_to_at_least_threshold(&comparison)?, used)
+        } else if rest
+            .get(1..3)
+            .is_some_and(|tail| OR_MORE_PREFIX_PATTERN.matches_words(tail))
+        {
+            (parse_named_number(rest[0])?, 3)
+        } else {
+            predicate_at_least_quantity_prefix(rest)?
+        };
+        let counter_and_tail = rest.get(used..)?;
+        let on_idx = find_index(counter_and_tail, |word| *word == "on")?;
+        if !is_counter_on_source_pronoun_tail(counter_and_tail.get(on_idx..)?) {
+            continue;
+        }
+        let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
+            counter_and_tail.get(..on_idx)?,
+        );
+        let counter_type = parse_terminal_counter_phrase(&counter_tokens)??;
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CountersOn(
+                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                Some(counter_type),
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
+    None
+}
+
+fn is_counter_on_source_pronoun_tail(words: &[&str]) -> bool {
+    matches!(
+        words,
+        ["on", "it"]
+            | ["on", "him"]
+            | ["on", "her"]
+            | ["on", "them"]
+            | ["on", "this"]
+            | ["on", "that"]
     )
 }
 
@@ -5676,6 +5731,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_source_verbless_counted_counter_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_triggering_object_had_counter_predicate(tokens) {
         return Ok(predicate);
     }
@@ -8372,6 +8431,20 @@ mod tests {
 
     #[test]
     fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), CardTextError> {
+        assert_eq!(
+            parse_source_verbless_counted_counter_predicate(&[
+                "it", "three", "or", "more", "+1/+1", "counters", "on", "it",
+            ]),
+            Some(PredicateAst::ValueComparison {
+                left: Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Some(CounterType::PlusOnePlusOne),
+                ),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(3),
+            })
+        );
+
         for (text, expected) in [
             (
                 "If this has no stun counters on it",
@@ -8404,6 +8477,17 @@ mod tests {
                 PredicateAst::SourceHasCounterAtLeast {
                     counter_type: CounterType::Stun,
                     count: 2,
+                },
+            ),
+            (
+                "If it has three or more +1/+1 counters on it",
+                PredicateAst::ValueComparison {
+                    left: Value::CountersOn(
+                        Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                        Some(CounterType::PlusOnePlusOne),
+                    ),
+                    operator: ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(3),
                 },
             ),
         ] {

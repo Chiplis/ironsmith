@@ -318,16 +318,9 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             predicate,
             if_true,
             if_false,
-        } => {
-            matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == tag)
-                || matches!(predicate, PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == tag)
-                || matches!(
-                    predicate,
-                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, tag)
-                )
-                || effects_reference_tag(if_true, tag)
-                || effects_reference_tag(if_false, tag)
-        }
+        } => predicate_references_tag(predicate, tag)
+            || effects_reference_tag(if_true, tag)
+            || effects_reference_tag(if_false, tag),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. },
             ..
@@ -413,6 +406,56 @@ pub(crate) fn value_references_tag(value: &Value, tag: &str) -> bool {
         Value::ManaValueOf(spec) => choose_spec_references_tag(spec, tag),
         Value::CountersOn(spec, _) => choose_spec_references_tag(spec, tag),
         Value::DamageDealtThisTurnByTaggedSpellCast(t) => t.as_str() == tag,
+        _ => false,
+    }
+}
+
+pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> bool {
+    match predicate {
+        PredicateAst::ItMatches(filter)
+        | PredicateAst::TargetMatches(filter)
+        | PredicateAst::SourceMatches(filter)
+        | PredicateAst::NoVoteObjectsMatched { filter }
+        | PredicateAst::ObjectEnteredBattlefieldThisTurn(filter)
+        | PredicateAst::ObjectEnteredBattlefieldLastTurn(filter)
+        | PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter) => {
+            filter_references_tag(filter, tag)
+        }
+        PredicateAst::TaggedMatches(found, filter) => {
+            found.as_str() == tag || filter_references_tag(filter, tag)
+        }
+        PredicateAst::TaggedWasCast(found)
+        | PredicateAst::PlayerTaggedObjectEnteredBattlefieldThisTurn { tag: found, .. } => {
+            found.as_str() == tag
+        }
+        PredicateAst::PlayerTaggedObjectMatches {
+            tag: found, filter, ..
+        } => found.as_str() == tag || filter_references_tag(filter, tag),
+        PredicateAst::PlayerControls { filter, .. }
+        | PredicateAst::PlayerHasAtLeast { filter, .. }
+        | PredicateAst::PlayerControlsExactly { filter, .. }
+        | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
+        | PredicateAst::PlayerControlsNo { filter, .. }
+        | PredicateAst::PlayerControlsMost { filter, .. }
+        | PredicateAst::AnOpponentControlsMoreThanPlayer { filter, .. }
+        | PredicateAst::PlayerControlsMoreThanYou { filter, .. }
+        | PredicateAst::SourceHasAttachmentsMatching { filter, .. } => {
+            filter_references_tag(filter, tag)
+        }
+        PredicateAst::PlayerControlsOrHasCardInGraveyard {
+            control_filter,
+            graveyard_filter,
+            ..
+        } => {
+            filter_references_tag(control_filter, tag) || filter_references_tag(graveyard_filter, tag)
+        }
+        PredicateAst::ValueComparison { left, right, .. } => {
+            value_references_tag(left, tag) || value_references_tag(right, tag)
+        }
+        PredicateAst::Not(inner) => predicate_references_tag(inner, tag),
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_references_tag(left, tag) || predicate_references_tag(right, tag)
+        }
         _ => false,
     }
 }
@@ -1127,16 +1170,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
                 PredicateAst::ItIsLandCard
                     | PredicateAst::ItIsSoulbondPaired
                     | PredicateAst::ItMatches(_)
-            ) || matches!(predicate, PredicateAst::TaggedMatches(t, _) if t.as_str() == IT_TAG)
-                || matches!(predicate, PredicateAst::TaggedWasCast(t) if t.as_str() == IT_TAG)
-                || matches!(
-                    predicate,
-                    PredicateAst::PlayerTaggedObjectMatches { tag: t, .. } if t.as_str() == IT_TAG
-                )
-                || matches!(
-                    predicate,
-                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)
-                )
+            ) || predicate_references_tag(predicate, IT_TAG)
                 || effects_reference_it_tag(if_true)
                 || effects_reference_it_tag(if_false)
         }
