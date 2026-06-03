@@ -114,6 +114,7 @@ use super::lowering_support::{
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability,
+    rewrite_prepare_additional_cost_effects_for_lowering,
     rewrite_prepare_effects_for_lowering,
     rewrite_prepare_effects_with_trigger_context_for_lowering,
     rewrite_prepare_triggered_effects_for_lowering, rewrite_static_ability_for_keyword_action,

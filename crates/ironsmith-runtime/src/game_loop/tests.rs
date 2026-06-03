@@ -25803,6 +25803,144 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn soulblast_definition_for_runtime_tests() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(130_369), "Soulblast")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice all creatures you control.\nSoulblast deals damage to any target equal to the total power of the sacrificed creatures.",
+        )
+        .expect("Soulblast should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cast_soulblast_targeting_player(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    spell_id: ObjectId,
+    target_player: PlayerId,
+) {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        game,
+        trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Soulblast cast should start");
+
+    for _ in 0..4 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => apply_priority_response(
+                game,
+                trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Player(target_player)]),
+            )
+            .expect("Soulblast should accept target player"),
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("unexpected Soulblast cast flow state: {other:?}"),
+        };
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulblast_sacrifices_controlled_creatures_and_deals_their_total_power() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let soulblast = soulblast_definition_for_runtime_tests();
+    let spell_id = game.create_object_from_definition(&soulblast, alice, Zone::Hand);
+    let small = CardBuilder::new(CardId::new(), "Soulblast Fodder One")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let large = CardBuilder::new(CardId::new(), "Soulblast Fodder Two")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let opposing = CardBuilder::new(CardId::new(), "Bob's Untouched Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .build();
+
+    let small_id = game.create_object_from_card(&small, alice, Zone::Battlefield);
+    let large_id = game.create_object_from_card(&large, alice, Zone::Battlefield);
+    let opposing_id = game.create_object_from_card(&opposing, bob, Zone::Battlefield);
+
+    cast_soulblast_targeting_player(&mut game, &mut trigger_queue, spell_id, bob);
+
+    assert!(
+        !game.battlefield.contains(&small_id) && !game.battlefield.contains(&large_id),
+        "Soulblast should sacrifice all creatures controlled by its caster as a cost"
+    );
+    assert!(
+        game.battlefield.contains(&opposing_id),
+        "Soulblast should not sacrifice creatures controlled by another player"
+    );
+
+    resolve_stack_entry(&mut game).expect("Soulblast should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        15,
+        "Soulblast should deal damage equal to the total power of the sacrificed creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulblast_with_no_controlled_creatures_deals_zero_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let soulblast = soulblast_definition_for_runtime_tests();
+    let spell_id = game.create_object_from_definition(&soulblast, alice, Zone::Hand);
+    let opposing = CardBuilder::new(CardId::new(), "Bob's Only Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let opposing_id = game.create_object_from_card(&opposing, bob, Zone::Battlefield);
+
+    cast_soulblast_targeting_player(&mut game, &mut trigger_queue, spell_id, bob);
+    assert!(
+        game.battlefield.contains(&opposing_id),
+        "Soulblast should not sacrifice an opponent's creature when you control none"
+    );
+
+    resolve_stack_entry(&mut game).expect("Soulblast with zero sacrificed creatures should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        20,
+        "Soulblast should deal zero damage when no creatures were sacrificed"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     use crate::decision::LegalAction;

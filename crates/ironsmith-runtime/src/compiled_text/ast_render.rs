@@ -2807,6 +2807,14 @@ fn rewrite_additional_sacrifice_reference_surface(def: &CardDefinition, text: &s
         .replace(
             "that creature's mana value",
             "the sacrificed creature's mana value",
+        )
+        .replace(
+            "the total power of those creatures",
+            "the total power of the sacrificed creatures",
+        )
+        .replace(
+            "the total toughness of those creatures",
+            "the total toughness of the sacrificed creatures",
         );
 
     if !normalized.contains("sacrificed creature's") {
@@ -2824,6 +2832,10 @@ fn has_additional_creature_sacrifice_cost(def: &CardDefinition) -> bool {
         let Some(effect) = cost.effect_ref() else {
             return false;
         };
+        let effect = effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .map(|with_id| with_id.effect.as_ref())
+            .unwrap_or(effect);
         if effect
             .downcast_ref::<crate::effects::ChooseObjectsEffect>()
             .is_some_and(|choose| {

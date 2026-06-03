@@ -1753,6 +1753,9 @@ pub struct StackEntry {
     /// This supports resolution-time references like `sacrifice_cost_0`.
     pub tagged_objects:
         std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+    /// Outcomes preserved from cost effects labeled with `WithIdEffect`.
+    pub effect_outcomes:
+        std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
 }
 
 /// A mana ability granted to a player until end of turn.
@@ -1797,6 +1800,7 @@ impl StackEntry {
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         }
     }
 
@@ -1835,6 +1839,7 @@ impl StackEntry {
             crew_contributors: Vec::new(),
             saddle_contributors: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         }
     }
 
@@ -1970,6 +1975,14 @@ impl StackEntry {
         tagged: std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     ) -> Self {
         self.tagged_objects = tagged;
+        self
+    }
+
+    pub fn with_effect_outcomes(
+        mut self,
+        outcomes: std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    ) -> Self {
+        self.effect_outcomes = outcomes;
         self
     }
 }

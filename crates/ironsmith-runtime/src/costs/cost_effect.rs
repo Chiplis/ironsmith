@@ -282,6 +282,7 @@ impl CostPayer for CostEffect {
             .with_tagged_objects(existing_tags)
             .with_cost_choice_targets(chosen_targets)
             .with_provenance(ctx.provenance);
+        exec_ctx.effect_outcomes = ctx.effect_outcomes.clone();
         if let Some(x) = ctx.x_value {
             exec_ctx = exec_ctx.with_x(x);
         }
@@ -332,6 +333,7 @@ impl CostPayer for CostEffect {
 
         // Copy any new tags back to CostContext for subsequent costs
         ctx.tagged_objects = exec_ctx.tagged_objects;
+        ctx.effect_outcomes = exec_ctx.effect_outcomes;
         ctx.pre_chosen_cards.clear();
 
         Ok(CostPaymentResult::Paid)

@@ -724,6 +724,7 @@ pub(crate) fn compile_effects(
             initial_iterated_player: ctx.iterated_player,
             force_auto_tag_object_targets: ctx.force_auto_tag_object_targets
                 || ctx.auto_tag_object_targets,
+            force_export_last_memory_effect_id: false,
         },
         ctx.id_gen_context(),
     )?;

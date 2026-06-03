@@ -379,8 +379,10 @@ fn normalize_rewrite_line_chunk(
         }
         LineAst::AdditionalCost { effects } => {
             let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
-            let prepared =
-                rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+            let prepared = rewrite_prepare_additional_cost_effects_for_lowering(
+                &effects,
+                ReferenceImports::default(),
+            )?;
             state.latest_additional_cost_exports = prepared.exports.clone();
             NormalizedLineChunk::AdditionalCost {
                 effects_ast: effects,

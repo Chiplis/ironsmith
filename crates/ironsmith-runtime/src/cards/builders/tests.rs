@@ -34243,6 +34243,33 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn soulblast_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Soulblast");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("as an additional cost to cast this spell, sacrifice all creatures you control"),
+        "expected Soulblast all-creatures additional cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Soulblast deals damage to any target equal to the total power of the sacrificed creatures"
+        ),
+        "expected Soulblast damage to use sacrificed-creatures total power, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("SacrificePlayerEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("TotalPower"),
+        "expected Soulblast cost sacrifice to feed total-power damage metric, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn corpse_lunge_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Corpse Lunge");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

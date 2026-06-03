@@ -1378,6 +1378,7 @@ pub(super) fn finalize_pending_spell_cast(
         mana_spent_to_cast,
         pending.keyword_payment_contributions,
         pending.tagged_objects,
+        pending.effect_outcomes,
         &mut pending.payment_trace,
         true,
         pending.stack_id,
@@ -1487,6 +1488,7 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
         let mut cost_ctx = CostContext::new(pending.spell_id, pending.caster, &mut *decision_maker)
             .with_provenance(pending.provenance);
         cost_ctx.tagged_objects = pending.tagged_objects.clone();
+        cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
         cost_ctx.x_value = pending.x_value;
 
         match cost.pay(game, &mut cost_ctx).map_err(|err| {
@@ -1498,6 +1500,7 @@ pub(super) fn auto_pay_spell_tap_cost_steps(
             crate::costs::CostPaymentResult::Paid => {
                 record_immediate_cost_payment(&mut pending.payment_trace, &cost, pending.spell_id);
                 pending.tagged_objects = cost_ctx.tagged_objects;
+                pending.effect_outcomes = cost_ctx.effect_outcomes;
                 drain_pending_trigger_events(game, trigger_queue);
             }
             crate::costs::CostPaymentResult::NeedsChoice(description) => {
@@ -1533,6 +1536,7 @@ pub(super) fn continue_spell_cost_payment(
                 CostContext::new(pending.spell_id, pending.caster, &mut *decision_maker)
                     .with_provenance(pending.provenance);
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
+            cost_ctx.effect_outcomes = pending.effect_outcomes.clone();
             cost_ctx.x_value = pending.x_value;
 
             let payment = cost.pay(game, &mut cost_ctx).map_err(|err| {
@@ -1554,6 +1558,7 @@ pub(super) fn continue_spell_cost_payment(
                         pending.spell_id,
                     );
                     pending.tagged_objects = cost_ctx.tagged_objects;
+                    pending.effect_outcomes = cost_ctx.effect_outcomes;
                     pending.remaining_cost_steps.remove(0);
                     drain_pending_trigger_events(game, trigger_queue);
                     continue_spell_next_cost_or_finalize(

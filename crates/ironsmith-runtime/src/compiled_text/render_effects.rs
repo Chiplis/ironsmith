@@ -17922,6 +17922,9 @@ fn normalize_sacrifice_cost_control_phrase(text: &str) -> String {
         let Some(object) = rest.strip_suffix(" you control") else {
             continue;
         };
+        if object.starts_with("all ") {
+            continue;
+        }
         let object = object
             .strip_prefix("other ")
             .map(|rest| format!("another {rest}"))
