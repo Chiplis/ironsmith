@@ -6,6 +6,7 @@ use winnow::error::{ContextError, ErrMode};
 
 use super::super::compile_support::effects_reference_it_tag;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::super::grammar::effects::parse_conditional_sentence_family_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
     LeadingResultPrefixKind, split_leading_result_prefix_lexed, split_trailing_if_clause_lexed,
@@ -996,6 +997,10 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     if let Some(effects) = parse_subject_verb_extension_sentence(tokens)? {
         return Ok(effects);
     }
+    if let Some(effects) = parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = run_subject_verb_primitives_lexed(
         tokens,
         POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
@@ -1199,6 +1204,10 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
             &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
         )? {
+            Some(effects)
+        } else if let Some(effects) =
+            parse_conditional_sentence_family_lexed(&segment, parse_effect_chain_lexed)?
+        {
             Some(effects)
         } else {
             run_subject_verb_primitives_lexed(

@@ -630,16 +630,7 @@ pub(super) fn try_compile_stack_and_condition_effect(
                 PredicateAst::ItIsLandCard
                     | PredicateAst::ItIsSoulbondPaired
                     | PredicateAst::ItMatches(_)
-            ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == IT_TAG)
-                || matches!(predicate, PredicateAst::TaggedWasCast(tag) if tag.as_str() == IT_TAG)
-                || matches!(
-                    predicate,
-                    PredicateAst::TargetMatches(filter) if filter_references_tag(filter, IT_TAG)
-                )
-                || matches!(
-                    predicate,
-                    PredicateAst::PlayerTaggedObjectMatches { tag, .. } if tag.as_str() == IT_TAG
-                );
+            ) || predicate_references_tag(predicate, IT_TAG);
 
             let antecedent_choice = if saved_last_tag.is_none() && predicate_references_it {
                 let mut antecedent_choice = None;
