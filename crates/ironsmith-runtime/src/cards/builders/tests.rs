@@ -16814,6 +16814,32 @@ fn test_counter_unless_pays_rendering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn frightful_delusion_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Frightful Delusion");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.spell_effect.is_some(),
+        "Frightful Delusion should parse as a strict spell"
+    );
+    assert!(
+        spell_debug.contains("UnlessPaysEffect")
+            && spell_debug.contains("CounterEffect")
+            && spell_debug.contains("DiscardEffect")
+            && spell_debug.contains("ControllerOf(")
+            && !spell_debug.contains("IteratedPlayer"),
+        "expected counter-unless-pay followed by target controller discard, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("Counter target spell unless its controller pays {1}")
+            && rendered.contains("That player discards a card"),
+        "expected Frightful Delusion counter-unless and discard text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_counter_unless_pays_and_life_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mundungu Probe")
         .card_types(vec![CardType::Creature])

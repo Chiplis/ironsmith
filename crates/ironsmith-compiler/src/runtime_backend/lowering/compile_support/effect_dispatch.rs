@@ -5089,13 +5089,22 @@ fn compile_subject_verb_effect(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Counter { target } => {
-            compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)
+            let compiled =
+                compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)?;
+            if let Some(tag) = ctx.last_object_tag.clone() {
+                ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+            }
+            Ok(compiled)
         }
         SubjectVerbActionAst::CounterUnlessPays { target, cost } => {
             let cost = cost.clone();
-            compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
+            let compiled = compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
                 Effect::counter_unless_pays_total_cost(spec, cost.clone())
-            })
+            })?;
+            if let Some(tag) = ctx.last_object_tag.clone() {
+                ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+            }
+            Ok(compiled)
         }
         SubjectVerbActionAst::PutCounters {
             counter_type,

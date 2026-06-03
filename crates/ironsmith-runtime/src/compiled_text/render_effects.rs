@@ -3637,6 +3637,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         }
     }
 
+    if let Some(compact) = describe_counter_unless_then_controller_discards(effects) {
+        return Some(compact);
+    }
+
     if let Some(compact) = describe_counter_unless_then_kick_count_draw(effects) {
         return Some(compact);
     }
@@ -4048,6 +4052,35 @@ fn describe_counter_unless_then_kick_count_draw(effects: &[Effect]) -> Option<St
             .to_string()
     };
     Some(format!("{counter_text}. {draw_text}"))
+}
+
+fn describe_counter_unless_then_controller_discards(effects: &[Effect]) -> Option<String> {
+    let [unless_effect, discard_effect] = effects else {
+        return None;
+    };
+    let countered_tag = structural_effect_tag(unless_effect)?.clone();
+    let unless_pays = unwrap_structural_effect_tag(unless_effect)
+        .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
+    let [counter_effect] = unless_pays.effects.as_slice() else {
+        return None;
+    };
+    counter_effect.downcast_ref::<crate::effects::CounterEffect>()?;
+
+    let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard.count != Value::Fixed(1)
+        || discard.random
+        || discard.any_number
+        || discard.card_filter.is_some()
+        || discard.player
+            != PlayerFilter::ControllerOf(crate::filter::ObjectRef::Tagged(countered_tag))
+    {
+        return None;
+    }
+
+    let counter_text = describe_effect(unless_effect)
+        .trim_end_matches('.')
+        .to_string();
+    Some(format!("{counter_text}. That player discards a card."))
 }
 
 fn describe_return_to_hand_then_owner_discards(effects: &[Effect]) -> Option<String> {
