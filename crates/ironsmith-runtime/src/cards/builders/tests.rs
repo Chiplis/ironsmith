@@ -36946,6 +36946,33 @@ fn remove_all_named_counters_from_target_renders_generically() {
     );
 }
 
+#[test]
+fn blitz_leech_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Blitz Leech");
+
+    let def = parse_oracle_card_definition("Blitz Leech");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(def.name(), "Blitz Leech");
+    assert!(
+        rendered.contains("Flash"),
+        "Blitz Leech should keep flash in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, target creature an opponent controls gets -2/-2 until end of turn. Remove all counters from that creature"
+        ),
+        "Blitz Leech should render the target-relative all-counters clause, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ModifyPowerToughness")
+            && ability_debug.contains("RemoveUpToAnyCountersEffect")
+            && ability_debug.contains("CountersOn"),
+        "Blitz Leech should structurally model the -2/-2 and all-counters effects, got {ability_debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn fear_of_immobility_keeps_tap_target_and_conditional_stun_counter() {

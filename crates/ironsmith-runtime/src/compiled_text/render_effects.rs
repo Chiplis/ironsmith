@@ -5097,6 +5097,66 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         ))
     }
 
+    fn tagged_reference_noun_from_target(spec: &ChooseSpec) -> Option<&'static str> {
+        let ChooseSpec::Target(inner) = spec else {
+            return None;
+        };
+        let ChooseSpec::Object(filter) = inner.as_ref() else {
+            return None;
+        };
+        if filter.card_types.contains(&CardType::Creature) {
+            Some("that creature")
+        } else if filter.card_types.contains(&CardType::Artifact) {
+            Some("that artifact")
+        } else if filter.card_types.contains(&CardType::Enchantment) {
+            Some("that enchantment")
+        } else if filter.card_types.contains(&CardType::Planeswalker) {
+            Some("that planeswalker")
+        } else if filter.card_types.contains(&CardType::Battle) {
+            Some("that battle")
+        } else if filter.card_types.contains(&CardType::Land) {
+            Some("that land")
+        } else {
+            Some("that permanent")
+        }
+    }
+
+    fn describe_tagged_effect_then_remove_all_counters(effects: &[&Effect]) -> Option<String> {
+        let effects = if let Some(first) = effects.first()
+            && first
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_some()
+        {
+            &effects[1..]
+        } else {
+            effects
+        };
+        let [target_effect, remove_effect] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        let apply = tagged_apply_continuous(target_effect)?;
+        let target_reference = tagged_reference_noun_from_target(apply.target_spec.as_ref()?)?;
+        let remove = unwrap_wrapped_effect(remove_effect)
+            .downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()?;
+        let removes_all_counters_from_tagged_target = match &remove.max_count {
+            Value::CountersOn(spec, None) => {
+                matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag == target_tag)
+            }
+            _ => false,
+        };
+        if !matches!(&remove.target, ChooseSpec::Tagged(tag) if tag == target_tag)
+            || !removes_all_counters_from_tagged_target
+        {
+            return None;
+        }
+
+        Some(format!(
+            "{}. Remove all counters from {target_reference}",
+            describe_effect(target_effect).trim_end_matches('.')
+        ))
+    }
+
     fn conditional_tagged_subtype(
         conditional: &crate::effects::ConditionalEffect,
     ) -> Option<(&crate::TagKey, Subtype)> {
@@ -5176,6 +5236,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     if let Some(compact) = describe_choose_then_mount_vehicle_become(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_tagged_effect_then_remove_all_counters(&raw_effects) {
         return compact;
     }
     if let Some(compact) = describe_tagged_pump_then_conditional_keyword(&raw_effects) {
@@ -31590,6 +31653,21 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_value(&remove_up_to_counters.max_count),
             describe_counter_type(remove_up_to_counters.counter_type),
             describe_choose_spec(&remove_up_to_counters.target)
+        );
+    }
+    if let Some(remove_up_to_any_counters) =
+        effect.downcast_ref::<crate::effects::RemoveUpToAnyCountersEffect>()
+    {
+        let target = describe_choose_spec(&remove_up_to_any_counters.target);
+        if let Value::CountersOn(counter_source, None) = &remove_up_to_any_counters.max_count
+            && counter_source.unhinted() == remove_up_to_any_counters.target.unhinted()
+        {
+            return format!("Remove all counters from {target}");
+        }
+        return format!(
+            "Remove up to {} counters from {}",
+            describe_value(&remove_up_to_any_counters.max_count),
+            target
         );
     }
     if let Some(move_counters) = effect.downcast_ref::<crate::effects::MoveAllCountersEffect>() {
