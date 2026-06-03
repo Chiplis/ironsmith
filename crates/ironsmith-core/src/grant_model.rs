@@ -72,6 +72,7 @@ impl<C> DerivedAlternativeCast<C> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantUsageLimit {
+    OnceEachTurn,
     OnceDuringEachOfYourTurns,
 }
 
@@ -329,6 +330,8 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub zone: Zone,
     /// Which player may use the grant when rendered or applied statically.
     pub beneficiary: PlayerFilter,
+    /// How often this permission may be used from the same source.
+    pub usage_limit: Option<GrantUsageLimit>,
     /// Static abilities granted to a spell as it is cast using this permission.
     pub cast_this_way_grants: Vec<SA>,
 }
@@ -341,6 +344,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             filter,
             zone,
             beneficiary: PlayerFilter::You,
+            usage_limit: None,
             cast_this_way_grants: Vec::new(),
         }
     }
@@ -348,6 +352,11 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
     /// Return a copy of this grant specification with an explicit beneficiary.
     pub fn with_beneficiary(mut self, beneficiary: PlayerFilter) -> Self {
         self.beneficiary = beneficiary;
+        self
+    }
+
+    pub fn with_usage_limit(mut self, usage_limit: GrantUsageLimit) -> Self {
+        self.usage_limit = Some(usage_limit);
         self
     }
 
@@ -391,6 +400,7 @@ where
             filter,
             zone: Zone::Hand,
             beneficiary: PlayerFilter::You,
+            usage_limit: None,
             cast_this_way_grants: Vec::new(),
         }
     }
@@ -448,6 +458,7 @@ where
             filter: ObjectFilter::nonland(),
             zone: Zone::Graveyard,
             beneficiary: PlayerFilter::You,
+            usage_limit: None,
             cast_this_way_grants: Vec::new(),
         }
     }
@@ -583,12 +594,16 @@ where
                 return format!("{} {type_text} spell", article_for(type_text.as_str()));
             }
             let description = filter.description();
-            if description.contains("permanent") {
+            if description.contains("card exiled with this permanent")
+                && description.contains(" card")
+            {
+                description.replacen(" card", " spell", 1)
+            } else if description.contains("permanent") {
                 description.replace("permanent", "spell")
             } else if description.contains("spell") {
                 description
             } else if description.contains(" card") {
-                description.replace(" card", " spell")
+                description.replacen(" card", " spell", 1)
             } else {
                 format!("{description} spells")
             }
@@ -754,7 +769,18 @@ where
         let mut filter = self.filter.clone();
         filter.zone.get_or_insert(self.zone);
         let filter_desc = filter.description();
-        let may_prefix = beneficiary_may_prefix(&self.beneficiary);
+        let mut may_prefix = beneficiary_may_prefix(&self.beneficiary);
+        if matches!(self.usage_limit, Some(GrantUsageLimit::OnceEachTurn))
+            && let Some(rest) = may_prefix.strip_prefix("You may")
+        {
+            may_prefix = format!("Once each turn, you may{rest}");
+        } else if matches!(
+            self.usage_limit,
+            Some(GrantUsageLimit::OnceDuringEachOfYourTurns)
+        ) && let Some(rest) = may_prefix.strip_prefix("You may")
+        {
+            may_prefix = format!("Once during each of your turns, you may{rest}");
+        }
         let cast_this_way_suffix = || {
             if self.cast_this_way_grants.is_empty() {
                 return String::new();
@@ -816,6 +842,20 @@ where
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
             return format!("{may_prefix} play lands from the top of your library");
+        }
+        if matches!(self.grantable, Grantable::PlayFrom)
+            && self.zone == Zone::Library
+            && matches!(self.usage_limit, Some(GrantUsageLimit::OnceEachTurn))
+            && self.filter.excluded_card_types.as_slice() == [CardType::Land]
+            && self.filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
+                    && constraint.relation
+                        == crate::filter_model::TaggedOpbjectRelation::SharesCardType
+            })
+        {
+            return format!(
+                "{may_prefix} cast a spell from the top of your library if it shares a card type with a card exiled with this permanent"
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library

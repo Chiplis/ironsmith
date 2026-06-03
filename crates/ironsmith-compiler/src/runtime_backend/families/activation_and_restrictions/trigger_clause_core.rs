@@ -663,6 +663,35 @@ const PLAY_OR_PLAYS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["play"], &["plays"]]);
 const LAND_OR_LANDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["land"], &["lands"]]);
+
+fn parse_player_or_object_damage_recipient(
+    target_tokens: &[OwnedLexToken],
+) -> Option<(PlayerFilter, ObjectFilter, bool)> {
+    let or_idx = find_token_shape(target_tokens, &OR_WORD_PATTERN)?;
+    let left_tokens = trim_commas(&target_tokens[..or_idx]);
+    let right_tokens = trim_commas(&target_tokens[or_idx + 1..]);
+    if left_tokens.is_empty() || right_tokens.is_empty() {
+        return None;
+    }
+
+    let left_words = ActivationRestrictionCompatWords::new(&left_tokens).to_word_refs();
+    if let Some(player) = parse_trigger_subject_player_filter(&left_words)
+        && let Ok(filter) =
+            parse_object_filter_lexed(strip_leading_one_or_more_lexed(&right_tokens), false)
+    {
+        return Some((player, filter, true));
+    }
+
+    let right_words = ActivationRestrictionCompatWords::new(&right_tokens).to_word_refs();
+    if let Some(player) = parse_trigger_subject_player_filter(&right_words)
+        && let Ok(filter) =
+            parse_object_filter_lexed(strip_leading_one_or_more_lexed(&left_tokens), false)
+    {
+        return Some((player, filter, false));
+    }
+
+    None
+}
 const SEARCH_OR_SEARCHES_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["search"], &["searches"]]);
 const SHUFFLE_OR_SHUFFLES_PATTERN: ClauseShape<'static> =
@@ -1979,6 +2008,44 @@ pub(crate) fn parse_trigger_clause_lexed(
                                 }
                             }
                             None => TriggerSpec::ThisDealsCombatDamageToPlayer,
+                        });
+                    }
+
+                    if let Some((player, target_filter, player_first)) =
+                        parse_player_or_object_damage_recipient(&target_tokens)
+                    {
+                        let player_trigger = match source_filter.clone() {
+                            Some(source) => {
+                                if one_or_more {
+                                    TriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                                        source,
+                                        player,
+                                    }
+                                } else {
+                                    TriggerSpec::DealsCombatDamageToPlayer { source, player }
+                                }
+                            }
+                            None if player == PlayerFilter::Any => {
+                                TriggerSpec::ThisDealsCombatDamageToPlayer
+                            }
+                            None => {
+                                return Err(CardTextError::ParseError(format!(
+                                    "unsupported combat damage player recipient filter in trigger clause (clause: '{}')",
+                                    words.join(" ")
+                                )));
+                            }
+                        };
+                        let object_trigger = match source_filter {
+                            Some(source) => TriggerSpec::DealsCombatDamageTo {
+                                source,
+                                target: target_filter,
+                            },
+                            None => TriggerSpec::ThisDealsCombatDamageTo(target_filter),
+                        };
+                        return Ok(if player_first {
+                            TriggerSpec::Either(Box::new(player_trigger), Box::new(object_trigger))
+                        } else {
+                            TriggerSpec::Either(Box::new(object_trigger), Box::new(player_trigger))
                         });
                     }
 

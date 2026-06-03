@@ -2,7 +2,7 @@ use crate::effect::{Until, Value, ValueComparisonOperator};
 use crate::host::{CardTextError, EffectAst, IT_TAG, PlayerAst, PredicateAst, TagKey, TargetAst};
 use crate::runtime_backend::GrantedAbilityAst;
 use crate::static_abilities::StaticAbility;
-use crate::target::ObjectFilter;
+use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 use winnow::combinator::alt;
@@ -19,8 +19,8 @@ use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, token_slice_first_is_any, token_slice_strip_word_prefix,
-    token_word_refs, trim_lexed_commas, word_slice_ends_with, word_slice_eq,
-    word_slice_starts_with,
+    parser_token_word_refs, token_word_refs, trim_lexed_commas, word_slice_ends_with,
+    word_slice_eq, word_slice_starts_with,
 };
 use super::object_filters::merge_spell_filters;
 use super::token_primitives::{
@@ -1088,6 +1088,56 @@ fn parse_once_each_turn_graveyard_cast_permission(
     }))
 }
 
+fn parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
+    clause_refs: &[&str],
+) -> Option<PermissionClauseSpec> {
+    const PREFIX: &[&str] = &["once", "each", "turn", "you", "may", "cast"];
+    const TOP_LIBRARY_TAIL: &[&str] = &["from", "the", "top", "of", "your", "library"];
+    const CONDITION_PREFIX: &[&str] = &["if", "it", "shares", "a", "card", "type", "with"];
+    const SOURCE_EXILED_PREFIX: &[&str] = &["a", "card", "exiled", "with", "this"];
+
+    if !word_slice_starts_with(clause_refs, PREFIX) {
+        return None;
+    }
+    let rest = &clause_refs[PREFIX.len()..];
+    let subject_len = match rest {
+        ["a", "spell", ..] => 2,
+        ["spells", ..] => 1,
+        _ => return None,
+    };
+    let after_subject = &rest[subject_len..];
+    if !word_slice_starts_with(after_subject, TOP_LIBRARY_TAIL) {
+        return None;
+    }
+    let after_zone = &after_subject[TOP_LIBRARY_TAIL.len()..];
+    if !word_slice_starts_with(after_zone, CONDITION_PREFIX) {
+        return None;
+    }
+    let source_exiled = &after_zone[CONDITION_PREFIX.len()..];
+    if source_exiled.len() != SOURCE_EXILED_PREFIX.len() + 1
+        || !word_slice_starts_with(source_exiled, SOURCE_EXILED_PREFIX)
+    {
+        return None;
+    }
+
+    let mut filter = ObjectFilter::nonland();
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+        relation: TaggedOpbjectRelation::SharesCardType,
+    });
+
+    Some(PermissionClauseSpec::GrantBySpec {
+        player: PlayerAst::You,
+        spec: crate::grant::GrantSpec::new(
+            crate::grant::Grantable::play_from(),
+            filter,
+            Zone::Library,
+        )
+        .with_usage_limit(crate::grant::GrantUsageLimit::OnceEachTurn),
+        lifetime: PermissionLifetime::Static,
+    })
+}
+
 pub(crate) fn parse_permission_clause_spec_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PermissionClauseSpec>, CardTextError> {
@@ -1106,6 +1156,13 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     }
 
     if let Some(spec) = parse_once_each_turn_graveyard_cast_permission(tokens, &clause_refs)? {
+        return Ok(Some(spec));
+    }
+    let parser_clause_refs = parser_token_word_refs(tokens);
+    if let Some(spec) = parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
+        &parser_clause_refs,
+    )
+    {
         return Ok(Some(spec));
     }
 
@@ -1843,6 +1900,34 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
+        if from_idx + 4 == without_idx
+            && normalized_words
+                .get(from_idx + 1)
+                .is_some_and(|word| word == "the")
+            && normalized_words
+                .get(from_idx + 2)
+                .is_some_and(|word| word == "command")
+            && normalized_words
+                .get(from_idx + 3)
+                .is_some_and(|word| word == "zone")
+            && WITHOUT_PAYING_ITS_MANA_COST_PATTERN.matches_words(&without_tail)
+        {
+            let Some(filter_end) = token_index_for_word_index(rest_tokens, from_idx) else {
+                return Ok(None);
+            };
+            let filter_words = token_word_refs(trim_lexed_commas(&rest_tokens[..filter_end]));
+            if filter_words == ["your", "commander"] {
+                return Ok(Some(
+                    EffectAst::may_cast_matching_spell_without_paying_mana_cost(
+                        lead.player,
+                        ObjectFilter::default()
+                            .commander()
+                            .owned_by(crate::target::PlayerFilter::You),
+                        Zone::Command,
+                    ),
+                ));
+            }
+        }
         if from_idx + 3 == without_idx
             && normalized_words
                 .get(from_idx + 1)

@@ -2091,7 +2091,7 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::MoveToLibraryNthFromTop { target, .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target }
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target }
+            | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
@@ -2612,6 +2612,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ExchangeControl { .. }
             | SubjectVerbActionAst::ExchangeControlHeterogeneous { .. }
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
+            | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }

@@ -314,8 +314,13 @@ const WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to"]);
 const WOULD_DEAL_DAMAGE_TO_YOU_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to", "you"]);
-const IT_DEALS_DOUBLE_THAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["it", "deals", "double", "that", "damage", "to"]);
+const IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it", "deals", "double", "that", "damage", "to"],
+            &["it", "deals", "triple", "that", "damage", "to"],
+        ]
+);
 const THAT_SOURCE_DEALS_DAMAGE_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["that", "source", "deals", "damage", "equal", "to"]);
 const DAMAGE_REDIRECT_TO_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -4861,11 +4866,16 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
     }
 
     let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
-        IT_DEALS_DOUBLE_THAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+        IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
     }) else {
         return Ok(None);
     };
     let replacement_start = would_idx + 4 + tail_idx;
+    let factor = match words.get(replacement_start + 2).copied() {
+        Some("double") => 2,
+        Some("triple") => 3,
+        _ => return Ok(None),
+    };
     let damaged_words = &words[would_idx + 4..replacement_start];
     let replacement_target_words = &words[replacement_start + 6..];
     if damaged_words.is_empty()
@@ -4910,10 +4920,11 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         display.push('.');
     }
 
-    Ok(Some(StaticAbility::double_damage_amount_replacement(
+    Ok(Some(StaticAbility::multiply_damage_amount_replacement(
         source_filter,
         target_player_filter,
         target_object_filter,
+        factor,
         display,
     )))
 }

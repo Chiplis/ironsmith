@@ -204,6 +204,7 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
             filter: spec.filter,
             zone: spec.zone,
             beneficiary: spec.beneficiary,
+            usage_limit: spec.usage_limit,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .into_iter()

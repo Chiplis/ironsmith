@@ -1573,6 +1573,18 @@ fn rewrite_modal_header_parser_supports_activated_choose_header_directly() {
 }
 
 #[test]
+fn rewrite_modal_header_parser_accepts_pawprint_worth_clause() {
+    let text = "Choose up to five {P} worth of modes. You may choose the same mode more than once.";
+    let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
+        .expect("Season of the Burrow modal header should parse")
+        .expect("Season of the Burrow modal header should be recognized");
+
+    assert_eq!(header.min, crate::effect::Value::Fixed(0));
+    assert_eq!(header.max, Some(crate::effect::Value::Fixed(5)));
+    assert!(header.same_mode_more_than_once, "{header:?}");
+}
+
+#[test]
 fn rewrite_modal_header_parser_keeps_choose_one_when_later_choose_both_is_present() {
     let text = "Choose one. If you control a commander as you cast this spell, you may choose both instead.";
     let header = super::modal_support::parse_modal_header(&rewrite_line_info(text))
@@ -4440,6 +4452,30 @@ fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_once_each_turn_top_library_source_exiled_type_grant() {
+    let tokens = lex_line(
+        "Once each turn, you may cast a spell from the top of your library if it shares a card type with a card exiled with this creature.",
+        0,
+    )
+    .expect("rewrite lexer should classify once-per-turn top-library cast permission");
+
+    assert!(matches!(
+        super::permission_helpers::parse_permission_clause_spec_lexed(&tokens),
+        Ok(Some(super::PermissionClauseSpec::GrantBySpec {
+            player: crate::cards::builders::PlayerAst::You,
+            spec,
+            lifetime: super::PermissionLifetime::Static,
+        })) if spec.zone == crate::zone::Zone::Library
+            && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+            && spec.usage_limit == Some(crate::grant::GrantUsageLimit::OnceEachTurn)
+            && spec.filter.tagged_constraints.iter().any(|constraint|
+                constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                    && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+            )
+    ));
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_preserve_until_next_turn_flash_grants() {
     let tokens = lex_line(
         "Until your next turn, you may cast sorcery spells as though they had flash",
@@ -4689,6 +4725,47 @@ fn rewrite_lexed_permission_helpers_route_singular_hand_free_casts_to_one_shot_e
         filter.mana_value,
         Some(crate::filter::Comparison::LessThanOrEqual(3))
     );
+}
+
+#[test]
+fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
+    let tokens = lex_line(
+        "You may cast your commander from the command zone without paying its mana cost",
+        0,
+    )
+    .expect("rewrite lexer should classify commander command-zone free-cast clause");
+
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("commander command-zone free-cast clause should parse");
+
+    let (player, filter, zone) = match effects.as_slice() {
+        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+            player,
+            filter,
+            zone,
+            ..
+        }] => (player, filter, zone),
+        [crate::cards::builders::EffectAst::MayByPlayer {
+            player: crate::cards::builders::PlayerAst::You,
+            effects,
+        }] => match effects.as_slice() {
+            [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                player,
+                filter,
+                zone,
+                ..
+            }] => (player, filter, zone),
+            _ => panic!("expected nested commander command-zone free-cast effect, got {effects:#?}"),
+        },
+        _ => panic!("expected commander command-zone free-cast effect, got {effects:#?}"),
+    };
+    assert!(matches!(
+        player,
+        crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
+    ));
+    assert_eq!(*zone, crate::zone::Zone::Command);
+    assert!(filter.is_commander, "expected commander filter, got {filter:#?}");
+    assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
 }
 
 #[test]

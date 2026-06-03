@@ -233,6 +233,7 @@ where
         converted.choose_count = payload.choose_count.clone();
         converted.min_choose_count = payload.min_choose_count.clone();
         converted.allow_repeated_modes = payload.allow_repeated_modes;
+        converted.mode_point_costs = payload.mode_point_costs.clone();
         converted.disallow_previously_chosen_modes = payload.disallow_previously_chosen_modes;
         converted.disallow_previously_chosen_modes_this_turn =
             payload.disallow_previously_chosen_modes_this_turn;
@@ -1146,8 +1147,13 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachCounterKindPutOrRemoveEffect>(&effect)
     {
+        let effect = if payload.all_kinds {
+            crate::effects::ForEachCounterKindPutOrRemoveEffect::new(payload.target.clone())
+        } else {
+            crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(payload.target.clone())
+        };
         return Ok(Effect::new(
-            crate::effects::ForEachCounterKindPutOrRemoveEffect::new(payload.target.clone()),
+            effect,
         ));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DoubleCountersEffect>(&effect) {

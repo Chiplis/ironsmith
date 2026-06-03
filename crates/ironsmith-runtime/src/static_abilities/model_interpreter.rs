@@ -406,6 +406,7 @@ impl StaticAbilityModelInterpreter {
             filter: spec.filter.clone(),
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
+            usage_limit: spec.usage_limit,
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()
@@ -1338,11 +1339,13 @@ impl StaticAbilityModelInterpreter {
                 source_filter,
                 target_player_filter,
                 target_object_filter,
+                factor,
                 display,
-            } => StaticAbility::double_damage_amount_replacement(
+            } => StaticAbility::multiply_damage_amount_replacement(
                 source_filter.clone(),
                 target_player_filter.clone(),
                 target_object_filter.clone(),
+                *factor,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {

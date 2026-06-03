@@ -586,37 +586,69 @@ pub(crate) fn parse_look(
         )));
     }
 
-    let mut idx = top_idx + 1;
-    let count = if clause_tokens
-        .get(idx)
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
-    {
-        Value::Fixed(1)
-    } else {
-        let (value, used) = parse_value(&clause_tokens[idx..]).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing look count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
-        idx += used;
-        value
-    };
+    let count_before_top = parse_value(&clause_tokens[..top_idx]).and_then(|(value, used)| {
+        let mut probe = used;
+        if !clause_tokens
+            .get(probe)
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
+        {
+            return None;
+        }
+        probe += 1;
+        if clause_tokens
+            .get(probe)
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|w| w == "from")
+        {
+            probe += 1;
+        }
+        while clause_tokens
+            .get(probe)
+            .is_some_and(|t| RESOURCE_ARTICLE_WORD_PATTERN.matches_token(t))
+        {
+            probe += 1;
+        }
+        (probe == top_idx).then_some(value)
+    });
 
-    // Consume "card(s)"
-    if clause_tokens
-        .get(idx)
-        .and_then(OwnedLexToken::as_word)
-        .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
-    {
-        idx += 1;
+    let mut idx = top_idx + 1;
+    let count = if let Some(value) = count_before_top {
+        value
     } else {
-        return Err(CardTextError::ParseError(format!(
-            "missing look card noun (clause: '{}')",
-            clause_words.join(" ")
-        )));
-    }
+        let count = if clause_tokens
+            .get(idx)
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
+        {
+            Value::Fixed(1)
+        } else {
+            let (value, used) = parse_value(&clause_tokens[idx..]).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing look count (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+            idx += used;
+            value
+        };
+
+        // Consume "card(s)"
+        if clause_tokens
+            .get(idx)
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|w| RESOURCE_CARD_OR_CARDS_WORD_PATTERN.matches_word(w))
+        {
+            idx += 1;
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "missing look card noun (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+
+        count
+    };
 
     // Consume "of <player> library"
     if !clause_tokens

@@ -3797,27 +3797,37 @@ pub(super) fn finalize_spell_cast(
         }
     }
 
-    if let CastingMethod::PlayFrom {
-        source,
-        use_alternative: Some(_),
-        ..
-    } = &casting_method
-    {
+    if let CastingMethod::PlayFrom { source, .. } = &casting_method {
         let source_has_selected_once_grant = game.object(*source).is_some_and(|source_obj| {
             source_obj.abilities.iter().any(|ability| {
                 let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
                     return false;
                 };
                 static_ability.grant_spec().is_some_and(|spec| {
+                    if matches!(
+                        spec.usage_limit,
+                        Some(
+                            crate::grant::GrantUsageLimit::OnceEachTurn
+                                | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
+                        )
+                    ) && matches!(spec.grantable, crate::grant::Grantable::PlayFrom)
+                    {
+                        return true;
+                    }
+
                     let Some(label) = selected_alternative_label.as_deref() else {
                         return false;
                     };
                     matches!(
                         spec.grantable,
                         crate::grant::Grantable::DerivedAlternativeCast(ref derived)
-                            if derived.usage_limit()
-                                == Some(crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns)
-                                && derived.display_name().eq_ignore_ascii_case(label)
+                            if matches!(
+                                derived.usage_limit(),
+                                Some(
+                                    crate::grant::GrantUsageLimit::OnceEachTurn
+                                        | crate::grant::GrantUsageLimit::OnceDuringEachOfYourTurns
+                                )
+                            ) && derived.display_name().eq_ignore_ascii_case(label)
                     )
                 })
             })
@@ -4071,6 +4081,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
                         m.description.clone(),
                         m.legal,
                     )
+                    .with_point_cost(m.point_cost)
                     .with_repeatability(
                         modes_ctx.spec.allow_repeated_modes,
                         Some(modes_ctx.spec.max_modes.min(u32::MAX as usize) as u32),

@@ -483,45 +483,20 @@ fn parse_control_condition_shape(
         &["with", "different", "power"],
     ];
     let modifier_atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(action_words),
-        ),
-        LexPattern::role_capture(
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
+        LexPattern::tail(
             "amount_and_object",
-            LexCaptureRole::Tail,
             LexCaptureKind::UntilLastAnyPhrase(different_powers_tails),
         ),
-        LexPattern::role_capture(
-            "modifier",
-            LexCaptureRole::Modifier,
-            LexCaptureKind::OneOf(&["with"]),
-        ),
+        LexPattern::modifier("modifier", LexCaptureKind::OneOf(&["with"])),
         LexPattern::phrase(&["different"]),
         LexPattern::any_word(&["powers", "power"]),
     ];
     let basic_atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(action_words),
-        ),
-        LexPattern::role_capture(
-            "amount_and_object",
-            LexCaptureRole::Tail,
-            LexCaptureKind::OneOrMoreWords,
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
+        LexPattern::tail("amount_and_object", LexCaptureKind::OneOrMoreWords),
     ];
     let matched = if options.allow_different_powers_tail {
         LexPattern::new(&modifier_atoms)
@@ -663,21 +638,9 @@ fn parse_ownership_condition_shape(
     let action_phrases: &[&[&str]] = &[&["own"], &["owns"]];
     let action_words = &["own", "owns"];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(action_words),
-        ),
-        LexPattern::role_capture(
-            "amount_and_object",
-            LexCaptureRole::Tail,
-            LexCaptureKind::OneOrMoreWords,
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
+        LexPattern::tail("amount_and_object", LexCaptureKind::OneOrMoreWords),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -796,21 +759,9 @@ fn parse_subject_status_shape_with_copula(
     let clause = LexedClause::new(tokens);
     let copula_phrases: &[&[&str]] = &[&["is"], &["are"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(copula_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["is", "are"]),
-        ),
-        LexPattern::role_capture(
-            "state",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(state_words),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["is", "are"])),
+        LexPattern::object("state", LexCaptureKind::OneOf(state_words)),
     ];
     parse_subject_status_match(
         tokens,
@@ -833,16 +784,8 @@ fn parse_subject_status_shape_without_copula(
         &["untapped"],
     ];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(state_phrases),
-        ),
-        LexPattern::role_capture(
-            "state",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(state_words),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
+        LexPattern::object("state", LexCaptureKind::OneOf(state_words)),
     ];
     parse_subject_status_match(
         tokens,
@@ -926,17 +869,9 @@ fn parse_subject_descriptor_shape(
     let clause = LexedClause::new(tokens);
     let copula_phrases: &[&[&str]] = &[&["is"], &["are"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(copula_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["is", "are"]),
-        ),
-        LexPattern::role_capture("descriptor", LexCaptureRole::Object, LexCaptureKind::Rest),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["is", "are"])),
+        LexPattern::object("descriptor", LexCaptureKind::Rest),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -991,12 +926,8 @@ pub(crate) fn parse_player_status_condition(
 fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusConditionAst> {
     let clause = LexedClause::new(tokens);
     let shortcut_atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::OneOf(&["youre"]),
-        ),
-        LexPattern::role_capture("status", LexCaptureRole::Object, LexCaptureKind::Rest),
+        LexPattern::subject("subject", LexCaptureKind::OneOf(&["youre"])),
+        LexPattern::object("status", LexCaptureKind::Rest),
     ];
     if let Some(matched) = LexPattern::new(&shortcut_atoms).match_clause(clause) {
         let status_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -1010,17 +941,9 @@ fn parse_player_status_shape(tokens: &[OwnedLexToken]) -> Option<PlayerStatusCon
     let action_words = &["are", "have", "has", "is"];
     let action_phrases: &[&[&str]] = &[&["are"], &["have"], &["has"], &["is"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(action_words),
-        ),
-        LexPattern::role_capture("status", LexCaptureRole::Object, LexCaptureKind::Rest),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
+        LexPattern::object("status", LexCaptureKind::Rest),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -1068,17 +991,9 @@ fn parse_player_achievement_shape(
     ];
     for (action_phrase, negated) in action_shapes {
         let atoms = [
-            LexPattern::role_capture(
-                "subject",
-                LexCaptureRole::Subject,
-                LexCaptureKind::UntilPhrase(action_phrase),
-            ),
-            LexPattern::role_capture(
-                "action",
-                LexCaptureRole::Action,
-                LexCaptureKind::WordCount(action_phrase.len()),
-            ),
-            LexPattern::role_capture("achievement", LexCaptureRole::Object, LexCaptureKind::Rest),
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("achievement", LexCaptureKind::Rest),
         ];
         let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
             continue;
@@ -1097,12 +1012,8 @@ fn parse_player_achievement_shape(
     }
 
     let shortcut_atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::OneOf(&["youve"]),
-        ),
-        LexPattern::role_capture("achievement", LexCaptureRole::Object, LexCaptureKind::Rest),
+        LexPattern::subject("subject", LexCaptureKind::OneOf(&["youve"])),
+        LexPattern::object("achievement", LexCaptureKind::Rest),
     ];
     let matched = LexPattern::new(&shortcut_atoms).match_clause(clause)?;
     let achievement_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
@@ -1574,26 +1485,10 @@ fn parse_cards_drawn_this_turn_shape(
     let card_phrases: &[&[&str]] = &[&["card"], &["cards"]];
     for action_phrase in action_shapes {
         let atoms = [
-            LexPattern::role_capture(
-                "subject",
-                LexCaptureRole::Subject,
-                LexCaptureKind::UntilPhrase(action_phrase),
-            ),
-            LexPattern::role_capture(
-                "action",
-                LexCaptureRole::Action,
-                LexCaptureKind::WordCount(action_phrase.len()),
-            ),
-            LexPattern::role_capture(
-                "amount",
-                LexCaptureRole::Amount,
-                LexCaptureKind::UntilAnyPhrase(card_phrases),
-            ),
-            LexPattern::role_capture(
-                "object",
-                LexCaptureRole::Object,
-                LexCaptureKind::OneOf(&["card", "cards"]),
-            ),
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(card_phrases)),
+            LexPattern::object("object", LexCaptureKind::OneOf(&["card", "cards"])),
             LexPattern::phrase(&["this", "turn"]),
         ];
         let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
@@ -1618,22 +1513,10 @@ fn parse_lands_entered_this_turn_shape(
     let clause = LexedClause::new(tokens);
     let land_phrases: &[&[&str]] = &[&["land"], &["lands"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilPhrase(&["had"]),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["had"]),
-        ),
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::UntilAnyPhrase(land_phrases),
-        ),
-        LexPattern::role_capture("object", LexCaptureRole::Object, LexCaptureKind::Rest),
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(&["had"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
+        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(land_phrases)),
+        LexPattern::object("object", LexCaptureKind::Rest),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -1822,21 +1705,9 @@ fn parse_player_spell_cast_this_turn_shape(
     ];
     for (action_phrase, negated) in action_shapes {
         let atoms = [
-            LexPattern::role_capture(
-                "subject",
-                LexCaptureRole::Subject,
-                LexCaptureKind::UntilPhrase(action_phrase),
-            ),
-            LexPattern::role_capture(
-                "action",
-                LexCaptureRole::Action,
-                LexCaptureKind::WordCount(action_phrase.len()),
-            ),
-            LexPattern::role_capture(
-                "object",
-                LexCaptureRole::Object,
-                LexCaptureKind::UntilPhrase(&["this", "turn"]),
-            ),
+            LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+            LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+            LexPattern::object("object", LexCaptureKind::UntilPhrase(&["this", "turn"])),
             LexPattern::phrase(&["this", "turn"]),
         ];
         let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
@@ -1913,26 +1784,10 @@ fn parse_player_life_change_this_turn_shape(
     let action_phrases: &[&[&str]] = &[&["gained"], &["lost"]];
     let object_phrases: &[&[&str]] = &[&["life"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(action_words),
-        ),
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::UntilAnyPhrase(object_phrases),
-        ),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(&["life"]),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(action_words)),
+        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["life"])),
         LexPattern::phrase(&["this", "turn"]),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
@@ -1989,13 +1844,9 @@ fn parse_player_would_action_shape(
     let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["would"]];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::UntilAnyPhrase(action_phrases),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
         LexPattern::word("would"),
-        LexPattern::role_capture("action", LexCaptureRole::Action, LexCaptureKind::Rest),
+        LexPattern::action("action", LexCaptureKind::Rest),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -2127,16 +1978,11 @@ fn parse_no_permanent_left_battlefield_shape(
     let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::word("no"),
-        LexPattern::role_capture(
+        LexPattern::subject(
             "subject",
-            LexCaptureRole::Subject,
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["left"]),
-        ),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
         LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
@@ -2150,16 +1996,11 @@ fn parse_permanent_left_battlefield_shape(
     let optional_article = [LexPattern::word("a")];
     let atoms = [
         LexPattern::optional(&optional_article),
-        LexPattern::role_capture(
+        LexPattern::subject(
             "subject",
-            LexCaptureRole::Subject,
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["left"]),
-        ),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
         LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
@@ -2171,18 +2012,16 @@ fn parse_permanent_left_battlefield_under_your_control_shape(
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
     let controlled_tail = [
-        LexPattern::role_capture(
+        LexPattern::subject(
             "subject",
-            LexCaptureRole::Subject,
             LexCaptureKind::OneOf(&["permanent", "permanents", "creature", "creatures"]),
         ),
         LexPattern::word("left"),
         LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
     ];
     let you_controlled_tail = [
-        LexPattern::role_capture(
+        LexPattern::subject(
             "subject",
-            LexCaptureRole::Subject,
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
         LexPattern::phrase(&["you", "controlled"]),
@@ -2285,21 +2124,9 @@ fn parse_object_died_this_turn_shape(
     let clause = LexedClause::new(tokens);
     let object_phrases: &[&[&str]] = &[&["creature"], &["creatures"]];
     let atoms = [
-        LexPattern::role_capture(
-            "amount",
-            LexCaptureRole::Amount,
-            LexCaptureKind::UntilAnyPhrase(object_phrases),
-        ),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(&["creature", "creatures"]),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["died"]),
-        ),
+        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
         LexPattern::phrase(&["this", "turn"]),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
@@ -2329,16 +2156,8 @@ fn parse_object_put_into_your_graveyard_from_anywhere_shape(
     let optional_article = [LexPattern::word("a")];
     let atoms = [
         LexPattern::optional(&optional_article),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::WordCount(2),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["was"]),
-        ),
+        LexPattern::object("object", LexCaptureKind::WordCount(2)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["was"])),
         LexPattern::phrase(&[
             "put",
             "into",
@@ -2577,21 +2396,9 @@ fn parse_you_had_land_entered_battlefield_this_turn_shape(
 ) -> Option<BattlefieldEntryConditionAst> {
     let clause = LexedClause::new(tokens);
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::WordCount(1),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["had"]),
-        ),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::OneOf(&["land", "lands"]),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["land", "lands"])),
         LexPattern::any_word(&["enter", "entered"]),
         LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
     ];
@@ -2657,21 +2464,9 @@ fn parse_you_had_object_entered_battlefield_last_turn_shape(
     let enter_phrases: &[&[&str]] = &[&["enter"], &["entered"]];
     let optional_the = [LexPattern::word("the")];
     let atoms = [
-        LexPattern::role_capture(
-            "subject",
-            LexCaptureRole::Subject,
-            LexCaptureKind::WordCount(1),
-        ),
-        LexPattern::role_capture(
-            "action",
-            LexCaptureRole::Action,
-            LexCaptureKind::OneOf(&["had"]),
-        ),
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilAnyPhrase(enter_phrases),
-        ),
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["had"])),
+        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(enter_phrases)),
         LexPattern::any_word(&["enter", "entered"]),
         LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "under", "your", "control", "last", "turn"]),
@@ -2741,11 +2536,7 @@ fn parse_object_entered_battlefield_this_turn_shape(
     let enter_phrases: &[&[&str]] = &[&["enter"], &["entered"]];
     let optional_the = [LexPattern::word("the")];
     let atoms = [
-        LexPattern::role_capture(
-            "object",
-            LexCaptureRole::Object,
-            LexCaptureKind::UntilAnyPhrase(enter_phrases),
-        ),
+        LexPattern::object("object", LexCaptureKind::UntilAnyPhrase(enter_phrases)),
         LexPattern::any_word(&["enter", "entered"]),
         LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),

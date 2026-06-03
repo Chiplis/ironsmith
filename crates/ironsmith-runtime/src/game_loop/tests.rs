@@ -270,6 +270,24 @@ fn minds_dilation_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn nymris_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(658_546), "Nymris, Oona's Trickster")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 6))
+        .parse_text(
+            "Flash\n\
+             Flying\n\
+             Whenever you cast your first spell during each opponent's turn, look at the top two cards of your library. Put one of those cards into your hand and the other into your graveyard.",
+        )
+        .expect("Nymris, Oona's Trickster should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn necrotic_ooze_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(645_500), "Necrotic Ooze")
         .card_types(vec![CardType::Creature])
@@ -5811,6 +5829,178 @@ fn queue_minds_dilation_spell_cast(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn queue_nymris_spell_cast(
+    game: &mut GameState,
+    caster: PlayerId,
+    trigger_queue: &mut TriggerQueue,
+) -> ObjectId {
+    let spell_id = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Nymris Trigger Probe Spell")
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+            .card_types(vec![CardType::Instant])
+            .build(),
+        caster,
+        Zone::Stack,
+    );
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_nymris_library_card(
+    game: &mut GameState,
+    owner: PlayerId,
+    name: &str,
+) -> crate::ids::StableId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    let id = game.create_object_from_card(&card, owner, Zone::Library);
+    game.object(id).expect("Nymris library card exists").stable_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_first_spell_on_opponents_turn_moves_one_top_card_to_hand_and_one_to_graveyard() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+    let bottom_stable = create_nymris_library_card(&mut game, alice, "Nymris Bottom Card");
+    let top_one_stable = create_nymris_library_card(&mut game, alice, "Nymris Top Card One");
+    let top_two_stable = create_nymris_library_card(&mut game, alice, "Nymris Top Card Two");
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Nymris should trigger for your first spell during an opponent's turn"
+    );
+    assert_eq!(
+        trigger_queue.entries[0].ability.trigger.display(),
+        "Whenever you cast your first spell during each opponent's turn"
+    );
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Nymris trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Nymris trigger should resolve");
+
+    let top_one_id = game
+        .find_object_by_stable_id(top_one_stable)
+        .expect("first looked-at card should still exist");
+    let top_two_id = game
+        .find_object_by_stable_id(top_two_stable)
+        .expect("second looked-at card should still exist");
+    let hand = &game.player(alice).expect("alice exists").hand;
+    let graveyard = &game.player(alice).expect("alice exists").graveyard;
+    assert_eq!(
+        usize::from(hand.contains(&top_one_id)) + usize::from(hand.contains(&top_two_id)),
+        1,
+        "exactly one of the two looked-at cards should move to Alice's hand"
+    );
+    assert_eq!(
+        usize::from(graveyard.contains(&top_one_id)) + usize::from(graveyard.contains(&top_two_id)),
+        1,
+        "the other looked-at card should move to Alice's graveyard"
+    );
+
+    let bottom_id = game
+        .find_object_by_stable_id(bottom_stable)
+        .expect("bottom card should still exist");
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .library
+            .contains(&bottom_id),
+        "Nymris should only move the top two library cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_your_spell_during_your_own_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Nymris should not trigger for your spell during your own turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_opponents_spell_during_that_opponents_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(bob);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut trigger_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, bob, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        0,
+        "Nymris should not trigger for an opponent casting a spell"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nymris_ignores_your_second_spell_during_same_opponents_turn() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let nymris = nymris_definition();
+    game.create_object_from_definition(&nymris, alice, Zone::Battlefield);
+
+    let mut first_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut first_queue);
+    assert_eq!(first_queue.entries.len(), 1);
+
+    let mut second_queue = TriggerQueue::new();
+    queue_nymris_spell_cast(&mut game, alice, &mut second_queue);
+    assert_eq!(
+        second_queue.entries.len(),
+        0,
+        "Nymris should trigger only for your first spell during each opponent's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn minds_dilation_first_opponent_spell_exiles_that_players_top_nonland_and_casts_it() {
     let mut game = setup_three_player_game();
@@ -6659,6 +6849,191 @@ fn bought_back_instant_returns_to_owners_hand_after_resolution() {
             .count(),
         0,
         "resolved bought-back spell should not go to its owner's graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_600), "Clockspinning")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Buyback {3}
+Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it.",
+        )
+        .expect("Clockspinning should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn suspended_card_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_601), "Suspended Probe")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Suspend 3—{U}")
+        .expect("suspend probe should parse for Clockspinning target tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ClockspinningDecisionMaker {
+    mode_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ClockspinningDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description == "Choose a counter kind" {
+            vec![0]
+        } else if ctx.description.starts_with("Choose for ") {
+            vec![self.mode_index.min(ctx.options.len().saturating_sub(1))]
+        } else {
+            vec![0]
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_counter_effect(
+    def: &crate::cards::CardDefinition,
+) -> &crate::effect::Effect {
+    def.spell_effect
+        .as_ref()
+        .expect("Clockspinning should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
+                .is_some()
+        })
+        .expect("Clockspinning should have a chosen-counter put/remove effect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn clockspinning_target_permanent(game: &mut GameState, controller: PlayerId) -> ObjectId {
+    let target = CardBuilder::new(CardId::from_raw(80_602), "Clockspinning Target")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&target, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_targets_permanents_or_suspended_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let effects = def.spell_effect.as_ref().expect("Clockspinning spell effects");
+
+    let countered_permanent = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(countered_permanent, crate::object::CounterType::Charge, 1)
+        .expect("countered permanent should accept a charge counter");
+    let uncountered_permanent = clockspinning_target_permanent(&mut game, alice);
+    let suspended = suspended_card_definition();
+    let suspended_id = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(suspended_id, crate::object::CounterType::Time, 1)
+        .expect("suspended card should accept a time counter");
+    let uncountered_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    let no_longer_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(no_longer_suspended, crate::object::CounterType::Charge, 1)
+        .expect("exiled suspend card should accept non-time counters");
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Clockspinning should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(countered_permanent)),
+        "countered permanents should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(suspended_id)),
+        "suspended cards with time counters should be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(uncountered_permanent)),
+        "permanents without counters should still be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(uncountered_suspended)),
+        "suspended cards without counters should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(no_longer_suspended)),
+        "exiled cards with suspend but no time counter should not be legal Clockspinning targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_buyback_put_branch_returns_to_hand_and_adds_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 1)
+        .expect("target should accept an initial charge counter");
+
+    let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+    paid.mark_label_paid("Buyback");
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice)
+            .with_targets(vec![Target::Object(target)])
+            .with_optional_costs_paid(paid)
+            .with_source_info(
+                game.object(spell_id)
+                    .expect("Clockspinning spell object")
+                    .stable_id,
+                "Clockspinning".to_string(),
+            ),
+    );
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 0 };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Clockspinning should resolve its put branch");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        2,
+        "Clockspinning put branch should add one chosen counter kind"
+    );
+    assert!(
+        game.player(alice).expect("alice exists").hand.iter().any(|&id| game
+            .object(id)
+            .is_some_and(|object| object.name == "Clockspinning")),
+        "Clockspinning should return to hand when buyback was paid"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn clockspinning_remove_branch_removes_one_chosen_counter() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = clockspinning_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = clockspinning_target_permanent(&mut game, alice);
+    game.add_counters(target, crate::object::CounterType::Charge, 2)
+        .expect("target should accept charge counters");
+
+    let mut dm = ClockspinningDecisionMaker { mode_index: 1 };
+    let ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    let mut ctx = ctx.with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, clockspinning_counter_effect(&def), &mut ctx)
+        .expect("Clockspinning remove branch should execute");
+
+    assert_eq!(
+        game.counter_count(target, crate::object::CounterType::Charge),
+        1,
+        "Clockspinning remove branch should remove exactly one chosen counter"
     );
 }
 
@@ -11461,6 +11836,192 @@ fn test_bridge_from_below_token_trigger_fizzles_if_bridge_leaves_graveyard() {
     assert_eq!(
         zombie_count, 0,
         "Bridge should not create a Zombie after it leaves the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resize_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(46_512), "Resize")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature gets +3/+3 until end of turn.\nRecover {1}{G}")
+        .expect("Resize should parse with recover")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_paid_returns_resize_from_graveyard_to_hand() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Resize Recover Victim", alice, 1, 1);
+    {
+        let player = game.player_mut(alice).expect("alice exists");
+        player.mana_pool.add(ManaSymbol::Colorless, 1);
+        player.mana_pool.add(ManaSymbol::Green, 1);
+    }
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(trigger_queue.entries[0].source, resize_id);
+
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "paying recover should return Resize to hand"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").mana_pool.total(),
+        0,
+        "recover payment should spend {{1}}{{G}}"
+    );
+    assert!(
+        game.exile
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "paid recover should not exile Resize"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_declined_exiles_resize_from_graveyard() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Resize Decline Victim", alice, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(trigger_queue.entries[0].source, resize_id);
+
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert!(
+        game.exile
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "declining recover should exile Resize"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "declined recover should not return Resize to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_does_not_exile_resize_if_it_left_graveyard_before_resolution() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let resize_stable_id = game.object(resize_id).expect("Resize exists").stable_id;
+    let victim_id = create_creature(&mut game, "Resize Moved Victim", alice, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "owned creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+
+    let mut dm = AutoPassDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Resize recover trigger should go on the stack");
+    let moved_resize_id = game
+        .move_object_by_effect(resize_id, Zone::Hand)
+        .expect("Resize should move to hand before recover resolves");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Resize recover trigger should resolve");
+
+    assert_eq!(
+        game.find_object_by_stable_id(resize_stable_id),
+        Some(moved_resize_id),
+        "Resize should still be the moved object after the trigger resolves"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|&id| id == moved_resize_id),
+        "recover should not exile Resize from hand after it left the graveyard"
+    );
+    assert!(
+        game.exile
+            .iter()
+            .all(|&id| !game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "recover should not exile Resize from another zone"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resize_recover_does_not_trigger_for_opponents_creature() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let resize_id =
+        game.create_object_from_definition(&resize_definition(), alice, Zone::Graveyard);
+    let victim_id = create_creature(&mut game, "Opponent Resize Victim", bob, 1, 1);
+
+    assert!(
+        game.move_object_by_effect(victim_id, Zone::Graveyard)
+            .is_some(),
+        "opponent creature should move to graveyard"
+    );
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Resize recover should not trigger for an opponent-owned creature dying"
+    );
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .graveyard
+            .iter()
+            .any(|&id| id == resize_id && game.object(id).is_some_and(|obj| obj.name == "Resize")),
+        "Resize should remain in the graveyard when recover does not trigger"
     );
 }
 
@@ -26586,6 +27147,187 @@ fn mindleech_mass_casts_spell_from_damaged_players_hand_without_paying() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn geode_golem_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(627_850), "Geode Golem")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Golem])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .parse_text(
+            "Trample\nWhenever this creature deals combat damage to a player, you may cast your commander from the command zone without paying its mana cost.",
+        )
+        .expect("Geode Golem should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_geode_golem_damage_trigger(
+    game: &mut GameState,
+    definition: &crate::cards::CardDefinition,
+    source_id: ObjectId,
+    damaged_player: PlayerId,
+    dm: &mut dyn DecisionMaker,
+) {
+    let controller = game
+        .controller_of_id(source_id)
+        .expect("Geode Golem should have a controller");
+    let triggered = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Geode Golem should have a combat damage trigger");
+
+    let damage_event = TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            source_id,
+            crate::events::DamageTarget::Player(damaged_player),
+            5,
+            true,
+            crate::events::cause::EventCause::combat_damage(source_id),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = ExecutionContext::new_default(source_id, controller)
+        .with_decision_maker(dm)
+        .with_triggering_event(damage_event);
+    for effect in &triggered.effects {
+        execute_effect(game, effect, &mut ctx).expect("Geode Golem trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_casts_your_commander_from_command_zone_without_mana() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+
+    let opponents_commander =
+        CardBuilder::new(CardId::from_raw(627_849), "Bob's Geode Commander")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .build();
+    let opponents_commander_id =
+        game.create_object_from_card(&opponents_commander, bob, Zone::Command);
+    game.set_as_commander(opponents_commander_id, bob);
+
+    let noncommander = CardBuilder::new(
+        CardId::from_raw(627_848),
+        "Geode Command-Zone Noncommander",
+    )
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let noncommander_id =
+        game.create_object_from_card(&noncommander, alice, Zone::Command);
+
+    let commander = CardBuilder::new(CardId::from_raw(627_851), "Geode Test Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = game.create_object_from_card(&commander, alice, Zone::Command);
+    game.set_as_commander(commander_id, alice);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(&mut game, &definition, geode_id, bob, &mut dm);
+
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("accepting Geode Golem should cast the commander onto the stack");
+    let stack_object = game
+        .object(stack_entry.object_id)
+        .expect("cast commander should exist on the stack");
+    assert_eq!(stack_object.name, "Geode Test Commander");
+    assert_eq!(stack_entry.controller, alice);
+    assert_eq!(
+        stack_entry.casting_method,
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            source: geode_id,
+            zone: Zone::Command,
+            use_alternative: None,
+        }
+    );
+    assert_eq!(
+        game.commander_cast_count(commander_id),
+        1,
+        "effect-driven command-zone casts should update commander cast count"
+    );
+    assert_eq!(
+        game.object(opponents_commander_id)
+            .expect("opponent commander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer an opponent's commander"
+    );
+    assert_eq!(
+        game.object(noncommander_id)
+            .expect("noncommander should remain in the command zone")
+            .zone,
+        Zone::Command,
+        "Geode Golem should not offer noncommander command-zone objects"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn geode_golem_damage_trigger_does_not_cast_when_declined_or_no_commander_exists() {
+    let mut declined_game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let definition = geode_golem_definition();
+    let geode_id =
+        declined_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let commander = CardBuilder::new(CardId::from_raw(627_852), "Declined Geode Commander")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .build();
+    let commander_id = declined_game.create_object_from_card(&commander, alice, Zone::Command);
+    declined_game.set_as_commander(commander_id, alice);
+
+    let mut decline_dm = AutoPassDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut declined_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut decline_dm,
+    );
+    assert!(declined_game.stack.is_empty());
+    assert_eq!(
+        declined_game
+            .object(commander_id)
+            .expect("declined commander should remain in command zone")
+            .zone,
+        Zone::Command
+    );
+
+    let mut no_commander_game = setup_game();
+    let geode_id =
+        no_commander_game.create_object_from_definition(&definition, alice, Zone::Battlefield);
+    let mut accept_dm = SelectFirstDecisionMaker;
+    resolve_geode_golem_damage_trigger(
+        &mut no_commander_game,
+        &definition,
+        geode_id,
+        bob,
+        &mut accept_dm,
+    );
+    assert!(
+        no_commander_game.stack.is_empty(),
+        "Geode Golem should not cast anything when you have no commander in the command zone"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn mindleech_mass_declining_look_prevents_free_cast_branch() {
     let mut game = setup_game();
@@ -36375,6 +37117,211 @@ fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn soul_nova_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(48_101), "Soul Nova")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Exile target attacking creature and all Equipment attached to it.")
+        .expect("Soul Nova should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_soul_nova_exiles_attacking_creature_and_attached_equipment_only() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 5);
+
+    let soul_nova = soul_nova_definition();
+    let soul_nova_id = game.create_object_from_definition(&soul_nova, alice, Zone::Hand);
+    let attacker_id = create_creature(&mut game, "Soul Nova Attacker", bob, 3, 3);
+    let other_creature_id = create_creature(&mut game, "Soul Nova Bystander", bob, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut combat = CombatState::default();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("Soul Nova target creature should be able to attack");
+
+    let equipment_def = CardBuilder::new(CardId::new(), "Soul Nova Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let equipment_id = game.create_object_from_card(&equipment_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            equipment_id,
+            crate::object::AttachmentTarget::Object(attacker_id),
+        ),
+        "equipment should attach to the attacking creature"
+    );
+
+    let second_equipment_def = CardBuilder::new(CardId::new(), "Soul Nova Other Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let other_equipment_id =
+        game.create_object_from_card(&second_equipment_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            other_equipment_id,
+            crate::object::AttachmentTarget::Object(other_creature_id),
+        ),
+        "other equipment should attach to the non-target creature"
+    );
+
+    let aura_def = CardDefinitionBuilder::new(CardId::new(), "Soul Nova Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text("Enchant creature")
+        .expect("aura should parse");
+    let aura_id = game.create_object_from_definition(&aura_def, bob, Zone::Battlefield);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            aura_id,
+            crate::object::AttachmentTarget::Object(attacker_id),
+        ),
+        "aura should attach to the attacking creature"
+    );
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: soul_nova_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("Soul Nova cast should start successfully");
+    assert!(
+        matches!(
+            progress,
+            GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+        ),
+        "Soul Nova should ask for one attacking creature target"
+    );
+
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(attacker_id)]),
+    )
+    .expect("choosing the attacking creature should complete Soul Nova");
+    assert_eq!(game.stack.len(), 1, "Soul Nova should be on the stack");
+    resolve_stack_entry(&mut game).expect("Soul Nova should resolve");
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Attacker"),
+        1,
+        "Soul Nova should exile the target attacking creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Equipment"),
+        1,
+        "Soul Nova should exile Equipment attached to the target creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Battlefield, "Soul Nova Other Equipment"),
+        1,
+        "Soul Nova should not exile Equipment attached to a different creature"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Soul Nova Aura"),
+        0,
+        "Soul Nova should not exile non-Equipment attachments"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_soul_nova_targets_only_attacking_creatures() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    game.turn.active_player = bob;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::White, 5);
+
+    let soul_nova = soul_nova_definition();
+    let soul_nova_id = game.create_object_from_definition(&soul_nova, alice, Zone::Hand);
+    let attacker_id = create_creature(&mut game, "Soul Nova Legal Attacker", bob, 3, 3);
+    let nonattacker_id = create_creature(&mut game, "Soul Nova Illegal Bystander", bob, 2, 2);
+    game.remove_summoning_sickness(attacker_id);
+
+    let mut combat = CombatState::default();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: attacker_id,
+            target: AttackTarget::Player(alice),
+        }],
+    )
+    .expect("attacker should be legal");
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let progress = apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id: soul_nova_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Soul Nova cast should ask for targets");
+
+    let targets_ctx = match progress {
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => {
+            ctx
+        }
+        other => panic!("expected Soul Nova target prompt, got {other:?}"),
+    };
+    let legal_targets = &targets_ctx.requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(attacker_id)),
+        "Soul Nova should be able to target the attacking creature"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(nonattacker_id)),
+        "Soul Nova should not be able to target a nonattacking creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_asinine_antics_flash_extra_cost_is_available_at_instant_timing_only_as_alternative() {
     let mut game = setup_game();
@@ -38143,6 +39090,249 @@ fn thundermane_dragon_does_not_cast_top_creature_below_power_four() {
             } if *spell_id == small_id
         )),
         "Thundermane Dragon should not let Alice cast a top creature with power below 4"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cemetery_illuminator_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Cemetery Illuminator")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(
+            "Flying\nWhenever this creature enters or attacks, exile a card from a graveyard.\nYou may look at the top card of your library any time.\nOnce each turn, you may cast a spell from the top of your library if it shares a card type with a card exiled with this creature.",
+        )
+        .expect("Cemetery Illuminator should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_cemetery_illuminator_in_cast_window(
+    game: &mut GameState,
+    active_player: PlayerId,
+    priority_player: PlayerId,
+) {
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = active_player;
+    game.turn.priority_player = Some(priority_player);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cemetery_illuminator_play_from_action(
+    game: &GameState,
+    player: PlayerId,
+    spell_id: ObjectId,
+    source_id: ObjectId,
+) -> Option<CastingMethod> {
+    crate::decision::compute_legal_actions(game, player)
+        .into_iter()
+        .find_map(|action| match action {
+            LegalAction::CastSpell {
+                spell_id: action_spell_id,
+                from_zone: Zone::Library,
+                casting_method:
+                    method @ CastingMethod::PlayFrom {
+                        source,
+                        zone: Zone::Library,
+                        ..
+                    },
+            } if action_spell_id == spell_id && source == source_id => Some(method),
+            _ => None,
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_zero_cost_card(
+    game: &mut GameState,
+    player: PlayerId,
+    name: &str,
+    card_types: Vec<CardType>,
+    zone: Zone,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::new())
+        .card_types(card_types)
+        .build();
+    game.create_object_from_card(&card, player, zone)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_casts_top_spell_sharing_type_with_source_exiled_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_some(),
+        "Cemetery Illuminator should allow casting a top-library spell sharing a card type with a card exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_does_not_cast_top_spell_without_source_exiled_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_none(),
+        "Cemetery Illuminator should not allow top-library casting before a card is exiled with it"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_does_not_cast_top_spell_with_nonmatching_source_exiled_type() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_creature = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Creature",
+        vec![CardType::Creature],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_creature);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_none(),
+        "Cemetery Illuminator should require the top spell to share a card type with a source-exiled card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_can_cast_matching_top_instant_on_opponents_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_cemetery_illuminator_in_cast_window(&mut game, bob, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let top_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, top_instant, source_id).is_some(),
+        "'Once each turn' should allow a matching top instant on an opponent's turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn cemetery_illuminator_top_library_cast_is_limited_to_once_each_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    put_cemetery_illuminator_in_cast_window(&mut game, alice, alice);
+
+    let source = cemetery_illuminator_definition();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let exiled_instant = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Exiled Instant",
+        vec![CardType::Instant],
+        Zone::Exile,
+    );
+    game.exiled_with_source
+        .entry(source_id)
+        .or_default()
+        .push(exiled_instant);
+    let first_top = create_zero_cost_card(
+        &mut game,
+        alice,
+        "First Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, first_top, source_id).is_some(),
+        "first matching top spell should be castable"
+    );
+    game.turn_store
+        .grant_cast_uses_this_turn
+        .insert((alice, source_id));
+
+    let second_top = create_zero_cost_card(
+        &mut game,
+        alice,
+        "Second Top Instant",
+        vec![CardType::Instant],
+        Zone::Library,
+    );
+    assert!(
+        cemetery_illuminator_play_from_action(&game, alice, second_top, source_id).is_none(),
+        "Cemetery Illuminator should not allow a second top-library cast from the same source in one turn"
     );
 }
 

@@ -785,6 +785,7 @@ impl<'a> DerivedGameView<'a> {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
+                    usage_limit: grant.usage_limit,
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
@@ -851,6 +852,7 @@ impl<'a> DerivedGameView<'a> {
                 Grantable::PlayFrom => Some(GrantedPlayFrom {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
+                    usage_limit: grant.usage_limit,
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
@@ -1284,7 +1286,7 @@ fn grant_applies_to_card(
     grant
         .filter
         .as_ref()
-        .is_some_and(|filter| filter.matches(card, ctx, game))
+        .is_some_and(|filter| filter.matches(card, &grant_filter_context(ctx, grant, game), game))
 }
 
 fn grant_applies_to_card_non_recursive(
@@ -1304,7 +1306,31 @@ fn grant_applies_to_card_non_recursive(
     grant
         .filter
         .as_ref()
-        .is_some_and(|filter| filter.matches_non_recursive(card, ctx, game))
+        .is_some_and(|filter| {
+            filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+        })
+}
+
+fn grant_filter_context(
+    ctx: &crate::filter::FilterContext,
+    grant: &Grant,
+    game: &GameState,
+) -> crate::filter::FilterContext {
+    let mut ctx = ctx.clone();
+    let source_id = grant.source.source_id();
+    let source_exiled = game
+        .get_exiled_with_source_links(source_id)
+        .iter()
+        .filter_map(|id| {
+            game.object(*id)
+                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, game))
+        })
+        .collect::<Vec<_>>();
+    if !source_exiled.is_empty() {
+        ctx.tagged_objects
+            .insert(crate::tag::SOURCE_EXILED_TAG.into(), source_exiled);
+    }
+    ctx
 }
 
 fn materialize_derived_alternative_cast(
