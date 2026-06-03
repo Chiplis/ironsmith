@@ -34499,7 +34499,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Some(&choose_mode.min_choose_count),
             Some(choose_mode.modes.len()),
         );
-        let has_weighted_modes = choose_mode.mode_point_costs.iter().any(|cost| *cost != 1);
+        if choose_mode.random {
+            if let Some(prefix) = header.strip_suffix(" —") {
+                header = format!("{prefix} at random —");
+            }
+        }
+        let has_weighted_modes = choose_mode
+            .mode_point_costs
+            .iter()
+            .any(|cost| *cost != 1);
         if has_weighted_modes {
             if let crate::effect::Value::Fixed(max) = &choose_mode.choose_count {
                 if choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {

@@ -840,6 +840,7 @@ pub struct ChooseModeEffect<E> {
     pub min: Value,
     pub max: Value,
     pub allow_repeat: bool,
+    pub random: bool,
     pub choose_count: Value,
     pub min_choose_count: Value,
     pub allow_repeated_modes: bool,
@@ -858,6 +859,7 @@ impl<E> ChooseModeEffect<E> {
             min,
             max,
             allow_repeat,
+            random: false,
             choose_count,
             min_choose_count,
             allow_repeated_modes: allow_repeat,
@@ -887,6 +889,11 @@ impl<E> ChooseModeEffect<E> {
     pub fn with_repeated_modes(mut self) -> Self {
         self.allow_repeat = true;
         self.allow_repeated_modes = true;
+        self
+    }
+
+    pub fn with_random_mode_choice(mut self) -> Self {
+        self.random = true;
         self
     }
 

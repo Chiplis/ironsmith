@@ -185,6 +185,31 @@ pub(crate) fn run_choose_mode(
     // Check if modes were pre-chosen during the casting process.
     let chosen_indices: Vec<usize> = if let Some(ref pre_chosen) = ctx.chosen_modes {
         pre_chosen.clone()
+    } else if effect.random {
+        let mut randomized_modes: Vec<usize> = (0..effect.modes.len())
+            .filter(|idx| is_mode_legal(*idx))
+            .collect();
+        let legal_mode_count = randomized_modes.len();
+        if legal_mode_count < min_modes {
+            return Err(ExecutionError::Impossible(
+                "Not enough legal modes available".to_string(),
+            ));
+        }
+        game.shuffle_slice(&mut randomized_modes);
+        let mut selected = Vec::new();
+        let mut point_total = 0usize;
+        for idx in randomized_modes {
+            let point_cost = mode_point_cost(effect, idx);
+            if point_total.saturating_add(point_cost) > max_modes {
+                continue;
+            }
+            selected.push(idx);
+            point_total += point_cost;
+            if point_total >= min_modes {
+                break;
+            }
+        }
+        selected
     } else {
         let mode_options: Vec<ModeOption> = effect
             .modes
@@ -375,6 +400,44 @@ mod tests {
                 .contains(&ExecutionFact::ChosenOptions(vec![1]))
         );
         assert_eq!(game.player(alice).expect("alice").life, 22);
+    }
+
+    #[test]
+    fn random_choose_mode_selects_legal_mode_without_prompting() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let random_count_before = game.irreversible_random_count();
+        let mut decisions = CapturingOptionsDecisionMaker::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+
+        let effect = ChooseModeEffect::choose_one(vec![
+            EffectMode::new("Gain 1 life", vec![Effect::gain_life(1)]),
+            EffectMode::new("Gain 2 life", vec![Effect::gain_life(2)]),
+        ])
+        .with_random_mode_choice();
+
+        let result = run_choose_mode(&effect, &mut game, &mut ctx).expect("choose mode resolves");
+        let chosen = result
+            .execution_facts()
+            .iter()
+            .find_map(|fact| match fact {
+                ExecutionFact::ChosenOptions(indices) => Some(indices.as_slice()),
+                _ => None,
+            })
+            .expect("random modal choice should record the selected mode");
+
+        assert_eq!(chosen.len(), 1, "random choose-one should select exactly one mode");
+        assert!(!ctx.decision_maker.awaiting_choice(), "random modal choice should not prompt");
+        assert_eq!(
+            game.irreversible_random_count(),
+            random_count_before + 1,
+            "random modal choice should consume deterministic game RNG"
+        );
+        assert!(
+            matches!(game.player(alice).expect("alice").life, 21 | 22),
+            "one of the random gain-life modes should resolve"
+        );
     }
 
     #[test]
