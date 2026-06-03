@@ -522,7 +522,9 @@ fn player_negated_restriction_from_tail(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
-    if PLAYER_GAIN_LIFE_TAIL_PATTERN.matches_words(words) {
+    if let Some(spell_filter) = parse_cast_restriction_tail_filter(words) {
+        Some(Restriction::cast_spells_matching(player, spell_filter))
+    } else if PLAYER_GAIN_LIFE_TAIL_PATTERN.matches_words(words) {
         Some(Restriction::gain_life(player))
     } else if PLAYER_SEARCH_LIBRARIES_TAIL_PATTERN.matches_words(words) {
         Some(Restriction::search_libraries(player))
@@ -1037,6 +1039,15 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
             continue;
         }
 
+        match &words[idx..] {
+            ["the", "chosen", "name", rest @ ..] | ["chosen", "name", rest @ ..] => {
+                filter.name = Some("{chosen name}".to_string());
+                idx = words.len() - rest.len();
+                continue;
+            }
+            _ => {}
+        }
+
         return None;
     }
 
@@ -1461,6 +1472,13 @@ pub(crate) fn target_ast_player_filter(
 }
 
 pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
+    if words.first().is_some_and(|word| CAST_WORD_PATTERN.matches_word(word))
+        && let Some(mut filter) = parse_spell_restriction_subject_filter(&words[1..])
+    {
+        filter.zone = None;
+        filter.stack_kind = None;
+        return Some(filter);
+    }
     if CAST_SPELLS_PATTERN.matches_words(words) {
         return Some(ObjectFilter::default());
     }

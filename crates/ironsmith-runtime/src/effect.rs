@@ -900,7 +900,20 @@ impl RestrictionExt for Restriction {
             Restriction::CastSpellsMatching(filter, spell_filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
-                        tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                        if spell_filter.name.as_deref() == Some("{chosen name}")
+                            && let Some(source) = source
+                            && let Some(chosen_names) = game.chosen_named_option(source)
+                        {
+                            for chosen_name in chosen_names.lines().map(str::trim) {
+                                if !chosen_name.is_empty() {
+                                    let mut resolved_filter = spell_filter.clone();
+                                    resolved_filter.name = Some(chosen_name.to_string());
+                                    tracker.add_cant_cast_filter(player.id, resolved_filter);
+                                }
+                            }
+                        } else {
+                            tracker.add_cant_cast_filter(player.id, spell_filter.clone());
+                        }
                     }
                 }
             }
