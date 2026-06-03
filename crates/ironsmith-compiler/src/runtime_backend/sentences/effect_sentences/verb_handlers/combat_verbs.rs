@@ -872,6 +872,38 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
+    if let Some(and_each_idx) = find_window_by(&target_words, 2, |window| {
+        ClauseShape::new()
+            .exact_any(&[&["and", "each"], &["and", "all"]])
+            .matches_words(window)
+    }) && and_each_idx > 0
+    {
+        let player_target_tokens = trim_commas(&target_tokens[..and_each_idx]);
+        let object_filter_tokens = trim_commas(&target_tokens[and_each_idx + 1..]);
+        if !player_target_tokens.is_empty()
+            && !object_filter_tokens.is_empty()
+            && let Ok(TargetAst::Player(player_filter, span)) = parse_target_phrase(&player_target_tokens)
+            && crate::runtime_backend::lexer::contains_token_any_word(
+                &object_filter_tokens,
+                &["creature", "creatures"],
+            )
+        {
+            let mut filter = parse_object_filter(&object_filter_tokens, false)?;
+            if filter.controller.is_none() {
+                filter.controller = Some(player_filter.clone());
+            }
+            return Ok(EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::subject_verb_damage(
+                        amount.clone(),
+                        TargetAst::Player(player_filter, span),
+                    ),
+                    EffectAst::subject_verb_damage_each(amount.clone(), filter),
+                ],
+            });
+        }
+    }
+
     if combat_words_start_with_shape(&target_words, &COMBAT_EACH_OR_ALL_WORD_PATTERN)
         && let Some(and_each_idx) = find_window_by(&target_words, 3, |window| {
             ClauseShape::new()

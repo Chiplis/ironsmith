@@ -163,6 +163,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SecretChoiceStart { .. } => {}
         EffectAst::SecretChoiceReveal => {}
         EffectAst::VoteStartObjects { .. } => {}
+        EffectAst::VoteStartPlayers { .. } => {}
         EffectAst::VoteOption { .. } => {}
         EffectAst::VoteExtra { .. } => {}
     }

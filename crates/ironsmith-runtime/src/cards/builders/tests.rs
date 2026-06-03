@@ -53616,6 +53616,7 @@ fn strict_parse_vote_regression_cards() {
         "Tivit, Seller of Secrets",
         "Elrond of the White Council",
         "Travel Through Caradhras",
+        "Mob Verdict",
     ] {
         assert_oracle_card_parses_strict(name);
     }
@@ -53992,6 +53993,170 @@ fn travel_through_caradhras_runtime_mines_votes_return_graveyard_cards_without_s
         vec!["Travel Through Caradhras".to_string()],
         "Travel Through Caradhras should exile itself after resolving"
     );
+}
+
+#[test]
+fn mob_verdict_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Mob Verdict");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Secret council — Each player secretly votes for another player, then those votes are revealed"
+        ) && rendered.contains(
+            "For each vote an opponent received, Mob Verdict deals 2 damage to that player and each creature that player controls"
+        ) && rendered.contains("For each vote you received, draw a card"),
+        "expected Mob Verdict to render secret player votes and received-vote followups, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Unsupported effect"),
+        "Mob Verdict should parse strictly without unsupported placeholders, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("VoteEffect")
+            && debug.contains("Players")
+            && debug.contains("exclude_voter: true")
+            && debug.contains("PlayerVoteCount")
+            && debug.contains("ForPlayersEffect")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("DrawCardsEffect"),
+        "expected player-vote counts, opponent damage, controlled-creature damage, and draw structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct MobVerdictDecisionMaker {
+    votes: Vec<usize>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for MobVerdictDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if !self.votes.is_empty() {
+            vec![self.votes.remove(0)]
+        } else {
+            ctx.options
+                .iter()
+                .filter(|option| option.legal)
+                .map(|option| option.index)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn mob_test_creature(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn mob_test_card(id: u32, name: &str) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(id), name)
+        .card_types(vec![CardType::Instant])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn mob_owner_zone_count(
+    game: &crate::game_state::GameState,
+    owner: PlayerId,
+    zone: Zone,
+) -> usize {
+    game.objects_in_zone(zone)
+        .into_iter()
+        .filter(|&id| game.object(id).is_some_and(|object| object.owner == owner))
+        .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_mob_verdict_with_votes(
+    votes: Vec<usize>,
+    alice_library_cards: usize,
+) -> (crate::game_state::GameState, ObjectId, ObjectId, ObjectId) {
+    let def = parse_oracle_card_definition("Mob Verdict");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Mob Verdict should compile to spell effects");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+
+    let alice_creature = mob_test_creature(91_301, "Alice Mob Creature");
+    let bob_creature = mob_test_creature(91_302, "Bob Mob Creature");
+    let charlie_creature = mob_test_creature(91_303, "Charlie Mob Creature");
+    let filler = mob_test_card(91_304, "Mob Draw Filler");
+    let alice_creature_id = game.create_object_from_definition(&alice_creature, alice, Zone::Battlefield);
+    let bob_creature_id = game.create_object_from_definition(&bob_creature, bob, Zone::Battlefield);
+    let charlie_creature_id =
+        game.create_object_from_definition(&charlie_creature, charlie, Zone::Battlefield);
+    for _ in 0..alice_library_cards {
+        game.create_object_from_definition(&filler, alice, Zone::Library);
+    }
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = MobVerdictDecisionMaker { votes };
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        program,
+        None,
+        &[],
+    )
+    .expect("Mob Verdict should resolve");
+    (game, alice_creature_id, bob_creature_id, charlie_creature_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mob_verdict_runtime_opponent_votes_damage_players_and_their_creatures_without_you_draw() {
+    let (game, alice_creature, bob_creature, charlie_creature) =
+        resolve_mob_verdict_with_votes(vec![0, 1, 1], 0);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    assert_eq!(game.player(alice).unwrap().life, 20, "Alice received no votes and should not be damaged");
+    assert_eq!(game.player(bob).unwrap().life, 16, "Bob received two votes and should take 4 damage");
+    assert_eq!(game.player(charlie).unwrap().life, 18, "Charlie received one vote and should take 2 damage");
+    assert_eq!(game.damage_on(alice_creature), 0, "Alice's creature should not be damaged by opponent-only vote followup");
+    assert_eq!(game.damage_on(bob_creature), 4, "Bob's creature should be damaged once per vote Bob received");
+    assert_eq!(game.damage_on(charlie_creature), 2, "Charlie's creature should be damaged once per vote Charlie received");
+    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Hand), 0, "Alice should not draw when she received no votes");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn mob_verdict_runtime_votes_you_received_draw_cards_without_opponent_damage_to_you() {
+    let (game, alice_creature, bob_creature, charlie_creature) =
+        resolve_mob_verdict_with_votes(vec![1, 0, 0], 3);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+
+    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Hand), 2, "Alice should draw once for each vote she received");
+    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Library), 1, "drawing two cards should leave one filler in Alice's library");
+    assert_eq!(game.player(alice).unwrap().life, 20, "votes Alice received should draw cards, not damage Alice");
+    assert_eq!(game.damage_on(alice_creature), 0, "Alice's creature should not be damaged by votes Alice received");
+    assert_eq!(game.player(bob).unwrap().life, 20, "Bob received no votes and should not be damaged");
+    assert_eq!(game.damage_on(bob_creature), 0, "Bob's creature should not be damaged without Bob receiving votes");
+    assert_eq!(game.player(charlie).unwrap().life, 18, "Charlie received Alice's vote and should take 2 damage");
+    assert_eq!(game.damage_on(charlie_creature), 2, "Charlie's creature should be damaged for Charlie's received vote");
 }
 
 #[test]

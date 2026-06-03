@@ -1795,6 +1795,18 @@ pub fn resolve_value(
             .get(&ctx.source)
             .map(|result| result.count_for_option(option) as i32)
             .unwrap_or(0)),
+        Value::PlayerVoteCount(filter) => {
+            let resolved_filter = resolve_player_filter(game, filter, ctx)?;
+            Ok(ctx
+                .vote_results
+                .get(&ctx.source)
+                .map(|result| {
+                    result.count_for_player_filter(&crate::target::PlayerFilter::Specific(
+                        resolved_filter,
+                    )) as i32
+                })
+                .unwrap_or(0))
+        }
     }
 }
 

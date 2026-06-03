@@ -1482,6 +1482,21 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
     let option_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&option_words);
     if let Ok(target) = parse_target_phrase(&option_tokens) {
         match target {
+            TargetAst::Player(filter, _) => {
+                let exclude_voter = option_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "other" | "another"));
+                let filter = if exclude_voter && matches!(filter, PlayerFilter::NotYou) {
+                    PlayerFilter::Any
+                } else {
+                    filter
+                };
+                return Ok(Some(EffectAst::VoteStartPlayers {
+                    filter,
+                    exclude_voter,
+                    secret,
+                }));
+            }
             TargetAst::Object(filter, _, _) => {
                 return Ok(Some(EffectAst::VoteStartObjects {
                     filter,
@@ -1552,6 +1567,10 @@ fn parse_generic_vote_option_effects(
         return Ok(None);
     };
     if vote_idx <= 2 {
+        if let Some(effect) = parse_generic_player_vote_received_effects(tokens, &words, vote_idx)?
+        {
+            return Ok(Some(effect));
+        }
         return Err(CardTextError::ParseError(
             "missing vote option name".to_string(),
         ));
@@ -1572,6 +1591,52 @@ fn parse_generic_vote_option_effects(
             })?;
     let effects = parse_effect_chain_lexed(effect_tokens)?;
     Ok(Some(EffectAst::VoteOption { option, effects }))
+}
+
+fn parse_generic_player_vote_received_effects(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+    vote_idx: usize,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some(received_idx) = find_index(&words[vote_idx + 1..], |word| {
+        matches!(*word, "received" | "receives")
+    })
+    .map(|idx| idx + vote_idx + 1)
+    else {
+        return Ok(None);
+    };
+    if received_idx <= vote_idx + 1 {
+        return Ok(None);
+    }
+    let player_words = crate::runtime_backend::util::non_article_word_refs(
+        &words[vote_idx + 1..received_idx],
+    );
+    if player_words.is_empty() {
+        return Ok(None);
+    }
+    let player_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&player_words);
+    let TargetAst::Player(filter, _) = parse_target_phrase(&player_tokens)? else {
+        return Ok(None);
+    };
+    let (_before, effect_tokens) =
+        grammar::split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)
+            .ok_or_else(|| {
+                CardTextError::ParseError("missing comma in for each vote clause".to_string())
+            })?;
+    let effects = parse_effect_chain_lexed(effect_tokens)?;
+    if filter == PlayerFilter::You {
+        return Ok(Some(EffectAst::RepeatEffects {
+            count: Value::PlayerVoteCount(PlayerFilter::You),
+            effects,
+        }));
+    }
+    Ok(Some(EffectAst::ForEachPlayersFiltered {
+        filter,
+        effects: vec![EffectAst::RepeatEffects {
+            count: Value::PlayerVoteCount(PlayerFilter::IteratedPlayer),
+            effects,
+        }],
+    }))
 }
 
 fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {

@@ -168,6 +168,7 @@ pub enum Value {
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,
     VoteCount(String),
+    PlayerVoteCount(PlayerFilter),
 }
 
 impl Value {

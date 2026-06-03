@@ -8,6 +8,7 @@ use crate::decisions::spec::DisplayOption;
 use crate::decisions::specs::{ChoiceSpec, ChooseObjectsSpec};
 use crate::decisions::{make_boolean_decision, make_decision};
 use crate::effect::EffectOutcome;
+use crate::effects::helpers::resolve_player_filter_to_list;
 use crate::effects::InvestigateEffect;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::{
@@ -284,6 +285,91 @@ fn collect_object_votes(
     Some((votes, vote_counts))
 }
 
+fn candidate_player_ids_for_vote(
+    effect: &VoteEffect,
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+    voter: PlayerId,
+) -> Result<Vec<PlayerId>, ExecutionError> {
+    let VoteChoice::Players {
+        filter,
+        exclude_voter,
+    } = &effect.choice
+    else {
+        return Ok(Vec::new());
+    };
+
+    let mut candidates = ctx.with_temp_iterated_player(Some(voter), |ctx| {
+        let filter_ctx = ctx.filter_context(game);
+        resolve_player_filter_to_list(game, filter, &filter_ctx, ctx)
+    })?;
+    if *exclude_voter {
+        candidates.retain(|player| *player != voter);
+    }
+    candidates.sort_by_key(|player| player.0);
+    candidates.dedup();
+    Ok(candidates)
+}
+
+fn collect_player_votes(
+    effect: &VoteEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    players: &[PlayerId],
+) -> Result<Option<(Vec<PlayerVote>, HashMap<PlayerId, usize>)>, ExecutionError> {
+    if !matches!(effect.choice, VoteChoice::Players { .. }) {
+        return Ok(None);
+    }
+
+    let mut votes: Vec<PlayerVote> = Vec::new();
+    let mut vote_counts: HashMap<PlayerId, usize> = HashMap::new();
+
+    for &player_id in players {
+        let num_votes = vote_instances_for_player(effect, game, ctx, player_id);
+        for _ in 0..num_votes {
+            let candidates = candidate_player_ids_for_vote(effect, game, ctx, player_id)?;
+            let options = candidates
+                .iter()
+                .filter_map(|candidate| {
+                    game.player(*candidate)
+                        .map(|player| (player.name.clone(), *candidate))
+                })
+                .collect::<Vec<_>>();
+            let Some(chosen) = (!options.is_empty())
+                .then(|| {
+                    crate::decisions::ask_choose_one(
+                        game,
+                        &mut ctx.decision_maker,
+                        player_id,
+                        ctx.source,
+                        &options,
+                    )
+                })
+                .flatten()
+            else {
+                continue;
+            };
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(None);
+            }
+
+            let option_name = game
+                .player(chosen)
+                .map(|player| player.name.clone())
+                .unwrap_or_else(|| "player".to_string());
+            *vote_counts.entry(chosen).or_default() += 1;
+            votes.push(PlayerVote {
+                player: player_id,
+                option_index: chosen.0 as usize,
+                option_name,
+                object_vote: None,
+            });
+        }
+    }
+
+    Ok(Some((votes, vote_counts)))
+}
+
 fn build_vote_counts_map(vote_counts: &[usize]) -> HashMap<usize, usize> {
     vote_counts
         .iter()
@@ -332,7 +418,9 @@ fn queue_vote_events(
         VoteChoice::NamedOptions(options) => {
             options.iter().map(|option| option.name.clone()).collect()
         }
-        VoteChoice::Objects { .. } => votes.iter().map(|vote| vote.option_name.clone()).collect(),
+        VoteChoice::Objects { .. } | VoteChoice::Players { .. } => {
+            votes.iter().map(|vote| vote.option_name.clone()).collect()
+        }
     };
     let voting_event = PlayersFinishedVotingEvent::new(
         ctx.source,
@@ -536,6 +624,25 @@ pub(crate) fn run_vote(
             let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
             for (object_id, count) in object_vote_counts {
                 vote_counts_map.insert(object_id.0 as usize, count);
+            }
+            queue_vote_events(effect, game, ctx, &votes, vote_counts_map);
+            Ok(EffectOutcome::resolved())
+        }
+        VoteChoice::Players { .. } => {
+            let Some((votes, player_vote_counts)) =
+                collect_player_votes(effect, game, ctx, &players)?
+            else {
+                return Ok(EffectOutcome::count(0));
+            };
+
+            let mut result = VoteResult::default();
+            result.total_votes = votes.len();
+            result.player_counts = player_vote_counts.clone();
+            ctx.vote_results.insert(ctx.source, result);
+
+            let mut vote_counts_map: HashMap<usize, usize> = HashMap::new();
+            for (player_id, count) in player_vote_counts {
+                vote_counts_map.insert(player_id.0 as usize, count);
             }
             queue_vote_events(effect, game, ctx, &votes, vote_counts_map);
             Ok(EffectOutcome::resolved())

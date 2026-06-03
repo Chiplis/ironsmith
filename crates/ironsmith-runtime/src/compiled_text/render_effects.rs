@@ -2949,6 +2949,96 @@ fn copy_spell_from_effect(effect: &Effect) -> Option<&crate::effects::CopySpellE
     None
 }
 
+fn describe_for_players_vote_received_repeat(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    let [effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let repeat = effect.downcast_ref::<crate::effects::RepeatEffectsEffect>()?;
+    if repeat.count != Value::PlayerVoteCount(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+
+    let player = match for_players.filter {
+        PlayerFilter::Opponent => "an opponent".to_string(),
+        PlayerFilter::You => "you".to_string(),
+        PlayerFilter::Any => "a player".to_string(),
+        _ => strip_leading_article(&describe_player_filter(&for_players.filter)).to_string(),
+    };
+    let repeated = describe_damage_and_controlled_damage_pair(&repeat.effects)
+        .unwrap_or_else(|| describe_effect_list(&repeat.effects));
+    let repeated = lowercase_first(repeated.trim().trim_end_matches('.'));
+    Some(format!("For each vote {player} received, {repeated}"))
+}
+
+fn describe_damage_and_controlled_damage_pair(effects: &[Effect]) -> Option<String> {
+    fn source_damage(
+        effect: &Effect,
+    ) -> Option<(Option<&ChooseSpec>, &crate::effects::DealDamageEffect)> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return source_damage(&tagged.effect);
+        }
+        if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+            && let Some(damage) = with_source
+                .effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+        {
+            return Some((Some(&with_source.source), damage));
+        }
+        effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            .map(|damage| (None, damage))
+    }
+
+    fn source_for_each(
+        effect: &Effect,
+    ) -> Option<(Option<&ChooseSpec>, &crate::effects::ForEachObject)> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return source_for_each(&tagged.effect);
+        }
+        if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+            && let Some(for_each) = with_source
+                .effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+        {
+            return Some((Some(&with_source.source), for_each));
+        }
+        effect
+            .downcast_ref::<crate::effects::ForEachObject>()
+            .map(|for_each| (None, for_each))
+    }
+
+    let [first, second] = effects else {
+        return None;
+    };
+    let (source, player_damage) = source_damage(first)?;
+    if !matches!(
+        player_damage.target,
+        ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    ) {
+        return None;
+    }
+    let (for_each_source, for_each) = source_for_each(second)?;
+    let [inner] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let (inner_source, object_damage) = source_damage(inner)?;
+    if object_damage.amount != player_damage.amount || !matches!(object_damage.target, ChooseSpec::Iterated)
+    {
+        return None;
+    }
+    let mut objects = describe_each_controlled_by_iterated(&for_each.filter)?;
+    objects = objects.replace(" they control", " that player controls");
+    let amount = describe_damage_amount_clause(&player_damage.amount).0;
+    if let Some(subject) = source.or(for_each_source).or(inner_source).map(describe_choose_spec) {
+        return Some(format!(
+            "{subject} deals {amount} to that player and {objects}"
+        ));
+    }
+    Some(format!("Deal {amount} to that player and {objects}"))
+}
+
 fn tagged_copy_spell_from_effect(
     effect: &Effect,
 ) -> Option<(&crate::TagKey, &crate::effects::CopySpellEffect)> {
@@ -4931,6 +5021,9 @@ fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_vote_with_received_vote_followups(effects) {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
@@ -15667,6 +15760,42 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     cleanup_decompiled_text(&text)
 }
 
+fn describe_vote_with_received_vote_followups(effects: &[Effect]) -> Option<String> {
+    let [first, rest @ ..] = effects else {
+        return None;
+    };
+    first.downcast_ref::<crate::effects::VoteEffect>()?;
+    if rest.is_empty() {
+        return None;
+    }
+    let structurally_received_vote_followups = rest.iter().all(|effect| {
+        if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+            return for_players.effects.len() == 1
+                && for_players.effects[0]
+                    .downcast_ref::<crate::effects::RepeatEffectsEffect>()
+                    .is_some_and(|repeat| {
+                        repeat.count == Value::PlayerVoteCount(PlayerFilter::IteratedPlayer)
+                    });
+        }
+        effect
+            .downcast_ref::<crate::effects::RepeatEffectsEffect>()
+            .is_some_and(|repeat| matches!(repeat.count, Value::PlayerVoteCount(_)))
+    });
+    let rendered = effects
+        .iter()
+        .map(describe_effect)
+        .filter(|text| !text.trim().is_empty())
+        .collect::<Vec<_>>();
+    let rendered_received_vote_followups = rendered
+        .iter()
+        .skip(1)
+        .all(|text| text.starts_with("For each vote ") && text.contains(" received,"));
+    if !structurally_received_vote_followups && !rendered_received_vote_followups {
+        return None;
+    }
+    Some(rendered.join(". "))
+}
+
 fn normalize_haunting_echoes_text(text: &str) -> Option<String> {
     let expected = concat!(
         "Exile all nonland cards in target player's graveyard or nonbasic cards in target player's graveyard. ",
@@ -16475,6 +16604,8 @@ pub(super) fn cleanup_decompiled_text(text: &str) -> String {
     }
 
     for (from, to) in [
+        ("votes are revealed, for each vote", "votes are revealed. For each vote"),
+        (", then for each vote", ". For each vote"),
         ("you gets", "you get"),
         ("you puts", "you put"),
         ("a artifact", "an artifact"),
@@ -30456,6 +30587,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_for_players_target_return_unless_draw(for_players) {
             return compact;
         }
+        if let Some(compact) = describe_for_players_vote_received_repeat(for_players) {
+            return compact;
+        }
         if let Some(compact) =
             describe_each_player_return_all_from_their_graveyard_with_counters(for_players)
         {
@@ -36925,6 +37059,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     pluralize_noun_phrase(&strip_leading_article(&filter.description()))
                 ),
             },
+            crate::effects::VoteChoice::Players {
+                filter,
+                exclude_voter,
+            } => {
+                if *exclude_voter && *filter == PlayerFilter::Any {
+                    "another player".to_string()
+                } else {
+                    strip_leading_article(&describe_player_filter(filter)).to_string()
+                }
+            }
         };
         let mut suffix = String::new();
         if vote.controller_extra_votes > 0 {
@@ -36950,6 +37094,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ));
         }
         if vote.secret {
+            if matches!(vote.choice, crate::effects::VoteChoice::Players { .. }) {
+                return format!(
+                    "Secret council — Each player secretly votes for {}, then those votes are revealed{}",
+                    choices, suffix
+                );
+            }
             return format!(
                 "Each player secretly votes for {}, then those votes are revealed{}",
                 choices, suffix
@@ -36970,6 +37120,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 option.to_ascii_lowercase(),
                 repeated
             );
+        }
+        if let Value::PlayerVoteCount(filter) = &repeat.count {
+            let player = match filter {
+                PlayerFilter::IteratedPlayer => "that player".to_string(),
+                PlayerFilter::You => "you".to_string(),
+                _ => strip_leading_article(&describe_player_filter(filter)).to_string(),
+            };
+            return format!("For each vote {player} received, {repeated}");
         }
         if repeat
             .count

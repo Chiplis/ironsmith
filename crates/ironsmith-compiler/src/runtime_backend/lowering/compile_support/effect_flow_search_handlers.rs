@@ -493,6 +493,7 @@ pub(super) fn try_compile_search_and_reorder_effect(
         EffectAst::SecretChoiceReveal => (Vec::new(), Vec::new()),
         EffectAst::VoteStart { .. }
         | EffectAst::VoteStartObjects { .. }
+        | EffectAst::VoteStartPlayers { .. }
         | EffectAst::VoteExtra { .. } => {
             return Err(CardTextError::ParseError(
                 "vote clauses must appear together".to_string(),

@@ -1217,6 +1217,7 @@ fn advance_reference_frame_for_effect(
         | EffectAst::SecretChoiceStart { .. }
         | EffectAst::SecretChoiceReveal
         | EffectAst::VoteStartObjects { .. }
+        | EffectAst::VoteStartPlayers { .. }
         | EffectAst::VoteOption { .. }
         | EffectAst::VoteExtra { .. } => {}
     }

@@ -3510,6 +3510,11 @@ pub(crate) enum EffectAst {
         count: ChoiceCount,
         secret: bool,
     },
+    VoteStartPlayers {
+        filter: PlayerFilter,
+        exclude_voter: bool,
+        secret: bool,
+    },
     VoteOption {
         option: String,
         effects: Vec<EffectAst>,

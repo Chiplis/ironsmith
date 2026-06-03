@@ -7,7 +7,9 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
+use crate::ids::PlayerId;
 use crate::target::ChooseSpec;
+use crate::target::PlayerFilter;
 
 pub type VoteOption = ironsmith_core::VoteOption<Effect>;
 
@@ -16,6 +18,7 @@ pub type VoteOption = ironsmith_core::VoteOption<Effect>;
 pub struct VoteResult {
     pub option_counts: HashMap<String, usize>,
     pub object_counts: HashMap<ObjectId, usize>,
+    pub player_counts: HashMap<PlayerId, usize>,
     pub total_votes: usize,
 }
 
@@ -25,6 +28,13 @@ impl VoteResult {
             .iter()
             .find_map(|(name, count)| name.eq_ignore_ascii_case(option).then_some(*count))
             .unwrap_or(0)
+    }
+
+    pub fn count_for_player_filter(&self, filter: &PlayerFilter) -> usize {
+        match filter {
+            PlayerFilter::Specific(player) => self.player_counts.get(player).copied().unwrap_or(0),
+            _ => 0,
+        }
     }
 
     pub fn option_gets_more_votes(&self, option: &str) -> bool {
