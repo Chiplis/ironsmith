@@ -44,6 +44,12 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
                 "This creature's power and toughness are each equal to {}",
                 describe_value(&self.power)
             )
+        } else if let Some(offset) = toughness_is_power_plus_fixed(&self.power, &self.toughness) {
+            format!(
+                "This creature's power is equal to {} and its toughness is equal to that number plus {}",
+                describe_value(&self.power),
+                offset
+            )
         } else if matches!(self.toughness, Value::SourceToughness) {
             format!(
                 "This creature's power is equal to {}",
@@ -77,6 +83,20 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
             )
             .with_source_type(EffectSourceType::CharacteristicDefining),
         ]
+    }
+}
+
+fn toughness_is_power_plus_fixed(power: &Value, toughness: &Value) -> Option<i32> {
+    match toughness {
+        Value::Add(left, right) if **left == *power => match right.as_ref() {
+            Value::Fixed(offset) if *offset > 0 => Some(*offset),
+            _ => None,
+        },
+        Value::Add(left, right) if **right == *power => match left.as_ref() {
+            Value::Fixed(offset) if *offset > 0 => Some(*offset),
+            _ => None,
+        },
+        _ => None,
     }
 }
 

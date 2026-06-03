@@ -5968,6 +5968,12 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
     equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
     equal_prefixed.extend(trimmed.iter().cloned());
 
+    if CARD_TYPES_AMONG_MARKER_PATTERN.matches_words(&trimmed_words)
+        && let Some(value) = parse_characteristic_defining_pt_value(&trimmed)
+    {
+        return Some(value);
+    }
+
     parse_equal_to_aggregate_filter_value(&equal_prefixed)
         .or_else(|| parse_add_mana_equal_amount_value(&equal_prefixed))
         .or_else(|| parse_equal_to_number_of_filter_plus_or_minus_fixed_value(&equal_prefixed))
