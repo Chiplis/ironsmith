@@ -172,7 +172,13 @@ pub(crate) fn parse_counter_target_phrase(
 fn parse_counter_ability_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
-    let clause_tokens = trim_commas(tokens);
+    let mut clause_tokens = trim_commas(tokens);
+    if clause_tokens
+        .first()
+        .is_some_and(|token| token.as_word() == Some("counter"))
+    {
+        clause_tokens.drain(..1);
+    }
     let is_you_control_tail = |idx: usize| {
         counter_shape_matches_at(&clause_tokens, idx, &COUNTER_YOU_CONTROL_PREFIX_PATTERN)
             || counter_shape_matches_at(&clause_tokens, idx, &COUNTER_YOU_DONT_CONTROL_PREFIX_PATTERN)

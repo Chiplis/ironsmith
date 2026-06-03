@@ -47523,6 +47523,311 @@ fn assert_oracle_card_parses_strict(name: &str) {
     );
 }
 
+fn azorius_guildmage_activated_ability_matching(
+    def: &CardDefinition,
+    predicate: impl Fn(&crate::ability::ActivatedAbility) -> bool,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            predicate(activated).then_some(activated)
+        })
+        .expect("Azorius Guildmage should have the requested activated ability")
+}
+
+fn azorius_guildmage_tap_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    azorius_guildmage_activated_ability_matching(def, |activated| {
+        activated.effects.flattened_default_effects().iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TapEffect>()
+                .is_some()
+        })
+    })
+}
+
+fn azorius_guildmage_counter_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    azorius_guildmage_activated_ability_matching(def, |activated| {
+        activated.effects.flattened_default_effects().iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::CounterEffect>()
+                .is_some()
+        })
+    })
+}
+
+fn azorius_guildmage_counter_target_filter(
+    activated: &crate::ability::ActivatedAbility,
+) -> &crate::target::ObjectFilter {
+    let target_spec = activated
+        .choices
+        .first()
+        .expect("counter ability should declare a target");
+    let ChooseSpec::Object(filter) = target_spec.base() else {
+        panic!("counter target should lower to an object filter, got {target_spec:?}");
+    };
+    filter
+}
+
+fn pay_azorius_guildmage_activation(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    source: ObjectId,
+    activated: &crate::ability::ActivatedAbility,
+    colored_mana: ManaSymbol,
+) {
+    game.player_mut(player)
+        .expect("activating player exists")
+        .mana_pool
+        .add(colored_mana, 3);
+    crate::cost::can_pay_cost(game, source, player, &activated.mana_cost)
+        .expect("Azorius Guildmage activation cost should be payable");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        game,
+        player,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Azorius Guildmage activation cost should be paid");
+    assert_eq!(
+        game.player(player)
+            .expect("activating player exists")
+            .mana_pool
+            .total(),
+        0,
+        "activation should consume the supplied colored mana for its colored and generic costs"
+    );
+}
+
+#[test]
+fn azorius_guildmage_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Azorius Guildmage");
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "{2}{W}: Tap target creature.",
+            "{2}{U}: Counter target activated ability.",
+        ],
+        "Azorius Guildmage should render both activated abilities exactly"
+    );
+
+    let activated_count = def
+        .abilities
+        .iter()
+        .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .count();
+    assert_eq!(
+        activated_count, 2,
+        "Azorius Guildmage should have exactly two activated abilities"
+    );
+
+    let tap = azorius_guildmage_tap_ability(&def);
+    let counter = azorius_guildmage_counter_ability(&def);
+    assert!(
+        format!("{:?}", tap.mana_cost).contains("White"),
+        "tap ability should keep its white activation cost, got {:?}",
+        tap.mana_cost
+    );
+    assert!(
+        format!("{:?}", counter.mana_cost).contains("Blue"),
+        "counter ability should keep its blue activation cost, got {:?}",
+        counter.mana_cost
+    );
+
+    let filter = azorius_guildmage_counter_target_filter(counter);
+    assert_eq!(
+        filter.stack_kind,
+        Some(crate::filter::StackObjectKind::ActivatedAbility),
+        "counter ability should structurally target activated abilities on the stack"
+    );
+}
+
+#[test]
+fn azorius_guildmage_tap_activation_taps_target_creature_after_cost_payment() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_tap_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_def = CardDefinitionBuilder::new(CardId::new(), "Azorius Guildmage Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::White);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: activated
+                .choices
+                .first()
+                .expect("tap ability should declare a target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(&game);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Azorius Guildmage tap ability should resolve");
+    }
+
+    assert!(
+        game.is_tapped(target),
+        "tap activation should tap the targeted creature"
+    );
+}
+
+#[test]
+fn azorius_guildmage_counter_activation_counters_activated_ability_only() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_counter_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_source_def = CardDefinitionBuilder::new(CardId::new(), "Stack Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ability_source =
+        game.create_object_from_definition(&ability_source_def, bob, Zone::Battlefield);
+    game.stack.push(crate::game_state::StackEntry::ability(
+        ability_source,
+        bob,
+        vec![crate::effect::Effect::draw(1)],
+    ));
+
+    let filter = azorius_guildmage_counter_target_filter(activated);
+    let filter_ctx = crate::filter::FilterContext::new(alice).with_source(source);
+    assert!(
+        filter.matches(
+            game.object(ability_source)
+                .expect("activated ability source should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should match an activated ability on the stack"
+    );
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::Blue);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(ability_source)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: activated
+                .choices
+                .first()
+                .expect("counter ability should declare a target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(&game);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Azorius Guildmage counter ability should resolve");
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "counter activation should remove the targeted activated ability from the stack"
+    );
+    assert_eq!(
+        game.object(ability_source)
+            .expect("ability source should remain on battlefield")
+            .zone,
+        Zone::Battlefield,
+        "countering an activated ability should not move its source permanent"
+    );
+
+    let spell_def = CardDefinitionBuilder::new(CardId::new(), "Ordinary Stack Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell = game.create_object_from_definition(&spell_def, bob, Zone::Stack);
+    game.stack.push(crate::game_state::StackEntry::new(spell, bob));
+
+    let triggered_source_def =
+        CardDefinitionBuilder::new(CardId::new(), "Triggered Ability Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+    let triggered_source =
+        game.create_object_from_definition(&triggered_source_def, bob, Zone::Battlefield);
+    game.stack.push(
+        crate::game_state::StackEntry::ability(
+            triggered_source,
+            bob,
+            vec![crate::effect::Effect::draw(1)],
+        )
+        .with_triggering_event(crate::events::RawEvent::new(
+            crate::events::AbilityActivatedEvent::new(triggered_source, bob, false),
+            crate::provenance::ProvNodeId::default(),
+        )),
+    );
+
+    assert!(
+        !filter.matches(
+            game.object(spell).expect("spell stack object should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should reject ordinary spells"
+    );
+    assert!(
+        !filter.matches(
+            game.object(triggered_source)
+                .expect("triggered ability source should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should reject triggered abilities"
+    );
+}
+
+#[test]
+fn azorius_guildmage_counter_activation_rejects_target_that_left_stack() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_counter_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_source_def = CardDefinitionBuilder::new(CardId::new(), "Resolved Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ability_source =
+        game.create_object_from_definition(&ability_source_def, bob, Zone::Battlefield);
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::Blue);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(ability_source)]);
+    for effect in activated.effects.flattened_default_effects() {
+        let result = crate::effects::execute_effect(&mut game, effect, &mut ctx);
+        assert_eq!(
+            result,
+            Err(crate::effects::ExecutionError::InvalidTarget),
+            "counter ability should reject a target that left the stack"
+        );
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "no stack entry should be removed when the target activated ability has already left the stack"
+    );
+    assert_eq!(
+        game.object(ability_source)
+            .expect("ability source should remain on battlefield")
+            .zone,
+        Zone::Battlefield,
+        "invalid counter target should not move the source permanent"
+    );
+}
+
 #[test]
 fn irresistible_prey_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Irresistible Prey");

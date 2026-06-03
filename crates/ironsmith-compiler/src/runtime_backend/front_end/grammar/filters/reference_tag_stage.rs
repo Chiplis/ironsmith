@@ -137,6 +137,17 @@ const TAGGED_SPELL_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["that"], &["this"], &["its"], &["their"]]);
 const ABILITY_OR_ABILITIES_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["ability"], &["abilities"]]);
+const ACTIVATED_ABILITY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["activated", "ability"]);
+const TRIGGERED_ABILITY_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["triggered", "ability"]);
+const ACTIVATED_OR_TRIGGERED_ABILITY_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["activated", "or", "triggered", "ability"],
+            &["triggered", "or", "activated", "ability"],
+        ]
+);
 const TEXT_NEGATION_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["not"], &["isnt"], &["isn't"], &["arent"], &["aren't"]]);
 const LEGENDARY_OR_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["legendary", "or"]);
@@ -506,6 +517,21 @@ pub(super) fn parse_object_filter_inner(
     };
 
     let mut all_words = non_article_word_refs(&all_words_with_articles);
+    if ACTIVATED_ABILITY_PATTERN.matches_words(&all_words) {
+        return Ok(ObjectFilter::activated_ability());
+    }
+    if TRIGGERED_ABILITY_PATTERN.matches_words(&all_words) {
+        let mut filter = ObjectFilter::ability();
+        filter.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+        return Ok(filter);
+    }
+    if ACTIVATED_OR_TRIGGERED_ABILITY_PATTERN.matches_words(&all_words) {
+        let mut triggered = ObjectFilter::ability();
+        triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
+        return Ok(filter);
+    }
     if REST_REVEALED_OBJECT_PATTERN.matches_words(&all_words) {
         return Ok(ObjectFilter::tagged("rest"));
     }
