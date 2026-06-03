@@ -809,10 +809,15 @@ fn finalize_ast_surface_line(line: String) -> String {
         "if it would leave the battlefield, exile it instead",
     );
     line = capitalize_sentence_boundaries(&line);
-    if is_keyword_style_line(&line) {
+    let finalized = if is_keyword_style_line(&line) {
         line
     } else {
         ensure_trailing_period(&line)
+    };
+    if finalized.contains("\n•") {
+        finalized.replace("—.\n•", "—\n•")
+    } else {
+        finalized
     }
 }
 

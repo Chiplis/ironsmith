@@ -2697,6 +2697,7 @@ fn parse_oracle_bumi_king_of_three_trials_strict_parser_text_and_structure_regre
     let modal = bumi_modal_effect(&def);
     let modal_debug = format!("{modal:#?}");
     let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let canonical = canonical_compiled_lines(&def).join("\n");
 
     assert!(
         rendered.contains(
@@ -2707,6 +2708,12 @@ fn parse_oracle_bumi_king_of_three_trials_strict_parser_text_and_structure_regre
     assert!(
         rendered.contains("Target player scries 3") && rendered.contains("Earthbend 3"),
         "expected Bumi compiled text to keep the targeted scry and earthbend modes, got {rendered}"
+    );
+    assert!(
+        canonical.contains(
+            "When Bumi enters, choose up to X, where X is the number of Lesson cards in your graveyard —\n•"
+        ) && !canonical.contains("—.\n•"),
+        "Bumi canonical compiled text should not add a period after the modal-header dash, got {canonical}"
     );
     assert_eq!(modal.min_choose_count, Value::Fixed(0));
     assert_eq!(modal.modes.len(), 3);

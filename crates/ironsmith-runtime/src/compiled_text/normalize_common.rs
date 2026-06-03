@@ -7565,6 +7565,7 @@ pub(super) fn ensure_trailing_period(text: &str) -> String {
     if trimmed.ends_with('.')
         || trimmed.ends_with('!')
         || trimmed.ends_with('?')
+        || trimmed.ends_with('—')
         || trimmed.ends_with('"')
         || trimmed.ends_with(')')
     {
