@@ -314,6 +314,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that discards a land
@@ -392,6 +393,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that declines to discard
@@ -469,6 +471,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that would discard a land (but there are none)
@@ -539,6 +542,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
 
         // Resolve with a decision maker that discards a land

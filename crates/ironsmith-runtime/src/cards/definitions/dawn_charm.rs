@@ -107,6 +107,7 @@ mod tests {
             saddle_contributors: vec![],
             tagged_objects: std::collections::HashMap::new(),
             chosen_modes: None,
+            effect_outcomes: std::collections::HashMap::new(),
         });
         id
     }

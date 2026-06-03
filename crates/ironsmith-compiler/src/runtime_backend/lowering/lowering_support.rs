@@ -370,6 +370,27 @@ pub(crate) fn rewrite_prepare_effects_for_lowering(
     )
 }
 
+pub(crate) fn rewrite_prepare_additional_cost_effects_for_lowering(
+    effects: &[EffectAst],
+    imports: impl Into<ReferenceImports>,
+) -> Result<PreparedEffectsForLowering, CardTextError> {
+    let imports = imports.into();
+    let normalized = normalize_effects_ast(effects);
+    rewrite_prepare_effects_from_normalized(
+        normalized.clone(),
+        &normalized,
+        imports,
+        EffectReferenceResolutionConfig {
+            force_auto_tag_object_targets: true,
+            force_export_last_memory_effect_id: true,
+            ..Default::default()
+        },
+        None,
+        None,
+        false,
+    )
+}
+
 pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     trigger: Option<&TriggerSpec>,
     effects: &[EffectAst],

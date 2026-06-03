@@ -57,6 +57,7 @@ pub(crate) fn resolving_source_stack_entry(ctx: &ExecutionContext) -> StackEntry
     entry.event_value_amount = ctx.event_value_amount;
     entry.chosen_modes = ctx.chosen_modes.clone();
     entry.tagged_objects = ctx.tagged_objects.clone();
+    entry.effect_outcomes = ctx.effect_outcomes.clone();
     entry
 }
 
@@ -130,6 +131,7 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.crew_contributors = original_entry.crew_contributors.clone();
     copy_entry.saddle_contributors = original_entry.saddle_contributors.clone();
     copy_entry.tagged_objects = original_entry.tagged_objects.clone();
+    copy_entry.effect_outcomes = original_entry.effect_outcomes.clone();
 
     if let Some(chosen_player) = copy_entry.chosen_player {
         game.set_chosen_player(copy_id, chosen_player);

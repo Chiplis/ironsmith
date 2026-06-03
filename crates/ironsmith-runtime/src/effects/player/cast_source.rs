@@ -109,6 +109,7 @@ impl EffectExecutor for CastSourceEffect {
             saddle_contributors: vec![],
             chosen_modes: None,
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
         };
 
         game.push_to_stack(stack_entry);

@@ -136,6 +136,9 @@ pub struct PendingCast {
     pub remaining_cost_steps: Vec<ActivationCostStep>,
     /// Tagged object snapshots captured while paying spell costs.
     pub tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    /// Outcomes of spell cost effects labeled with `WithIdEffect`.
+    pub effect_outcomes:
+        std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Next `sacrifice_cost_{N}` tag index to assign for choose-and-sacrifice costs.
     pub next_sacrifice_cost_tag_index: usize,
     /// Pre-chosen modes for modal spells (per MTG rule 601.2b).
@@ -191,6 +194,7 @@ impl PendingCast {
             current_pip_payment_options: Vec::new(),
             remaining_cost_steps: Vec::new(),
             tagged_objects: std::collections::HashMap::new(),
+            effect_outcomes: std::collections::HashMap::new(),
             next_sacrifice_cost_tag_index: 0,
             chosen_modes,
             hybrid_choices: Vec::new(),
