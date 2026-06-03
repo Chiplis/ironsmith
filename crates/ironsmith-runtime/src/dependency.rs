@@ -1350,6 +1350,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::X
         | Value::XTimes(_)
         | Value::VoteCount(_)
+        | Value::PlayerVoteCount(_)
         | Value::Count(_)
         | Value::CountScaled(_, _)
         | Value::GreatestCount(_)

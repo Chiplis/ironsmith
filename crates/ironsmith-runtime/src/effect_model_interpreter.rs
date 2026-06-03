@@ -814,6 +814,16 @@ where
                 )
                 .with_secret(payload.secret)
             }
+            ironsmith_core::VoteChoice::Players {
+                filter,
+                exclude_voter,
+            } => crate::effects::VoteEffect::vote_players_with_optional_extra(
+                filter.clone(),
+                *exclude_voter,
+                payload.controller_extra_votes,
+                payload.controller_optional_extra_votes,
+            )
+            .with_secret(payload.secret),
         };
         return Ok(Effect::new(converted));
     }

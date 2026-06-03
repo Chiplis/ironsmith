@@ -8237,6 +8237,9 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
         }
         Value::VoteCount(option) => format!("the number of {} votes", option.to_ascii_lowercase()),
+        Value::PlayerVoteCount(filter) => {
+            format!("the number of votes {} received", filter.description())
+        }
         Value::Count(filter) => {
             format!(
                 "the number of {}",

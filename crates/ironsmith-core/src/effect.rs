@@ -3036,6 +3036,10 @@ pub enum VoteChoice<E> {
         filter: ObjectFilter,
         count: ChoiceCount,
     },
+    Players {
+        filter: PlayerFilter,
+        exclude_voter: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3116,6 +3120,31 @@ impl<E> VoteEffect<E> {
     ) -> Self {
         Self {
             choice: VoteChoice::Objects { filter, count },
+            controller_extra_votes,
+            controller_optional_extra_votes,
+            secret: false,
+        }
+    }
+
+    pub fn vote_players(
+        filter: PlayerFilter,
+        exclude_voter: bool,
+        controller_extra_votes: u32,
+    ) -> Self {
+        Self::vote_players_with_optional_extra(filter, exclude_voter, controller_extra_votes, 0)
+    }
+
+    pub fn vote_players_with_optional_extra(
+        filter: PlayerFilter,
+        exclude_voter: bool,
+        controller_extra_votes: u32,
+        controller_optional_extra_votes: u32,
+    ) -> Self {
+        Self {
+            choice: VoteChoice::Players {
+                filter,
+                exclude_voter,
+            },
             controller_extra_votes,
             controller_optional_extra_votes,
             secret: false,
