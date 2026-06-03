@@ -1494,7 +1494,7 @@ pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<Objec
         return Some(ObjectFilter::default());
     }
     if CANT_CAST_SPELLS_OF_CHOSEN_TYPE_TAIL_PATTERN.matches_words(words) {
-        return Some(ObjectFilter::default().of_chosen_creature_type());
+        return Some(ObjectFilter::default().of_chosen_card_type());
     }
     if words.first() != Some(&"cast") || words.last() != Some(&"spells") || words.len() < 3 {
         return None;
