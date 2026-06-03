@@ -40758,6 +40758,20 @@ fn spell_contortion_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn frightful_delusion_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_303), "Frightful Delusion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell unless its controller pays {1}. That player discards a card.",
+        )
+        .expect("Frightful Delusion should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn stack_spell_probe_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(76_302), "Stack Spell Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
@@ -40783,6 +40797,66 @@ fn put_spell_contortion_on_stack(
             .with_optional_costs_paid(paid),
     );
     source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_frightful_delusion_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target_spell: ObjectId,
+) -> ObjectId {
+    let def = frightful_delusion_definition();
+    let source = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(source, controller).with_targets(vec![Target::Object(target_spell)]),
+    );
+    source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseSpecificDiscardDecisionMaker {
+    card_to_discard: ObjectId,
+    accept_boolean: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseSpecificDiscardDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_boolean
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == self.card_to_discard && candidate.legal)
+        {
+            vec![self.card_to_discard]
+        } else {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_hand_card(game: &mut GameState, owner: PlayerId, name: &str, raw_id: u32) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(raw_id), name)
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Hand)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -40937,6 +41011,112 @@ fn test_strength_of_the_tajuru_puts_x_counters_on_each_kicked_target() {
     assert_eq!(
         untargeted_counters, 0,
         "Strength of the Tajuru should affect only its chosen targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn frightful_delusion_unpaid_counter_discards_target_spell_controller_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let bob_discard = create_hand_card(&mut game, bob, "Bob Discards", 76_304);
+    let alice_keeps = create_hand_card(&mut game, alice, "Alice Keeps", 76_305);
+    let frightful_delusion = put_frightful_delusion_on_stack(&mut game, alice, target_spell);
+    let mut dm = ChooseSpecificDiscardDecisionMaker {
+        card_to_discard: bob_discard,
+        accept_boolean: false,
+    };
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Frightful Delusion should resolve");
+
+    let countered_target = game
+        .current_object_id_after_zone_change(target_spell)
+        .expect("target spell should still be tracked after zone change");
+    assert_eq!(
+        game.object(countered_target)
+            .expect("target spell exists")
+            .zone,
+        Zone::Graveyard,
+        "the target spell should be countered when its controller cannot pay {{1}}"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Discards"))),
+        "the target spell's controller should discard a card"
+    );
+    assert!(
+        game.object(alice_keeps)
+            .is_some_and(|obj| obj.zone == Zone::Hand),
+        "Frightful Delusion should not make its controller discard"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == frightful_delusion),
+        "Frightful Delusion should leave the stack after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn frightful_delusion_paid_target_survives_but_controller_still_discards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let bob_discard = create_hand_card(&mut game, bob, "Bob Pays And Discards", 76_306);
+    let frightful_delusion = put_frightful_delusion_on_stack(&mut game, alice, target_spell);
+    let mut dm = ChooseSpecificDiscardDecisionMaker {
+        card_to_discard: bob_discard,
+        accept_boolean: true,
+    };
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Frightful Delusion should resolve");
+
+    assert_eq!(
+        game.object(target_spell).expect("target spell exists").zone,
+        Zone::Stack,
+        "the target spell should remain on the stack when its controller pays {{1}}"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == target_spell),
+        "the paid-for target spell should still have a stack entry"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "the target spell's controller should spend {{1}} to prevent the counter effect"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Pays And Discards"))),
+        "the target spell's controller should discard even after paying for Frightful Delusion"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == frightful_delusion),
+        "Frightful Delusion should leave the stack after resolving"
     );
 }
 

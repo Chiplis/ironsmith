@@ -557,6 +557,11 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
+                    if let Some(tag) = frame.last_object_tag.as_deref() {
+                        frame.last_player_filter = Some(PlayerFilter::ControllerOf(
+                            ObjectRef::tagged(tag.to_string()),
+                        ));
+                    }
                 }
                 SubjectVerbActionAst::PutCounters { target, .. }
                 | SubjectVerbActionAst::PutCounterChoice { target, .. } => {
