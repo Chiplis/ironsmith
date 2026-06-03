@@ -20076,6 +20076,24 @@ fn loyalty_cost_amount_word(text: &str) -> Option<i32> {
     ironsmith_core::parse_cardinal_word(text).and_then(|value| value.try_into().ok())
 }
 
+fn life_lost_this_way_group_size(value: &Value) -> Option<i32> {
+    match value.unhinted() {
+        Value::EffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::PendingEffectMetric {
+            metric: crate::effect::EffectMetric::LifeLost,
+            ..
+        }
+        | Value::EventValue(EventValueSpec::LifeAmount) => Some(1),
+        Value::DividedRoundedDown(inner, divisor) if *divisor > 1 => {
+            life_lost_this_way_group_size(inner).map(|_| *divisor)
+        }
+        _ => None,
+    }
+}
+
 fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Option<String> {
     if discard.random || discard.player != PlayerFilter::You || discard.tag.is_some() {
         return None;
@@ -31630,6 +31648,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_for_each_count_filter(&filter)
             );
         }
+        if let Some(group_size) = life_lost_this_way_group_size(&put_counters.amount) {
+            return format!(
+                "Put {} on {target} for each {group_size} life lost this way",
+                describe_put_counter_phrase(&Value::Fixed(1), put_counters.counter_type),
+            );
+        }
         if let Some((counter_text, where_x)) =
             describe_counter_count_with_where_x(&put_counters.amount, put_counters.counter_type)
         {
@@ -31671,6 +31695,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                         }
                         crate::effect::EffectMetric::ChosenCount => {
                             Some("object chosen this way".to_string())
+                        }
+                        crate::effect::EffectMetric::LifeLost => {
+                            Some("1 life lost this way".to_string())
                         }
                         _ => None,
                     }
