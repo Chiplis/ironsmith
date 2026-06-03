@@ -1648,9 +1648,9 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::TargetMatches(_)
             | PredicateAst::PlayerControlsMoreThanYou { .. }
             | PredicateAst::PlayerControls { .. }
-            | PredicateAst::PlayerControlsAtLeast { .. }
+            | PredicateAst::PlayerHasAtLeast { .. }
             | PredicateAst::PlayerControlsExactly { .. }
-            | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { .. }
+            | PredicateAst::PlayerHasAtLeastWithDifferentPowers { .. }
             | PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { .. }
             | PredicateAst::PlayerHasMoreLifeThanYou { .. }

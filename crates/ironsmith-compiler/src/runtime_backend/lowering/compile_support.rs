@@ -261,14 +261,14 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 resolve_it_tag(filter, &refs)?,
             )))
         }
-        PredicateAst::PlayerControlsAtLeast {
+        PredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
-            Condition::PlayerControlsAtLeast {
+            Condition::PlayerHasAtLeast {
                 player,
                 filter: resolved,
                 count: *count,
@@ -287,14 +287,14 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 count: *count,
             }
         }
-        PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+        PredicateAst::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved = resolve_it_tag(filter, &refs)?;
-            Condition::PlayerControlsAtLeastWithDifferentPowers {
+            Condition::PlayerHasAtLeastWithDifferentPowers {
                 player,
                 filter: resolved,
                 count: *count,

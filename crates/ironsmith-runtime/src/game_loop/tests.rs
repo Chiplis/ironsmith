@@ -54,11 +54,7 @@ fn tide_of_war_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn create_tide_of_war_creature(
-    game: &mut GameState,
-    name: &str,
-    controller: PlayerId,
-) -> ObjectId {
+fn create_tide_of_war_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
     let card = CardBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
@@ -102,11 +98,13 @@ fn resolve_tide_of_war_trigger(
         })
         .expect("Tide of War should have one triggered ability");
     let blocker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(blocker).expect("blocking creature should exist"),
+        game.object(blocker)
+            .expect("blocking creature should exist"),
         game,
     );
     let attacker_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-        game.object(attacker).expect("blocked creature should exist"),
+        game.object(attacker)
+            .expect("blocked creature should exist"),
         game,
     );
     let trigger_event = TriggerEvent::new_with_provenance(
@@ -447,7 +445,9 @@ fn colfenors_urn_end_step_requires_three_source_exiled_cards() {
         "Colfenor's Urn should not count unrelated exiled cards toward its threshold"
     );
     assert_eq!(
-        game.object(unrelated_id).expect("unrelated card exists").zone,
+        game.object(unrelated_id)
+            .expect("unrelated card exists")
+            .zone,
         Zone::Exile,
         "unrelated exiled cards should remain exiled below the source-linked threshold"
     );
@@ -493,7 +493,9 @@ fn colfenors_urn_end_step_sacrifices_and_returns_source_exiled_cards() {
         "only cards exiled with Colfenor's Urn should return to the battlefield"
     );
     assert_eq!(
-        game.object(unrelated_id).expect("unrelated card exists").zone,
+        game.object(unrelated_id)
+            .expect("unrelated card exists")
+            .zone,
         Zone::Exile,
         "unrelated exiled cards should not return with Colfenor's Urn"
     );
@@ -1735,8 +1737,9 @@ fn sophina_spearsage_deserter_strict_parse_and_compiled_text_preserve_investigat
         rendered_lines,
         vec![
             "Menace".to_string(),
-            "Whenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature.".to_string(),
-            "Partner—Friends forever".to_string(),
+            "Whenever Sophina attacks, investigate once for each nontoken attacking creature."
+                .to_string(),
+            "Partner—friends forever".to_string(),
         ],
         "Sophina compiled text should preserve the exact attack trigger, investigate count, and Partner variant label, got {rendered}"
     );
@@ -1795,7 +1798,11 @@ fn sophina_spearsage_deserter_attack_trigger_counts_nontoken_attackers_and_ignor
         .expect("Sophina and other creatures should be able to attack");
     put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Sophina attack trigger should go on stack");
-    assert_eq!(game.stack.len(), 1, "Sophina should create one attack trigger");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Sophina should create one attack trigger"
+    );
 
     resolve_stack_entry(&mut game).expect("Sophina attack trigger should resolve");
 
@@ -4678,12 +4685,8 @@ fn debt_of_loyalty_gains_control_when_target_regenerates_this_way() {
     );
 
     let mut dm = SelectFirstDecisionMaker;
-    let outcome = crate::events::processing::process_destroy(
-        &mut game,
-        creature,
-        Some(source),
-        &mut dm,
-    );
+    let outcome =
+        crate::events::processing::process_destroy(&mut game, creature, Some(source), &mut dm);
 
     assert!(
         matches!(outcome, crate::events::processing::EventOutcome::Replaced),
@@ -5860,7 +5863,9 @@ fn create_nymris_library_card(
         .card_types(vec![CardType::Instant])
         .build();
     let id = game.create_object_from_card(&card, owner, Zone::Library);
-    game.object(id).expect("Nymris library card exists").stable_id
+    game.object(id)
+        .expect("Nymris library card exists")
+        .stable_id
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -6896,9 +6901,7 @@ impl DecisionMaker for ClockspinningDecisionMaker {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn clockspinning_counter_effect(
-    def: &crate::cards::CardDefinition,
-) -> &crate::effect::Effect {
+fn clockspinning_counter_effect(def: &crate::cards::CardDefinition) -> &crate::effect::Effect {
     def.spell_effect
         .as_ref()
         .expect("Clockspinning should have spell effects")
@@ -6926,7 +6929,10 @@ fn clockspinning_targets_permanents_or_suspended_cards() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let def = clockspinning_definition();
-    let effects = def.spell_effect.as_ref().expect("Clockspinning spell effects");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Clockspinning spell effects");
 
     let countered_permanent = clockspinning_target_permanent(&mut game, alice);
     game.add_counters(countered_permanent, crate::object::CounterType::Charge, 1)
@@ -7005,9 +7011,13 @@ fn clockspinning_buyback_put_branch_returns_to_hand_and_adds_counter() {
         "Clockspinning put branch should add one chosen counter kind"
     );
     assert!(
-        game.player(alice).expect("alice exists").hand.iter().any(|&id| game
-            .object(id)
-            .is_some_and(|object| object.name == "Clockspinning")),
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Clockspinning")),
         "Clockspinning should return to hand when buyback was paid"
     );
 }
@@ -7845,7 +7855,10 @@ fn archon_of_coronation_monarch_takes_damage_without_losing_life_and_still_loses
     let life_before_damage = game.player(alice).expect("alice exists").life;
 
     let event = deal_test_combat_damage_to_player(&mut game, attacker, alice, 3);
-    assert_eq!(event.life_lost, 0, "combat damage should not cause life loss");
+    assert_eq!(
+        event.life_lost, 0,
+        "combat damage should not cause life loss"
+    );
     assert_eq!(
         game.player(alice).expect("alice exists").life,
         life_before_damage,
@@ -11948,7 +11961,11 @@ fn resize_recover_paid_returns_resize_from_graveyard_to_hand() {
         "owned creature should move to graveyard"
     );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
-    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Resize recover should trigger"
+    );
     assert_eq!(trigger_queue.entries[0].source, resize_id);
 
     let mut dm = SelectFirstDecisionMaker;
@@ -11994,7 +12011,11 @@ fn resize_recover_declined_exiles_resize_from_graveyard() {
         "owned creature should move to graveyard"
     );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
-    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Resize recover should trigger"
+    );
     assert_eq!(trigger_queue.entries[0].source, resize_id);
 
     let mut dm = AutoPassDecisionMaker;
@@ -12036,7 +12057,11 @@ fn resize_recover_does_not_exile_resize_if_it_left_graveyard_before_resolution()
         "owned creature should move to graveyard"
     );
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
-    assert_eq!(trigger_queue.entries.len(), 1, "Resize recover should trigger");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Resize recover should trigger"
+    );
 
     let mut dm = AutoPassDecisionMaker;
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
@@ -22303,7 +22328,10 @@ fn plus_one_counters(game: &GameState, object_id: ObjectId) -> u32 {
 fn citizen_token_count(game: &GameState) -> usize {
     game.battlefield
         .iter()
-        .filter(|id| game.object(**id).is_some_and(|object| object.name == "Citizen"))
+        .filter(|id| {
+            game.object(**id)
+                .is_some_and(|object| object.name == "Citizen")
+        })
         .count()
 }
 
@@ -22436,8 +22464,7 @@ fn boss_s_chauffeur_dies_creates_citizens_for_each_plus_one_counter_on_it() {
 
     put_plain_creature_onto_battlefield(&mut game, "Alice Followup Creature", alice);
     drain_pending_trigger_events(&mut game, &mut trigger_queue);
-    put_triggers_on_stack(&mut game, &mut trigger_queue)
-        .expect("Alliance trigger should stack");
+    put_triggers_on_stack(&mut game, &mut trigger_queue).expect("Alliance trigger should stack");
     while !game.stack_is_empty() {
         resolve_stack_entry(&mut game).expect("Alliance trigger should resolve");
     }
@@ -27281,26 +27308,22 @@ fn geode_golem_damage_trigger_casts_your_commander_from_command_zone_without_man
     let definition = geode_golem_definition();
     let geode_id = game.create_object_from_definition(&definition, alice, Zone::Battlefield);
 
-    let opponents_commander =
-        CardBuilder::new(CardId::from_raw(627_849), "Bob's Geode Commander")
-            .supertypes(vec![Supertype::Legendary])
-            .card_types(vec![CardType::Creature])
-            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
-            .build();
-    let opponents_commander_id =
-        game.create_object_from_card(&opponents_commander, bob, Zone::Command);
-    game.set_as_commander(opponents_commander_id, bob);
-
-    let noncommander = CardBuilder::new(
-        CardId::from_raw(627_848),
-        "Geode Command-Zone Noncommander",
-    )
+    let opponents_commander = CardBuilder::new(CardId::from_raw(627_849), "Bob's Geode Commander")
         .supertypes(vec![Supertype::Legendary])
         .card_types(vec![CardType::Creature])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
         .build();
-    let noncommander_id =
-        game.create_object_from_card(&noncommander, alice, Zone::Command);
+    let opponents_commander_id =
+        game.create_object_from_card(&opponents_commander, bob, Zone::Command);
+    game.set_as_commander(opponents_commander_id, bob);
+
+    let noncommander =
+        CardBuilder::new(CardId::from_raw(627_848), "Geode Command-Zone Noncommander")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+            .build();
+    let noncommander_id = game.create_object_from_card(&noncommander, alice, Zone::Command);
 
     let commander = CardBuilder::new(CardId::from_raw(627_851), "Geode Test Commander")
         .supertypes(vec![Supertype::Legendary])
@@ -30277,7 +30300,12 @@ fn run_lyzolda_the_blood_witch_sacrifice_branch(
     let sacrifice_cost_index = cost_ctx
         .options
         .iter()
-        .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+        .find(|option| {
+            option
+                .description
+                .to_ascii_lowercase()
+                .contains("sacrifice")
+        })
         .map(|option| option.index)
         .expect("expected a sacrifice cost option for Lyzolda");
 
@@ -30306,8 +30334,15 @@ fn run_lyzolda_the_blood_witch_sacrifice_branch(
     )
     .expect("Lyzolda should accept the sacrificed creature");
 
-    assert_eq!(game.stack.len(), 1, "Lyzolda ability should be on the stack");
-    let stack_entry = game.stack.last().expect("Lyzolda ability should be stacked");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Lyzolda ability should be on the stack"
+    );
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("Lyzolda ability should be stacked");
     let sacrificed = stack_entry
         .tagged_objects
         .get(&crate::tag::TagKey::from("sacrifice_cost_0"))
@@ -30733,11 +30768,8 @@ fn record_demilich_test_spell_cast(
     name: &str,
     card_type: CardType,
 ) {
-    let spell_id = game.create_object_from_card(
-        &graveyard_cost_card(name, card_type),
-        player,
-        Zone::Stack,
-    );
+    let spell_id =
+        game.create_object_from_card(&graveyard_cost_card(name, card_type), player, Zone::Stack);
     let event = TriggerEvent::new_with_provenance(
         SpellCastEvent::new(spell_id, player, Zone::Hand),
         crate::provenance::ProvNodeId::default(),
@@ -30766,17 +30798,15 @@ fn demilich_cost_reduction_removes_one_blue_for_each_instant_or_sorcery_cast() {
 
     record_demilich_test_spell_cast(&mut game, alice, "Cast Instant", CardType::Instant);
     let demilich = game.object(demilich_id).expect("Demilich should exist");
-    let reduced_once = crate::decision::calculate_effective_mana_cost(
-        &game, alice, demilich, &base_cost,
-    );
+    let reduced_once =
+        crate::decision::calculate_effective_mana_cost(&game, alice, demilich, &base_cost);
     assert_eq!(reduced_once.to_oracle(), "{U}{U}{U}");
 
     record_demilich_test_spell_cast(&mut game, alice, "Cast Sorcery", CardType::Sorcery);
     record_demilich_test_spell_cast(&mut game, alice, "Cast Creature", CardType::Creature);
     let demilich = game.object(demilich_id).expect("Demilich should exist");
-    let reduced_twice = crate::decision::calculate_effective_mana_cost(
-        &game, alice, demilich, &base_cost,
-    );
+    let reduced_twice =
+        crate::decision::calculate_effective_mana_cost(&game, alice, demilich, &base_cost);
     assert_eq!(reduced_twice.to_oracle(), "{U}{U}");
 }
 
@@ -30828,8 +30858,9 @@ fn demilich_casts_from_graveyard_by_exiling_four_instant_or_sorcery_cards() {
         Zone::Graveyard,
     );
 
-    let action = demilich_graveyard_cast_action(&game, alice, demilich_id)
-        .expect("Demilich should be castable from graveyard with four instant/sorcery cards to exile");
+    let action = demilich_graveyard_cast_action(&game, alice, demilich_id).expect(
+        "Demilich should be castable from graveyard with four instant/sorcery cards to exile",
+    );
     let mut trigger_queue = TriggerQueue::new();
     let mut state = PriorityLoopState::new(game.players_in_game());
     let mut dm = AutoPassDecisionMaker;
@@ -37289,8 +37320,9 @@ fn test_soul_nova_exiles_attacking_creature_and_attached_equipment_only() {
         from_zone: Zone::Hand,
         casting_method: CastingMethod::Normal,
     });
-    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
-        .expect("Soul Nova cast should start successfully");
+    let progress =
+        apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
+            .expect("Soul Nova cast should start successfully");
     assert!(
         matches!(
             progress,
@@ -37380,9 +37412,9 @@ fn test_soul_nova_targets_only_attacking_creatures() {
     .expect("Soul Nova cast should ask for targets");
 
     let targets_ctx = match progress {
-        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(ctx)) => {
-            ctx
-        }
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(
+            ctx,
+        )) => ctx,
         other => panic!("expected Soul Nova target prompt, got {other:?}"),
     };
     let legal_targets = &targets_ctx.requirements[0].legal_targets;
@@ -42109,14 +42141,10 @@ fn surtland_elementalist_additional_cost_can_reveal_giant_instead_of_paying_two(
         }),
         &mut dm,
     )
-    .expect("Surtland Elementalist should cast by revealing a Giant with only its mana cost available");
-    finish_surtland_cast(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        progress,
-        &mut dm,
+    .expect(
+        "Surtland Elementalist should cast by revealing a Giant with only its mana cost available",
     );
+    finish_surtland_cast(&mut game, &mut trigger_queue, &mut state, progress, &mut dm);
 
     assert!(
         stack_contains_named_object(&game, "Surtland Elementalist"),
@@ -42173,13 +42201,7 @@ fn surtland_elementalist_additional_cost_can_pay_two_without_giant() {
         &mut dm,
     )
     .expect("Surtland Elementalist should cast by paying {2} with no Giant in hand");
-    finish_surtland_cast(
-        &mut game,
-        &mut trigger_queue,
-        &mut state,
-        progress,
-        &mut dm,
-    );
+    finish_surtland_cast(&mut game, &mut trigger_queue, &mut state, progress, &mut dm);
 
     assert!(
         stack_contains_named_object(&game, "Surtland Elementalist"),

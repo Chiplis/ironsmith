@@ -11186,7 +11186,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 described
             )
         }
-        Condition::PlayerControlsAtLeast {
+        Condition::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -11303,7 +11303,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 noun
             )
         }
-        Condition::PlayerControlsAtLeastWithDifferentPowers {
+        Condition::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,

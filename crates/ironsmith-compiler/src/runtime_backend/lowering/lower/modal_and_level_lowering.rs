@@ -77,8 +77,14 @@ pub(crate) fn try_merge_modal_into_remove_mode(
 }
 
 fn header_mentions_modal_point_cost(text: &str) -> bool {
-    let lower = text.to_ascii_lowercase();
-    lower.contains("worth of modes") && lower.contains("{p}")
+    let Ok(tokens) = lex_line(text, 0) else {
+        return false;
+    };
+    let words = token_word_refs(&tokens);
+    words
+        .windows(3)
+        .any(|window| matches!(window, ["worth", "of", "modes"]))
+        && words.iter().any(|word| *word == "p")
 }
 
 fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
@@ -86,7 +92,10 @@ fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {
     let mut count = 0u32;
     loop {
         let trimmed = rest.trim_start();
-        if !trimmed.get(..3).is_some_and(|prefix| prefix.eq_ignore_ascii_case("{p}")) {
+        if !trimmed
+            .get(..3)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("{p}"))
+        {
             rest = trimmed;
             break;
         }
@@ -252,7 +261,8 @@ pub(crate) fn rewrite_lower_parsed_modal(
             );
             apply_modal_metadata(choose_up_to)
         };
-        let choose_one = apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
+        let choose_one =
+            apply_modal_metadata(crate::effect::Effect::choose_one(compiled_modes.clone()));
         crate::effect::Effect::conditional(
             choose_both_condition,
             vec![choose_both],

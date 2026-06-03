@@ -1938,7 +1938,7 @@ fn activation_control_conditions_use_captured_control_parser() {
     assert!(
         parser.contains(
             "parse_control_condition(control_condition_tokens, ControlConditionOptions::default())"
-        ) && parser.contains("ConditionExpr::PlayerControlsAtLeast"),
+        ) && parser.contains("ConditionExpr::PlayerHasAtLeast"),
         "{parser_relative} should build activation control predicates from captured control-condition pieces"
     );
     for forbidden in [
@@ -2012,8 +2012,8 @@ fn predicate_control_conditions_use_shared_capture_parser() {
     assert!(
         parser.contains("fn predicate_from_control_condition")
             && parser.contains("PredicateAst::PlayerControlsExactly")
-            && parser.contains("PredicateAst::PlayerControlsAtLeast")
-            && parser.contains("PredicateAst::PlayerControlsAtLeastWithDifferentPowers")
+            && parser.contains("PredicateAst::PlayerHasAtLeast")
+            && parser.contains("PredicateAst::PlayerHasAtLeastWithDifferentPowers")
             && parser.contains("PredicateAst::PlayerControls {"),
         "{relative} should lower captured control-condition pieces into the full predicate AST family"
     );
@@ -2035,7 +2035,7 @@ fn combat_restriction_control_conditions_use_shared_capture_parser() {
             && helper.contains("ControlConditionOptions")
             && helper.contains("control_condition.quantity_token_count == 0")
             && helper.contains("control_condition.at_least_count()")
-            && helper.contains("ConditionExpr::PlayerControlsAtLeast"),
+            && helper.contains("ConditionExpr::PlayerHasAtLeast"),
         "{relative} should parse combat-restriction control tails through the shared captured control-condition parser"
     );
     for forbidden in [

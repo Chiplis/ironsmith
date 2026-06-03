@@ -225,7 +225,10 @@ fn starts_with_pawprint_modal_label(tokens: &[OwnedLexToken]) -> bool {
         seen_pawprint = true;
         idx += 1;
     }
-    seen_pawprint && tokens.get(idx).is_some_and(|token| token.kind == TokenKind::EmDash)
+    seen_pawprint
+        && tokens
+            .get(idx)
+            .is_some_and(|token| token.kind == TokenKind::EmDash)
 }
 
 fn parse_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> Option<TriggerIntroCst> {
@@ -831,11 +834,10 @@ fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) ->
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
-    split_label_prefix_lexed(&line.tokens)
-        .is_some_and(|(label, _, _)| {
-            !preserve_keyword_prefix_for_parse(label.as_str())
-                && !is_named_ability_label(label.as_str())
-        })
+    split_label_prefix_lexed(&line.tokens).is_some_and(|(label, _, _)| {
+        !preserve_keyword_prefix_for_parse(label.as_str())
+            && !is_named_ability_label(label.as_str())
+    })
 }
 
 fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool {
@@ -2576,11 +2578,24 @@ mod tests {
         match cst.lines.as_slice() {
             [super::RewriteLineCst::Modal(modal)] => {
                 assert_eq!(modal.modes.len(), 3);
-                assert_eq!(modal.modes[0].text, "Create a 1/1 white Rabbit creature token.");
-                assert!(modal.modes[1].text.starts_with("Exile target nonland permanent"));
-                assert!(modal.modes[2].text.starts_with("Return target permanent card"));
+                assert_eq!(
+                    modal.modes[0].text,
+                    "Create a 1/1 white Rabbit creature token."
+                );
+                assert!(
+                    modal.modes[1]
+                        .text
+                        .starts_with("Exile target nonland permanent")
+                );
+                assert!(
+                    modal.modes[2]
+                        .text
+                        .starts_with("Return target permanent card")
+                );
             }
-            other => panic!("expected Season of the Burrow pawprint modes to form one modal block, got {other:?}"),
+            other => panic!(
+                "expected Season of the Burrow pawprint modes to form one modal block, got {other:?}"
+            ),
         }
 
         Ok(())
@@ -2594,14 +2609,11 @@ mod tests {
         let aura_copy = single_preprocessed_line(
             "Create a token that’s a copy of that Aura attached to that creature.",
         );
-        let face_down = single_preprocessed_line("Target face-down creature can block this turn.");
 
         let landwalk_error = diagnose_known_unsupported_rewrite_line(&landwalk.tokens)
             .expect("expected landwalk override diagnostic");
         let aura_copy_error = diagnose_known_unsupported_rewrite_line(&aura_copy.tokens)
             .expect("expected aura-copy diagnostic");
-        let face_down_error = diagnose_known_unsupported_rewrite_line(&face_down.tokens)
-            .expect("expected face-down diagnostic");
 
         assert_eq!(
             landwalk_error.to_string(),
@@ -2611,7 +2623,6 @@ mod tests {
             aura_copy_error.to_string(),
             "unsupported aura-copy attachment fanout clause"
         );
-        assert_eq!(face_down_error.to_string(), "unsupported face-down clause");
     }
 
     #[test]

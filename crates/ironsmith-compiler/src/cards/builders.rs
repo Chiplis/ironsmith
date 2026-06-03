@@ -1626,7 +1626,7 @@ impl CardDefinitionBuilder {
     }
 
     pub fn ascend(self) -> Self {
-        let controls_ten = crate::ConditionExpr::PlayerControlsAtLeast {
+        let controls_ten = crate::ConditionExpr::PlayerHasAtLeast {
             player: crate::target::PlayerFilter::You,
             filter: crate::target::ObjectFilter::permanent().you_control(),
             count: 10,

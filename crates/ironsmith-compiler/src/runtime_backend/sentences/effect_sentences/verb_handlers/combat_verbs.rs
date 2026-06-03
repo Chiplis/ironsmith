@@ -1007,14 +1007,14 @@ pub(crate) fn parse_instead_if_control_predicate(
     if let Some(count) = min_count {
         if requires_different_powers {
             return Ok(Some(
-                PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+                PredicateAst::PlayerHasAtLeastWithDifferentPowers {
                     player: PlayerAst::You,
                     filter,
                     count,
                 },
             ));
         }
-        Ok(Some(PredicateAst::PlayerControlsAtLeast {
+        Ok(Some(PredicateAst::PlayerHasAtLeast {
             player: PlayerAst::You,
             filter,
             count,

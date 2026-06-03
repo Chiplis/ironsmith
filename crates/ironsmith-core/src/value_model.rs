@@ -630,7 +630,7 @@ pub enum Condition {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
-    PlayerControlsAtLeast {
+    PlayerHasAtLeast {
         player: PlayerFilter,
         filter: ObjectFilter,
         count: u32,
@@ -644,7 +644,7 @@ pub enum Condition {
         filter: ObjectFilter,
         count: u32,
     },
-    PlayerControlsAtLeastWithDifferentPowers {
+    PlayerHasAtLeastWithDifferentPowers {
         player: PlayerFilter,
         filter: ObjectFilter,
         count: u32,

@@ -1098,7 +1098,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             };
             format!("as long as {subject} {verb} {count_text} or fewer cards in hand")
         }
-        crate::ConditionExpr::PlayerControlsAtLeast {
+        crate::ConditionExpr::PlayerHasAtLeast {
             player,
             filter,
             count,

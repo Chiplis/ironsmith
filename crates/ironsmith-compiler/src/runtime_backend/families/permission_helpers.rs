@@ -18,8 +18,8 @@ use super::grammar::filters::{
 use super::grammar::primitives as grammar;
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, token_slice_first_is_any, token_slice_strip_word_prefix,
-    parser_token_word_refs, token_word_refs, trim_lexed_commas, word_slice_ends_with,
+    LexStream, OwnedLexToken, TokenKind, parser_token_word_refs, token_slice_first_is_any,
+    token_slice_strip_word_prefix, token_word_refs, trim_lexed_commas, word_slice_ends_with,
     word_slice_eq, word_slice_starts_with,
 };
 use super::object_filters::merge_spell_filters;
@@ -824,8 +824,7 @@ fn parse_permission_subject_filter_tokens_lexed(
         }));
     }
 
-    if let Ok(mut filter) =
-        parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)
+    if let Ok(mut filter) = parse_object_filter_with_grammar_entrypoint_lexed(filter_tokens, false)
     {
         if filter.all_card_types.is_empty()
             && filter.card_types.len() > 1
@@ -1068,7 +1067,8 @@ fn parse_once_each_turn_graveyard_cast_permission(
         let Some(cost_tokens) = token_slice_for_word_range(tokens, cost_start, cost_end) else {
             return Ok(None);
         };
-        let Some(cost) = parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
+        let Some(cost) =
+            parse_graveyard_cast_additional_cost_tokens(trim_lexed_commas(cost_tokens))?
         else {
             return Ok(None);
         };
@@ -1161,8 +1161,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let parser_clause_refs = parser_token_word_refs(tokens);
     if let Some(spec) = parse_once_each_turn_top_library_cast_shares_source_exiled_type_permission(
         &parser_clause_refs,
-    )
-    {
+    ) {
         return Ok(Some(spec));
     }
 
@@ -1272,9 +1271,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     let rest_words = token_word_refs(rest_tokens);
     if let Some(after_source) = rest_words
         .strip_prefix(&["this", "card", "from", "your", "graveyard", "by"])
-        .or_else(|| {
-            rest_words.strip_prefix(&["this", "spell", "from", "your", "graveyard", "by"])
-        })
+        .or_else(|| rest_words.strip_prefix(&["this", "spell", "from", "your", "graveyard", "by"]))
     {
         const ADDITIONAL_COST_SUFFIX: &[&str] =
             &["in", "addition", "to", "paying", "its", "other", "costs"];
@@ -1285,7 +1282,8 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                     player,
                     spec: crate::grant::GrantSpec::new(
                         crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
-                            vec![cost], false,
+                            vec![cost],
+                            false,
                         ),
                         ObjectFilter::source(),
                         Zone::Graveyard,
@@ -1308,9 +1306,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
                 spec: crate::grant::GrantSpec::new(
-                    crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(
-                        vec![cost], false,
-                    ),
+                    crate::grant::Grantable::graveyard_cast_from_cards_mana_cost(vec![cost], false),
                     ObjectFilter::source(),
                     Zone::Graveyard,
                 ),
@@ -1743,9 +1739,13 @@ fn clause_is_singular_free_cast_from_hand(clause_words: &[&str]) -> bool {
     let Some(from_idx) = after_cast.windows(8).position(|window| {
         matches!(
             window,
-            ["from", "your", "hand", "without", "paying", "its", "mana", "cost"]
-                | ["from", "your", "hand", "without", "paying", "their", "mana", "cost"]
-                | ["from", "your", "hand", "without", "paying", "their", "mana", "costs"]
+            [
+                "from", "your", "hand", "without", "paying", "its", "mana", "cost"
+            ] | [
+                "from", "your", "hand", "without", "paying", "their", "mana", "cost"
+            ] | [
+                "from", "your", "hand", "without", "paying", "their", "mana", "costs"
+            ]
         )
     }) else {
         return false;
@@ -1952,6 +1952,15 @@ fn parse_cast_with_tagged_mana_value_limit_clause(
             } else {
                 Zone::Graveyard
             };
+            let filter_words = token_word_refs(filter_tokens);
+            if lead.player == PlayerAst::Implicit
+                && zone == Zone::Graveyard
+                && !filter_words
+                    .iter()
+                    .any(|word| matches!(*word, "spell" | "spells"))
+            {
+                return Ok(None);
+            }
             return Ok(Some(
                 EffectAst::may_cast_matching_spell_without_paying_mana_cost(
                     lead.player,
@@ -2095,6 +2104,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         trimmed.truncate(stripped.len());
     }
 
+    if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
+        return Ok(Some(effect));
+    }
+
     if let Some((lead, rest_tokens)) = parse_permission_lead_tokens(&trimmed)
         && matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
         && !lead.allow_land
@@ -2108,10 +2121,6 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 spec.zone,
             ),
         ));
-    }
-
-    if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
-        return Ok(Some(effect));
     }
 
     let conditional_tagged_permission = parse_permission_lead_tokens(&trimmed)

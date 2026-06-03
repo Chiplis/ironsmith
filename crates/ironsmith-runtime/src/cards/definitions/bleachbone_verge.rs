@@ -173,7 +173,7 @@ mod tests {
                         if let crate::ConditionExpr::YouControl(filter) = branch {
                             saw_plains |= filter.subtypes.contains(&Subtype::Plains);
                             saw_swamp |= filter.subtypes.contains(&Subtype::Swamp);
-                        } else if let crate::ConditionExpr::PlayerControlsAtLeast {
+                        } else if let crate::ConditionExpr::PlayerHasAtLeast {
                             player: crate::PlayerFilter::You,
                             filter,
                             count: 1,
@@ -193,7 +193,7 @@ mod tests {
                         "expected Plains/Swamp requirement in condition"
                     );
                 }
-                Some(crate::ConditionExpr::PlayerControlsAtLeast {
+                Some(crate::ConditionExpr::PlayerHasAtLeast {
                     player: crate::PlayerFilter::You,
                     filter,
                     count: 1,

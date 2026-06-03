@@ -1506,9 +1506,7 @@ fn value_references_only_other_number_metric(value: &Value) -> bool {
         }
         Value::Scaled(value, _)
         | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => {
-            value_references_only_other_number_metric(value)
-        }
+        | Value::HalfRoundedDown(value) => value_references_only_other_number_metric(value),
         _ => false,
     }
 }
@@ -3378,9 +3376,9 @@ fn bind_unresolved_it_in_predicate(predicate: &mut PredicateAst, seed_tag: &TagK
                 + bind_unresolved_it_in_filter(filter, seed_tag)
         }
         PredicateAst::PlayerControls { filter, .. }
-        | PredicateAst::PlayerControlsAtLeast { filter, .. }
+        | PredicateAst::PlayerHasAtLeast { filter, .. }
         | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
+        | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. } => {
             bind_unresolved_it_in_filter(filter, seed_tag)

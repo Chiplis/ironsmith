@@ -409,7 +409,7 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         filter: ObjectFilter,
     },
-    PlayerControlsAtLeast {
+    PlayerHasAtLeast {
         player: PlayerAst,
         filter: ObjectFilter,
         count: u32,
@@ -419,7 +419,7 @@ pub(crate) enum PredicateAst {
         filter: ObjectFilter,
         count: u32,
     },
-    PlayerControlsAtLeastWithDifferentPowers {
+    PlayerHasAtLeastWithDifferentPowers {
         player: PlayerAst,
         filter: ObjectFilter,
         count: u32,

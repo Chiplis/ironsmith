@@ -1353,7 +1353,8 @@ fn lower_rewrite_static_to_chunk_impl(
 ) -> Result<LineAst, CardTextError> {
     let chosen_option_label = effective_chosen_option_label(line.chosen_option_label.as_deref());
     if tokens_start_with_partner_dash_label(&line.parse_tokens) {
-        let visible_label = line.text.trim().to_string();
+        let visible_label = render_tokens_before_reminder_or_period(&line.parse_tokens)
+            .unwrap_or_else(|| line.text.trim().to_string());
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::partner().with_text(visible_label).into()),
             chosen_option_label,
@@ -2270,7 +2271,6 @@ fn partner_with_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
-#[cfg(test)]
 fn render_tokens_before_reminder_or_period(tokens: &[OwnedLexToken]) -> Option<String> {
     let end = tokens
         .iter()
@@ -2280,7 +2280,6 @@ fn render_tokens_before_reminder_or_period(tokens: &[OwnedLexToken]) -> Option<S
     (!display.is_empty()).then_some(display)
 }
 
-#[cfg(test)]
 fn normalize_dash_label_display(display: &str) -> String {
     display
         .replace(" -", " - ")

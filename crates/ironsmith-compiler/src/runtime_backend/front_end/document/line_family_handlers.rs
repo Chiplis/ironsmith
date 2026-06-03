@@ -805,8 +805,11 @@ pub(super) fn run_station_threshold_line_family(
         let source_name = ctx.preprocessed.builder.card_builder.name_ref();
         if !source_name.is_empty() {
             let source_name_lower = source_name.to_ascii_lowercase();
-            let rewritten =
-                replace_named_source_aliases(&body_text, source_name_lower.as_str(), "this artifact");
+            let rewritten = replace_named_source_aliases(
+                &body_text,
+                source_name_lower.as_str(),
+                "this artifact",
+            );
             if rewritten != body_text {
                 body_text = rewritten;
             }
@@ -1640,11 +1643,8 @@ fn try_parse_trailing_keyword_activation_dispatch(
         )));
     };
     let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
-    let normalized_cost_tokens = normalize_activation_cost_tokens_for_builder(
-        builder,
-        line,
-        cost_tokens.clone(),
-    )?;
+    let normalized_cost_tokens =
+        normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
     let cost = parse_activation_cost_tokens_rewrite(&normalized_cost_tokens)?;
     let activated = RewriteLineCst::Activated(ActivatedLineCst {
         info: suffix_line.info.clone(),

@@ -3188,7 +3188,7 @@ impl CardDefinitionBuilder {
     /// Ascend means "If you control ten or more permanents, you get the city's blessing
     /// for the rest of the game."
     pub fn ascend(self) -> Self {
-        let controls_ten = Condition::PlayerControlsAtLeast {
+        let controls_ten = Condition::PlayerHasAtLeast {
             player: PlayerFilter::You,
             filter: ObjectFilter::permanent().you_control(),
             count: 10,

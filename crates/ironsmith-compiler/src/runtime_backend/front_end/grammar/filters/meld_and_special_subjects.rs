@@ -136,7 +136,7 @@ pub(super) fn parse_graveyard_threshold_predicate(
         }
     }
 
-    Ok(Some(PredicateAst::PlayerControlsAtLeast {
+    Ok(Some(PredicateAst::PlayerHasAtLeast {
         player,
         filter,
         count,

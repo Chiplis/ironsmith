@@ -186,7 +186,7 @@ mod tests {
                         "Should only require Swamp, not Plains"
                     );
                 }
-                Some(crate::ConditionExpr::PlayerControlsAtLeast {
+                Some(crate::ConditionExpr::PlayerHasAtLeast {
                     player: crate::PlayerFilter::You,
                     filter,
                     count: 1,
@@ -416,14 +416,12 @@ mod tests {
                 .join("\n")
                 .contains("Add {W} or {B}")
         );
-        assert!(
-            {
-                let rendered = crate::compiled_text::debug_compiled_lines(&def).join("\n");
-                rendered.contains("control Swamp")
-                    || rendered.contains("control one or more Swamps")
-                    || rendered.contains("control a Swamp")
-            }
-        );
+        assert!({
+            let rendered = crate::compiled_text::debug_compiled_lines(&def).join("\n");
+            rendered.contains("control Swamp")
+                || rendered.contains("control one or more Swamps")
+                || rendered.contains("control a Swamp")
+        });
     }
 
     // ========================================

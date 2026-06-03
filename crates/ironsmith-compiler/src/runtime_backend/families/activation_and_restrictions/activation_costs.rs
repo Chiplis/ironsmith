@@ -661,7 +661,7 @@ fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::
         return None;
     }
     let count = control_condition.at_least_count()?;
-    Some(crate::ConditionExpr::PlayerControlsAtLeast {
+    Some(crate::ConditionExpr::PlayerHasAtLeast {
         player: control_condition.player_filter?,
         filter: control_condition.filter,
         count,

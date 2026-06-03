@@ -4482,6 +4482,49 @@ mod native_tests {
     }
 
     #[test]
+    fn crypto_requirements_track_revealed_card_returned_to_hidden_hand() {
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        let bob = PlayerId::from_index(1);
+        let hidden_hand_card = wasm.game.create_hidden_card_placeholder(
+            bob,
+            Zone::Hand,
+            5,
+            "bob-hidden-hand-commitment".to_string(),
+        );
+        let definition = ironsmith_registry::cards::definitions::ornithopter();
+        wasm.game
+            .reveal_hidden_card_with_definition(hidden_hand_card, &definition)
+            .expect("hidden hand card should reveal locally");
+        let battlefield_id = wasm
+            .game
+            .move_object_by_effect(hidden_hand_card, Zone::Battlefield)
+            .expect("revealed card should move to the battlefield");
+
+        let before = wasm.capture_crypto_audit_state();
+        let returned_id = wasm
+            .game
+            .move_object_by_effect(battlefield_id, Zone::Hand)
+            .expect("public battlefield card should return to hand");
+        wasm.update_crypto_requirements_from(before);
+
+        assert!(wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "hidden_move"
+                && requirement.owner == bob.index() as u8
+                && requirement.zone == "hand"
+                && requirement.object_id == Some(returned_id.0)
+                && requirement.commitment.as_deref() == Some("bob-hidden-hand-commitment")
+                && requirement.from.as_deref() == Some("face_down_permanent")
+                && requirement.to.as_deref() == Some("hand")
+        }));
+        assert!(!wasm.last_crypto_requirements.iter().any(|requirement| {
+            requirement.requirement_type == "private_open"
+                && requirement.owner == bob.index() as u8
+                && requirement.object_id == Some(returned_id.0)
+        }));
+    }
+
+    #[test]
     fn crypto_requirements_include_decision_hidden_card_public_openings() {
         let mut wasm = WasmGame::new();
         let alice = PlayerId::from_index(0);

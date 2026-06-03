@@ -1091,9 +1091,9 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::YouControl(..) => {}
         Condition::OpponentControls(..) => {}
         Condition::PlayerControls { .. } => {}
-        Condition::PlayerControlsAtLeast { .. } => {}
+        Condition::PlayerHasAtLeast { .. } => {}
         Condition::PlayerControlsExactly { .. } => {}
-        Condition::PlayerControlsAtLeastWithDifferentPowers { .. } => {}
+        Condition::PlayerHasAtLeastWithDifferentPowers { .. } => {}
         Condition::PlayerControlsMost { .. } => {}
         Condition::PlayerControlsMoreThanYou { .. } => {}
         Condition::AnOpponentControlsMoreThanPlayer { .. } => {}
@@ -1645,7 +1645,7 @@ pub fn evaluate_condition_external(
                 })
                 .any(|obj| filter.matches(obj, &filter_ctx, game))
         }
-        Condition::PlayerControlsAtLeast {
+        Condition::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -1689,7 +1689,7 @@ pub fn evaluate_condition_external(
                     .count()
                     == *count as usize
             }),
-        Condition::PlayerControlsAtLeastWithDifferentPowers {
+        Condition::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,
@@ -2325,7 +2325,7 @@ fn evaluate_condition_simple(
             }
             true
         }
-        Condition::PlayerControlsAtLeast {
+        Condition::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -2401,7 +2401,7 @@ fn evaluate_condition_simple(
                 condition_count_for_player(game, source, player, player_id, filter)
                     == *count as usize
             }),
-        Condition::PlayerControlsAtLeastWithDifferentPowers {
+        Condition::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,
@@ -3074,7 +3074,7 @@ fn evaluate_condition(
 
             Ok(true)
         }
-        Condition::PlayerControlsAtLeast {
+        Condition::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -3133,7 +3133,7 @@ fn evaluate_condition(
                 condition_count_for_player(game, ctx.source, player, player_id, filter)
                     == *count as usize
             })),
-        Condition::PlayerControlsAtLeastWithDifferentPowers {
+        Condition::PlayerHasAtLeastWithDifferentPowers {
             player,
             filter,
             count,

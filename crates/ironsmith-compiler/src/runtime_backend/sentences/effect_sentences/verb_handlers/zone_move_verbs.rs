@@ -280,11 +280,11 @@ fn parse_draw_for_each_player_condition(
                     filter,
                 }
             }
-            PredicateAst::PlayerControlsAtLeast {
+            PredicateAst::PlayerHasAtLeast {
                 player,
                 filter,
                 count,
-            } if player == PlayerAst::That => PredicateAst::PlayerControlsAtLeast {
+            } if player == PlayerAst::That => PredicateAst::PlayerHasAtLeast {
                 player: PlayerAst::Implicit,
                 filter,
                 count,

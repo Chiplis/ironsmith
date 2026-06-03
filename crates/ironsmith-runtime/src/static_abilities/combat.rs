@@ -971,7 +971,7 @@ impl CantAttackUnlessCondition {
             crate::ConditionExpr::YouControl(filter) => {
                 format!("you control {}", filter.description())
             }
-            crate::ConditionExpr::PlayerControlsAtLeast {
+            crate::ConditionExpr::PlayerHasAtLeast {
                 player: crate::target::PlayerFilter::You,
                 filter,
                 count,
@@ -1280,7 +1280,7 @@ impl CantAttackUnlessCondition {
                 DefendingPlayerAttackCondition::Controls(filter) => {
                     Some(crate::condition_eval::evaluate_condition_external(
                         game,
-                        &crate::ConditionExpr::PlayerControlsAtLeast {
+                        &crate::ConditionExpr::PlayerHasAtLeast {
                             player: crate::target::PlayerFilter::Defending,
                             filter: filter.clone(),
                             count: 1,

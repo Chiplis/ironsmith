@@ -1402,7 +1402,7 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         parse_control_condition(control_condition_tokens, ControlConditionOptions::default())
     {
         let count = control_condition.at_least_count()?;
-        return Some(ConditionExpr::PlayerControlsAtLeast {
+        return Some(ConditionExpr::PlayerHasAtLeast {
             player: control_condition.player_filter?,
             filter: control_condition.filter,
             count,

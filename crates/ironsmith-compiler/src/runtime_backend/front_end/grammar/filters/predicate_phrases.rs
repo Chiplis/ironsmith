@@ -71,6 +71,15 @@ const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 const CARD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["card"]);
 const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const NONLAND_CARD_OBJECT_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["nonland", "card"],
+            &["nonland", "cards"],
+            &["non", "land", "card"],
+            &["non", "land", "cards"],
+        ]
+);
 const BEEN_EXILED_WITH_THIS_SOURCE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -336,7 +345,9 @@ fn source_zone_from_words(words: &[&str]) -> Option<Zone> {
         {
             Some(Zone::Command)
         }
-        ["command", "zone"] if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) => {
+        ["command", "zone"]
+            if matches!(source.word_refs().as_slice(), ["this"] | ["this", "card"]) =>
+        {
             Some(Zone::Command)
         }
         _ => None,
@@ -593,6 +604,48 @@ fn life_total_at_most_from_amount_tokens(
         operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
         right: Value::Fixed(amount as i32),
     }))
+}
+
+fn parse_half_starting_life_total_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let parse_life_total_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
+        if YOUR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::You, 3))
+        } else if THEIR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::That, 3))
+        } else if THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::That, 4))
+        } else if TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::Target, 4))
+        } else if TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::TargetOpponent, 4))
+        } else if OPPONENT_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::Opponent, 3))
+        } else if DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::Defending, 4))
+        } else if ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
+            Some((PlayerAst::Attacking, 4))
+        } else {
+            None
+        }
+    };
+    if let Some((player, subject_len)) = parse_life_total_subject(words)
+        && words
+            .get(subject_len)
+            .is_some_and(|word| IS_OR_ARE_WORD_PATTERN.matches_word(word))
+    {
+        let tail = &words[subject_len + 1..];
+        if LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN.matches_words(tail)
+            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[5..])
+        {
+            return Some(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player });
+        }
+        if LESS_THAN_PREFIX_PATTERN.matches_words(tail)
+            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[2..])
+        {
+            return Some(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
+        }
+    }
+    None
 }
 
 fn parse_source_power_threshold_predicate(words: &[&str]) -> Option<PredicateAst> {
@@ -1223,9 +1276,20 @@ fn predicate_number_prefix(words: &[&str]) -> Option<(u32, usize)> {
 }
 
 fn predicate_at_least_quantity_prefix(words: &[&str]) -> Option<(u32, usize)> {
-    let (comparison, used) = predicate_quantity_prefix(words)?;
-    let count = comparison_to_strict_at_least_threshold(&comparison)?;
-    Some((count, used))
+    if let Some((comparison, used)) = predicate_quantity_prefix(words) {
+        let count = comparison_to_strict_at_least_threshold(&comparison)?;
+        return Some((count, used));
+    }
+
+    let (count, used) = predicate_number_prefix(words)?;
+    if words
+        .get(used..used + 2)
+        .is_some_and(|tail| OR_MORE_PREFIX_PATTERN.matches_words(tail))
+    {
+        return Some((count, used + 2));
+    }
+
+    None
 }
 
 fn control_predicate_quantity(
@@ -1519,15 +1583,13 @@ fn parse_player_controls_predicate(
         && count > 1
     {
         if requires_different_powers {
-            return Ok(Some(
-                PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
-                    player,
-                    filter,
-                    count,
-                },
-            ));
+            return Ok(Some(PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+                player,
+                filter,
+                count,
+            }));
         }
-        return Ok(Some(PredicateAst::PlayerControlsAtLeast {
+        return Ok(Some(PredicateAst::PlayerHasAtLeast {
             player,
             filter,
             count,
@@ -1556,13 +1618,13 @@ fn predicate_from_control_condition(
             };
             if count > 1 {
                 if control_condition.requires_different_powers {
-                    return PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+                    return PredicateAst::PlayerHasAtLeastWithDifferentPowers {
                         player: control_condition.player,
                         filter: control_condition.filter,
                         count,
                     };
                 }
-                return PredicateAst::PlayerControlsAtLeast {
+                return PredicateAst::PlayerHasAtLeast {
                     player: control_condition.player,
                     filter: control_condition.filter,
                     count,
@@ -2737,34 +2799,26 @@ fn parse_vote_result_predicate(
 fn parse_x_value_comparison_predicate(words: &[&str]) -> Option<PredicateAst> {
     if let ["x", "is", tail @ ..] = words {
         let parsed = match tail {
-            ["less", "than", "or", "equal", "to", amount] => {
-                Some((
-                    crate::effect::ValueComparisonOperator::LessThanOrEqual,
-                    parse_named_number(amount)? as i32,
-                ))
-            }
-            ["less", "than", amount] => {
-                Some((
-                    crate::effect::ValueComparisonOperator::LessThan,
-                    parse_named_number(amount)? as i32,
-                ))
-            }
+            ["less", "than", "or", "equal", "to", amount] => Some((
+                crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                parse_named_number(amount)? as i32,
+            )),
+            ["less", "than", amount] => Some((
+                crate::effect::ValueComparisonOperator::LessThan,
+                parse_named_number(amount)? as i32,
+            )),
             ["greater", "than", "or", "equal", "to", amount] => Some((
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 parse_named_number(amount)? as i32,
             )),
-            ["greater", "than", amount] => {
-                Some((
-                    crate::effect::ValueComparisonOperator::GreaterThan,
-                    parse_named_number(amount)? as i32,
-                ))
-            }
-            ["equal", "to", amount] | ["exactly", amount] => {
-                Some((
-                    crate::effect::ValueComparisonOperator::Equal,
-                    parse_named_number(amount)? as i32,
-                ))
-            }
+            ["greater", "than", amount] => Some((
+                crate::effect::ValueComparisonOperator::GreaterThan,
+                parse_named_number(amount)? as i32,
+            )),
+            ["equal", "to", amount] | ["exactly", amount] => Some((
+                crate::effect::ValueComparisonOperator::Equal,
+                parse_named_number(amount)? as i32,
+            )),
             _ => None,
         };
         if let Some((operator, amount)) = parsed {
@@ -3555,18 +3609,17 @@ fn parse_named_spell_label_action_shape(
 
 fn parse_behold_spell_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let atoms = [
-        LexPattern::object("beheld", LexCaptureKind::UntilPhrase(&["beheld"])),
-        LexPattern::action("action", LexCaptureKind::WordCount(1)),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let beheld_clause = matched.capture_clause("beheld", clause)?;
-    let beheld_words = beheld_clause.word_refs();
-    let subtype_words = if matches!(beheld_words.first(), Some(&word) if ARTICLE_WORD_PATTERN.matches_word(word))
+    let words = clause.word_refs();
+    let subtype_words = match words.as_slice() {
+        [subtype @ .., "was", "beheld"] => subtype,
+        [subtype @ .., "beheld"] => subtype,
+        _ => return None,
+    };
+    let subtype_words = if matches!(subtype_words.first(), Some(&word) if ARTICLE_WORD_PATTERN.matches_word(word))
     {
-        &beheld_words[1..]
+        &subtype_words[1..]
     } else {
-        beheld_words.as_slice()
+        subtype_words
     };
     if subtype_words.len() != 1 || parse_subtype_word(subtype_words[0]).is_none() {
         return None;
@@ -4050,27 +4103,39 @@ fn parse_player_object_keyword_predicate(
         let subject = &words[..words.len() - 2];
         if let [object @ .., "in", "your", "graveyard"] = subject {
             let object = strip_leading_article_word_refs(object);
-            let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object);
-        let mut filter = parse_object_filter(&object_tokens, false).or_else(|_| {
-            let trimmed = object
-                .strip_suffix(&["card"])
-                .or_else(|| object.strip_suffix(&["cards"]))
-                .unwrap_or(object);
-            let trimmed_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
-            parse_object_filter(&trimmed_tokens, false)
-            })?;
-        filter.zone = Some(Zone::Graveyard);
-        filter.owner = Some(PlayerFilter::You);
-        let Some((constraint, consumed)) = parse_filter_keyword_constraint_words(&["escape"]) else {
-            return Ok(None);
-        };
-        if consumed != 1 {
-            return Ok(None);
-        }
-        apply_filter_keyword_constraint(&mut filter, constraint, false);
-        return Ok(Some(PredicateAst::PlayerControls {
-            player: PlayerAst::You,
-            filter,
+            let mut filter = if NONLAND_CARD_OBJECT_PATTERN.matches_words(object) {
+                let mut filter = ObjectFilter::default();
+                filter.excluded_card_types.push(CardType::Land);
+                filter
+            } else {
+                let normalized_object;
+                let object = if object.ends_with(&["cards"]) {
+                    normalized_object = object[..object.len() - 1]
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once("card"))
+                        .collect::<Vec<_>>();
+                    normalized_object.as_slice()
+                } else {
+                    object
+                };
+                let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object);
+                parse_object_filter(&object_tokens, false).or_else(|_| {
+                    let trimmed = object
+                        .strip_suffix(&["card"])
+                        .or_else(|| object.strip_suffix(&["cards"]))
+                        .unwrap_or(object);
+                    let trimmed_tokens =
+                        crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
+                    parse_object_filter(&trimmed_tokens, false)
+                })?
+            };
+            filter.zone = Some(Zone::Graveyard);
+            filter.owner = Some(PlayerFilter::You);
+            filter.alternative_cast = Some(crate::filter::AlternativeCastKind::Escape);
+            return Ok(Some(PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter,
             }));
         }
     }
@@ -4142,10 +4207,14 @@ fn parse_player_object_keyword_predicate(
             if object_words.is_empty() || zone_words.is_empty() {
                 return Ok(None);
             }
-            let object_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
-            let Some(mut filter) = parse_object_filter(&object_tokens, false)
-                .ok()
-                .or_else(|| {
+            let mut filter = if NONLAND_CARD_OBJECT_PATTERN.matches_words(object_words) {
+                let mut filter = ObjectFilter::default();
+                filter.excluded_card_types.push(CardType::Land);
+                filter
+            } else {
+                let object_tokens =
+                    crate::runtime_backend::lexer::synthetic_word_tokens(object_words);
+                let Some(filter) = parse_object_filter(&object_tokens, false).ok().or_else(|| {
                     let trimmed = object_words
                         .strip_suffix(&["card"])
                         .or_else(|| object_words.strip_suffix(&["cards"]))
@@ -4153,9 +4222,10 @@ fn parse_player_object_keyword_predicate(
                     let trimmed_tokens =
                         crate::runtime_backend::lexer::synthetic_word_tokens(trimmed);
                     parse_object_filter(&trimmed_tokens, false).ok()
-                })
-            else {
-                return Ok(None);
+                }) else {
+                    return Ok(None);
+                };
+                filter
             };
             match zone_words {
                 ["your", "graveyard"] => {
@@ -4196,22 +4266,23 @@ fn cards_in_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
 }
 
 fn permanents_and_your_graveyard_scope(words: &[&str]) -> Option<ObjectFilter> {
-    let graveyard_start = if words.len() == 8
-        && words
-            .get(3..4)
-            .is_some_and(|tail| PERMANENTS_AND_OR_GRAVEYARD_CONNECTOR_PATTERN.matches_words(tail))
+    let battlefield_end = (3..=words.len().min(4))
+        .find(|end| permanents_you_control_scope(&words[..*end]).is_some())?;
+    let connector_end = if words
+        .get(battlefield_end..battlefield_end + 1)
+        .is_some_and(|tail| PERMANENTS_AND_OR_GRAVEYARD_CONNECTOR_PATTERN.matches_words(tail))
     {
-        4
-    } else if words.len() == 9
-        && words
-            .get(3..5)
-            .is_some_and(|tail| PERMANENTS_AND_OR_SPLIT_CONNECTOR_PATTERN.matches_words(tail))
+        battlefield_end + 1
+    } else if words
+        .get(battlefield_end..battlefield_end + 2)
+        .is_some_and(|tail| PERMANENTS_AND_OR_SPLIT_CONNECTOR_PATTERN.matches_words(tail))
     {
-        5
+        battlefield_end + 2
     } else {
         return None;
     };
-    let battlefield = permanents_you_control_scope(&words[..3])?;
+    let battlefield = permanents_you_control_scope(&words[..battlefield_end])?;
+    let graveyard_start = connector_end;
     let graveyard = cards_in_your_graveyard_scope(&words[graveyard_start..])?;
     let mut filter = ObjectFilter::default();
     filter.any_of = vec![battlefield, graveyard];
@@ -4254,45 +4325,30 @@ fn parse_colors_among_predicate(words: &[&str]) -> Option<PredicateAst> {
 }
 
 fn parse_card_types_among_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let clause = LexedClause::new(&tokens);
-    let card_type_phrases: &[&[&str]] = &[
-        &["card", "type"],
-        &["card", "types"],
-        &["cards", "type"],
-        &["cards", "types"],
-    ];
-    let atoms = [
-        LexPattern::subject("existential", LexCaptureKind::WordCount(2)),
-        LexPattern::amount(
-            "quantity",
-            LexCaptureKind::UntilAnyPhrase(card_type_phrases),
-        ),
-        LexPattern::any_phrase(card_type_phrases),
-        LexPattern::word("among"),
-        LexPattern::modifier("scope", LexCaptureKind::Rest),
-    ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(&existential.word_refs()) {
+    if !THERE_ARE_OR_WERE_PREFIX_PATTERN.matches_words(words) {
         return None;
     }
 
-    let quantity = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    let quantity_words = quantity.word_refs();
+    let quantity_start = 2;
+    let card_type_start = (quantity_start..words.len().saturating_sub(1)).find(|idx| {
+        matches!(words[*idx], "card" | "cards") && matches!(words[*idx + 1], "type" | "types")
+    })?;
+    let quantity_words = &words[quantity_start..card_type_start];
     let (count, used) = predicate_at_least_quantity_prefix(&quantity_words)?;
     if used != quantity_words.len() {
         return None;
     }
 
-    let scope = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
-    let scope_words = scope.word_refs();
-    let filter = match scope_words.as_slice() {
+    if words.get(card_type_start + 2).copied() != Some("among") {
+        return None;
+    }
+    let scope_words = &words[card_type_start + 3..];
+    let filter = match scope_words {
         ["sacrificed" | "sacrificed_0"]
         | ["sacrificed" | "sacrificed_0", "permanent" | "permanents"] => {
             ObjectFilter::tagged("sacrificed_0")
         }
-        _ => permanents_and_your_graveyard_scope(&scope_words)?,
+        _ => permanents_and_your_graveyard_scope(scope_words)?,
     };
 
     Some(PredicateAst::ValueComparison {
@@ -4375,14 +4431,18 @@ fn parse_counted_objects_have_counter_predicate(words: &[&str]) -> Option<Predic
     if counter_words.is_empty() {
         return None;
     }
-    let (counter_constraint, consumed) =
-        if let Some(parsed) = parse_filter_counter_constraint_words(&counter_words) {
-            parsed
-        } else {
-            let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&counter_words);
-            let counter_type = parse_counter_type_from_tokens(&counter_tokens)?;
-            (ironsmith_core::CounterConstraint::Typed(counter_type), counter_words.len())
-        };
+    let (counter_constraint, consumed) = if let Some(parsed) =
+        parse_filter_counter_constraint_words(&counter_words)
+    {
+        parsed
+    } else {
+        let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&counter_words);
+        let counter_type = parse_counter_type_from_tokens(&counter_tokens)?;
+        (
+            ironsmith_core::CounterConstraint::Typed(counter_type),
+            counter_words.len(),
+        )
+    };
     if consumed != counter_words.len() {
         return None;
     }
@@ -4528,7 +4588,15 @@ fn parse_revealed_or_controlled_subtype_predicate(words: &[&str]) -> Option<Pred
 }
 
 fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst> {
-    if let ["there", "is" | "are", descriptor @ .., "in", "your", "graveyard"] = words {
+    if let [
+        "there",
+        "is" | "are",
+        descriptor @ ..,
+        "in",
+        "your",
+        "graveyard",
+    ] = words
+    {
         let descriptor = strip_leading_article_word_refs(descriptor);
         let mut filter = if let Ok(filter) = parse_object_filter(
             &crate::runtime_backend::lexer::synthetic_word_tokens(descriptor),
@@ -4558,7 +4626,10 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let existential = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !matches!(existential.word_refs().as_slice(), ["there", "is"] | ["there", "are"]) {
+    if !matches!(
+        existential.word_refs().as_slice(),
+        ["there", "is"] | ["there", "are"]
+    ) {
         return None;
     }
 
@@ -4588,9 +4659,8 @@ fn parse_card_in_your_graveyard_predicate(words: &[&str]) -> Option<PredicateAst
                 .or_else(|| descriptor_words.strip_prefix(&["a"]))
                 .unwrap_or(descriptor_words.as_slice());
             match trimmed {
-                [subtype, "card"] | [subtype, "cards"] => {
-                    parse_subtype_word(subtype).map(|subtype| ObjectFilter::default().with_subtype(subtype))
-                }
+                [subtype, "card"] | [subtype, "cards"] => parse_subtype_word(subtype)
+                    .map(|subtype| ObjectFilter::default().with_subtype(subtype)),
                 _ => None,
             }
         })?;
@@ -4826,6 +4896,15 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             filtered.truncate(instead_idx);
         }
     }
+    if filtered
+        .windows(5)
+        .any(|window| window == ["you", "both", "own", "and", "control"])
+        && let Some(exile_idx) = filtered
+            .windows(2)
+            .position(|window| window == ["exile", "them"])
+    {
+        filtered.truncate(exile_idx);
+    }
 
     if let Some(predicate) = parse_repeated_if_or_predicate(&filtered)? {
         return Ok(predicate);
@@ -4883,6 +4962,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_colors_among_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_card_types_among_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_revealed_or_controlled_subtype_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -4904,14 +4991,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_object_on_battlefield_predicate(tokens)? {
-        return Ok(predicate);
-    }
-
-    if let Some(predicate) = parse_colors_among_predicate(&filtered) {
-        return Ok(predicate);
-    }
-
-    if let Some(predicate) = parse_card_types_among_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -4939,6 +5018,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_counted_source_exiled_objects_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_half_starting_life_total_threshold_predicate(&filtered) {
         return Ok(predicate);
     }
 
@@ -5037,43 +5120,8 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    let parse_life_total_subject = |words: &[&str]| -> Option<(PlayerAst, usize)> {
-        if YOUR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::You, 3))
-        } else if THEIR_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 3))
-        } else if THAT_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::That, 4))
-        } else if TARGET_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Target, 4))
-        } else if TARGET_OPPONENTS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::TargetOpponent, 4))
-        } else if OPPONENT_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Opponent, 3))
-        } else if DEFENDING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Defending, 4))
-        } else if ATTACKING_PLAYERS_LIFE_TOTAL_PREFIX_PATTERN.matches_words(words) {
-            Some((PlayerAst::Attacking, 4))
-        } else {
-            None
-        }
-    };
-    if let Some((player, subject_len)) = parse_life_total_subject(&filtered)
-        && filtered
-            .get(subject_len)
-            .is_some_and(|word| IS_OR_ARE_WORD_PATTERN.matches_word(word))
-    {
-        let tail = &filtered[subject_len + 1..];
-        if LESS_THAN_OR_EQUAL_TO_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[5..])
-        {
-            return Ok(PredicateAst::PlayerLifeAtMostHalfStartingLifeTotal { player });
-        }
-        if LESS_THAN_PREFIX_PATTERN.matches_words(tail)
-            && HALF_STARTING_LIFE_TOTAL_TAIL_PATTERN.matches_words(&tail[2..])
-        {
-            return Ok(PredicateAst::PlayerLifeLessThanHalfStartingLifeTotal { player });
-        }
+    if let Some(predicate) = parse_half_starting_life_total_threshold_predicate(&filtered) {
+        return Ok(predicate);
     }
     if let Some(predicate) = parse_player_cards_in_graveyard_predicate(tokens) {
         return Ok(predicate);
@@ -6099,7 +6147,7 @@ mod tests {
         for (text, expected) in [
             (
                 "If you control three or more artifacts",
-                PredicateAst::PlayerControlsAtLeast {
+                PredicateAst::PlayerHasAtLeast {
                     player: PlayerAst::You,
                     filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
                     count: 3,
@@ -6107,7 +6155,7 @@ mod tests {
             ),
             (
                 "If you control three or more creatures with different powers",
-                PredicateAst::PlayerControlsAtLeastWithDifferentPowers {
+                PredicateAst::PlayerHasAtLeastWithDifferentPowers {
                     player: PlayerAst::You,
                     filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
                     count: 3,
@@ -7485,13 +7533,21 @@ mod tests {
 
     #[test]
     fn parse_predicate_graveyard_card_counts_use_capture_parser() -> Result<(), CardTextError> {
+        let tokens = lex_line("If you have seven or more cards in your graveyard", 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerHasAtLeast {
+                player: PlayerAst::You,
+                filter: ObjectFilter {
+                    zone: Some(Zone::Graveyard),
+                    ..Default::default()
+                },
+                count: 7,
+            }
+        );
+
         for (text, expected_player, expected_operator, expected_count) in [
-            (
-                "If you have seven or more cards in your graveyard",
-                PlayerFilter::You,
-                ValueComparisonOperator::GreaterThanOrEqual,
-                7,
-            ),
             (
                 "If an opponent has fewer than three cards in their graveyard",
                 PlayerFilter::Opponent,
@@ -7622,7 +7678,7 @@ mod tests {
             right: Value::Fixed(6),
         } = parsed
         else {
-            panic!("expected card-types-among value comparison");
+            panic!("expected card-types-among value comparison, got {parsed:#?}");
         };
         assert_eq!(filter.any_of.len(), 2);
         assert!(

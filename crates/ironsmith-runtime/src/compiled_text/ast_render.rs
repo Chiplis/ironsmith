@@ -2132,7 +2132,7 @@ fn is_ascend_condition(condition: &Condition) -> bool {
     fn controls_ten_permanents(condition: &Condition) -> bool {
         matches!(
             condition,
-            Condition::PlayerControlsAtLeast {
+            Condition::PlayerHasAtLeast {
                 player: PlayerFilter::You,
                 filter,
                 count: 10,

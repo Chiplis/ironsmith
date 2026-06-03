@@ -403,27 +403,23 @@ impl ManaPool {
             return 0;
         }
 
-        let mut non_x_cost = Vec::new();
-        for pip in cost.pips() {
-            if !pip.iter().any(|s| matches!(s, ManaSymbol::X)) {
-                non_x_cost.push(pip.clone());
+        let max_candidate = self.total() / x_pip_count;
+        for x_value in (0..=max_candidate).rev() {
+            let mut test_pool = self.clone();
+            if test_pool
+                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+                    cost,
+                    x_value,
+                    policy,
+                    allow_black_life,
+                )
+                .0
+            {
+                return x_value;
             }
         }
-        let mut test_pool = self.clone();
-        let non_x = crate::mana::ManaCost::from_pips(non_x_cost);
-        if !test_pool
-            .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                &non_x,
-                0,
-                policy,
-                allow_black_life,
-            )
-            .0
-        {
-            return 0;
-        }
 
-        test_pool.total() / x_pip_count
+        0
     }
 
     fn try_pay_internal_with_policy(
@@ -729,11 +725,7 @@ impl ManaPool {
         allow_black_life: bool,
     ) -> u32 {
         let policy = ManaSpendPolicy::from_any_color(allow_any_color);
-        self.max_x_for_cost_with_mana_spend_policy_and_black_life(
-            cost,
-            &policy,
-            allow_black_life,
-        )
+        self.max_x_for_cost_with_mana_spend_policy_and_black_life(cost, &policy, allow_black_life)
     }
 
     fn singleton_black_pip_with_life_option(pip: &[ManaSymbol], allow_black_life: bool) -> bool {

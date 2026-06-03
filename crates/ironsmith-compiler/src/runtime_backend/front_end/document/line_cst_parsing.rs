@@ -14,7 +14,10 @@ const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = 
 const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
 
 fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if tokens.last().is_some_and(|token| token.kind == TokenKind::Period) {
+    if tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Period)
+    {
         &tokens[..tokens.len().saturating_sub(1)]
     } else {
         tokens

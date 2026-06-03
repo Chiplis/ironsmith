@@ -538,9 +538,10 @@ fn describe_sacrifice_then_put_source_exiled_into_hands(effects: &[Effect]) -> O
     };
     if move_to_zone.zone != Zone::Hand
         || filter.zone != Some(Zone::Exile)
-        || !filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG
-        })
+        || !filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == ironsmith_core::SOURCE_EXILED_TAG)
     {
         return None;
     }
@@ -1080,7 +1081,8 @@ fn describe_source_sacrifice_then_return_source_exiled(
     let [return_effect] = if_effect.then.as_slice() else {
         return None;
     };
-    let return_all = return_effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
+    let return_all =
+        return_effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()?;
     if !is_source_exiled_cards_filter(&return_all.filter)
         || return_all.tapped
         || return_all.face_down
@@ -1413,8 +1415,14 @@ fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
 }
 
 fn describe_look_exile_one_rest_bottom_cast_else_hand(effects: &[&Effect]) -> Option<String> {
-    let [look_effect, choose_effect, exile_effect, rest_effect, may_effect, fallback_effect] =
-        effects
+    let [
+        look_effect,
+        choose_effect,
+        exile_effect,
+        rest_effect,
+        may_effect,
+        fallback_effect,
+    ] = effects
     else {
         return None;
     };
@@ -1498,7 +1506,9 @@ fn describe_exiled_card_cast_condition(filter: &ObjectFilter) -> Option<String> 
     display_filter.zone = None;
     display_filter.has_mana_cost = false;
     if display_filter.card_types.len() == 1 {
-        let card_type = display_filter.card_types[0].to_string().to_ascii_lowercase();
+        let card_type = display_filter.card_types[0]
+            .to_string()
+            .to_ascii_lowercase();
         let spell_text = with_indefinite_article(&format!("{card_type} spell"));
         let mana_value = display_filter.mana_value.clone();
         let mut remaining_filter = display_filter.clone();
@@ -1507,9 +1517,7 @@ fn describe_exiled_card_cast_condition(filter: &ObjectFilter) -> Option<String> 
         if remaining_filter == ObjectFilter::default() {
             match mana_value.as_ref() {
                 Some(crate::filter::Comparison::LessThanOrEqual(value)) => {
-                    return Some(format!(
-                        "it's {spell_text} with mana value {value} or less"
-                    ));
+                    return Some(format!("it's {spell_text} with mana value {value} or less"));
                 }
                 Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => {
                     return Some(format!(
@@ -1889,7 +1897,10 @@ fn describe_target_then_look_at_tagged_object(effects: &[&Effect]) -> Option<Str
     if look.viewer != PlayerFilter::You || !is_tagged_only_filter(&look.filter, target_tag) {
         return None;
     }
-    Some(format!("Look at {}", describe_choose_spec(&target_only.target)))
+    Some(format!(
+        "Look at {}",
+        describe_choose_spec(&target_only.target)
+    ))
 }
 
 fn describe_choose_same_controller_targets_then_sacrifice_one(
@@ -3684,16 +3695,16 @@ fn describe_each_player_repeat_pay_life_tokens_sequence(effects: &[Effect]) -> O
         .card
         .card_types
         .contains(&crate::types::CardType::Creature)
-        || !create.token.card.subtypes.contains(&crate::types::Subtype::Rat)
-        || create.token.card.color_indicator != Some(crate::color::ColorSet::BLACK)
         || !create
             .token
             .card
-            .power_toughness
-            .is_some_and(|pt| {
-                matches!(pt.power, crate::card::PtValue::Fixed(1))
-                    && matches!(pt.toughness, crate::card::PtValue::Fixed(1))
-            })
+            .subtypes
+            .contains(&crate::types::Subtype::Rat)
+        || create.token.card.color_indicator != Some(crate::color::ColorSet::BLACK)
+        || !create.token.card.power_toughness.is_some_and(|pt| {
+            matches!(pt.power, crate::card::PtValue::Fixed(1))
+                && matches!(pt.toughness, crate::card::PtValue::Fixed(1))
+        })
     {
         return None;
     }
@@ -3932,7 +3943,12 @@ fn describe_draw_discard_then_conditional_untap_structural(effects: &[Effect]) -
         [draw_effect, discard_effect, conditional_effect] => {
             (draw_effect, discard_effect, conditional_effect)
         }
-        [target_effect, draw_effect, discard_effect, conditional_effect] => {
+        [
+            target_effect,
+            draw_effect,
+            discard_effect,
+            conditional_effect,
+        ] => {
             target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
             (draw_effect, discard_effect, conditional_effect)
         }
@@ -4806,18 +4822,15 @@ fn copied_spell_targets_tag(effect: &Effect, tag: &str) -> bool {
     let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() else {
         return false;
     };
-    let Some(with_id) = tagged
-        .effect
-        .downcast_ref::<crate::effects::WithIdEffect>()
-    else {
+    let Some(with_id) = tagged.effect.downcast_ref::<crate::effects::WithIdEffect>() else {
         return false;
     };
     with_id
         .effect
         .downcast_ref::<crate::effects::CopySpellEffect>()
-        .is_some_and(|copy| {
-            matches!(&copy.target, ChooseSpec::Tagged(copy_tag) if copy_tag.as_str() == tag)
-        })
+        .is_some_and(
+            |copy| matches!(&copy.target, ChooseSpec::Tagged(copy_tag) if copy_tag.as_str() == tag),
+        )
 }
 
 fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
@@ -10857,7 +10870,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && copied_spell_targets_tag(filtered[idx + 1], exiled_tag)
             && may_cast_copy_targets_tag(filtered[idx + 2], exiled_tag)
         {
-            let exile_text = describe_effect(filtered[idx]).replace(" in your graveyard", " from your graveyard");
+            let exile_text = describe_effect(filtered[idx])
+                .replace(" in your graveyard", " from your graveyard");
             parts.push(format!("{exile_text}. Copy it. You may cast the copy"));
             idx += 3;
             continue;
@@ -15179,8 +15193,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(additional_phases) = filtered[idx]
-                .downcast_ref::<crate::effects::AdditionalPhasesEffect>()
+            && let Some(additional_phases) =
+                filtered[idx].downcast_ref::<crate::effects::AdditionalPhasesEffect>()
             && let Some(cant) = filtered[idx + 1].downcast_ref::<crate::effects::CantEffect>()
             && let Some(compact) =
                 describe_additional_combat_then_chosen_attack_or_block_restriction(
@@ -16898,9 +16912,7 @@ fn describe_trigger_surface_with_frequency(
         let mut filter = zone_change.object_filter.clone();
         filter.owner = None;
         let subject = with_indefinite_article(&filter.description());
-        return format!(
-            "Whenever {subject} is put into your graveyard from the battlefield"
-        );
+        return format!("Whenever {subject} is put into your graveyard from the battlefield");
     }
 
     if triggered
@@ -22079,10 +22091,14 @@ pub(super) fn describe_for_each_chosen_put_counters_then_gain_keywords(
     for_each: &crate::effects::ForEachObject,
     tagged: &crate::effects::TaggedEffect,
 ) -> Option<String> {
-    let tag = for_each.filter.tagged_constraints.iter().find_map(|constraint| {
-        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
-            .then_some(&constraint.tag)
-    })?;
+    let tag = for_each
+        .filter
+        .tagged_constraints
+        .iter()
+        .find_map(|constraint| {
+            (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+                .then_some(&constraint.tag)
+        })?;
     let [put_effect] = for_each.effects.as_slice() else {
         return None;
     };
@@ -33314,11 +33330,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             {
                 return format!("{true_branch} if {condition_text}");
             }
-            return format!(
-                "If {}, {}",
-                condition_text,
-                true_branch
-            );
+            return format!("If {}, {}", condition_text, true_branch);
         }
         let condition_text = describe_condition(&conditional.condition);
         if condition_text == "it was attacking" {
@@ -33326,9 +33338,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         }
         return format!(
             "If {}, {}. Otherwise, {}",
-            condition_text,
-            true_branch,
-            false_branch
+            condition_text, true_branch, false_branch
         );
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
@@ -33545,10 +33555,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             Some(&choose_mode.min_choose_count),
             Some(choose_mode.modes.len()),
         );
-        let has_weighted_modes = choose_mode
-            .mode_point_costs
-            .iter()
-            .any(|cost| *cost != 1);
+        let has_weighted_modes = choose_mode.mode_point_costs.iter().any(|cost| *cost != 1);
         if has_weighted_modes {
             if let crate::effect::Value::Fixed(max) = &choose_mode.choose_count {
                 if choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {
@@ -34101,8 +34108,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             format!("Regenerate {target}")
         } else {
             format!(
-            "Regenerate {target} {}",
-            describe_until(&regenerate.duration)
+                "Regenerate {target} {}",
+                describe_until(&regenerate.duration)
             )
         };
         fn follow_up_inner(effect: &Effect) -> &Effect {
@@ -34112,8 +34119,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .unwrap_or(effect)
         }
         if let [follow_up] = regenerate.follow_up_effects.as_slice()
-            && let Some(gain_control) = follow_up_inner(follow_up)
-                .downcast_ref::<crate::effects::GainControlEffect>()
+            && let Some(gain_control) =
+                follow_up_inner(follow_up).downcast_ref::<crate::effects::GainControlEffect>()
             && gain_control.duration == Until::Forever
             && (matches!(&gain_control.target, ChooseSpec::Tagged(tag) if tag.as_str() == "__it__")
                 || describe_choose_spec(&gain_control.target).eq_ignore_ascii_case("it"))
@@ -34771,7 +34778,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
                 return text;
             }
-            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering_source") {
+            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering_source")
+            {
                 let mut text = "Copy that ability".to_string();
                 if copy_spell
                     .removed_supertypes
@@ -35213,10 +35221,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             crate::effects::PreventNextTimeDamageTarget::AnyTarget => "any target".to_string(),
             crate::effects::PreventNextTimeDamageTarget::You => "you".to_string(),
         };
-        let omits_any_target = matches!(
-            prevent_next_time.target,
-            crate::effects::PreventNextTimeDamageTarget::AnyTarget
-        ) && prevent_next_time_tagged_source_text_filter(&prevent_next_time.source);
+        let omits_any_target =
+            matches!(
+                prevent_next_time.target,
+                crate::effects::PreventNextTimeDamageTarget::AnyTarget
+            ) && prevent_next_time_tagged_source_text_filter(&prevent_next_time.source);
         let target_clause = if omits_any_target {
             String::new()
         } else {
@@ -40165,7 +40174,8 @@ pub(super) fn describe_ability(
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
             );
             if triggered.presentation_label.is_none()
-                && trigger_surface.starts_with("Whenever you cast a spell that targets this creature")
+                && trigger_surface
+                    .starts_with("Whenever you cast a spell that targets this creature")
             {
                 trigger_surface = format!("Heroic — {trigger_surface}");
             }
@@ -40805,16 +40815,16 @@ pub(super) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                 }
             }
         }
-        crate::ConditionExpr::PlayerControlsAtLeast {
+        crate::ConditionExpr::PlayerHasAtLeast {
             player,
             filter,
             count: 1,
         } if filter.zone == Some(Zone::Battlefield)
             && (filter.controller.is_none()
                 || filter
-                .controller
-                .as_ref()
-                .is_some_and(|controller| controller == player))
+                    .controller
+                    .as_ref()
+                    .is_some_and(|controller| controller == player))
             && filter.card_types.is_empty()
             && filter.subtypes.len() == 1
             && filter.excluded_card_types.is_empty()

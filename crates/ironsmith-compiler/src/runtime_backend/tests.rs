@@ -4030,7 +4030,7 @@ fn rewrite_lexed_activation_condition_parser_handles_control_and_graveyard_condi
     ));
     assert!(matches!(
         parse_activation_condition_lexed(&control),
-        Some(crate::ConditionExpr::PlayerControlsAtLeast {
+        Some(crate::ConditionExpr::PlayerHasAtLeast {
             player: crate::target::PlayerFilter::You,
             count: 3,
             ..
@@ -4038,7 +4038,7 @@ fn rewrite_lexed_activation_condition_parser_handles_control_and_graveyard_condi
     ));
     assert!(matches!(
         parse_activation_condition_lexed(&dynamic_control),
-        Some(crate::ConditionExpr::PlayerControlsAtLeast {
+        Some(crate::ConditionExpr::PlayerHasAtLeast {
             player: crate::target::PlayerFilter::You,
             count: 2,
             filter,
@@ -4623,8 +4623,11 @@ fn rewrite_lexed_permission_helpers_preserve_disjunctive_subject_filters_without
 
 #[test]
 fn rewrite_lexed_permission_helpers_preserve_conjunctive_artifact_creature_subject_filters() {
-    let tokens = lex_line("You may cast artifact creature spells from your graveyard", 0)
-        .expect("rewrite lexer should classify artifact creature permission clause");
+    let tokens = lex_line(
+        "You may cast artifact creature spells from your graveyard",
+        0,
+    )
+    .expect("rewrite lexer should classify artifact creature permission clause");
 
     let parsed = super::permission_helpers::parse_permission_clause_spec_lexed(&tokens)
         .expect("permission clause should parse")
@@ -4739,23 +4742,31 @@ fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
         .expect("commander command-zone free-cast clause should parse");
 
     let (player, filter, zone) = match effects.as_slice() {
-        [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
-            player,
-            filter,
-            zone,
-            ..
-        }] => (player, filter, zone),
-        [crate::cards::builders::EffectAst::MayByPlayer {
-            player: crate::cards::builders::PlayerAst::You,
-            effects,
-        }] => match effects.as_slice() {
-            [crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+        [
+            crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
                 player,
                 filter,
                 zone,
                 ..
-            }] => (player, filter, zone),
-            _ => panic!("expected nested commander command-zone free-cast effect, got {effects:#?}"),
+            },
+        ] => (player, filter, zone),
+        [
+            crate::cards::builders::EffectAst::MayByPlayer {
+                player: crate::cards::builders::PlayerAst::You,
+                effects,
+            },
+        ] => match effects.as_slice() {
+            [
+                crate::cards::builders::EffectAst::MayCastMatchingSpellWithoutPayingManaCost {
+                    player,
+                    filter,
+                    zone,
+                    ..
+                },
+            ] => (player, filter, zone),
+            _ => {
+                panic!("expected nested commander command-zone free-cast effect, got {effects:#?}")
+            }
         },
         _ => panic!("expected commander command-zone free-cast effect, got {effects:#?}"),
     };
@@ -4764,7 +4775,10 @@ fn rewrite_lexed_parse_commander_command_zone_free_cast_clause() {
         crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
     ));
     assert_eq!(*zone, crate::zone::Zone::Command);
-    assert!(filter.is_commander, "expected commander filter, got {filter:#?}");
+    assert!(
+        filter.is_commander,
+        "expected commander filter, got {filter:#?}"
+    );
     assert_eq!(filter.owner, Some(crate::target::PlayerFilter::You));
 }
 
@@ -4779,24 +4793,27 @@ fn rewrite_lexed_parse_cast_target_graveyard_without_paying_mana_cost() {
     let effects =
         parse_effect_sentence_lexed(&tokens).expect("targeted graveyard free-cast should parse");
 
-    assert!(matches!(
-        effects.as_slice(),
-        [crate::cards::builders::EffectAst::SubjectVerb(
-            crate::cards::builders::SubjectVerbEffectAst {
-                subject: crate::cards::builders::SubjectVerbSubjectAst {
-                    role: crate::cards::builders::SubjectVerbRoleAst::Actor,
-                    player: crate::cards::builders::PlayerAst::Implicit,
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        role: crate::cards::builders::SubjectVerbRoleAst::Actor,
+                        player: crate::cards::builders::PlayerAst::Implicit,
+                    },
+                    action: crate::cards::builders::SubjectVerbActionAst::CastTagged {
+                        player: crate::cards::builders::PlayerAst::Implicit,
+                        allow_land: false,
+                        as_copy: false,
+                        without_paying_mana_cost: true,
+                        ..
+                    },
                 },
-                action: crate::cards::builders::SubjectVerbActionAst::CastTagged {
-                    player: crate::cards::builders::PlayerAst::Implicit,
-                    allow_land: false,
-                    as_copy: false,
-                    without_paying_mana_cost: true,
-                    ..
-                },
-            },
-        )]
-    ));
+            )]
+        ),
+        "expected targeted graveyard free-cast CastTagged effect, got {effects:#?}"
+    );
 }
 
 #[test]
@@ -4862,6 +4879,10 @@ fn rewrite_lexed_parse_counterpoint_followup_clause_with_tagged_mana_value_gate(
     assert!(has_type(crate::types::CardType::Instant), "{filter:#?}");
     assert!(has_type(crate::types::CardType::Sorcery), "{filter:#?}");
     assert!(
+        !has_type(crate::types::CardType::Artifact),
+        "counter reference should not add artifact to the castable spell filter: {filter:#?}"
+    );
+    assert!(
         has_type(crate::types::CardType::Planeswalker),
         "{filter:#?}"
     );
@@ -4902,8 +4923,14 @@ fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gate() {
         crate::cards::builders::PlayerAst::Implicit | crate::cards::builders::PlayerAst::You
     ));
     assert_eq!(*zone, crate::zone::Zone::Hand);
-    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
-    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
+    assert!(
+        filter.card_types.contains(&crate::types::CardType::Instant),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.card_types.contains(&crate::types::CardType::Sorcery),
+        "{filter:#?}"
+    );
     assert_eq!(
         filter.mana_value,
         Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
@@ -4968,11 +4995,28 @@ fn rewrite_lexed_parse_brain_in_a_jar_free_cast_clause_with_counter_value_gate()
     };
 
     assert_eq!(*zone, crate::zone::Zone::Hand);
-    assert!(filter.card_types.contains(&crate::types::CardType::Instant));
-    assert!(filter.card_types.contains(&crate::types::CardType::Sorcery));
-    assert_eq!(
-        filter.mana_value_eq_counters_on_source,
-        Some(crate::object::CounterType::Charge)
+    let has_type = |card_type: crate::types::CardType| {
+        filter.card_types.contains(&card_type)
+            || filter
+                .any_of
+                .iter()
+                .any(|branch| branch.card_types.contains(&card_type))
+    };
+    let has_counter_gate = |filter: &crate::cards::builders::ObjectFilter| {
+        filter.mana_value_eq_counters_on_source == Some(crate::object::CounterType::Charge)
+            || filter.any_of.iter().any(|branch| {
+                branch.mana_value_eq_counters_on_source == Some(crate::object::CounterType::Charge)
+            })
+    };
+    assert!(has_type(crate::types::CardType::Instant), "{filter:#?}");
+    assert!(has_type(crate::types::CardType::Sorcery), "{filter:#?}");
+    assert!(
+        !has_type(crate::types::CardType::Artifact),
+        "counter reference should not add artifact to the castable spell filter: {filter:#?}"
+    );
+    assert!(
+        has_counter_gate(filter),
+        "expected charge-counter mana-value gate, got {filter:#?}"
     );
 }
 
@@ -12222,8 +12266,8 @@ fn rewrite_lexed_effect_entrypoint_supports_investigate_for_each_creatures_died(
 #[test]
 fn rewrite_lexed_effect_entrypoint_supports_investigate_once_for_each_attacking_creature() {
     let text = "Investigate once for each nontoken attacking creature.";
-    let lexed = lex_line(text, 0)
-        .expect("rewrite lexer should classify investigate-once-for-each effect");
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify investigate-once-for-each effect");
     let native = super::clause_support::parse_effect_sentences_lexed(&lexed)
         .expect("lexed investigate-once-for-each parser should succeed");
 

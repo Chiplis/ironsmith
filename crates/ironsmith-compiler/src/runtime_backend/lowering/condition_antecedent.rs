@@ -23,9 +23,9 @@ pub(crate) fn predicate_contains_source_match(predicate: &PredicateAst) -> bool 
 pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Option<ObjectFilter> {
     match predicate {
         PredicateAst::PlayerControls { filter, .. }
-        | PredicateAst::PlayerControlsAtLeast { filter, .. }
+        | PredicateAst::PlayerHasAtLeast { filter, .. }
         | PredicateAst::PlayerControlsExactly { filter, .. }
-        | PredicateAst::PlayerControlsAtLeastWithDifferentPowers { filter, .. }
+        | PredicateAst::PlayerHasAtLeastWithDifferentPowers { filter, .. }
         | PredicateAst::PlayerControlsNo { filter, .. }
         | PredicateAst::PlayerControlsMost { filter, .. } => Some(filter.clone()),
         PredicateAst::ValueComparison {
