@@ -210,6 +210,31 @@ pub(super) fn extend_triggered_line_with_result_followups(
     (triggered, next_idx)
 }
 
+pub(super) fn extend_activated_line_with_result_followups(
+    items: &[PreprocessedItem],
+    idx: usize,
+    mut activated: ActivatedLineCst,
+) -> (ActivatedLineCst, usize) {
+    let mut next_idx = idx + 1;
+
+    while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if !is_trigger_result_followup_line(line) {
+            break;
+        }
+
+        let followup_text = render_token_slice(&line.tokens).trim().to_string();
+        if !activated.effect_text.is_empty() {
+            activated.effect_text.push('\n');
+        }
+        activated.effect_text.push_str(followup_text.as_str());
+        append_joined_line_tokens(&mut activated.effect_parse_tokens, &line.tokens);
+
+        next_idx += 1;
+    }
+
+    (activated, next_idx)
+}
+
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
     if matches!(
         structure::classify_static_line_family_lexed(tokens),

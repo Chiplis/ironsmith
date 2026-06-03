@@ -38,6 +38,159 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+fn component_pouch_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(900_071), "Component Pouch")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{T}, Remove a component counter from this artifact: Add two mana of different colors.\n\
+             {T}: Roll a d20.\n\
+             1—9 | Put a component counter on this artifact.\n\
+             10—20 | Put two component counters on this artifact.",
+        )
+        .expect("Component Pouch should parse for runtime tests")
+}
+
+fn component_pouch_mana_ability_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
+                        .is_some_and(|add| add.distinct_colors)
+                }),
+            _ => false,
+        })
+        .expect("Component Pouch should have its component-counter mana ability")
+}
+
+fn component_pouch_d20_ability_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::WithIdEffect>()
+                        .and_then(|with_id| {
+                            with_id
+                                .effect
+                                .downcast_ref::<crate::effects::RollDieEffect>()
+                        })
+                        .is_some_and(|roll| roll.sides == 20)
+                }),
+            _ => false,
+        })
+        .expect("Component Pouch should have its d20 counter ability")
+}
+
+#[test]
+fn component_pouch_mana_activation_requires_counter_pays_cost_and_adds_distinct_mana_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let def = component_pouch_definition();
+    let pouch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_index = component_pouch_mana_ability_index(&def);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
+                    if *source == pouch_id && *idx == ability_index
+            )),
+        "Component Pouch mana ability should be illegal without a component counter"
+    );
+
+    game.add_counters(pouch_id, crate::object::CounterType::Named("component"), 1)
+        .expect("component counter should be addable to Component Pouch");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
+                if *source == pouch_id && *idx == ability_index
+        ))
+        .expect("Component Pouch mana ability should be legal with a component counter");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Component Pouch mana ability should pay costs and resolve");
+
+    assert_eq!(
+        game.counter_count(pouch_id, crate::object::CounterType::Named("component")),
+        0,
+        "activation cost should remove the component counter"
+    );
+    assert!(
+        game.is_tapped(pouch_id),
+        "activation cost should tap Component Pouch"
+    );
+    let pool = &game.player(alice).expect("Alice should exist").mana_pool;
+    let colored_counts = [pool.white, pool.blue, pool.black, pool.red, pool.green];
+    assert_eq!(pool.total(), 2, "mana ability should add exactly two mana");
+    assert_eq!(
+        colored_counts.iter().filter(|&&count| count > 0).count(),
+        2,
+        "mana ability should add two different colors, got {colored_counts:?}"
+    );
+}
+
+#[test]
+fn component_pouch_d20_branches_put_one_or_two_component_counters_runtime() {
+    fn resolve_forced_roll(roll: u32) -> u32 {
+        let def = component_pouch_definition();
+        let ability_index = component_pouch_d20_ability_index(&def);
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let pouch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        game.force_next_die_roll(roll);
+
+        let AbilityKind::Activated(activated) = &def.abilities[ability_index].kind else {
+            panic!("Component Pouch d20 ability should be activated")
+        };
+        let mut ctx = crate::effects::ExecutionContext::new_default(pouch_id, alice);
+        for effect in activated.effects.flattened_default_effects() {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Component Pouch d20 effect should resolve");
+        }
+        game.counter_count(pouch_id, crate::object::CounterType::Named("component"))
+    }
+
+    assert_eq!(
+        resolve_forced_roll(7),
+        1,
+        "1-9 branch should put one component counter"
+    );
+    assert_eq!(
+        resolve_forced_roll(15),
+        2,
+        "10-20 branch should put two component counters and not also take the low branch"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 fn tide_of_war_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")

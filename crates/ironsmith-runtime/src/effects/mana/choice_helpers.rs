@@ -55,6 +55,7 @@ pub(crate) fn choose_mana_colors(
     player_id: PlayerId,
     count: u32,
     same_color: bool,
+    distinct_colors: bool,
     available_colors: Option<&[Color]>,
     default_color: Color,
 ) -> Vec<Color> {
@@ -84,7 +85,13 @@ pub(crate) fn choose_mana_colors(
         if colors.is_empty() {
             return vec![fallback; count as usize];
         }
-        ManaColorsSpec::restricted(ctx.source, count, same_color, colors.to_vec())
+        if distinct_colors && !same_color {
+            ManaColorsSpec::restricted_different_colors(ctx.source, count, colors.to_vec())
+        } else {
+            ManaColorsSpec::restricted(ctx.source, count, same_color, colors.to_vec())
+        }
+    } else if distinct_colors && !same_color {
+        ManaColorsSpec::different_colors(ctx.source, count)
     } else {
         ManaColorsSpec::any_color(ctx.source, count, same_color)
     };
@@ -104,8 +111,30 @@ pub(crate) fn choose_mana_colors(
         chosen.retain(|color| available.contains(color));
     }
 
-    while chosen.len() < count as usize {
-        chosen.push(fallback);
+    if distinct_colors && !same_color {
+        let available = effective_available.as_deref().unwrap_or(&Color::ALL);
+        let mut distinct = Vec::with_capacity(count as usize);
+        for color in chosen {
+            if !distinct.contains(&color) {
+                distinct.push(color);
+            }
+        }
+        while distinct.len() < count as usize {
+            if let Some(color) = available
+                .iter()
+                .copied()
+                .find(|color| !distinct.contains(color))
+            {
+                distinct.push(color);
+            } else {
+                distinct.push(fallback);
+            }
+        }
+        chosen = distinct;
+    } else {
+        while chosen.len() < count as usize {
+            chosen.push(fallback);
+        }
     }
     chosen.truncate(count as usize);
 

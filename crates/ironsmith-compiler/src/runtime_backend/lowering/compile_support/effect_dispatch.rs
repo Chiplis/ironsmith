@@ -928,6 +928,7 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::AddManaAnyColor {
             amount,
             available_colors,
+            distinct_colors,
         } => {
             let (amount, player_filter, choices) =
                 resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
@@ -936,18 +937,34 @@ fn compile_subject_verb_effect(
                 choices,
                 || {
                     if let Some(colors) = available_colors.clone() {
-                        Effect::add_mana_of_any_color_restricted(amount.clone(), colors)
+                        if *distinct_colors {
+                            Effect::add_mana_of_different_colors_restricted(amount.clone(), colors)
+                        } else {
+                            Effect::add_mana_of_any_color_restricted(amount.clone(), colors)
+                        }
+                    } else if *distinct_colors {
+                        Effect::add_mana_of_different_colors(amount.clone())
                     } else {
                         Effect::add_mana_of_any_color(amount.clone())
                     }
                 },
                 |filter| {
                     if let Some(colors) = available_colors.clone() {
-                        Effect::add_mana_of_any_color_restricted_player(
-                            amount.clone(),
-                            filter,
-                            colors,
-                        )
+                        if *distinct_colors {
+                            Effect::add_mana_of_different_colors_restricted_player(
+                                amount.clone(),
+                                filter,
+                                colors,
+                            )
+                        } else {
+                            Effect::add_mana_of_any_color_restricted_player(
+                                amount.clone(),
+                                filter,
+                                colors,
+                            )
+                        }
+                    } else if *distinct_colors {
+                        Effect::add_mana_of_different_colors_player(amount.clone(), filter)
                     } else {
                         Effect::add_mana_of_any_color_player(amount.clone(), filter)
                     }

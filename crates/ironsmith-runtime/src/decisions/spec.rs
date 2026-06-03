@@ -78,6 +78,8 @@ pub enum DecisionPrimitive {
         count: u32,
         /// If true, all selections must be the same color
         same_color: bool,
+        /// If true, selections must be different colors when possible
+        distinct_colors: bool,
     },
 
     /// Select counters to remove (counter type + count pairs).

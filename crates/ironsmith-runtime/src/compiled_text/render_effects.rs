@@ -5037,6 +5037,50 @@ fn describe_player_protection_from_everything_pair(effects: &[&Effect]) -> Optio
     ))
 }
 
+fn numeric_roll_branch_label(predicate: &EffectPredicate) -> Option<String> {
+    let EffectPredicate::Value(cmp) = predicate else {
+        return None;
+    };
+    match cmp {
+        Comparison::Equal(value) => Some(value.to_string()),
+        Comparison::BetweenInclusive(min, max) => Some(format!("{min}—{max}")),
+        _ => None,
+    }
+}
+
+fn unwrap_if_effect(effect: &Effect) -> Option<&crate::effects::IfEffect> {
+    if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        return Some(if_effect);
+    }
+    effect
+        .downcast_ref::<crate::effects::WithIdEffect>()?
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()
+}
+
+fn describe_roll_die_with_numeric_result_table(effects: &[Effect]) -> Option<String> {
+    if effects.len() < 2 {
+        return None;
+    }
+    let roll_with_id = effects[0].downcast_ref::<crate::effects::WithIdEffect>()?;
+    roll_with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()?;
+
+    let mut lines = vec![describe_effect(&effects[0])];
+    for effect in &effects[1..] {
+        let if_effect = unwrap_if_effect(effect)?;
+        if if_effect.condition != roll_with_id.id || !if_effect.else_.is_empty() {
+            return None;
+        }
+        let label = numeric_roll_branch_label(&if_effect.predicate)?;
+        let branch = describe_effect_list(&if_effect.then);
+        lines.push(format!("{label} | {branch}"));
+    }
+
+    Some(lines.join("\n"))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
@@ -5049,6 +5093,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_roll_die_with_numeric_result_table(effects) {
         return compact;
     }
 
@@ -35257,6 +35304,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(add_any) = effect.downcast_ref::<crate::effects::AddManaOfAnyColorEffect>() {
+        if add_any.distinct_colors {
+            return format!(
+                "Add {} mana of different colors{}",
+                describe_mana_amount_for_add_effect(&add_any.amount),
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
         if let Some(colors) = &add_any.available_colors {
             let has_all_colors = crate::color::Color::ALL
                 .iter()

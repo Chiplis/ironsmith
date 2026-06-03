@@ -91,6 +91,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
             player_id,
             1,
             true,
+            false,
             Some(&available_colors),
             available_colors[0],
         )

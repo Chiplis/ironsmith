@@ -1005,6 +1005,8 @@ pub struct ColorsContext {
     pub count: u32,
     /// If true, all selections must be the same color.
     pub same_color: bool,
+    /// If true, selections must be different colors when possible.
+    pub distinct_colors: bool,
     /// Available colors (None = all five colors).
     pub available_colors: Option<Vec<Color>>,
 }
@@ -1016,17 +1018,21 @@ impl ColorsContext {
         source: Option<ObjectId>,
         count: u32,
         same_color: bool,
+        distinct_colors: bool,
     ) -> Self {
         Self {
             player,
             source,
             description: if same_color {
                 format!("Choose a color for {} mana", count)
+            } else if distinct_colors {
+                format!("Choose {} different mana color(s)", count)
             } else {
                 format!("Choose {} mana color(s)", count)
             },
             count,
             same_color,
+            distinct_colors,
             available_colors: None,
         }
     }
@@ -1037,6 +1043,7 @@ impl ColorsContext {
         source: Option<ObjectId>,
         count: u32,
         same_color: bool,
+        distinct_colors: bool,
         available_colors: Vec<Color>,
     ) -> Self {
         Self {
@@ -1044,11 +1051,14 @@ impl ColorsContext {
             source,
             description: if same_color {
                 format!("Choose a color for {} mana", count)
+            } else if distinct_colors {
+                format!("Choose {} different mana color(s)", count)
             } else {
                 format!("Choose {} mana color(s)", count)
             },
             count,
             same_color,
+            distinct_colors,
             available_colors: Some(available_colors),
         }
     }

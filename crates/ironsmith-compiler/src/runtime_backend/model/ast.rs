@@ -846,6 +846,7 @@ pub(crate) enum SubjectVerbActionAst {
     AddManaAnyColor {
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
+        distinct_colors: bool,
     },
     AddManaAnyOneColor {
         amount: Value,
@@ -1941,10 +1942,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::AddManaAnyColor {
                 amount,
                 available_colors,
+                distinct_colors,
             } => f
                 .debug_struct("AddManaAnyColor")
                 .field("amount", amount)
                 .field("available_colors", available_colors)
+                .field("distinct_colors", distinct_colors)
                 .finish(),
             Self::AddManaAnyOneColor { amount } => {
                 f.debug_tuple("AddManaAnyOneColor").field(amount).finish()
@@ -5585,12 +5588,27 @@ impl EffectAst {
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
     ) -> Self {
+        Self::subject_verb_add_mana_any_color_with_distinct(
+            player,
+            amount,
+            available_colors,
+            false,
+        )
+    }
+
+    pub(crate) fn subject_verb_add_mana_any_color_with_distinct(
+        player: PlayerAst,
+        amount: Value,
+        available_colors: Option<Vec<crate::color::Color>>,
+        distinct_colors: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::AddManaAnyColor {
                 amount,
                 available_colors,
+                distinct_colors,
             },
         )
     }
