@@ -3,13 +3,100 @@
 use crate::ability::AbilityKind;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_single_object_for_effect;
+use crate::effects::helpers::resolve_objects_for_effect;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
 use crate::game_state::GameState;
+use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
 use crate::zone::Zone;
 pub use ironsmith_core::CounterEffect;
+
+fn counter_one_stack_object(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    target_id: ObjectId,
+) -> EffectOutcome {
+    if !game.can_be_countered(target_id) {
+        return EffectOutcome::protected();
+    }
+
+    // Check if the spell can't be countered
+    if let Some(obj) = game.object(target_id) {
+        let abilities = game
+            .current_abilities(target_id)
+            .unwrap_or_else(|| obj.abilities.clone());
+        let cant_be_countered = abilities.iter().any(|ability| {
+            if let AbilityKind::Static(s) = &ability.kind {
+                let display = s.display().to_ascii_lowercase();
+                s.cant_be_countered()
+                    || s.id() == crate::static_abilities::StaticAbilityId::CantBeCountered
+                    || display.contains("can't be countered")
+                    || display.contains("cant be countered")
+            } else {
+                false
+            }
+        });
+        if cant_be_countered {
+            // Spell can't be countered - effect does nothing
+            return EffectOutcome::protected();
+        }
+    }
+
+    // Find the stack entry for this object
+    if game.stack.iter().any(|e| e.object_id == target_id) {
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
+        let outcome = process_zone_change_with_additional_effects(
+            game,
+            target_id,
+            Zone::Stack,
+            Zone::Graveyard,
+            ctx.cause.clone(),
+            &mut ctx.decision_maker,
+            &additional_effects,
+        );
+
+        match outcome {
+            EventOutcome::Prevented => return EffectOutcome::prevented(),
+            EventOutcome::Proceed(final_zone) => {
+                if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
+                    let entry = game.stack.remove(idx);
+                    // Countered abilities simply disappear; countered spells leave the stack
+                    // through zone-change processing so replacement effects can rewrite
+                    // destinations like Force of Negation's exile clause.
+                    if !entry.is_ability {
+                        let move_result = game.move_object_with_etb_processing_with_dm_and_cause(
+                            entry.object_id,
+                            final_zone,
+                            ctx.cause.clone(),
+                            &mut ctx.decision_maker,
+                        );
+                        if final_zone == Zone::Exile
+                            && let Some(result) = move_result
+                        {
+                            game.add_exiled_with_source_link(ctx.source, result.new_id);
+                        }
+                    }
+                }
+            }
+            EventOutcome::Replaced => {
+                if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
+                    game.stack.remove(idx);
+                }
+            }
+            EventOutcome::NotApplicable => return EffectOutcome::target_invalid(),
+        }
+
+        if !game.stack.iter().any(|e| e.object_id == target_id) {
+            EffectOutcome::resolved()
+        } else {
+            EffectOutcome::target_invalid()
+        }
+    } else {
+        // Target is no longer on the stack
+        EffectOutcome::target_invalid()
+    }
+}
 
 /// Effect that counters a target spell on the stack.
 ///
@@ -35,88 +122,16 @@ impl EffectExecutor for CounterEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
-
-        if !game.can_be_countered(target_id) {
-            return Ok(EffectOutcome::protected());
+        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        if target_ids.is_empty() {
+            return Ok(EffectOutcome::target_invalid());
         }
 
-        // Check if the spell can't be countered
-        if let Some(obj) = game.object(target_id) {
-            let abilities = game
-                .current_abilities(target_id)
-                .unwrap_or_else(|| obj.abilities.clone());
-            let cant_be_countered = abilities.iter().any(|ability| {
-                if let AbilityKind::Static(s) = &ability.kind {
-                    let display = s.display().to_ascii_lowercase();
-                    s.cant_be_countered()
-                        || s.id() == crate::static_abilities::StaticAbilityId::CantBeCountered
-                        || display.contains("can't be countered")
-                        || display.contains("cant be countered")
-                } else {
-                    false
-                }
-            });
-            if cant_be_countered {
-                // Spell can't be countered - effect does nothing
-                return Ok(EffectOutcome::protected());
-            }
-        }
-
-        // Find the stack entry for this object
-        if game.stack.iter().any(|e| e.object_id == target_id) {
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
-            let outcome = process_zone_change_with_additional_effects(
-                game,
-                target_id,
-                Zone::Stack,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                &mut ctx.decision_maker,
-                &additional_effects,
-            );
-
-            match outcome {
-                EventOutcome::Prevented => return Ok(EffectOutcome::prevented()),
-                EventOutcome::Proceed(final_zone) => {
-                    if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
-                        let entry = game.stack.remove(idx);
-                        // Countered abilities simply disappear; countered spells leave the stack
-                        // through zone-change processing so replacement effects can rewrite
-                        // destinations like Force of Negation's exile clause.
-                        if !entry.is_ability {
-                            let move_result = game
-                                .move_object_with_etb_processing_with_dm_and_cause(
-                                    entry.object_id,
-                                    final_zone,
-                                    ctx.cause.clone(),
-                                    &mut ctx.decision_maker,
-                                );
-                            if final_zone == Zone::Exile
-                                && let Some(result) = move_result
-                            {
-                                game.add_exiled_with_source_link(ctx.source, result.new_id);
-                            }
-                        }
-                    }
-                }
-                EventOutcome::Replaced => {
-                    if let Some(idx) = game.stack.iter().position(|e| e.object_id == target_id) {
-                        game.stack.remove(idx);
-                    }
-                }
-                EventOutcome::NotApplicable => return Ok(EffectOutcome::target_invalid()),
-            }
-
-            if !game.stack.iter().any(|e| e.object_id == target_id) {
-                Ok(EffectOutcome::resolved())
-            } else {
-                Ok(EffectOutcome::target_invalid())
-            }
-        } else {
-            // Target is no longer on the stack
-            Ok(EffectOutcome::target_invalid())
-        }
+        Ok(EffectOutcome::aggregate(
+            target_ids
+                .into_iter()
+                .map(|target_id| counter_one_stack_object(game, ctx, target_id)),
+        ))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {
@@ -350,6 +365,99 @@ mod tests {
                 .expect("ability source permanent should still exist")
                 .zone,
             Zone::Battlefield
+        );
+    }
+
+    #[test]
+    fn kadenas_silencer_counter_all_opponent_abilities_leaves_your_stack_objects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let opponent_first_ability_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Opponent Ability Source A")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+        let opponent_second_ability_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Opponent Ability Source B")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            bob,
+            Zone::Battlefield,
+        );
+        let your_ability_source = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Your Ability Source")
+                .card_types(vec![CardType::Artifact])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let opponent_spell = create_instant(&mut game, bob, Zone::Stack, "Opponent Spell");
+
+        game.stack.push(StackEntry::ability(
+            opponent_first_ability_source,
+            bob,
+            vec![Effect::draw(1)],
+        ));
+        game.stack.push(StackEntry::ability(
+            opponent_second_ability_source,
+            bob,
+            vec![Effect::draw(1)],
+        ));
+        game.stack.push(StackEntry::ability(
+            your_ability_source,
+            alice,
+            vec![Effect::draw(1)],
+        ));
+        game.stack.push(StackEntry::new(opponent_spell, bob));
+
+        let silencer = game.create_object_from_card(
+            &CardBuilder::new(CardId::new(), "Kadena's Silencer")
+                .card_types(vec![CardType::Creature])
+                .build(),
+            alice,
+            Zone::Battlefield,
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(silencer, alice, &mut dm);
+        let outcome = execute_effect(
+            &mut game,
+            &Effect::new(CounterEffect::new(ChooseSpec::All(
+                ObjectFilter::ability().controlled_by(PlayerFilter::Opponent),
+            ))),
+            &mut ctx,
+        )
+        .expect("Kadena's Silencer counter-all-abilities effect should resolve");
+
+        assert_eq!(outcome.status, OutcomeStatus::Succeeded);
+        assert!(
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == opponent_first_ability_source),
+            "first opponent ability should be countered"
+        );
+        assert!(
+            !game
+                .stack
+                .iter()
+                .any(|entry| entry.object_id == opponent_second_ability_source),
+            "second opponent ability should be countered"
+        );
+        assert!(
+            game.stack
+                .iter()
+                .any(|entry| entry.object_id == your_ability_source && entry.is_ability),
+            "your ability should not be countered"
+        );
+        assert!(
+            game.stack
+                .iter()
+                .any(|entry| entry.object_id == opponent_spell && !entry.is_ability),
+            "opponent spell should not be countered by an ability-only filter"
         );
     }
 

@@ -14379,6 +14379,142 @@ fn test_turn_face_up_action_puts_turned_face_up_trigger_on_stack() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn kadenas_silencer_turn_face_up_trigger_counters_only_opponent_abilities() {
+    use crate::decision::{LegalAction, SelectFirstDecisionMaker};
+    use crate::special_actions::TurnFaceUpMethod;
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let kadena = CardDefinitionBuilder::new(CardId::new(), "Kadena's Silencer")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Snake, Subtype::Wizard])
+        .power_toughness(PowerToughness::fixed(2, 1))
+        .parse_text(
+            "When this creature is turned face up, counter all abilities your opponents control.\nMegamorph {1}{U}",
+        )
+        .expect("Kadena's Silencer should parse for runtime test");
+    let kadena_id = game.create_object_from_definition(&kadena, alice, Zone::Battlefield);
+    game.set_face_down(kadena_id);
+
+    let opponent_first_ability_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Ability Source A")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let opponent_second_ability_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Ability Source B")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let your_ability_source = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Your Ability Source")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let opponent_spell = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Opponent Spell")
+            .card_types(vec![CardType::Instant])
+            .build(),
+        bob,
+        Zone::Stack,
+    );
+
+    game.push_to_stack(StackEntry::ability(
+        opponent_first_ability_source,
+        bob,
+        vec![Effect::draw(1)],
+    ));
+    game.push_to_stack(StackEntry::ability(
+        opponent_second_ability_source,
+        bob,
+        vec![Effect::draw(1)],
+    ));
+    game.push_to_stack(StackEntry::ability(
+        your_ability_source,
+        alice,
+        vec![Effect::draw(1)],
+    ));
+    game.push_to_stack(StackEntry::new(opponent_spell, bob));
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    let response = PriorityResponse::PriorityAction(LegalAction::TurnFaceUp {
+        creature_id: kadena_id,
+        method: TurnFaceUpMethod::MegamorphAbility,
+    });
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &response,
+        &mut dm,
+    )
+    .expect("turning Kadena's Silencer face up should succeed");
+
+    let top = game
+        .stack
+        .last()
+        .expect("Kadena's Silencer trigger should be on the stack");
+    assert_eq!(top.object_id, kadena_id);
+    assert!(top.is_ability);
+    resolve_stack_entry(&mut game).expect("Kadena's Silencer trigger should resolve");
+
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == opponent_first_ability_source),
+        "first opponent ability should be countered"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == opponent_second_ability_source),
+        "second opponent ability should be countered"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == your_ability_source && entry.is_ability),
+        "your ability should not be countered"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == opponent_spell && !entry.is_ability),
+        "opponent spell should not be countered"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn roshan_hidden_magister_applies_assassin_subtype_across_zones_for_you_only() {
     use crate::cards::builders::CardDefinitionBuilder;
 

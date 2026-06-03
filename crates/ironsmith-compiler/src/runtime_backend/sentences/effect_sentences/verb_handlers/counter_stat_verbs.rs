@@ -15,6 +15,19 @@ const COUNTER_YOU_DONT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_sha
             &["you", "do", "not", "control"],
         ]
 );
+const COUNTER_OPPONENTS_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["your", "opponents", "control"],
+            &["your", "opponents", "controls"],
+            &["opponents", "control"],
+            &["opponents", "controls"],
+            &["an", "opponent", "controls"],
+            &["opponent", "controls"],
+        ]
+);
+const COUNTER_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["all"], &["each"]]);
 const COUNTER_ACTIVATED_OR_TRIGGERED_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["activated", "or", "triggered", "ability"]);
 const COUNTER_TRIGGERED_OR_ACTIVATED_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
@@ -23,10 +36,12 @@ const COUNTER_ACTIVATED_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["activated", "ability"]);
 const COUNTER_TRIGGERED_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["triggered", "ability"]);
+const COUNTER_ABILITY_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["ability"], &["abilities"]]);
 const COUNTER_ABILITY_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["ability"]);
+    clause_shape!(contains_any_words & [&["ability", "abilities"]]);
 const COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["activated"], &["triggered"]]);
+    clause_shape!(contains_any_words & [&["activated", "triggered"]]);
 const COUNTER_SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
 const COUNTER_INSTANT_SPELL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["instant", "spell"]);
@@ -179,14 +194,17 @@ fn parse_counter_ability_target_phrase(
     {
         clause_tokens.drain(..1);
     }
-    let is_you_control_tail = |idx: usize| {
+    let is_controller_tail = |idx: usize| {
         counter_shape_matches_at(&clause_tokens, idx, &COUNTER_YOU_CONTROL_PREFIX_PATTERN)
             || counter_shape_matches_at(&clause_tokens, idx, &COUNTER_YOU_DONT_CONTROL_PREFIX_PATTERN)
+            || counter_shape_matches_at(
+                &clause_tokens,
+                idx,
+                &COUNTER_OPPONENTS_CONTROL_PREFIX_PATTERN,
+            )
     };
     let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
-    if !COUNTER_ABILITY_MARKER_PATTERN.matches_words(&clause_words)
-        || !COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_PATTERN.matches_words(&clause_words)
-    {
+    if !COUNTER_ABILITY_MARKER_PATTERN.matches_words(&clause_words) {
         return Ok(None);
     }
 
@@ -197,13 +215,19 @@ fn parse_counter_ability_target_phrase(
         idx += used;
     }
 
-    if !clause_tokens
+    let explicit_target = clause_tokens
         .get(idx)
-        .is_some_and(|token| COUNTER_TARGET_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| COUNTER_TARGET_WORD_PATTERN.matches_token(token));
+    if explicit_target {
+        idx += 1;
+    } else if clause_tokens
+        .get(idx)
+        .is_some_and(|token| COUNTER_ALL_OR_EACH_WORD_PATTERN.matches_token(token))
     {
+        idx += 1;
+    } else {
         return Ok(None);
     }
-    idx += 1;
 
     #[derive(Clone, Copy)]
     enum CounterTargetTerm {
@@ -222,7 +246,7 @@ fn parse_counter_ability_target_phrase(
             list_end = scan;
             break;
         }
-        if is_you_control_tail(scan) {
+        if is_controller_tail(scan) {
             list_end = scan;
             break;
         }
@@ -287,6 +311,12 @@ fn parse_counter_ability_target_phrase(
             triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
             term_filters.push((triggered, CounterTargetTerm::Ability));
             idx += 2;
+            continue;
+        }
+
+        if counter_shape_matches_at(&clause_tokens, idx, &COUNTER_ABILITY_PREFIX_PATTERN) {
+            term_filters.push((ObjectFilter::ability(), CounterTargetTerm::Ability));
+            idx += 1;
             continue;
         }
 
@@ -372,6 +402,24 @@ fn parse_counter_ability_target_phrase(
             };
             continue;
         }
+        if counter_shape_matches_at(&clause_tokens, idx, &COUNTER_OPPONENTS_CONTROL_PREFIX_PATTERN)
+        {
+            controller_filter = Some(PlayerFilter::Opponent);
+            idx += if clause_tokens
+                .get(idx)
+                .is_some_and(|token| token.as_word() == Some("your"))
+            {
+                3
+            } else if clause_tokens
+                .get(idx)
+                .is_some_and(|token| token.as_word() == Some("an"))
+            {
+                3
+            } else {
+                2
+            };
+            continue;
+        }
         if COUNTER_FROM_WORD_PATTERN.matches_word(word) {
             idx += 1;
             if clause_tokens
@@ -439,7 +487,11 @@ fn parse_counter_ability_target_phrase(
     };
 
     let target = wrap_target_count(
-        TargetAst::Object(target_filter, span_from_tokens(&clause_tokens), None),
+        TargetAst::Object(
+            target_filter,
+            explicit_target.then(|| span_from_tokens(&clause_tokens)).flatten(),
+            None,
+        ),
         target_count,
     );
     Ok(Some(target))

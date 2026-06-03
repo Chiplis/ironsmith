@@ -2957,6 +2957,24 @@ fn describe_stack_object_copy_target(target: &ChooseSpec) -> String {
     }
 }
 
+fn describe_counter_all_stack_abilities(target: &ChooseSpec) -> Option<&'static str> {
+    let ChooseSpec::All(filter) = target else {
+        return None;
+    };
+    if filter.zone != Some(Zone::Stack)
+        || filter.controller != Some(PlayerFilter::Opponent)
+        || filter.stack_kind != Some(StackObjectKind::Ability)
+    {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    base.zone = None;
+    base.controller = None;
+    base.stack_kind = None;
+    (base == ObjectFilter::default()).then_some("all abilities your opponents control")
+}
+
 fn copy_target_player_candidate_text(filter: &PlayerFilter, plural: bool) -> String {
     match (filter, plural) {
         (PlayerFilter::Any, false) => "player".to_string(),
@@ -32098,6 +32116,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             })
         {
             return "Counter target triggered ability or colorless spell".to_string();
+        }
+        if let Some(target_text) = describe_counter_all_stack_abilities(&counter_spell.target) {
+            return format!("Counter {target_text}");
         }
         return format!("Counter {}", describe_choose_spec(&counter_spell.target));
     }
