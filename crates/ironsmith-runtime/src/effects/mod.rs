@@ -127,7 +127,8 @@ pub use control::{
 };
 pub use counters::{
     DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect,
-    MoveCountersEffect, MoveOneCounterEffect, ProliferateEffect, PutCountersEffect,
+    MoveCountersEffect, MoveOneCounterEffect, ProliferateEffect, PutCounterOfChosenKindEffect,
+    PutCountersEffect,
     RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
     RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
 };

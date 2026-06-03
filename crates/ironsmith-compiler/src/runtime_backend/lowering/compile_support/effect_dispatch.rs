@@ -5286,6 +5286,14 @@ fn compile_subject_verb_effect(
                 choices,
             ))
         }
+        SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(crate::effects::PutCounterOfChosenKindEffect::new(spec))],
+                choices,
+            ))
+        }
         SubjectVerbActionAst::ReturnToHand { target, random } => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;

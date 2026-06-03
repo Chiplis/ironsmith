@@ -3501,6 +3501,17 @@ impl ForEachCounterKindPutOrRemoveEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PutCounterOfChosenKindEffect {
+    pub target: ChooseSpec,
+}
+
+impl PutCounterOfChosenKindEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PhaseOutEffect {
     pub target: ChooseSpec,
 }

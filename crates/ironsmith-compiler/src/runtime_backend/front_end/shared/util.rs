@@ -1739,6 +1739,12 @@ pub(crate) fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
     let Some(first_token) = tokens.first() else {
         return false;
     };
+    if first_token.kind == TokenKind::LBracket {
+        return tokens.get(1).is_some_and(|token| {
+            matches!(token.kind, TokenKind::Plus | TokenKind::Dash | TokenKind::Number)
+                || token.as_word().is_some_and(|word| word == "0")
+        });
+    }
     if mana_pips_from_token(first_token).is_some() {
         return true;
     }
