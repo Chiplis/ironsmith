@@ -866,6 +866,22 @@ fn prevention_gain_life_follow_up(
     Some(gain)
 }
 
+fn prevention_damage_any_target_follow_up(
+    follow_up_effects: &[Effect],
+) -> Option<&crate::effects::DealDamageEffect> {
+    let [effect] = follow_up_effects else {
+        return None;
+    };
+    let damage = unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(damage.amount.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+        return None;
+    }
+    if !matches!(damage.target, ChooseSpec::AnyTarget) {
+        return None;
+    }
+    Some(damage)
+}
+
 fn describe_assigns_no_combat_damage(source: &ChooseSpec, until: &Until) -> Option<String> {
     if !matches!(until, Until::EndOfTurn) {
         return None;
@@ -35256,22 +35272,42 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             ""
         };
         if let Some(put) = prevention_put_counters_follow_up(&prevent_damage.follow_up_effects) {
+            let protected = if prevent_damage.protect_you_and_permanents_you_control {
+                "you and/or permanents you control".to_string()
+            } else {
+                describe_choose_spec(&prevent_damage.target)
+            };
             return format!(
                 "Prevent the next {} {} that would be dealt to {} {}{}. For each 1 damage prevented this way, put a {} counter on {}",
                 describe_value(&prevent_damage.amount),
                 damage_text,
-                describe_choose_spec(&prevent_damage.target),
+                protected,
                 timing,
                 source_text,
                 describe_counter_type(put.counter_type),
                 describe_prevention_follow_up_target(&prevent_damage.target)
             );
         }
+        let protected = if prevent_damage.protect_you_and_permanents_you_control {
+            "you and/or permanents you control".to_string()
+        } else {
+            describe_choose_spec(&prevent_damage.target)
+        };
+        if prevention_damage_any_target_follow_up(&prevent_damage.follow_up_effects).is_some() {
+            return format!(
+                "Prevent the next {} {} that would be dealt to {} {}{}. If damage is prevented this way, this spell deals that much damage to any target",
+                describe_value(&prevent_damage.amount),
+                damage_text,
+                protected,
+                timing,
+                source_text
+            );
+        }
         return format!(
             "Prevent the next {} {} that would be dealt to {} {}{}",
             describe_value(&prevent_damage.amount),
             damage_text,
-            describe_choose_spec(&prevent_damage.target),
+            protected,
             timing,
             source_text
         );

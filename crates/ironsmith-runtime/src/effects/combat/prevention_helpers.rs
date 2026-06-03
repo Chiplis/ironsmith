@@ -44,10 +44,12 @@ pub fn register_prevention_shield(
     duration: Until,
     damage_filter: DamageFilter,
     follow_up_effects: Vec<Effect>,
+    follow_up_targets: Vec<ResolvedTarget>,
 ) -> PreventionShieldId {
     let shield = PreventionShield::new(ctx.source, ctx.controller, protected, amount, duration)
         .with_filter(damage_filter)
-        .with_follow_up_effects(follow_up_effects);
+        .with_follow_up_effects(follow_up_effects)
+        .with_follow_up_targets(follow_up_targets);
     game.effect_store.prevention_effects.add_shield(shield)
 }
 
@@ -103,6 +105,7 @@ mod tests {
             Some(3),
             Until::EndOfTurn,
             DamageFilter::all(),
+            Vec::new(),
             Vec::new(),
         );
 

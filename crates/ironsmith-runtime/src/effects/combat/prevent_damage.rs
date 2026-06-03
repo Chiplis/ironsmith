@@ -43,6 +43,8 @@ pub struct PreventDamageEffect {
     pub follow_up_effects: Vec<Effect>,
     /// Whether the source is chosen as the effect resolves.
     pub source_of_your_choice: bool,
+    /// Protect the controller and permanents they control with one shared shield.
+    pub protect_you_and_permanents_you_control: bool,
 }
 
 impl PreventDamageEffect {
@@ -55,6 +57,7 @@ impl PreventDamageEffect {
             damage_filter: DamageFilter::all(),
             follow_up_effects: Vec::new(),
             source_of_your_choice: false,
+            protect_you_and_permanents_you_control: false,
         }
     }
 
@@ -77,6 +80,12 @@ impl PreventDamageEffect {
     /// Execute these effects using the amount this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    /// Protect the controller and permanents they control with one prevention pool.
+    pub fn protecting_you_and_permanents_you_control(mut self) -> Self {
+        self.protect_you_and_permanents_you_control = true;
         self
     }
 }
@@ -140,7 +149,11 @@ impl EffectExecutor for PreventDamageEffect {
             damage_filter.from_specific_source = Some(chosen_source);
         }
 
-        let protected = resolve_prevention_target_from_spec(game, &self.target, ctx)?;
+        let protected = if self.protect_you_and_permanents_you_control {
+            crate::prevention::PreventionTarget::YouAndPermanentsYouControl
+        } else {
+            resolve_prevention_target_from_spec(game, &self.target, ctx)?
+        };
         register_prevention_shield(
             game,
             ctx,
@@ -149,6 +162,7 @@ impl EffectExecutor for PreventDamageEffect {
             self.duration.clone(),
             damage_filter,
             self.follow_up_effects.clone(),
+            ctx.targets.clone(),
         );
 
         Ok(EffectOutcome::resolved())

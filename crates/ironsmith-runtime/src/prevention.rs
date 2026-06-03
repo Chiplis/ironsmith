@@ -12,6 +12,7 @@
 
 use crate::color::Color;
 use crate::effect::{Effect, Until};
+use crate::effects::ResolvedTarget;
 use crate::ids::{ObjectId, PlayerId};
 use crate::types::CardType;
 pub use ironsmith_core::{DamageFilter, PreventionTarget};
@@ -58,6 +59,9 @@ pub struct PreventionShield {
     /// Effects to execute using the prevented amount when this shield prevents damage.
     pub follow_up_effects: Vec<Effect>,
 
+    /// Targets chosen when the prevention shield was created, for delayed follow-ups.
+    pub follow_up_targets: Vec<ResolvedTarget>,
+
     /// Turn this shield was created (for end-of-turn cleanup)
     pub created_turn: u32,
 }
@@ -80,6 +84,7 @@ impl PreventionShield {
             duration,
             damage_filter: DamageFilter::default(),
             follow_up_effects: Vec::new(),
+            follow_up_targets: Vec::new(),
             created_turn: 0, // Set when added to manager
         }
     }
@@ -93,6 +98,12 @@ impl PreventionShield {
     /// Execute these effects with the amount of damage this shield prevented.
     pub fn with_follow_up_effects(mut self, effects: Vec<Effect>) -> Self {
         self.follow_up_effects = effects;
+        self
+    }
+
+    /// Store targets chosen for delayed follow-up effects.
+    pub fn with_follow_up_targets(mut self, targets: Vec<ResolvedTarget>) -> Self {
+        self.follow_up_targets = targets;
         self
     }
 
@@ -168,6 +179,7 @@ pub struct PreventionFollowUp {
     pub controller: PlayerId,
     pub prevented: u32,
     pub effects: Vec<Effect>,
+    pub targets: Vec<ResolvedTarget>,
 }
 
 /// Result of applying prevention to a single damage assignment.
@@ -362,6 +374,7 @@ impl PreventionEffectManager {
                         controller: shield.controller,
                         prevented,
                         effects: shield.follow_up_effects.clone(),
+                        targets: shield.follow_up_targets.clone(),
                     });
                 }
             }
@@ -458,6 +471,7 @@ impl PreventionEffectManager {
                         controller: shield.controller,
                         prevented,
                         effects: shield.follow_up_effects.clone(),
+                        targets: shield.follow_up_targets.clone(),
                     });
                 }
             }

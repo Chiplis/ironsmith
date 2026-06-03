@@ -20746,6 +20746,194 @@ fn cho_arrim_alchemist_runtime_prevents_chosen_source_to_you_and_gains_that_life
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn divine_deflection_strict_parser_compiled_text_and_shape_regression() {
+    assert_oracle_card_parses_strict("Divine Deflection");
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(
+        rendered.contains(
+            "Prevent the next X damage that would be dealt to you and/or permanents you control this turn"
+        ) && rendered.contains(
+            "If damage is prevented this way, this spell deals that much damage to any target"
+        ),
+        "expected Divine Deflection prevention and conditional damage text, got {rendered}"
+    );
+    assert!(
+        debug.contains("PreventDamageEffect")
+            && debug.contains("protect_you_and_permanents_you_control: true")
+            && debug.contains("DealDamageEffect")
+            && debug.contains("EventValue")
+            && debug.contains("Amount")
+            && debug.contains("target: AnyTarget"),
+        "expected Divine Deflection to compile to a shared prevention shield with prevented-damage follow-up, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_target() {
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Divine Deflection should produce spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_105), "Damage Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let alice_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_106), "Alice Permanent")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_x(5)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Divine Deflection should resolve");
+
+    let (alice_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(alice_damage, 0, "damage to Alice should be prevented");
+    assert_eq!(
+        game.life_total(bob),
+        17,
+        "prevented damage should be dealt to the chosen any-target player"
+    );
+
+    let (permanent_damage, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Object(alice_permanent),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        permanent_damage, 2,
+        "the shared prevention pool should have only 2 damage remaining"
+    );
+    assert_eq!(
+        game.life_total(bob),
+        15,
+        "the follow-up should deal only the amount actually prevented"
+    );
+
+    let (bob_damage, bob_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(bob_damage, 3, "damage to Bob should not be protected");
+    assert!(!bob_prevented, "unprotected damage should not trigger prevention");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn divine_deflection_runtime_does_not_damage_target_when_damage_cannot_be_prevented() {
+    let def = parse_oracle_card_definition("Divine Deflection");
+    let spell = def
+        .spell_effect
+        .as_ref()
+        .expect("Divine Deflection should produce spell effects")
+        .clone();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let spell_source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let damage_source = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_107), "Unpreventable Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let no_prevention = CardDefinitionBuilder::new(CardId::from_raw(91_108), "No Prevention")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::damage_cant_be_prevented(),
+        ))
+        .build();
+    game.create_object_from_definition(&no_prevention, bob, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_source, alice, &mut dm)
+        .with_x(5)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::AnyTarget,
+            range: 0..1,
+        }]);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        spell_source,
+        &spell,
+        None,
+        &[],
+    )
+    .expect("Divine Deflection should resolve");
+
+    let (damage, prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        damage_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(damage, 3, "unpreventable damage should not be reduced");
+    assert!(!prevented, "unpreventable damage should not count as prevented");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "the conditional follow-up should not happen when no damage was prevented"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_target_opponent_chooses_creature_then_other_cant_block() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Eunuchs Variant")
             .parse_text(

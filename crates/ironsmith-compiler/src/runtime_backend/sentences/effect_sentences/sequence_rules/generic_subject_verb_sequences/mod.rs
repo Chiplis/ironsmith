@@ -531,6 +531,75 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
     ]))
 }
 
+pub(crate) fn parse_damage_prevention_reflect_to_any_target_sequence(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Ok(first_effects) =
+        effect_sentences::parse_effect_sentence_lexed(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let Some(first_effect) = first_effects.first() else {
+        return Ok(None);
+    };
+    if first_effects.len() != 1 {
+        return Ok(None);
+    }
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::PreventDamage {
+                amount,
+                target,
+                duration,
+                source_of_your_choice,
+                protect_you_and_permanents_you_control,
+                ..
+            },
+        ..
+    }) = first_effect
+    else {
+        return Ok(None);
+    };
+
+    let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
+    let second_words = second_clause.word_refs();
+    let prefix = ["if", "damage", "is", "prevented", "this", "way"];
+    if !second_words.starts_with(&prefix) {
+        return Ok(None);
+    }
+    let Some(deals_idx) = second_words
+        .iter()
+        .position(|word| matches!(*word, "deal" | "deals"))
+    else {
+        return Ok(None);
+    };
+    if deals_idx <= prefix.len() {
+        return Ok(None);
+    }
+    if second_words.get(deals_idx + 1..)
+        != Some(&["that", "much", "damage", "to", "any", "target"][..])
+    {
+        return Ok(None);
+    }
+
+    let follow_up = EffectAst::subject_verb_damage(
+        Value::EventValue(EventValueSpec::Amount),
+        TargetAst::AnyTarget(None),
+    );
+    Ok(Some(vec![
+        EffectAst::subject_verb_prevent_damage_with_options(
+            amount.clone(),
+            target.clone(),
+            duration.clone(),
+            *source_of_your_choice,
+            *protect_you_and_permanents_you_control,
+            vec![follow_up],
+        ),
+    ]))
+}
+
 pub(crate) fn parse_next_damage_prevention_gain_life_sequence(
     sentences: &[SentenceInput],
     sentence_idx: usize,
