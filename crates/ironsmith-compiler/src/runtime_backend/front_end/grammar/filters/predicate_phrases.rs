@@ -291,6 +291,15 @@ fn is_source_reference_clause(clause: LexedClause<'_>) -> bool {
     )
 }
 
+fn is_source_reference_words(words: &[&str]) -> bool {
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    is_source_reference_clause(LexedClause::new(&tokens))
+}
+
+fn is_source_state_subject_words(words: &[&str]) -> bool {
+    is_source_reference_words(words)
+}
+
 fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
     clause_matches_any_phrase(clause, &[&["this"], &["this", "card"]])
 }
