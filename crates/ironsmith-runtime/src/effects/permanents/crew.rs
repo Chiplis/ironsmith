@@ -186,9 +186,15 @@ fn keyword_crew_event(
         .object(vehicle)
         .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
     if let Some(vehicle_snapshot) = vehicle_snapshot {
-        object_tags.insert(TagKey::from(CREWED_VEHICLE_TAG), vec![vehicle_snapshot.clone()]);
+        object_tags.insert(
+            TagKey::from(CREWED_VEHICLE_TAG),
+            vec![vehicle_snapshot.clone()],
+        );
         if is_activation_event {
-            object_tags.insert(TagKey::from(CREW_ACTIVATION_TAG), vec![vehicle_snapshot.clone()]);
+            object_tags.insert(
+                TagKey::from(CREW_ACTIVATION_TAG),
+                vec![vehicle_snapshot.clone()],
+            );
             if is_first_crewed_this_turn {
                 object_tags.insert(
                     TagKey::from(FIRST_CREWED_THIS_TURN_TAG),
@@ -211,9 +217,14 @@ fn keyword_crew_event(
         }
     }
     TriggerEvent::new_with_provenance(
-        KeywordActionEvent::new(KeywordActionKind::Crew, controller, crewer, crew_count as u32)
-            .with_snapshot(crewer_snapshot)
-            .with_object_tags(object_tags),
+        KeywordActionEvent::new(
+            KeywordActionKind::Crew,
+            controller,
+            crewer,
+            crew_count as u32,
+        )
+        .with_snapshot(crewer_snapshot)
+        .with_object_tags(object_tags),
         provenance,
     )
 }

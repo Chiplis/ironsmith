@@ -250,9 +250,7 @@ impl Cost {
                 Self::exile_from_graveyard_types(count, card_types)
             }
             ironsmith_core::Cost::ReturnSelfToHand => Self::return_self_to_hand(),
-            ironsmith_core::Cost::Effect(effect)
-                if Self::is_tagged_type_marker_effect(&effect) =>
-            {
+            ironsmith_core::Cost::Effect(effect) if Self::is_tagged_type_marker_effect(&effect) => {
                 Self::mana(ManaCost::new())
             }
             ironsmith_core::Cost::Effect(effect) => Self::try_from_runtime_effect(effect)

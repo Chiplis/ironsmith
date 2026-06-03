@@ -146,9 +146,9 @@ fn normalize_restriction_for_resolution(
         Restriction::Attack(filter) if filter_has_not_tagged_constraint(filter) => {
             Restriction::attack(filter.clone())
         }
-        Restriction::Attack(filter) => {
-            Restriction::attack(collapse_filter_to_current_matching_objects(filter, ctx, game))
-        }
+        Restriction::Attack(filter) => Restriction::attack(
+            collapse_filter_to_current_matching_objects(filter, ctx, game),
+        ),
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
             Restriction::attack_player_or_planeswalkers_controlled_by(
                 collapse_filter_to_current_matching_objects(attackers, ctx, game),
@@ -158,9 +158,9 @@ fn normalize_restriction_for_resolution(
         Restriction::Block(filter) if filter_has_not_tagged_constraint(filter) => {
             Restriction::block(filter.clone())
         }
-        Restriction::Block(filter) => {
-            Restriction::block(collapse_filter_to_current_matching_objects(filter, ctx, game))
-        }
+        Restriction::Block(filter) => Restriction::block(
+            collapse_filter_to_current_matching_objects(filter, ctx, game),
+        ),
         _ => restriction.clone(),
     }
 }

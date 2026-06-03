@@ -903,9 +903,7 @@ fn parse_case_to_solve_line_cst(
 
     let rewritten = rewrite_line_normalized(
         line,
-        &format!(
-            "At the beginning of your end step, if {condition}, put a level counter on this."
-        ),
+        &format!("At the beginning of your end step, if {condition}, put a level counter on this."),
     )?;
     let mut triggered = parse_triggered_line_cst(&rewritten)?;
     triggered.presentation_label = Some("__ironsmith_case_to_solve".to_string());
@@ -2515,7 +2513,10 @@ mod tests {
                     .expect("named source leaves trigger should parse as triggered CST");
 
                 assert_eq!(parsed.trigger_text, "emrakul leaves the battlefield");
-                assert_eq!(render_token_slice(&parsed.trigger_parse_tokens), parsed.trigger_text);
+                assert_eq!(
+                    render_token_slice(&parsed.trigger_parse_tokens),
+                    parsed.trigger_text
+                );
             },
         );
     }

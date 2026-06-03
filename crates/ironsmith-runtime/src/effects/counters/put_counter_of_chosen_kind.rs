@@ -23,7 +23,10 @@ fn choose_counter_kind(
         .iter()
         .enumerate()
         .map(|(idx, counter_type)| {
-            SelectableOption::new(idx, format!("Choose {} counter", counter_label(*counter_type)))
+            SelectableOption::new(
+                idx,
+                format!("Choose {} counter", counter_label(*counter_type)),
+            )
         })
         .collect::<Vec<_>>();
     let choice_ctx = SelectOptionsContext::new(

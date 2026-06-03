@@ -33,14 +33,7 @@ const LINKED_EXILED_CARD_COST_MORE_PATTERN: ClauseShape<'static> = clause_shape!
     contains_phrases
         & [
             &[
-                "for",
-                "as",
-                "long",
-                "as",
-                "that",
-                "card",
-                "remains",
-                "exiled",
+                "for", "as", "long", "as", "that", "card", "remains", "exiled",
             ],
             &["more", "to", "cast"],
         ]
@@ -97,8 +90,7 @@ const CREATURES_YOU_CONTROL_GET_PREFIX: &[&str] = &["creatures", "you", "control
 const CHARACTER_SELECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["character", "select"]);
 const PARTNER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_PREFIX);
-const PARTNER_WITH_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix PARTNER_WITH_PREFIX);
+const PARTNER_WITH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_WITH_PREFIX);
 const CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix CREATURES_YOU_CONTROL_GET_PREFIX);
 const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
@@ -233,9 +225,9 @@ fn keyword_body_tokens_before_reminder<'a>(
 }
 
 fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if INDEFINITE_ARTICLE_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-        tokens,
-    )) {
+    if INDEFINITE_ARTICLE_PREFIX_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
+    {
         &tokens[1..]
     } else {
         tokens
@@ -264,9 +256,8 @@ fn render_keyword_cost_tokens(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
-    TRIGGER_INTRO_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-        &line.tokens,
-    ))
+    TRIGGER_INTRO_PREFIX_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
 }
 
 pub(super) fn run_trailing_keyword_activation_line_family(
@@ -1088,7 +1079,8 @@ fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool
     if tokens.first().is_some_and(first_token_is_partner_variant) {
         return true;
     }
-    if CHARACTER_SELECT_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(tokens))
+    if CHARACTER_SELECT_PREFIX_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
     {
         return true;
     }
@@ -1504,9 +1496,9 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
     else {
         return Ok(None);
     };
-    if !CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN
-        .matches_words(&crate::runtime_backend::token_word_refs(first_sentence_tokens))
-    {
+    if !CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN.matches_words(
+        &crate::runtime_backend::token_word_refs(first_sentence_tokens),
+    ) {
         return Ok(None);
     }
     let first_sentence = render_original_text_for_token_slice(ctx.line, first_sentence_tokens)
@@ -1538,9 +1530,9 @@ fn non_turn_conditional_untap_first_sentence_tokens(
     line: &PreprocessedLine,
 ) -> Option<&[OwnedLexToken]> {
     let words = TokenWordView::new(&line.tokens);
-    if !NON_TURN_UNTAP_SUFFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-        &line.tokens,
-    )) {
+    if !NON_TURN_UNTAP_SUFFIX_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+    {
         return None;
     }
     let suffix_word_idx = words.len().checked_sub(NON_TURN_UNTAP_SUFFIX.len())?;

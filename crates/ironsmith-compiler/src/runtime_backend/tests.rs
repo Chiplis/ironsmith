@@ -10476,19 +10476,20 @@ fn rewrite_lexed_triggered_line_preserves_named_source_leaves_surface() {
 
 #[test]
 fn compile_named_source_leaves_trigger_preserves_surface() {
-    let (semantic, _) = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
-        "Emrakul, the World Anew",
-        || {
-            parse_text_to_semantic_document(
-                CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
-                    .card_types(vec![CardType::Creature]),
-                "When Emrakul leaves the battlefield, sacrifice all creatures you control."
-                    .to_string(),
-                false,
-            )
-        },
-    )
-    .expect("named source leaves trigger should parse semantically");
+    let (semantic, _) =
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Emrakul, the World Anew",
+            || {
+                parse_text_to_semantic_document(
+                    CardDefinitionBuilder::new(CardId::from_raw(1), "Emrakul, the World Anew")
+                        .card_types(vec![CardType::Creature]),
+                    "When Emrakul leaves the battlefield, sacrifice all creatures you control."
+                        .to_string(),
+                    false,
+                )
+            },
+        )
+        .expect("named source leaves trigger should parse semantically");
     let semantic_debug = format!("{semantic:#?}");
     assert!(
         semantic_debug.contains("trigger_text: \"emrakul leaves the battlefield\""),
@@ -13297,7 +13298,10 @@ fn rewrite_activation_cost_token_entrypoint_parses_tap_return_and_exile_variants
         })
         .expect("exile-from-hand activation cost should choose a card to exile");
     assert_eq!(hand_choice.filter.zone, Some(Zone::Hand));
-    assert_eq!(hand_choice.filter.owner, Some(crate::target::PlayerFilter::You));
+    assert_eq!(
+        hand_choice.filter.owner,
+        Some(crate::target::PlayerFilter::You)
+    );
     assert_eq!(hand_choice.filter.excluded_card_types, vec![CardType::Land]);
 
     let exile_spell_tokens = lex_line("Exile an instant or sorcery spell you control", 0)

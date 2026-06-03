@@ -519,7 +519,9 @@ fn evaluate_value(
         Value::DividedRoundedDown(value, divisor) => {
             let value = evaluate_value(value, source, effect_controller, baseline, objects, game);
             match value {
-                ValueEval::Scalar(value) if *divisor != 0 => ValueEval::Scalar(value.div_euclid(*divisor)),
+                ValueEval::Scalar(value) if *divisor != 0 => {
+                    ValueEval::Scalar(value.div_euclid(*divisor))
+                }
                 _ => ValueEval::Unknown,
             }
         }

@@ -1354,9 +1354,9 @@ fn parse_choose_counter_on_target_then_put_additional_bundle(
     }
 
     let target = choose_counter_target(first, &first_words)?;
-    Ok(Some(vec![EffectAst::subject_verb_put_counter_of_chosen_kind(
-        target,
-    )]))
+    Ok(Some(vec![
+        EffectAst::subject_verb_put_counter_of_chosen_kind(target),
+    ]))
 }
 
 fn split_search_library_slot_filter_items_lexed(
@@ -2311,10 +2311,8 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
         return Some(effects);
     }
     if sentences.len() == 2
-        && let Ok(Some(effects)) = parse_choose_counter_on_target_then_put_additional_bundle(
-            sentences[0],
-            sentences[1],
-        )
+        && let Ok(Some(effects)) =
+            parse_choose_counter_on_target_then_put_additional_bundle(sentences[0], sentences[1])
     {
         return Some(effects);
     }

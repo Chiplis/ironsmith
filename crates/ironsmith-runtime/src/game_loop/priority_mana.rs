@@ -414,10 +414,10 @@ pub(super) fn build_pip_payment_options(
         for (perm_id, ability_index, description) in mana_abilities {
             let mut source_policy = mana_spend_policy.clone();
             source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
-                    player,
-                    source_for_pip_alternatives,
-                    perm_id,
-                );
+                player,
+                source_for_pip_alternatives,
+                perm_id,
+            );
             // Check if this ability produces mana that can pay this pip
             if mana_ability_can_pay_pip(
                 game,
@@ -3559,8 +3559,10 @@ pub(super) fn finalize_spell_cast(
     mut mana_spent_to_cast: ManaPool,
     keyword_payment_contributions: Vec<KeywordPaymentContribution>,
     stack_entry_tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
-    stack_entry_effect_outcomes:
-        std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
+    stack_entry_effect_outcomes: std::collections::HashMap<
+        crate::effect::EffectId,
+        crate::effect::EffectOutcome,
+    >,
     payment_trace: &mut Vec<CostStep>,
     mana_already_paid: bool,
     stack_id: ObjectId,

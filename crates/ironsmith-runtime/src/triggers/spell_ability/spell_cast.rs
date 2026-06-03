@@ -219,24 +219,20 @@ impl TriggerMatcher for SpellCastTrigger {
                         }
                         None => format!("your {ordinal} {base_spell_text} each turn"),
                     },
-                    PlayerFilter::Any | PlayerFilter::Active => {
-                        match exact_spell_turn_suffix {
-                            Some(turn_suffix) => {
-                                suppress_turn_suffix = true;
-                                format!("their {ordinal} {base_spell_text} {turn_suffix}")
-                            }
-                            None => format!("their {ordinal} {base_spell_text} each turn"),
+                    PlayerFilter::Any | PlayerFilter::Active => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("their {ordinal} {base_spell_text} {turn_suffix}")
                         }
-                    }
-                    PlayerFilter::Opponent => {
-                        match exact_spell_turn_suffix {
-                            Some(turn_suffix) => {
-                                suppress_turn_suffix = true;
-                                format!("their {ordinal} {base_spell_text} {turn_suffix}")
-                            }
-                            None => format!("their {ordinal} {base_spell_text} each turn"),
+                        None => format!("their {ordinal} {base_spell_text} each turn"),
+                    },
+                    PlayerFilter::Opponent => match exact_spell_turn_suffix {
+                        Some(turn_suffix) => {
+                            suppress_turn_suffix = true;
+                            format!("their {ordinal} {base_spell_text} {turn_suffix}")
                         }
-                    }
+                        None => format!("their {ordinal} {base_spell_text} each turn"),
+                    },
                     PlayerFilter::Specific(_) => {
                         format!("that player's {ordinal} {base_spell_text} each turn")
                     }

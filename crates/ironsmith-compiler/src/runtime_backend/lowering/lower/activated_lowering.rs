@@ -14,8 +14,7 @@ const SPEND_THIS_MANA_ONLY_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["spend", "this", "mana", "only"]);
 const WHEN_YOU_SPEND_THIS_MANA_TO_CAST_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["when", "you", "spend", "this", "mana", "to", "cast"]);
-const ACTIVATION_MANA_SOURCE_RESTRICTION_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["spend", "only", "mana"]; suffix & ["to", "activate", "this", "ability"]);
+const ACTIVATION_MANA_SOURCE_RESTRICTION_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["spend", "only", "mana"]; suffix & ["to", "activate", "this", "ability"]);
 
 fn activated_effect_may_be_mana_ability_lexed(tokens: &[OwnedLexToken]) -> bool {
     let line_words = token_word_refs(tokens);

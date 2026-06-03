@@ -1417,11 +1417,13 @@ impl Effect {
         amount: impl Into<Value>,
         colors: Vec<crate::color::Color>,
     ) -> Self {
-        Self::new(crate::effects::AddManaOfAnyColorEffect::restricted_distinct(
-            amount,
-            crate::target::PlayerFilter::You,
-            colors,
-        ))
+        Self::new(
+            crate::effects::AddManaOfAnyColorEffect::restricted_distinct(
+                amount,
+                crate::target::PlayerFilter::You,
+                colors,
+            ),
+        )
     }
 
     pub fn add_mana_of_any_color(amount: impl Into<Value>) -> Self {
@@ -1453,9 +1455,9 @@ impl Effect {
         player: crate::target::PlayerFilter,
         colors: Vec<crate::color::Color>,
     ) -> Self {
-        Self::new(crate::effects::AddManaOfAnyColorEffect::restricted_distinct(
-            amount, player, colors,
-        ))
+        Self::new(
+            crate::effects::AddManaOfAnyColorEffect::restricted_distinct(amount, player, colors),
+        )
     }
 
     pub fn add_mana_of_any_color_player(

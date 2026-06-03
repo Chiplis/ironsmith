@@ -1035,7 +1035,10 @@ impl DecisionMaker for SelectFirstDecisionMaker {
             .available_colors
             .as_deref()
             .unwrap_or(&crate::color::Color::ALL);
-        let default_color = available.first().copied().unwrap_or(crate::color::Color::Green);
+        let default_color = available
+            .first()
+            .copied()
+            .unwrap_or(crate::color::Color::Green);
         if ctx.distinct_colors && !ctx.same_color {
             let mut colors = available
                 .iter()
@@ -3024,8 +3027,15 @@ fn prompt_select_options(
     if min == max && min == 1 {
         println!("Select one option:");
     } else {
-        let unit = if weighted { "option point(s)" } else { "option(s)" };
-        println!("Select {} to {} {} (comma-separated indices):", min, max, unit);
+        let unit = if weighted {
+            "option point(s)"
+        } else {
+            "option(s)"
+        };
+        println!(
+            "Select {} to {} {} (comma-separated indices):",
+            min, max, unit
+        );
     }
 
     loop {

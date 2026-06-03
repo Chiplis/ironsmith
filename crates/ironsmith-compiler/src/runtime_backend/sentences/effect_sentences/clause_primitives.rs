@@ -1014,7 +1014,9 @@ fn value_references_power(value: &Value) -> bool {
     match value {
         Value::SourcePower | Value::PowerOf(_) => true,
         Value::Add(left, right) => value_references_power(left) || value_references_power(right),
-        Value::Scaled(value, _) | Value::SurfaceHinted { value, .. } => value_references_power(value),
+        Value::Scaled(value, _) | Value::SurfaceHinted { value, .. } => {
+            value_references_power(value)
+        }
         _ => false,
     }
 }
@@ -1054,7 +1056,8 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
 
     let power_ref_clause = after_equal_clause.trimmed();
     let power_ref_words = power_ref_clause.word_refs();
-    let (amount, power_ref_len) = if let Some((amount, used)) = parse_value_expr_words(&power_ref_words)
+    let (amount, power_ref_len) = if let Some((amount, used)) =
+        parse_value_expr_words(&power_ref_words)
         && value_references_power(&amount)
     {
         (amount, used)

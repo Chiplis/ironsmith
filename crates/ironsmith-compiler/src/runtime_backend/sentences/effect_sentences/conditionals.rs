@@ -52,11 +52,7 @@ const EXILE_TARGET_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
 const GREATEST_POWER_AMONG_CREATURES_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["greatest", "power", "among", "creatures"]]);
 const ON_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["on", "battlefield"],
-            &["on", "the", "battlefield"],
-        ]]
+    contains_any_phrases & [&[&["on", "battlefield"], &["on", "the", "battlefield"],]]
 );
 
 #[cfg(test)]

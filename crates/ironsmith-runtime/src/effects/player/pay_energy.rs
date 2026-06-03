@@ -181,7 +181,10 @@ impl EffectExecutor for PayAnyLifeEffect {
         if !game.can_lose_life(player_id) {
             return Ok(EffectOutcome::count(0));
         }
-        let available = game.player(player_id).map(|player| player.life).unwrap_or(0);
+        let available = game
+            .player(player_id)
+            .map(|player| player.life)
+            .unwrap_or(0);
         let available = available.max(0) as u32;
 
         if available < self.min_amount {

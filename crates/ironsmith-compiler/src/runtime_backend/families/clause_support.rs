@@ -256,8 +256,7 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
             return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
         }
         if matches!(value, "permanent" | "permanents")
-            && words.get(idx + 2..idx + 7)
-                == Some(&["that", "were", "cast", "this", "turn"][..])
+            && words.get(idx + 2..idx + 7) == Some(&["that", "were", "cast", "this", "turn"][..])
         {
             let mut filter = ObjectFilter::permanent();
             filter.cast_this_turn = true;
@@ -265,12 +264,8 @@ fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>
         }
         if value == "mana" && words.get(idx + 2).copied() == Some("value") {
             let comparison_tail = words.get(idx + 3..)?;
-            let (comparison, consumed) = parse_filter_comparison_tokens(
-                "mana value",
-                comparison_tail,
-                words,
-            )
-            .ok()??;
+            let (comparison, consumed) =
+                parse_filter_comparison_tokens("mana value", comparison_tail, words).ok()??;
             if consumed == comparison_tail.len() {
                 let mut filter = ObjectFilter::default();
                 filter.mana_value = Some(comparison);
@@ -645,12 +640,9 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
             }
             if value == "mana" && words.get(idx + 2).copied() == Some("value") {
                 let comparison_tail = words.get(idx + 3..)?;
-                let (comparison, consumed) = parse_filter_comparison_tokens(
-                    "mana value",
-                    comparison_tail,
-                    &words,
-                )
-                .ok()??;
+                let (comparison, consumed) =
+                    parse_filter_comparison_tokens("mana value", comparison_tail, &words)
+                        .ok()??;
                 if consumed == comparison_tail.len() {
                     let mut filter = ObjectFilter::default();
                     filter.mana_value = Some(comparison);

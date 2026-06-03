@@ -427,8 +427,15 @@ mod tests {
             })
             .expect("random modal choice should record the selected mode");
 
-        assert_eq!(chosen.len(), 1, "random choose-one should select exactly one mode");
-        assert!(!ctx.decision_maker.awaiting_choice(), "random modal choice should not prompt");
+        assert_eq!(
+            chosen.len(),
+            1,
+            "random choose-one should select exactly one mode"
+        );
+        assert!(
+            !ctx.decision_maker.awaiting_choice(),
+            "random modal choice should not prompt"
+        );
         assert_eq!(
             game.irreversible_random_count(),
             random_count_before + 1,

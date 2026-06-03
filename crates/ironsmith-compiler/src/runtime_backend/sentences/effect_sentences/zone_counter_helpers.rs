@@ -276,8 +276,7 @@ fn parse_life_lost_this_way_count(tokens: &[OwnedLexToken]) -> Option<Value> {
     if !matches!(
         tail,
         ["life", "lost", "this", "way"] | ["lives", "lost", "this", "way"]
-    )
-    {
+    ) {
         return None;
     }
 

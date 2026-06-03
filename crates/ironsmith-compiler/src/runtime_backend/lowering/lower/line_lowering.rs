@@ -36,8 +36,8 @@ const THIS_SPELL_COST_PREFIX_PATTERN: ClauseShape<'static> =
 const CREATURE_TYPE_OF_YOUR_CHOICE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["creature", "type", "of", "your", "choice"]]);
 const IF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
-const MORBID_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[
+const MORBID_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[
         PUT_THAT_CARD_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
         CREATURE_DIED_THIS_TURN_PHRASE,
     ]);
@@ -47,8 +47,8 @@ const BARGAINED_RETURN_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> 
         ONE_OF_THOSE_CARDS_MV_FOUR_OR_LESS_PHRASE,
         ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
     ]);
-const KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[
+const KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[
         PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE,
         PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE,
     ]);
@@ -689,9 +689,8 @@ fn tokens_mention_morbid_search_to_battlefield_replacement(tokens: &[OwnedLexTok
 }
 
 fn tokens_mention_bargained_return_to_battlefield_replacement(tokens: &[OwnedLexToken]) -> bool {
-    BARGAINED_RETURN_TO_BATTLEFIELD_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(
-        tokens,
-    ))
+    BARGAINED_RETURN_TO_BATTLEFIELD_REPLACEMENT_PATTERN
+        .matches_words(&parser_token_word_refs(tokens))
 }
 
 fn tokens_mention_kicked_count_override_replacement(tokens: &[OwnedLexToken]) -> bool {

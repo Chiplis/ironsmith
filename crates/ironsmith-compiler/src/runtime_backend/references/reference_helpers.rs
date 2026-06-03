@@ -179,7 +179,10 @@ fn push_target_player_filter_choices(filter: &PlayerFilter, choices: &mut Vec<Ch
     }
 }
 
-fn append_object_filter_target_player_choices(filter: &ObjectFilter, choices: &mut Vec<ChooseSpec>) {
+fn append_object_filter_target_player_choices(
+    filter: &ObjectFilter,
+    choices: &mut Vec<ChooseSpec>,
+) {
     if let Some(owner) = &filter.owner {
         push_target_player_filter_choices(owner, choices);
     }

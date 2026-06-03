@@ -1007,9 +1007,8 @@ fn parse_source_verbless_counted_counter_predicate(words: &[&str]) -> Option<Pre
         if !is_counter_on_source_pronoun_tail(counter_and_tail.get(on_idx..)?) {
             continue;
         }
-        let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
-            counter_and_tail.get(..on_idx)?,
-        );
+        let counter_tokens =
+            crate::runtime_backend::lexer::synthetic_word_tokens(counter_and_tail.get(..on_idx)?);
         let counter_type = parse_terminal_counter_phrase(&counter_tokens)??;
         return Some(PredicateAst::ValueComparison {
             left: Value::CountersOn(

@@ -127,11 +127,9 @@ impl EffectExecutor for CounterEffect {
             return Ok(EffectOutcome::target_invalid());
         }
 
-        Ok(EffectOutcome::aggregate(
-            target_ids
-                .into_iter()
-                .map(|target_id| counter_one_stack_object(game, ctx, target_id)),
-        ))
+        Ok(EffectOutcome::aggregate(target_ids.into_iter().map(
+            |target_id| counter_one_stack_object(game, ctx, target_id),
+        )))
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

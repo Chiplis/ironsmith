@@ -67,7 +67,9 @@ impl CostExecutableEffect for UnattachObjectsEffect {
             ChooseSpec::Tagged(_) => Ok(()),
             ChooseSpec::SpecificObject(id) => game
                 .object(*id)
-                .filter(|object| object.attached_to.and_then(|target| target.object_id()) == Some(source))
+                .filter(|object| {
+                    object.attached_to.and_then(|target| target.object_id()) == Some(source)
+                })
                 .map(|_| ())
                 .ok_or_else(|| {
                     CostValidationError::Other(

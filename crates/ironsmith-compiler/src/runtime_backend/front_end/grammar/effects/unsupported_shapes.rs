@@ -83,22 +83,21 @@ const MOST_COMMON_COLOR_EXCLUDED_SHARES_PATTERN: ClauseShape<'static> = clause_s
 const MOST_COMMON_COLOR_AMONG_ALL_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["most", "common", "color", "among", "all"]]);
 const POWER_LESS_THAN_OR_EQUAL_COUNT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases & [&["less", "than", "or", "equal", "to", "the", "number", "of",]]
+);
+const PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases
         & [&[
-            "less", "than", "or", "equal", "to", "the", "number", "of",
+            "put",
+            "into",
+            "graveyards",
+            "from",
+            "the",
+            "battlefield",
+            "this",
+            "turn",
         ]]
 );
-const PUT_INTO_GRAVEYARDS_FROM_BATTLEFIELD_THIS_TURN_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&[
-        "put",
-        "into",
-        "graveyards",
-        "from",
-        "the",
-        "battlefield",
-        "this",
-        "turn",
-    ]]);
 const LEAVES_THE_BATTLEFIELD_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["leaves", "the", "battlefield"]]);
 const SAME_NAME_AS_ANOTHER_CARD_IN_MARKER_PATTERN: ClauseShape<'static> =
@@ -317,9 +316,8 @@ pub(crate) fn has_chosen_at_random_clause_sentence_lexed(words: &[&str]) -> bool
 }
 
 pub(crate) fn has_defending_players_choice_clause_sentence_lexed(tokens: &[OwnedLexToken]) -> bool {
-    DEFENDING_PLAYER_CHOICE_MARKER_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-        tokens,
-    ))
+    DEFENDING_PLAYER_CHOICE_MARKER_PATTERN
+        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
 }
 
 pub(crate) fn has_target_creature_token_player_planeswalker_clause_sentence_lexed(
@@ -385,16 +383,15 @@ pub(crate) fn has_unsupported_negated_untap_clause_sentence_lexed(
     let words = crate::runtime_backend::token_word_refs(tokens);
     let has_supported_control_duration =
         FOR_AS_LONG_AS_YOU_CONTROL_MARKER_PATTERN.matches_words(&words);
-    let has_supported_source_tapped_duration =
-        FOR_AS_LONG_AS_MARKER_PATTERN.matches_words(&words)
-            && primitives::contains_word(tokens, "remains")
-            && primitives::contains_word(tokens, "tapped")
-            && (primitives::contains_word(tokens, "this")
-                || primitives::contains_word(tokens, "thiss")
-                || primitives::contains_word(tokens, "source")
-                || primitives::contains_word(tokens, "artifact")
-                || primitives::contains_word(tokens, "creature")
-                || primitives::contains_word(tokens, "permanent"));
+    let has_supported_source_tapped_duration = FOR_AS_LONG_AS_MARKER_PATTERN.matches_words(&words)
+        && primitives::contains_word(tokens, "remains")
+        && primitives::contains_word(tokens, "tapped")
+        && (primitives::contains_word(tokens, "this")
+            || primitives::contains_word(tokens, "thiss")
+            || primitives::contains_word(tokens, "source")
+            || primitives::contains_word(tokens, "artifact")
+            || primitives::contains_word(tokens, "creature")
+            || primitives::contains_word(tokens, "permanent"));
     is_negated_untap_clause_lexed(tokens)
         && !primitives::contains_word(tokens, "and")
         && !primitives::contains_word(tokens, "next")

@@ -114,11 +114,10 @@ pub use composition::{
     ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
     ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
     SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
-    TagAttachedToSourceEffect,
-    TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect,
-    TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect, UnlessActionEffect,
-    UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice, VoteEffect, VoteOption,
-    VoteResult, WithIdEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringDamageTargetEffect,
+    TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
+    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG, VoteChoice,
+    VoteEffect, VoteOption, VoteResult, WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
@@ -128,9 +127,8 @@ pub use control::{
 pub use counters::{
     DoubleCountersEffect, ForEachCounterKindPutOrRemoveEffect, MoveAllCountersEffect,
     MoveCountersEffect, MoveOneCounterEffect, ProliferateEffect, PutCounterOfChosenKindEffect,
-    PutCountersEffect,
-    RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect, RemoveCountersEffect,
-    RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
+    PutCountersEffect, RemoveAnyCountersAmongEffect, RemoveAnyCountersFromSourceEffect,
+    RemoveCountersEffect, RemoveUpToAnyCountersEffect, RemoveUpToCountersEffect,
 };
 pub(crate) use counters::{
     remove_any_counters_among_cost_display, remove_any_counters_among_valid_targets_with_tags,
@@ -146,7 +144,10 @@ pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
     ScheduleDelayedTriggerEffect, ScheduleEffectsWhenTaggedLeavesEffect, TaggedLeavesAbilitySource,
 };
-pub use life::{ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect, SetLifeTotalEffect};
+pub use life::{
+    ExchangeLifeTotalsEffect, GainLifeEffect, LoseLifeEffect, NoteLifeTotalEffect,
+    SetLifeTotalEffect,
+};
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
@@ -161,8 +162,8 @@ pub use permanents::{
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
     ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
-    SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect, UmbraArmorEffect, UnearthEffect,
-    UnattachObjectsEffect, UntapEffect,
+    SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
+    UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,
@@ -179,8 +180,8 @@ pub use player::{
     PayEnergyEffect, PoisonCountersEffect, ReduceSpeedEffect, RingTemptsYouEffect,
     RollDiceChooseResultEffect, RollDieEffect, SkipCombatPhasesEffect,
     SkipCombatPhasesThisTurnEffect, SkipDrawStepEffect, SkipMainPhasesThisTurnEffect,
-    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect,
-    TakeInitiativeEffect, TicketCountersEffect, VentureIntoDungeonEffect, WinTheGameEffect,
+    SkipNextCombatPhaseThisTurnEffect, SkipTurnEffect, TakeInitiativeEffect, TicketCountersEffect,
+    VentureIntoDungeonEffect, WinTheGameEffect,
 };
 pub use replacement::{
     ApplyReplacementEffect, RegisterDamagedBySourceZoneReplacementEffect,

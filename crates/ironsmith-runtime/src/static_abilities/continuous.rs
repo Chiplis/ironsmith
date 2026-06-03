@@ -967,8 +967,8 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             "as long as this creature is monstrous".to_string()
         }
         crate::ConditionExpr::SourceCrewedByExactly { count, filter } => {
-            let count_text = ironsmith_core::cardinal_word(*count)
-                .unwrap_or_else(|| count.to_string());
+            let count_text =
+                ironsmith_core::cardinal_word(*count).unwrap_or_else(|| count.to_string());
             let filter_text = if *count == 1 {
                 filter.description()
             } else {
@@ -979,9 +979,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     format!("{desc}s")
                 }
             };
-            format!(
-                "if it was crewed by exactly {count_text} {filter_text}"
-            )
+            format!("if it was crewed by exactly {count_text} {filter_text}")
         }
         crate::ConditionExpr::SourceDevouredCreaturesOrMore(count) => {
             if *count == 1 {

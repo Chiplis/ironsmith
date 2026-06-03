@@ -665,9 +665,9 @@ pub(crate) fn parse_simple_ability_duration(
 fn parse_source_tapped_ability_duration(
     words_after_verb: &[&str],
 ) -> Option<(usize, usize, Until, crate::ConditionExpr)> {
-    let idx = words_after_verb.windows(4).position(|window| {
-        window == ["for", "as", "long", "as"]
-    })?;
+    let idx = words_after_verb
+        .windows(4)
+        .position(|window| window == ["for", "as", "long", "as"])?;
     let tail = &words_after_verb[idx..];
     if tail.contains(&"this") && tail.contains(&"remains") && tail.contains(&"tapped") {
         Some((
@@ -1362,7 +1362,8 @@ pub(crate) fn parse_gain_ability_sentence(
     } else {
         None
     };
-    let (duration_phrase, duration_condition) = if words_start_nested_triggered_ability(after_gain) {
+    let (duration_phrase, duration_condition) = if words_start_nested_triggered_ability(after_gain)
+    {
         (None, None)
     } else {
         parse_ability_duration_with_condition(after_gain)
@@ -1370,17 +1371,20 @@ pub(crate) fn parse_gain_ability_sentence(
     let duration = duration_phrase
         .as_ref()
         .map(|(_, _, duration)| duration.clone())
-        .or_else(|| nested_quoted_ability.as_ref().map(|(_, duration)| duration.clone()))
+        .or_else(|| {
+            nested_quoted_ability
+                .as_ref()
+                .map(|(_, duration)| duration.clone())
+        })
         .or_else(|| {
             leading_duration_phrase
                 .as_ref()
                 .map(|(_, duration)| duration.clone())
         })
         .unwrap_or(Until::Forever);
-    let has_explicit_duration =
-        duration_phrase.is_some()
-            || nested_quoted_ability.is_some()
-            || leading_duration_phrase.as_ref().is_some();
+    let has_explicit_duration = duration_phrase.is_some()
+        || nested_quoted_ability.is_some()
+        || leading_duration_phrase.as_ref().is_some();
 
     let shared_get_tail_word_idx = if !losing {
         gain_find_any_phrase_start(after_gain, SHARED_GET_TAIL_PATTERNS).map(|(_, idx)| idx)
@@ -1733,12 +1737,14 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
-                target.clone(),
-                abilities,
-                duration,
-                &duration_condition,
-            ));
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    target.clone(),
+                    abilities,
+                    duration,
+                    &duration_condition,
+                ),
+            );
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
@@ -1765,12 +1771,14 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
-                target.clone(),
-                abilities,
-                duration,
-                &duration_condition,
-            ));
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    target.clone(),
+                    abilities,
+                    duration,
+                    &duration_condition,
+                ),
+            );
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
@@ -1801,12 +1809,14 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
-                target.clone(),
-                abilities,
-                duration,
-                &duration_condition,
-            ));
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    target.clone(),
+                    abilities,
+                    duration,
+                    &duration_condition,
+                ),
+            );
         }
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
         append_shared_subject_base_pt_to_target(&mut effects, &target, &following_base_pt_effect);
@@ -1843,12 +1853,14 @@ pub(crate) fn parse_gain_ability_sentence(
                 duration,
             ));
         } else {
-            effects.push(subject_verb_grant_abilities_to_target_with_optional_condition(
-                grant_target,
-                abilities,
-                duration,
-                &duration_condition,
-            ));
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    grant_target,
+                    abilities,
+                    duration,
+                    &duration_condition,
+                ),
+            );
         }
         let following_pump_target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens));

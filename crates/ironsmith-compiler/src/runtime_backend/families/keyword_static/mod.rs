@@ -80,14 +80,13 @@ use super::lexer::{
     split_lexed_sentences, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
     token_slice_first_is_any, token_slice_starts_with, trim_lexed_commas, word_slice_at_is,
     word_slice_at_is_any, word_slice_contains_all_words, word_slice_contains_any_phrase,
-    word_slice_contains_any_word, word_slice_contains_no_words,
-    word_slice_contains_word, word_slice_ends_with, word_slice_ends_with_any, word_slice_eq,
-    word_slice_eq_any, word_slice_eq_any_at, word_slice_eq_at, word_slice_find_any_phrase_span,
+    word_slice_contains_any_word, word_slice_contains_no_words, word_slice_contains_word,
+    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_eq_any_at, word_slice_eq_at, word_slice_find_any_phrase_span,
     word_slice_find_any_phrase_start, word_slice_find_phrase_start,
     word_slice_find_phrase_start_or_zero, word_slice_find_word, word_slice_find_word_where,
     word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
-    word_slice_starts_with_any, word_slice_starts_with_at,
-    word_slice_strip_any_prefix,
+    word_slice_starts_with_any, word_slice_starts_with_at, word_slice_strip_any_prefix,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -10360,10 +10359,12 @@ pub(crate) fn parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_lin
     idx += 1;
 
     if words.get(idx..idx + 17)
-        != Some(&[
-            "cards", "revealed", "this", "way", "into", "your", "hand", "and", "the",
-            "rest", "on", "the", "bottom", "of", "your", "library", "in",
-        ][..])
+        != Some(
+            &[
+                "cards", "revealed", "this", "way", "into", "your", "hand", "and", "the", "rest",
+                "on", "the", "bottom", "of", "your", "library", "in",
+            ][..],
+        )
     {
         return Ok(None);
     }

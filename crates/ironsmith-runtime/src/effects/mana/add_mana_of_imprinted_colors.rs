@@ -65,11 +65,19 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
             return Ok(EffectOutcome::count(0));
         }
 
-        let chosen_color =
-            choose_mana_colors(game, ctx, controller, 1, true, false, Some(&colors), colors[0])
-                .into_iter()
-                .next()
-                .unwrap_or(colors[0]);
+        let chosen_color = choose_mana_colors(
+            game,
+            ctx,
+            controller,
+            1,
+            true,
+            false,
+            Some(&colors),
+            colors[0],
+        )
+        .into_iter()
+        .next()
+        .unwrap_or(colors[0]);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }

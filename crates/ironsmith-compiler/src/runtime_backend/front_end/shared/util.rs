@@ -1742,8 +1742,10 @@ pub(crate) fn starts_with_activation_cost(tokens: &[OwnedLexToken]) -> bool {
     };
     if first_token.kind == TokenKind::LBracket {
         return tokens.get(1).is_some_and(|token| {
-            matches!(token.kind, TokenKind::Plus | TokenKind::Dash | TokenKind::Number)
-                || token.as_word().is_some_and(|word| word == "0")
+            matches!(
+                token.kind,
+                TokenKind::Plus | TokenKind::Dash | TokenKind::Number
+            ) || token.as_word().is_some_and(|word| word == "0")
         });
     }
     if mana_pips_from_token(first_token).is_some() {
@@ -5337,7 +5339,10 @@ pub(crate) fn parse_madness_line_lexed(
 }
 
 fn strip_leading_keyword_cost_separator(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if matches!(tokens.first().map(|token| token.kind), Some(TokenKind::Dash | TokenKind::EmDash)) {
+    if matches!(
+        tokens.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
         tokens.get(1..).unwrap_or_default()
     } else {
         tokens
@@ -5354,14 +5359,10 @@ fn parse_pay_repeated_mana_symbol_cost(tokens: &[OwnedLexToken]) -> Option<ManaC
         return None;
     }
 
-    let count = tokens[1]
-        .parser_text()
-        .parse::<u8>()
-        .ok()
-        .or_else(|| {
-            ironsmith_core::parse_cardinal_word(tokens[1].parser_text())
-                .and_then(|value| value.try_into().ok())
-        })?;
+    let count = tokens[1].parser_text().parse::<u8>().ok().or_else(|| {
+        ironsmith_core::parse_cardinal_word(tokens[1].parser_text())
+            .and_then(|value| value.try_into().ok())
+    })?;
     let pip = mana_pips_from_token(&tokens[2])?;
     if pip.len() != 1 {
         return None;

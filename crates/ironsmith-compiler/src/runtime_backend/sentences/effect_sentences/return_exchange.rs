@@ -354,8 +354,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     };
     let has_delayed_timing_words = grammar::contains_word(destination_tokens_full, "beginning")
         || grammar::contains_word(destination_tokens_full, "upkeep")
-        || RETURN_END_OF_COMBAT_PATTERN
-            .matches_words(&crate::runtime_backend::token_word_refs(destination_tokens_full))
+        || RETURN_END_OF_COMBAT_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
+            destination_tokens_full,
+        ))
         || grammar::contains_word(destination_tokens_full, "end")
             && (grammar::contains_word(destination_tokens_full, "next")
                 || grammar::contains_word(destination_tokens_full, "step"));

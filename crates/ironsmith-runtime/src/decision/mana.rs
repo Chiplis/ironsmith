@@ -4115,10 +4115,10 @@ fn can_pay_expanded_pips(
             }
             let mut source_policy = mana_spend_policy.clone();
             source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
-                    player,
-                    payment_source,
-                    source.source_id,
-                );
+                player,
+                payment_source,
+                source.source_id,
+            );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
                     consume_output_for_pip(output, symbol, &source_policy)
@@ -4218,10 +4218,10 @@ fn can_pay_expanded_pips_large_source_count(
             }
             let mut source_policy = mana_spend_policy.clone();
             source_policy.allow_any_color |= game.can_spend_mana_as_any_color_from_mana_source(
-                    player,
-                    payment_source,
-                    source.source_id,
-                );
+                player,
+                payment_source,
+                source.source_id,
+            );
             for output in &source.outputs {
                 if let Some(pool_from_output) =
                     consume_output_for_pip(output, symbol, &source_policy)

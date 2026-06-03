@@ -1644,11 +1644,9 @@ pub fn evaluate_condition_external(
             .trigger_identity
             .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) == 0)
             .unwrap_or(true),
-        Condition::SourceFirstCrewedThisTurn => source_first_crewed_this_turn(
-            game,
-            ctx.source,
-            ctx.triggering_event,
-        ),
+        Condition::SourceFirstCrewedThisTurn => {
+            source_first_crewed_this_turn(game, ctx.source, ctx.triggering_event)
+        }
         Condition::MaxTimesEachTurn(limit) | Condition::DoThisMaxTimesEachTurn(limit) => ctx
             .trigger_identity
             .map(|id| game.trigger_fire_count_this_turn(ctx.source, id) < *limit)

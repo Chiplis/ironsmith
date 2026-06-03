@@ -2776,7 +2776,8 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             } else {
                 subject
             };
-            let mut ability_lines = describe_ability(idx + 1, ability, ability_subject, rewrite_it_deals);
+            let mut ability_lines =
+                describe_ability(idx + 1, ability, ability_subject, rewrite_it_deals);
             for line in &mut ability_lines {
                 *line = substitute_legendary_source_reference(line, &def.card, subject);
             }
@@ -2959,7 +2960,9 @@ fn ability_is_this_spell_cost_modifier(ability: &Ability) -> bool {
         return false;
     };
     static_ability.this_spell_cost_reduction().is_some()
-        || static_ability.this_spell_cost_reduction_mana_cost().is_some()
+        || static_ability
+            .this_spell_cost_reduction_mana_cost()
+            .is_some()
 }
 
 fn is_choose_background_spell_effect(spell_effects: &crate::ResolutionProgram) -> bool {

@@ -1,4 +1,5 @@
 use super::*;
+use crate::ZoneReplacementDurationAst;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
 use crate::runtime_backend::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
@@ -10,7 +11,6 @@ use crate::runtime_backend::lexer::parser_token_word_refs;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
-use crate::ZoneReplacementDurationAst;
 
 const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
@@ -179,24 +179,13 @@ const COMBINED_SPELL_AND_ACTIVATION_TAX_PATTERN: ClauseShape<'static> = clause_s
 );
 const THIS_TURN_CONTAINS_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "turn"]]);
-const TEMPORARY_STATIC_NEGATION_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_words
-        & [
-            &["cant", "can't", "dont", "don't", "doesnt", "doesn't"]
-        ]
-);
+const TEMPORARY_STATIC_NEGATION_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_words & [&["cant", "can't", "dont", "don't", "doesnt", "doesn't"]]);
 const LINKED_EXILED_CARD_COST_MORE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases
         & [
             &[
-                "for",
-                "as",
-                "long",
-                "as",
-                "that",
-                "card",
-                "remains",
-                "exiled",
+                "for", "as", "long", "as", "that", "card", "remains", "exiled",
             ],
             &["more", "to", "cast"],
         ]
@@ -214,13 +203,11 @@ const TARGETED_TEMPORARY_MODIFIER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_words & ["target"];
     contains_any_words & [&["get", "gets", "gain", "gains"]]
 );
-const IF_INSTEAD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["if", "instead"]);
+const IF_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["if", "instead"]);
 const CANT_CAST_PHRASES: &[&[&str]] = &[&["cant", "cast"], &["can't", "cast"]];
-const CANT_CAST_NEXT_TURN_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[CANT_CAST_PHRASES]).contains_phrases(&[&[
-        "next", "turn",
-    ]]);
+const CANT_CAST_NEXT_TURN_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_any_phrases(&[CANT_CAST_PHRASES])
+    .contains_phrases(&[&["next", "turn"]]);
 const UNTIL_END_OF_TURN_NEGATION_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases & [&["until", "end", "of", "turn"]];
     contains_any_words
@@ -243,11 +230,10 @@ const REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES: &[&[&str]] = &[
 const REVEALED_CARDS_TOTAL_MANA_VALUE_X_PATTERN: ClauseShape<'static> =
     ClauseShape::new().contains_any_phrases(&[REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES]);
 const EFFECT_STARTS_IF_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
-const FIRST_EQUIP_COST_ALTERNATIVE_PATTERN: ClauseShape<'static> =
-    ClauseShape::new()
-        .prefix(YOU_MAY_PAY_PREFIX)
-        .contains_phrases(&[FIRST_EQUIP_COST_ALTERNATIVE_PHRASE])
-        .suffix_any(FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES);
+const FIRST_EQUIP_COST_ALTERNATIVE_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .prefix(YOU_MAY_PAY_PREFIX)
+    .contains_phrases(&[FIRST_EQUIP_COST_ALTERNATIVE_PHRASE])
+    .suffix_any(FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES);
 const THIS_OR_IT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["this"], &["it"]]);
 const CANT_BE_BLOCKED_LINE_PATTERN: ClauseShape<'static> =

@@ -301,9 +301,8 @@ mod tests {
         let spell_source = game.new_object_id();
         let damage_source = create_creature(&mut game, "Damage Source", bob);
         let protected = create_creature(&mut game, "Protected", alice);
-        let protected_spec = ChooseSpec::target(ChooseSpec::Object(
-            crate::target::ObjectFilter::creature(),
-        ));
+        let protected_spec =
+            ChooseSpec::target(ChooseSpec::Object(crate::target::ObjectFilter::creature()));
         let follow_up_spec = ChooseSpec::AnyTarget;
 
         let follow_up = Effect::deal_damage(

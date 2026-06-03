@@ -2116,9 +2116,9 @@ pub(crate) fn parse_trigger_clause_lexed(
             .unwrap_or(tokens.len());
         let subject_tokens = &tokens[..leaves_token_idx];
 
-        if let Some(surface) =
-            source_reference_surface_for_trigger_subject(strip_leading_trigger_intro(subject_tokens))
-        {
+        if let Some(surface) = source_reference_surface_for_trigger_subject(
+            strip_leading_trigger_intro(subject_tokens),
+        ) {
             return Ok(this_leaves_battlefield_trigger_spec(Some(surface)));
         }
 
@@ -3105,9 +3105,7 @@ pub(crate) fn parse_trigger_clause_lexed(
         )
     }) {
         let subject_words = &words[..crew_word_idx];
-        let source_becomes_crewed = subject_words
-            .last()
-            .is_some_and(|word| *word == "becomes")
+        let source_becomes_crewed = subject_words.last().is_some_and(|word| *word == "becomes")
             && is_source_reference_words(&subject_words[..subject_words.len().saturating_sub(1)]);
         let source_filter = if source_becomes_crewed {
             Some(ObjectFilter::default())
@@ -4180,9 +4178,12 @@ pub(crate) fn parse_trigger_clause_lexed(
             })
         }
         _ if BEGINNING_END_STEP_TRIGGER_PATTERN.matches_words(&words)
-            && !NEXT_END_STEP_TRIGGER_PATTERN.matches_words(&words) => Ok(
-            TriggerSpec::BeginningOfEndStep(parse_possessive_clause_player_filter(&words)),
-        ),
+            && !NEXT_END_STEP_TRIGGER_PATTERN.matches_words(&words) =>
+        {
+            Ok(TriggerSpec::BeginningOfEndStep(
+                parse_possessive_clause_player_filter(&words),
+            ))
+        }
         _ if BEGINNING_UPKEEP_TRIGGER_PATTERN.matches_words(&words) => Ok(
             TriggerSpec::BeginningOfUpkeep(parse_possessive_clause_player_filter(&words)),
         ),

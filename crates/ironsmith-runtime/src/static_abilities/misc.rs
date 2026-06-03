@@ -5,11 +5,11 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, NoteLifeTotalAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
-    GraveyardCountMetric, PowerToughnessChoiceOption, StaticAbility, StaticAbilityId,
-    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
+    GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
+    StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
     TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
@@ -4723,10 +4723,12 @@ impl StaticAbilityKind for DrawReplacementRevealTopMatchingToHandRestBottom {
 
         let mut matching_filter = self.filter.clone();
         matching_filter.zone = None;
-        matching_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(REVEALED_TAG),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
+        matching_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(REVEALED_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
 
         Some(ReplacementEffect::with_matcher(
             source,
@@ -5448,10 +5450,7 @@ impl StaticAbilityKind for DeckConstructionRuleText {
 
         if let Some((prefix, name)) = self.text.rsplit_once("cards named ") {
             let name = name.trim_end_matches('.');
-            return format!(
-                "{prefix}cards named {}.",
-                title_case_name_fragment(name)
-            );
+            return format!("{prefix}cards named {}.", title_case_name_fragment(name));
         }
         self.text.clone()
     }

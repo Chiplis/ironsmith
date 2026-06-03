@@ -135,11 +135,8 @@ mod tests {
     fn tags_matching_objects_on_battlefield_when_no_zone_is_specified() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
-        let creature_id = game.create_object_from_card(
-            &make_card("Battlefield Bear"),
-            alice,
-            Zone::Battlefield,
-        );
+        let creature_id =
+            game.create_object_from_card(&make_card("Battlefield Bear"), alice, Zone::Battlefield);
 
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);

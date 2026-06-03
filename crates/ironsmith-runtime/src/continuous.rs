@@ -2207,9 +2207,9 @@ fn continuous_effect_duration_is_active(
         Until::ThisLeavesTheBattlefield => game
             .object(effect.source)
             .is_some_and(|obj| obj.zone == Zone::Battlefield),
-        Until::SourceUntaps => game.object(effect.source).is_some_and(|obj| {
-            obj.zone == Zone::Battlefield && game.is_tapped(effect.source)
-        }),
+        Until::SourceUntaps => game
+            .object(effect.source)
+            .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(effect.source)),
         Until::YouStopControllingThis => game.object(effect.source).is_some_and(|obj| {
             obj.zone == Zone::Battlefield
                 && game

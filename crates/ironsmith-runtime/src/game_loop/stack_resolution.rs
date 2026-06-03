@@ -70,7 +70,9 @@ fn object_filter_references_target_player(filter: &crate::target::ObjectFilter) 
         filter.owner.as_ref(),
         filter.targets_player.as_ref(),
         filter.targets_only_player.as_ref(),
-        filter.attacking_player_or_planeswalker_controlled_by.as_ref(),
+        filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
     ]
@@ -101,7 +103,9 @@ fn choose_spec_references_target_player(spec: &crate::target::ChooseSpec) -> boo
         | ChooseSpec::WithCountValue(spec, _, _) => choose_spec_references_target_player(spec),
         ChooseSpec::Player(filter)
         | ChooseSpec::EachPlayer(filter)
-        | ChooseSpec::PlayerOrPlaneswalker(filter) => player_filter_references_target_player(filter),
+        | ChooseSpec::PlayerOrPlaneswalker(filter) => {
+            player_filter_references_target_player(filter)
+        }
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             object_filter_references_target_player(filter)
         }
@@ -496,13 +500,12 @@ pub(crate) fn execute_resolution_program(
                 || effect_references_prior_object_targets(effect)
             {
                 let scope_assignments = if effect_references_prior_target_player(effect) {
-                    let previous_assignment_end = if assignment_start == 0
-                        && effect_target_assignments.is_empty()
-                    {
-                        valid_target_assignments.len()
-                    } else {
-                        assignment_start
-                    };
+                    let previous_assignment_end =
+                        if assignment_start == 0 && effect_target_assignments.is_empty() {
+                            valid_target_assignments.len()
+                        } else {
+                            assignment_start
+                        };
                     let mut assignments = previous_player_target_assignments(
                         &ctx.targets,
                         valid_target_assignments,
@@ -2115,7 +2118,11 @@ mod tests {
     #[test]
     fn stack_resolution_preserves_explicit_player_target_for_filtered_continuous_effect() {
         let mut game = GameState::new(
-            vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
             20,
         );
         let alice = PlayerId::from_index(0);

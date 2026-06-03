@@ -1182,7 +1182,10 @@ impl RevealFromHandEffect {
         if self.count == Value::Fixed(1) {
             format!("Reveal a {card_desc} from your hand")
         } else {
-            format!("Reveal {} {card_desc}s from your hand", self.count_display())
+            format!(
+                "Reveal {} {card_desc}s from your hand",
+                self.count_display()
+            )
         }
     }
 }
@@ -4230,10 +4233,7 @@ impl AddManaOfAnyColorEffect {
         Self::restricted(amount, PlayerFilter::You, available_colors)
     }
 
-    pub fn you_restricted_distinct(
-        amount: impl Into<Value>,
-        available_colors: Vec<Color>,
-    ) -> Self {
+    pub fn you_restricted_distinct(amount: impl Into<Value>, available_colors: Vec<Color>) -> Self {
         Self::restricted_distinct(amount, PlayerFilter::You, available_colors)
     }
 }

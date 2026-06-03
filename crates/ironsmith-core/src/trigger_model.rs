@@ -501,7 +501,10 @@ impl Trigger {
         Self::typed("blocks", TriggerKind::Blocks { filter })
     }
     pub fn blocks_one_or_more(filter: ObjectFilter) -> Self {
-        Self::typed("blocks_one_or_more", TriggerKind::BlocksOneOrMore { filter })
+        Self::typed(
+            "blocks_one_or_more",
+            TriggerKind::BlocksOneOrMore { filter },
+        )
     }
     pub fn this_becomes_blocked() -> Self {
         Self::typed("this_becomes_blocked", TriggerKind::ThisBecomesBlocked)

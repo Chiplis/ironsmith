@@ -280,12 +280,10 @@ where
         additional_costs: Vec<C>,
         exiles_after_resolution: bool,
     ) -> Self {
-        Self::DerivedAlternativeCast(
-            DerivedAlternativeCast::graveyard_cast_from_cards_mana_cost(
-                additional_costs,
-                exiles_after_resolution,
-            ),
-        )
+        Self::DerivedAlternativeCast(DerivedAlternativeCast::graveyard_cast_from_cards_mana_cost(
+            additional_costs,
+            exiles_after_resolution,
+        ))
     }
 
     pub fn graveyard_cast_from_cards_mana_cost_with_condition(

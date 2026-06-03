@@ -917,7 +917,9 @@ pub(crate) fn compile_vote_sequence(
     }
 
     let vote_start = match &first.effect {
-        EffectAst::VoteStart { options, secret } => Some((Some(options.clone()), None, None, *secret)),
+        EffectAst::VoteStart { options, secret } => {
+            Some((Some(options.clone()), None, None, *secret))
+        }
         EffectAst::VoteStartObjects {
             filter,
             count,

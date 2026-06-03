@@ -41,9 +41,9 @@ fn valid_reveal_from_hand_cards(
                         return false;
                     }
                     if let Some(required_colors) = effect.color_filter {
-                        return game
-                            .current_colors(*card_id)
-                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                        return game.current_colors(*card_id).is_some_and(|colors| {
+                            !colors.intersection(required_colors).is_empty()
+                        });
                     }
                     true
                 })

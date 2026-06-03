@@ -318,9 +318,11 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             predicate,
             if_true,
             if_false,
-        } => predicate_references_tag(predicate, tag)
-            || effects_reference_tag(if_true, tag)
-            || effects_reference_tag(if_false, tag),
+        } => {
+            predicate_references_tag(predicate, tag)
+                || effects_reference_tag(if_true, tag)
+                || effects_reference_tag(if_false, tag)
+        }
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::CopySpellForEachTarget { object_filter, .. },
             ..
@@ -447,7 +449,8 @@ pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> b
             graveyard_filter,
             ..
         } => {
-            filter_references_tag(control_filter, tag) || filter_references_tag(graveyard_filter, tag)
+            filter_references_tag(control_filter, tag)
+                || filter_references_tag(graveyard_filter, tag)
         }
         PredicateAst::ValueComparison { left, right, .. } => {
             value_references_tag(left, tag) || value_references_tag(right, tag)

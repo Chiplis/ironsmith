@@ -962,21 +962,20 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_conditioned_spell_and_activation_tax_lines(
-            merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
-                merge_specific_adjacent_surface_lines(merge_lose_all_transform_lines(
-                    merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
-                        annotate_color_choice_exclusions(merge_same_true_color_lines(
-                            merge_same_true_type_addition_lines(
+        let merged =
+            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
+                drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
+                    merge_lose_all_transform_lines(merge_attached_transform_keyword_loss_lines(
+                        merge_blockability_lines(annotate_color_choice_exclusions(
+                            merge_same_true_color_lines(merge_same_true_type_addition_lines(
                                 merge_same_true_keyword_grant_lines(
                                     merge_subject_predicate_surface_lines(previous.clone()),
                                 ),
-                            ),
+                            )),
                         )),
                     )),
                 )),
-            )),
-        );
+            ));
         if merged == previous {
             return merged;
         }

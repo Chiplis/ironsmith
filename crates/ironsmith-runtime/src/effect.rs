@@ -831,10 +831,7 @@ pub(crate) trait RestrictionExt {
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
         iterated_player: Option<crate::ids::PlayerId>,
-        tagged_objects: &std::collections::HashMap<
-            TagKey,
-            Vec<crate::snapshot::ObjectSnapshot>,
-        >,
+        tagged_objects: &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     );
 }
 
@@ -846,10 +843,7 @@ impl RestrictionExt for Restriction {
         controller: crate::ids::PlayerId,
         source: Option<crate::ids::ObjectId>,
         iterated_player: Option<crate::ids::PlayerId>,
-        tagged_objects: &std::collections::HashMap<
-            TagKey,
-            Vec<crate::snapshot::ObjectSnapshot>,
-        >,
+        tagged_objects: &std::collections::HashMap<TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
     ) {
         use crate::game_loop::player_matches_filter_with_combat;
 

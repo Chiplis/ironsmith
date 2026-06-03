@@ -7,9 +7,7 @@ use super::activation_and_restrictions::{
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
 use super::effect_sentences::clause_pattern_helpers::ClauseShape;
-use super::lexer::{
-    OwnedLexToken, TokenWordView, lex_line, render_token_slice, token_word_refs,
-};
+use super::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice, token_word_refs};
 
 const ACTIVATE_ONLY_ONCE_EACH_TURN_PHRASE: &[&str] = &["activate", "only", "once", "each", "turn"];
 const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX: &[&str] =

@@ -872,8 +872,12 @@ fn prevention_damage_any_target_follow_up(
     let [effect] = follow_up_effects else {
         return None;
     };
-    let damage = unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
-    if !matches!(damage.amount.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+    let damage =
+        unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(
+        damage.amount.unhinted(),
+        Value::EventValue(EventValueSpec::Amount)
+    ) {
         return None;
     }
     if !matches!(damage.target, ChooseSpec::AnyTarget) {
@@ -3132,14 +3136,19 @@ fn describe_damage_and_controlled_damage_pair(effects: &[Effect]) -> Option<Stri
         return None;
     };
     let (inner_source, object_damage) = source_damage(inner)?;
-    if object_damage.amount != player_damage.amount || !matches!(object_damage.target, ChooseSpec::Iterated)
+    if object_damage.amount != player_damage.amount
+        || !matches!(object_damage.target, ChooseSpec::Iterated)
     {
         return None;
     }
     let mut objects = describe_each_controlled_by_iterated(&for_each.filter)?;
     objects = objects.replace(" they control", " that player controls");
     let amount = describe_damage_amount_clause(&player_damage.amount).0;
-    if let Some(subject) = source.or(for_each_source).or(inner_source).map(describe_choose_spec) {
+    if let Some(subject) = source
+        .or(for_each_source)
+        .or(inner_source)
+        .map(describe_choose_spec)
+    {
         return Some(format!(
             "{subject} deals {amount} to that player and {objects}"
         ));
@@ -3850,10 +3859,9 @@ fn describe_double_power_then_grant_same_filter(effects: &[Effect]) -> Option<St
     {
         return None;
     }
-    let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-        power,
-        toughness,
-    }] = pump.runtime_modifications.as_slice()
+    let [
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness { power, toughness },
+    ] = pump.runtime_modifications.as_slice()
     else {
         return None;
     };
@@ -5289,7 +5297,8 @@ fn describe_player_protection_from_everything_pair(effects: &[&Effect]) -> Optio
         return None;
     };
     let cant = cant_effect.downcast_ref::<crate::effects::CantEffect>()?;
-    let prevent = prevent_effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()?;
+    let prevent =
+        prevent_effect.downcast_ref::<crate::effects::PreventAllDamageToTargetEffect>()?;
     let crate::effect::Restriction::BeTargetedPlayer(player) = &cant.restriction else {
         return None;
     };
@@ -16990,7 +16999,10 @@ pub(super) fn cleanup_decompiled_text(text: &str) -> String {
     }
 
     for (from, to) in [
-        ("votes are revealed, for each vote", "votes are revealed. For each vote"),
+        (
+            "votes are revealed, for each vote",
+            "votes are revealed. For each vote",
+        ),
         (", then for each vote", ". For each vote"),
         ("you gets", "you get"),
         ("you puts", "you put"),
@@ -17735,8 +17747,10 @@ fn triggered_deals_same_damage_to_each_other_opponent(
     matches!(
         deal_damage.amount,
         Value::EventValue(EventValueSpec::Amount)
-    ) && matches!(deal_damage.target, ChooseSpec::Player(PlayerFilter::IteratedPlayer))
-        && !deal_damage.source_is_combat
+    ) && matches!(
+        deal_damage.target,
+        ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+    ) && !deal_damage.source_is_combat
 }
 
 fn rewrite_damaged_player_reference_for_damage_trigger(
@@ -24641,9 +24655,7 @@ fn ability_is_suspend_exile_trigger(ability: &crate::ability::Ability) -> bool {
         && ability.functional_zones == [Zone::Exile]
 }
 
-fn modification_adds_suspend_exile_trigger(
-    modification: &crate::continuous::Modification,
-) -> bool {
+fn modification_adds_suspend_exile_trigger(modification: &crate::continuous::Modification) -> bool {
     matches!(
         modification,
         crate::continuous::Modification::AddAbilityGeneric(ability)
@@ -24682,10 +24694,7 @@ fn describe_put_counters_then_gain_suspend(effects: &[Effect]) -> Option<String>
     let put = tagged_put
         .effect
         .downcast_ref::<crate::effects::PutCountersEffect>()?;
-    if put.counter_type != CounterType::Time
-        || put.target_count.is_some()
-        || put.distributed
-    {
+    if put.counter_type != CounterType::Time || put.target_count.is_some() || put.distributed {
         return None;
     }
 
@@ -30465,7 +30474,9 @@ fn describe_cards_in_hand_difference_conditional(
         return None;
     }
     let draw = conditional.if_true[0].downcast_ref::<crate::effects::DrawCardsEffect>()?;
-    if draw.player != PlayerFilter::You || !draw.count.has_surface_hint(ValueSurfaceHint::Difference) {
+    if draw.player != PlayerFilter::You
+        || !draw.count.has_surface_hint(ValueSurfaceHint::Difference)
+    {
         return None;
     }
     let threshold = count + 1;
@@ -34769,10 +34780,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 header = format!("{prefix} at random —");
             }
         }
-        let has_weighted_modes = choose_mode
-            .mode_point_costs
-            .iter()
-            .any(|cost| *cost != 1);
+        let has_weighted_modes = choose_mode.mode_point_costs.iter().any(|cost| *cost != 1);
         if has_weighted_modes {
             if let crate::effect::Value::Fixed(max) = &choose_mode.choose_count {
                 if choose_mode.min_choose_count == crate::effect::Value::Fixed(0) {
@@ -35024,7 +35032,8 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             _ => describe_choose_spec(&create_copy.target),
         };
         let inline_tapped = create_copy.enters_tapped;
-        let inline_attacking = create_copy.enters_attacking && create_copy.attack_target_mode.is_none();
+        let inline_attacking =
+            create_copy.enters_attacking && create_copy.attack_target_mode.is_none();
         let token_state = match (inline_tapped, inline_attacking) {
             (true, true) => "tapped and attacking ",
             (true, false) => "tapped ",
@@ -35033,7 +35042,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
         let mut text = match create_copy.count {
             Value::Fixed(1) => format!("Create a {token_state}token that's a copy of {target}"),
-            Value::Fixed(n) => format!("Create {n} {token_state}tokens that are copies of {target}"),
+            Value::Fixed(n) => {
+                format!("Create {n} {token_state}tokens that are copies of {target}")
+            }
             _ => format!(
                 "Create {} {token_state}tokens that are copies of {target}",
                 describe_value(&create_copy.count)
@@ -37043,9 +37054,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             | crate::effects::ReplacementApplyMode::UntilEndOfTurn => " this turn",
             crate::effects::ReplacementApplyMode::Resolution => "",
         };
-        if let Some(replacement) =
-            describe_draw_replacement_exile_top_play(&register.player, &register.replacement_effects)
-        {
+        if let Some(replacement) = describe_draw_replacement_exile_top_play(
+            &register.player,
+            &register.replacement_effects,
+        ) {
             return format!(
                 "The next time {player} would draw a card{duration}, instead {replacement}"
             );

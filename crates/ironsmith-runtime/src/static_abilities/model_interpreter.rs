@@ -2183,7 +2183,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn has_affinity(&self) -> bool {
-        matches!(self.id(), StaticAbilityId::Affinity | StaticAbilityId::AffinityForArtifacts)
+        matches!(
+            self.id(),
+            StaticAbilityId::Affinity | StaticAbilityId::AffinityForArtifacts
+        )
     }
 
     fn has_delve(&self) -> bool {

@@ -316,10 +316,9 @@ fn repair_that_object_power_damage_subject(
                 source,
                 amount,
                 target,
-            }
-                if (matches!(source, TargetAst::Source(_))
-                    || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
-                    && matches!(target, TargetAst::Source(_)) =>
+            } if (matches!(source, TargetAst::Source(_))
+                || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
+                && matches!(target, TargetAst::Source(_)) =>
             {
                 subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
                     source: source_target.clone(),

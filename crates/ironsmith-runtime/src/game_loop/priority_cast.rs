@@ -511,11 +511,12 @@ pub(super) fn compute_spell_cast_x_bounds(
             crate::costs::PaymentReason::CastSpell,
         );
         max_x = Some(
-            compute_potential_mana(game, caster).max_x_for_cost_with_mana_spend_policy_and_black_life(
-                cost,
-                &mana_spend_policy,
-                allow_black_life,
-            ),
+            compute_potential_mana(game, caster)
+                .max_x_for_cost_with_mana_spend_policy_and_black_life(
+                    cost,
+                    &mana_spend_policy,
+                    allow_black_life,
+                ),
         );
     }
 
@@ -1908,14 +1909,20 @@ pub(super) fn compute_mana_ability_payment_options(
         }
 
         // Get the mana this ability produces and check if it can help pay the cost
-    let mana_spend_policy = game.mana_spend_policy(player, Some(pending.source));
+        let mana_spend_policy = game.mana_spend_policy(player, Some(pending.source));
         let can_help = if game.object(*perm_id).is_some()
             && let Some(ability) = game.current_ability(*perm_id, *ability_index)
             && let AbilityKind::Activated(mana_ability) = &ability.kind
             && mana_ability.is_runtime_mana_ability(game, *perm_id, player)
         {
             let produced = mana_ability.inferred_mana_symbols(game, *perm_id, player);
-            mana_can_help_pay_cost(&produced, &pending.mana_cost, game, player, &mana_spend_policy)
+            mana_can_help_pay_cost(
+                &produced,
+                &pending.mana_cost,
+                game,
+                player,
+                &mana_spend_policy,
+            )
         } else {
             // If we can't determine, include it
             true
@@ -1993,10 +2000,9 @@ pub(super) fn mana_can_help_pay_cost(
                 }
                 // Colorless mana can only be paid by colorless
                 ManaSymbol::Colorless => {
-                    if mana_produced
-                        .iter()
-                        .any(|symbol| mana_spend_policy.can_pay_symbol(*symbol, ManaSymbol::Colorless))
-                    {
+                    if mana_produced.iter().any(|symbol| {
+                        mana_spend_policy.can_pay_symbol(*symbol, ManaSymbol::Colorless)
+                    }) {
                         return true;
                     }
                 }
@@ -2248,9 +2254,9 @@ pub(super) fn get_legal_reveal_from_hand_cards(
                         return false;
                     }
                     if let Some(required_colors) = color_filter {
-                        return game
-                            .current_colors(card_id)
-                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                        return game.current_colors(card_id).is_some_and(|colors| {
+                            !colors.intersection(required_colors).is_empty()
+                        });
                     }
                     true
                 })

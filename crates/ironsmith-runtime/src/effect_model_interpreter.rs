@@ -725,7 +725,8 @@ where
     {
         return Ok(converted);
     }
-    if let Some(converted) = clone_direct_effect::<M, crate::effects::UnattachObjectsEffect>(&effect)
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::UnattachObjectsEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1168,11 +1169,10 @@ where
         } else {
             crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(payload.target.clone())
         };
-        return Ok(Effect::new(
-            effect,
-        ));
+        return Ok(Effect::new(effect));
     }
-    if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect) {
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect)
+    {
         return Ok(Effect::new(
             crate::effects::PutCounterOfChosenKindEffect::new(payload.target.clone()),
         ));
@@ -1261,11 +1261,13 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
     {
-        return Ok(Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
-            payload.player.clone(),
-            convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
-            payload.mode,
-        )));
+        return Ok(Effect::new(
+            crate::effects::RegisterDrawReplacementEffect::new(
+                payload.player.clone(),
+                convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
+                payload.mode,
+            ),
+        ));
     }
     if let Some(converted) = clone_direct_effect::<
         M,

@@ -5658,12 +5658,7 @@ impl EffectAst {
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
     ) -> Self {
-        Self::subject_verb_add_mana_any_color_with_distinct(
-            player,
-            amount,
-            available_colors,
-            false,
-        )
+        Self::subject_verb_add_mana_any_color_with_distinct(player, amount, available_colors, false)
     }
 
     pub(crate) fn subject_verb_add_mana_any_color_with_distinct(

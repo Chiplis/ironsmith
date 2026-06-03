@@ -23,8 +23,13 @@ use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers:
 
 const MORE_LIFE_THAN_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["more", "life", "than"]);
-const MORE_LIFE_THAN_YOU_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["more", "life", "than", "you"], &["more", "life", "than", "you", "do"]]);
+const MORE_LIFE_THAN_YOU_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["more", "life", "than", "you"],
+            &["more", "life", "than", "you", "do"]
+        ]
+);
 const MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -55,10 +60,18 @@ const MORE_CARDS_IN_HAND_THAN_YOU_PATTERN: ClauseShape<'static> = clause_shape!(
 const MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
-            &["more", "card", "in", "hand", "than", "each", "other", "player"],
-            &["more", "cards", "in", "hand", "than", "each", "other", "player"],
-            &["more", "card", "in", "hand", "than", "each", "other", "players"],
-            &["more", "cards", "in", "hand", "than", "each", "other", "players"],
+            &[
+                "more", "card", "in", "hand", "than", "each", "other", "player"
+            ],
+            &[
+                "more", "cards", "in", "hand", "than", "each", "other", "player"
+            ],
+            &[
+                "more", "card", "in", "hand", "than", "each", "other", "players"
+            ],
+            &[
+                "more", "cards", "in", "hand", "than", "each", "other", "players"
+            ],
             &[
                 "more", "card", "in", "their", "hand", "than", "each", "other", "player",
             ],
@@ -1151,7 +1164,9 @@ fn parse_player_life_relation_shape(
             relation: PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer,
         });
     }
-    if subject == PlayerFilter::You && MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches_words(&relation_words) {
+    if subject == PlayerFilter::You
+        && MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches_words(&relation_words)
+    {
         return Some(PlayerLifeRelationConditionAst {
             player: subject,
             relation: PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer,

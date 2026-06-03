@@ -752,9 +752,9 @@ impl RestrictionEffectInstance {
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
-            crate::effect::Until::SourceUntaps => game.object(self.source).is_some_and(|obj| {
-                obj.zone == Zone::Battlefield && game.is_tapped(self.source)
-            }),
+            crate::effect::Until::SourceUntaps => game
+                .object(self.source)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(self.source)),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.controller
@@ -794,9 +794,9 @@ impl GoadEffectInstance {
             crate::effect::Until::ThisLeavesTheBattlefield => game
                 .object(self.source)
                 .is_some_and(|obj| obj.zone == Zone::Battlefield),
-            crate::effect::Until::SourceUntaps => game.object(self.source).is_some_and(|obj| {
-                obj.zone == Zone::Battlefield && game.is_tapped(self.source)
-            }),
+            crate::effect::Until::SourceUntaps => game
+                .object(self.source)
+                .is_some_and(|obj| obj.zone == Zone::Battlefield && game.is_tapped(self.source)),
             crate::effect::Until::YouStopControllingThis => {
                 game.object(self.source).is_some_and(|obj| {
                     obj.zone == Zone::Battlefield && game.controller_of(obj) == self.goaded_by
@@ -1191,10 +1191,7 @@ impl CantEffectTracker {
     }
 
     /// Get active cast-prohibition filters for a player, if any.
-    pub fn cast_filters_for_player(
-        &self,
-        player: PlayerId,
-    ) -> Option<&[CastRestrictionFilter]> {
+    pub fn cast_filters_for_player(&self, player: PlayerId) -> Option<&[CastRestrictionFilter]> {
         self.cant_cast_filters.get(&player).map(Vec::as_slice)
     }
 
@@ -2331,7 +2328,11 @@ impl GameState {
             .unwrap_or(0)
     }
 
-    pub fn note_life_total_for_source(&mut self, source: ObjectId, player: PlayerId) -> Option<i32> {
+    pub fn note_life_total_for_source(
+        &mut self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> Option<i32> {
         let life_total = self.player(player)?.life;
         self.noted_life_totals.insert(source, life_total);
         Some(life_total)
@@ -4844,8 +4845,9 @@ impl GameState {
                                     new_id,
                                     crate::types::CardType::Planeswalker,
                                 ),
-                                "land" => self
-                                    .set_chosen_card_type(new_id, crate::types::CardType::Land),
+                                "land" => {
+                                    self.set_chosen_card_type(new_id, crate::types::CardType::Land)
+                                }
                                 _ => {}
                             }
                             self.set_chosen_named_option(new_id, option);

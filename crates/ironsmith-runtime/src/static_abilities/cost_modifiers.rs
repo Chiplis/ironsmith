@@ -207,9 +207,9 @@ fn scaled_basic_land_type_count(value: &Value) -> Option<(i32, &ObjectFilter)> {
 fn scaled_creatures_died_this_turn(value: &Value) -> Option<i32> {
     match value {
         Value::CreaturesDiedThisTurn => Some(1),
-        Value::Add(left, right) => Some(
-            scaled_creatures_died_this_turn(left)? + scaled_creatures_died_this_turn(right)?,
-        ),
+        Value::Add(left, right) => {
+            Some(scaled_creatures_died_this_turn(left)? + scaled_creatures_died_this_turn(right)?)
+        }
         _ => None,
     }
 }

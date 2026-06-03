@@ -1574,7 +1574,9 @@ fn compile_oracle_text_strictly_compiles_sages_of_the_anima_draw_replacement() {
         "expected exact compiled-text comparison for Sages of the Anima, got {stdout}"
     );
     assert!(
-        stdout.contains("If you would draw a card, instead reveal the top three cards of your library"),
+        stdout.contains(
+            "If you would draw a card, instead reveal the top three cards of your library"
+        ),
         "expected draw replacement clause with 'instead' in compiled comparison output, got {stdout}"
     );
 }

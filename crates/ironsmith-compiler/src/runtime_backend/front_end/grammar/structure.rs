@@ -1462,7 +1462,8 @@ pub(crate) fn split_if_clause_lexed(
         if !predicate_tokens_without_commas.is_empty() {
             if let Ok(predicate) =
                 parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens_without_commas)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1506,7 +1507,8 @@ pub(crate) fn split_if_clause_lexed(
                         effects,
                     });
                 }
-                if let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                if let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                     && !effects.is_empty()
                 {
                     return Ok(IfClauseSplitSpec {
@@ -1558,7 +1560,8 @@ pub(crate) fn split_if_clause_lexed(
                 .first()
                 .is_some_and(|token| token.is_word("when") || token.is_word("whenever"));
             if (comma_fragment_looks_like_effect || comma_fragment_looks_like_delayed_trigger)
-                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1653,10 +1656,7 @@ fn parse_cards_in_hand_difference_draw_effect(
     let threshold = (*count as i32) + 1;
     let difference = Value::Add(
         Box::new(Value::Fixed(threshold)),
-        Box::new(Value::Scaled(
-            Box::new(Value::CardsInHand(hand_player)),
-            -1,
-        )),
+        Box::new(Value::Scaled(Box::new(Value::CardsInHand(hand_player)), -1)),
     )
     .with_surface_hint(ValueSurfaceHint::Difference);
 

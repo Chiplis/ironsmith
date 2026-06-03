@@ -247,7 +247,10 @@ fn simple_exile_from_graveyard_filter(
 
 impl CostPayer for CostEffect {
     fn can_pay(&self, game: &GameState, ctx: &CostContext) -> Result<(), CostPaymentError> {
-        if let Some(pay_energy) = self.effect.downcast_ref::<crate::effects::PayEnergyEffect>() {
+        if let Some(pay_energy) = self
+            .effect
+            .downcast_ref::<crate::effects::PayEnergyEffect>()
+        {
             let exec_ctx = crate::effects::ExecutionContext::new_default(ctx.source, ctx.payer)
                 .with_tagged_objects(ctx.tagged_objects.clone());
             let payer = crate::effects::helpers::resolve_player_from_spec(
@@ -255,9 +258,13 @@ impl CostPayer for CostEffect {
                 &pay_energy.player,
                 &exec_ctx,
             )
-            .map_err(|_| CostPaymentError::Other("unable to resolve player for energy cost".to_string()))?;
+            .map_err(|_| {
+                CostPaymentError::Other("unable to resolve player for energy cost".to_string())
+            })?;
             let needed = crate::effects::helpers::resolve_value(game, &pay_energy.amount, &exec_ctx)
-                .map_err(|_| CostPaymentError::Other("unable to resolve energy amount".to_string()))?
+                .map_err(|_| {
+                    CostPaymentError::Other("unable to resolve energy amount".to_string())
+                })?
                 .max(0) as u32;
             return game
                 .player(payer)
@@ -438,10 +445,7 @@ impl CostPayer for CostEffect {
                 card_type
             }
         };
-        Some((
-            count.max(0) as u32,
-            card_type,
-        ))
+        Some((count.max(0) as u32, card_type))
     }
 
     fn is_exile_from_hand(&self) -> bool {

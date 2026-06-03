@@ -1219,7 +1219,9 @@ mod tests {
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
-    fn run_gibbering_descent_upkeep_with_hand_size(hand_size: usize) -> (TurnAction, TurnRunner, TriggerQueue) {
+    fn run_gibbering_descent_upkeep_with_hand_size(
+        hand_size: usize,
+    ) -> (TurnAction, TurnRunner, TriggerQueue) {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         game.turn.active_player = alice;

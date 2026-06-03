@@ -798,16 +798,14 @@ pub(crate) fn parse_prevent_next_damage_clause(
         parse_target_phrase(target_clause.tokens())?
     };
 
-    Ok(Some(
-        EffectAst::subject_verb_prevent_damage_with_options(
-            amount,
-            target,
-            Until::EndOfTurn,
-            source_of_your_choice,
-            protects_you_and_permanents_you_control,
-            Vec::new(),
-        ),
-    ))
+    Ok(Some(EffectAst::subject_verb_prevent_damage_with_options(
+        amount,
+        target,
+        Until::EndOfTurn,
+        source_of_your_choice,
+        protects_you_and_permanents_you_control,
+        Vec::new(),
+    )))
 }
 
 pub(crate) fn parse_double_counters_clause(
@@ -1331,14 +1329,15 @@ fn parse_counter_ability_target_phrase(
             && clause_tokens
                 .get(idx + 1)
                 .is_some_and(|token| token.as_word() == Some("opponents"))
-            && clause_tokens.get(idx + 2).is_some_and(|token| {
-                CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
-            }))
-            || (clause_tokens.get(idx).is_some_and(|token| {
-                matches!(token.as_word(), Some("opponents" | "opponent"))
-            }) && clause_tokens.get(idx + 1).is_some_and(|token| {
-                CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
-            }))
+            && clause_tokens
+                .get(idx + 2)
+                .is_some_and(|token| CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)))
+            || (clause_tokens
+                .get(idx)
+                .is_some_and(|token| matches!(token.as_word(), Some("opponents" | "opponent")))
+                && clause_tokens.get(idx + 1).is_some_and(|token| {
+                    CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
+                }))
             || (clause_tokens
                 .get(idx)
                 .is_some_and(|token| token.as_word() == Some("an"))
@@ -1349,7 +1348,8 @@ fn parse_counter_ability_target_phrase(
                     CLAUSE_CONTROL_OR_CONTROLS_WORD_PATTERN.matches_token(token)
                 }))
     };
-    let is_controller_tail = |idx: usize| {
+    let is_controller_tail =
+        |idx: usize| {
             clause_tokens
                 .get(idx)
                 .is_some_and(|token| CLAUSE_YOU_WORD_PATTERN.matches_token(token))
@@ -1386,9 +1386,10 @@ fn parse_counter_ability_target_phrase(
         .is_some_and(|token| CLAUSE_TARGET_WORD_PATTERN.matches_token(token));
     if explicit_target {
         idx += 1;
-    } else if clause_tokens.get(idx).is_some_and(|token| {
-        matches!(token.as_word(), Some("all" | "each"))
-    }) {
+    } else if clause_tokens
+        .get(idx)
+        .is_some_and(|token| matches!(token.as_word(), Some("all" | "each")))
+    {
         idx += 1;
     } else {
         return Ok(None);
@@ -1649,7 +1650,9 @@ fn parse_counter_ability_target_phrase(
     let target = wrap_target_count(
         TargetAst::Object(
             target_filter,
-            explicit_target.then(|| span_from_tokens(&clause_tokens)).flatten(),
+            explicit_target
+                .then(|| span_from_tokens(&clause_tokens))
+                .flatten(),
             None,
         ),
         target_count,

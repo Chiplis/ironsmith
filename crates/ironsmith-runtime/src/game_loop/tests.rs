@@ -120,11 +120,13 @@ fn component_pouch_mana_activation_requires_counter_pays_cost_and_adds_distinct_
         .expect("component counter should be addable to Component Pouch");
     let activate_action = crate::decision::compute_legal_actions(&game, alice)
         .into_iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
-                if *source == pouch_id && *idx == ability_index
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
+                    if *source == pouch_id && *idx == ability_index
+            )
+        })
         .expect("Component Pouch mana ability should be legal with a component counter");
 
     let mut trigger_queue = TriggerQueue::new();
@@ -295,12 +297,8 @@ fn reprocess_sacrifices_selected_controlled_permanents_and_draws_that_many() {
         vec![CardType::Creature],
         alice,
     );
-    let bob_artifact = create_reprocess_permanent(
-        &mut game,
-        "Bob's Artifact",
-        vec![CardType::Artifact],
-        bob,
-    );
+    let bob_artifact =
+        create_reprocess_permanent(&mut game, "Bob's Artifact", vec![CardType::Artifact], bob);
 
     resolve_reprocess_with_selection(&mut game, alice, vec![artifact, land, bob_artifact]);
 
@@ -311,7 +309,9 @@ fn reprocess_sacrifices_selected_controlled_permanents_and_draws_that_many() {
         .collect::<Vec<_>>();
 
     assert!(
-        graveyard_names.iter().any(|name| name == "Reprocess Artifact"),
+        graveyard_names
+            .iter()
+            .any(|name| name == "Reprocess Artifact"),
         "selected artifact should be sacrificed into a graveyard, got {graveyard_names:?}"
     );
     assert!(
@@ -1596,8 +1596,8 @@ fn sarulf_test_permanent_definition(
     card_types: Vec<CardType>,
     mana_value: u8,
 ) -> crate::cards::CardDefinition {
-    let mut builder = CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
-        .card_types(card_types.clone());
+    let mut builder =
+        CardDefinitionBuilder::new(CardId::from_raw(card_id), name).card_types(card_types.clone());
     if mana_value > 0 {
         builder = builder.mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
             mana_value,
@@ -1644,12 +1644,8 @@ fn sarulf_realm_eater_death_trigger_adds_plus_one_counter_for_opponent_permanent
     let bob = PlayerId::from_index(1);
     let sarulf = sarulf_realm_eater_definition();
     let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
-    let opponent_permanent = sarulf_test_permanent_definition(
-        792_241,
-        "Opponent Relic",
-        vec![CardType::Artifact],
-        2,
-    );
+    let opponent_permanent =
+        sarulf_test_permanent_definition(792_241, "Opponent Relic", vec![CardType::Artifact], 2);
     let own_permanent =
         sarulf_test_permanent_definition(792_242, "Own Relic", vec![CardType::Artifact], 2);
     let opponent_id =
@@ -1714,12 +1710,8 @@ fn sarulf_realm_eater_upkeep_removes_all_plus_one_counters_and_exiles_by_removed
 
     let low =
         sarulf_test_permanent_definition(792_243, "Low Permanent", vec![CardType::Artifact], 3);
-    let high = sarulf_test_permanent_definition(
-        792_244,
-        "High Permanent",
-        vec![CardType::Artifact],
-        4,
-    );
+    let high =
+        sarulf_test_permanent_definition(792_244, "High Permanent", vec![CardType::Artifact], 4);
     let land = sarulf_test_permanent_definition(792_245, "Low Land", vec![CardType::Land], 0);
     game.create_object_from_definition(&low, bob, Zone::Battlefield);
     let high_id = game.create_object_from_definition(&high, bob, Zone::Battlefield);
@@ -2773,7 +2765,8 @@ impl DecisionMaker for ChooseBlitzLeechTarget {
             .map(|requirement| requirement.legal_targets.clone())
             .unwrap_or_default();
         assert!(
-            self.seen_legal_targets.contains(&Target::Object(self.chosen)),
+            self.seen_legal_targets
+                .contains(&Target::Object(self.chosen)),
             "chosen opponent creature should be a legal Blitz Leech target"
         );
         vec![Target::Object(self.chosen)]
@@ -2819,14 +2812,18 @@ fn blitz_leech_enter_trigger_removes_all_counters_from_opponent_creature_only() 
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Blitz Leech trigger should go on the stack with its target");
     assert!(
-        !dm.seen_legal_targets.contains(&Target::Object(own_creature)),
+        !dm.seen_legal_targets
+            .contains(&Target::Object(own_creature)),
         "Blitz Leech should not be able to target a creature its controller controls"
     );
 
     resolve_stack_entry(&mut game).expect("Blitz Leech trigger should resolve");
 
     assert_eq!(
-        game.counter_count(opponent_creature, crate::object::CounterType::PlusOnePlusOne),
+        game.counter_count(
+            opponent_creature,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
         0,
         "Blitz Leech should remove all +1/+1 counters from the targeted creature"
     );
@@ -2847,7 +2844,10 @@ fn blitz_leech_enter_trigger_removes_all_counters_from_opponent_creature_only() 
     game.refresh_continuous_state();
 
     assert_eq!(
-        game.counter_count(opponent_creature, crate::object::CounterType::PlusOnePlusOne),
+        game.counter_count(
+            opponent_creature,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
         0,
         "removed counters should stay removed after the turn ends"
     );
@@ -3619,8 +3619,11 @@ fn mighty_servant_two_creature_crew_grants_damage_draw_until_cleanup() {
     let crew_one = create_vanilla_creature(&mut game, "Crew One", alice, 2, 2);
     let crew_two = create_vanilla_creature(&mut game, "Crew Two", alice, 2, 2);
     for idx in 0..2 {
-        let card = CardBuilder::new(CardId::from_raw(274_600 + idx), format!("Draw Fodder {idx}"))
-            .build();
+        let card = CardBuilder::new(
+            CardId::from_raw(274_600 + idx),
+            format!("Draw Fodder {idx}"),
+        )
+        .build();
         game.create_object_from_card(&card, alice, Zone::Library);
     }
 
@@ -6290,20 +6293,29 @@ fn case_of_the_shattered_pact_enters_searches_basic_land_into_hand() {
             trigger_queue.add(trigger);
         }
     }
-    assert_eq!(trigger_queue.entries.len(), 1, "Case should trigger when it enters");
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Case should trigger when it enters"
+    );
 
     let mut dm = SelectFirstDecisionMaker;
     put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Case ETB trigger should go on the stack");
     resolve_stack_entry_with(&mut game, &mut dm).expect("Case ETB trigger should resolve");
 
-    let basic_land_in_hand = game.player(alice).expect("alice exists").hand.iter().any(|&id| {
-        game.object(id).is_some_and(|object| {
-            object.name == "Case Search Basic"
-                && object.card_types.contains(&CardType::Land)
-                && object.supertypes.contains(&Supertype::Basic)
-        })
-    });
+    let basic_land_in_hand = game
+        .player(alice)
+        .expect("alice exists")
+        .hand
+        .iter()
+        .any(|&id| {
+            game.object(id).is_some_and(|object| {
+                object.name == "Case Search Basic"
+                    && object.card_types.contains(&CardType::Land)
+                    && object.supertypes.contains(&Supertype::Basic)
+            })
+        });
     assert!(
         basic_land_in_hand,
         "Case should put the searched basic land into its controller's hand"
@@ -6577,7 +6589,10 @@ fn party_dude_does_not_trigger_when_its_controller_is_attacked() {
 #[cfg(ironsmith_runtime_parser_tests)]
 fn kargan_dragonlord_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(18_920), "Kargan Dragonlord")
-        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Red]]))
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Human, Subtype::Warrior])
         .power_toughness(PowerToughness::fixed(2, 2))
@@ -6603,9 +6618,10 @@ fn kargan_pump_ability_index(game: &GameState, kargan_id: ObjectId) -> usize {
         .enumerate()
         .find_map(|(index, ability)| match &ability.kind {
             AbilityKind::Activated(activated)
-                if activated.additional_restrictions.iter().any(|restriction| {
-                    restriction == "__ironsmith_level_range:8:+"
-                }) =>
+                if activated
+                    .additional_restrictions
+                    .iter()
+                    .any(|restriction| restriction == "__ironsmith_level_range:8:+") =>
             {
                 Some(index)
             }
@@ -6623,16 +6639,20 @@ fn kargan_level_up_ability_index(game: &GameState, kargan_id: ObjectId) -> usize
         .enumerate()
         .find_map(|(index, ability)| match &ability.kind {
             AbilityKind::Activated(activated)
-                if matches!(activated.timing, crate::ability::ActivationTiming::SorcerySpeed)
-                    && activated
-                        .effects
-                        .flattened_default_effects()
-                        .iter()
-                        .any(|effect| {
-                            effect
-                                .downcast_ref::<crate::effects::PutCountersEffect>()
-                                .is_some_and(|put| put.counter_type == crate::object::CounterType::Level)
-                        }) =>
+                if matches!(
+                    activated.timing,
+                    crate::ability::ActivationTiming::SorcerySpeed
+                ) && activated
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .any(|effect| {
+                        effect
+                            .downcast_ref::<crate::effects::PutCountersEffect>()
+                            .is_some_and(|put| {
+                                put.counter_type == crate::object::CounterType::Level
+                            })
+                    }) =>
             {
                 Some(index)
             }
@@ -6726,7 +6746,10 @@ fn kargan_dragonlord_level_up_adds_counter_and_uses_sorcery_timing() {
         "Kargan's level-up activation should put one level counter on itself"
     );
     assert_eq!(
-        game.player(alice).expect("Alice should exist").mana_pool.red,
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .red,
         0,
         "Kargan's level-up activation should spend its red mana cost"
     );
@@ -9616,16 +9639,16 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
     let actions = crate::decision::compute_legal_actions(&game, alice);
     let activate_action = actions
         .iter()
-        .find(|action| matches!(
-            action,
-            crate::decision::LegalAction::ActivateAbility { source, .. }
-                if *source == jhoira_id
-        ))
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, .. }
+                    if *source == jhoira_id
+            )
+        })
         .cloned()
         .unwrap_or_else(|| {
-            panic!(
-                "Jhoira should be activatable with a nonland card in hand; actions={actions:?}"
-            )
+            panic!("Jhoira should be activatable with a nonland card in hand; actions={actions:?}")
         });
 
     let mut trigger_queue = TriggerQueue::new();
@@ -9660,7 +9683,8 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
             ) if cost_ctx
                 .description
                 .to_ascii_lowercase()
-                .contains("choose the next cost") => {
+                .contains("choose the next cost") =>
+            {
                 let option = cost_ctx
                     .options
                     .iter()
@@ -9716,7 +9740,10 @@ fn jhoira_exiles_nonland_card_and_granted_suspend_triggers_from_exile() {
     let exiled_id = *game
         .exile
         .iter()
-        .find(|&&id| game.object(id).is_some_and(|object| object.name == "Suspend Gift Probe"))
+        .find(|&&id| {
+            game.object(id)
+                .is_some_and(|object| object.name == "Suspend Gift Probe")
+        })
         .expect("Jhoira should exile the chosen nonland card");
     assert_eq!(
         game.counter_count(exiled_id, crate::object::CounterType::Time),
@@ -24254,8 +24281,14 @@ fn emrakul_the_world_anew_protection_rejects_spell_targets() {
     let entry = StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(emrakul_id)]);
 
     let (valid_targets, _, all_targets_invalid) = validate_stack_entry_targets(&game, &entry);
-    assert!(valid_targets.is_empty(), "Emrakul should have protection from spells");
-    assert!(all_targets_invalid, "a spell with only Emrakul as target should fizzle");
+    assert!(
+        valid_targets.is_empty(),
+        "Emrakul should have protection from spells"
+    );
+    assert!(
+        all_targets_invalid,
+        "a spell with only Emrakul as target should fizzle"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -24277,7 +24310,8 @@ fn emrakul_the_world_anew_protection_only_rejects_permanents_cast_this_turn() {
         vec![Effect::deal_damage(1, ChooseSpec::AnyTarget)],
     )
     .with_targets(vec![Target::Object(emrakul_id)]);
-    let (cast_valid_targets, _, cast_all_invalid) = validate_stack_entry_targets(&game, &cast_entry);
+    let (cast_valid_targets, _, cast_all_invalid) =
+        validate_stack_entry_targets(&game, &cast_entry);
     assert!(
         cast_valid_targets.is_empty(),
         "Emrakul should have protection from permanents that were cast this turn"
@@ -27353,7 +27387,8 @@ fn soulblast_with_no_controlled_creatures_deals_zero_damage() {
         "Soulblast should not sacrifice an opponent's creature when you control none"
     );
 
-    resolve_stack_entry(&mut game).expect("Soulblast with zero sacrificed creatures should resolve");
+    resolve_stack_entry(&mut game)
+        .expect("Soulblast with zero sacrificed creatures should resolve");
     assert_eq!(
         game.player(bob).expect("Bob exists").life,
         20,
@@ -43160,10 +43195,10 @@ fn frightful_delusion_unpaid_counter_discards_target_spell_controller_card() {
         "the target spell should be countered when its controller cannot pay {{1}}"
     );
     assert!(
-        game.player(bob).is_some_and(|player| player
-            .graveyard
-            .iter()
-            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Discards"))),
+        game.player(bob)
+            .is_some_and(|player| player.graveyard.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Bob Discards"))),
         "the target spell's controller should discard a card"
     );
     assert!(
@@ -43220,10 +43255,10 @@ fn frightful_delusion_paid_target_survives_but_controller_still_discards() {
         "the target spell's controller should spend {{1}} to prevent the counter effect"
     );
     assert!(
-        game.player(bob).is_some_and(|player| player
-            .graveyard
-            .iter()
-            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Pays And Discards"))),
+        game.player(bob)
+            .is_some_and(|player| player.graveyard.iter().any(|&id| game
+                .object(id)
+                .is_some_and(|obj| obj.name == "Bob Pays And Discards"))),
         "the target spell's controller should discard even after paying for Frightful Delusion"
     );
     assert!(

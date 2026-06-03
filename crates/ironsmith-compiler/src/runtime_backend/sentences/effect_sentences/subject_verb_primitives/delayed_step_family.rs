@@ -199,16 +199,7 @@ const DELAYED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["
 const DELAYED_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
 const NEXT_END_STEP_PREFIXES: &[&[&str]] = &[
-    &[
-        "at",
-        "the",
-        "beginning",
-        "of",
-        "the",
-        "next",
-        "end",
-        "step",
-    ],
+    &["at", "the", "beginning", "of", "the", "next", "end", "step"],
     &["at", "the", "beginning", "of", "next", "end", "step"],
 ];
 
@@ -336,7 +327,8 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     }
 
     let (leading_segments, final_segment) = segments.split_at(segments.len() - 1);
-    if let Some((_, after_timing)) = final_segment[0].strip_any_prefix_clause(NEXT_END_STEP_PREFIXES)
+    if let Some((_, after_timing)) =
+        final_segment[0].strip_any_prefix_clause(NEXT_END_STEP_PREFIXES)
     {
         let timing_clause = after_timing.trimmed();
         if timing_clause.is_empty() {

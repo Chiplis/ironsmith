@@ -7,8 +7,8 @@ const CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PATTERN: ClauseShape<'static> =
     ClauseShape::new().contains_any_phrases(&[CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES]);
 const CAST_OR_PLAY_SELF_FROM_EXILE_PATTERN: ClauseShape<'static> =
     ClauseShape::new().contains_any_phrases(&[CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES]);
-const DISCARD_TO_BATTLEFIELD_REPLACEMENT_ZONE_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[
+const DISCARD_TO_BATTLEFIELD_REPLACEMENT_ZONE_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[
         CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE,
         INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE,
     ]);

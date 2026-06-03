@@ -1303,12 +1303,9 @@ fn grant_applies_to_card_non_recursive(
                 .is_some_and(|target_stable_id| target_stable_id == card.stable_id);
     }
 
-    grant
-        .filter
-        .as_ref()
-        .is_some_and(|filter| {
-            filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
-        })
+    grant.filter.as_ref().is_some_and(|filter| {
+        filter.matches_non_recursive(card, &grant_filter_context(ctx, grant, game), game)
+    })
 }
 
 fn grant_filter_context(

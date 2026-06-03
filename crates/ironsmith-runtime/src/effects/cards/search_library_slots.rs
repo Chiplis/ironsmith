@@ -522,8 +522,10 @@ mod tests {
             1,
             "one land card with two basic land types must not satisfy two slots"
         );
-        assert!(game.battlefield.iter().any(|id| game
-            .object(*id)
-            .is_some_and(|obj| obj.name == "Savannah")));
+        assert!(
+            game.battlefield
+                .iter()
+                .any(|id| game.object(*id).is_some_and(|obj| obj.name == "Savannah"))
+        );
     }
 }

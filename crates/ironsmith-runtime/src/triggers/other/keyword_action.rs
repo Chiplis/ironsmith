@@ -171,7 +171,9 @@ impl TriggerMatcher for KeywordActionTrigger {
             }
             if self.action == KeywordActionKind::Crew
                 && object_filter.source
-                && !e.object_tags.contains_key(&TagKey::from(CREW_ACTIVATION_TAG))
+                && !e
+                    .object_tags
+                    .contains_key(&TagKey::from(CREW_ACTIVATION_TAG))
             {
                 return false;
             }

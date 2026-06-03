@@ -110,9 +110,9 @@ pub use other::{
     ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
     KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
     MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerLosesGameEvent,
-    PlayerLostGameEvent, PlayerVote,
-    PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent,
-    TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
+    PlayerLostGameEvent, PlayerVote, PlayersFinishedVotingEvent, SearchLibraryEvent,
+    ShuffleLibraryEvent, StateTriggerEvent, TransformedEvent, TurnedFaceUpEvent,
+    WouldKeywordActionMatcher,
 };
 pub use phase::{
     BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
@@ -265,10 +265,7 @@ impl Event {
 
     /// Create a player-loses-game event.
     pub fn player_loses_game(player: PlayerId) -> Self {
-        Self::new_with_provenance(
-            PlayerLosesGameEvent::new(player),
-            ProvNodeId::default(),
-        )
+        Self::new_with_provenance(PlayerLosesGameEvent::new(player), ProvNodeId::default())
     }
 
     /// Create a mana-added event.

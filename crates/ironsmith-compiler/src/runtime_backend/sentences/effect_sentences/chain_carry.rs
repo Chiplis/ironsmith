@@ -78,7 +78,8 @@ const CHAIN_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!
             &["choose", "land", "of", "each", "basic", "land", "type"],
         ]
 );
-const CHAIN_CHOOSE_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["choose", "to"]);
+const CHAIN_CHOOSE_TO_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["choose", "to"]);
 const CHAIN_YOU_CHOOSE_BASIC_LAND_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1014,7 +1015,8 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     if let Some(effects) = parse_subject_verb_extension_sentence(tokens)? {
         return Ok(effects);
     }
-    if let Some(effects) = parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
+    if let Some(effects) =
+        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
     {
         return Ok(effects);
     }
@@ -2000,7 +2002,8 @@ pub(crate) fn expand_segments_with_multi_create_clauses_lexed(
             continue;
         };
         let segment_words = token_word_refs(&segment);
-        let has_token_rules_tail = CHAIN_TOKEN_RULES_TAIL_MARKER_PATTERN.matches_words(&segment_words);
+        let has_token_rules_tail =
+            CHAIN_TOKEN_RULES_TAIL_MARKER_PATTERN.matches_words(&segment_words);
         if has_token_rules_tail {
             expanded.push(segment);
             continue;

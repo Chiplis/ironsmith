@@ -56,7 +56,9 @@ impl SecretChoiceEffect {
         let mut players = Vec::new();
         for participant in &self.participants {
             for player in resolve_player_filter_to_list(game, participant, &filter_ctx, ctx)? {
-                if game.player(player).is_some_and(|player| player.is_in_game())
+                if game
+                    .player(player)
+                    .is_some_and(|player| player.is_in_game())
                     && !players.contains(&player)
                 {
                     players.push(player);
@@ -97,7 +99,10 @@ impl EffectExecutor for SecretChoiceEffect {
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
-            if let Some(chosen) = selected.into_iter().next().filter(|idx| *idx < self.options.len())
+            if let Some(chosen) = selected
+                .into_iter()
+                .next()
+                .filter(|idx| *idx < self.options.len())
             {
                 choices.push((player, self.options[chosen].clone()));
             }

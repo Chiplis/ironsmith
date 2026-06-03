@@ -83,7 +83,9 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         let mut chosen_source = None;
         let source_constraint = match &self.source {
             PreventNextTimeDamageSource::Target(spec) => {
-                let Some(source) = resolve_objects_for_effect(game, ctx, spec)?.into_iter().next()
+                let Some(source) = resolve_objects_for_effect(game, ctx, spec)?
+                    .into_iter()
+                    .next()
                 else {
                     return Ok(EffectOutcome::count(0));
                 };

@@ -591,12 +591,7 @@ pub(crate) fn parse_get_modifier_values_with_tail(
         && tail_clause.contains_word("tapped")
     {
         condition = Some(crate::ConditionExpr::SourceIsTapped);
-        return Ok((
-            out_power,
-            out_toughness,
-            Until::SourceUntaps,
-            condition,
-        ));
+        return Ok((out_power, out_toughness, Until::SourceUntaps, condition));
     }
     if FOR_EACH_MUST_BE_BLOCKED_TAIL_PATTERN.matches_words(&tail_words) {
         return Ok((out_power, out_toughness, duration, condition));

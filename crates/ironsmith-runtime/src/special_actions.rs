@@ -1761,13 +1761,10 @@ pub(crate) fn can_pay_total_cost_with_reason_in_context(
                 )?;
                 game.validate_cost_for_payment_reason(payer, source, &adjusted_component, reason)
                     .map_err(|err| err)?;
-                let mut cost_ctx = crate::costs::CostContext::new(
-                    source,
-                    payer,
-                    execution_ctx.decision_maker,
-                )
-                .with_reason(reason)
-                .with_provenance(execution_ctx.provenance);
+                let mut cost_ctx =
+                    crate::costs::CostContext::new(source, payer, execution_ctx.decision_maker)
+                        .with_reason(reason)
+                        .with_provenance(execution_ctx.provenance);
                 cost_ctx.x_value = execution_ctx.x_value;
                 cost_ctx.tagged_objects = execution_ctx.tagged_objects.clone();
                 adjusted_component.0.can_pay(game, &cost_ctx)?;
@@ -2675,7 +2672,8 @@ fn resolve_cost_choice(
             card_type,
             color_filter,
         } => {
-            let candidates = legal_reveal_cards(game, ctx.payer, ctx.source, card_type, color_filter);
+            let candidates =
+                legal_reveal_cards(game, ctx.payer, ctx.source, card_type, color_filter);
             let required = resolve_cost_count(&count, ctx.x_value) as usize;
             if candidates.len() < required {
                 return Err(CostPaymentError::InsufficientCardsToReveal);
@@ -2907,9 +2905,9 @@ fn legal_reveal_cards(
                         return false;
                     }
                     if let Some(required_colors) = color_filter {
-                        return game
-                            .current_colors(card_id)
-                            .is_some_and(|colors| !colors.intersection(required_colors).is_empty());
+                        return game.current_colors(card_id).is_some_and(|colors| {
+                            !colors.intersection(required_colors).is_empty()
+                        });
                     }
                     true
                 })

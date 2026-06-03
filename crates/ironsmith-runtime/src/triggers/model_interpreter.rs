@@ -256,14 +256,12 @@ pub(crate) fn interpret_trigger_model(
             filter,
             non_mana_only,
             loyalty_only,
-        } => {
-            crate::triggers::Trigger::ability_activated_qualified(
-                activator,
-                filter,
-                non_mana_only,
-                loyalty_only,
-            )
-        }
+        } => crate::triggers::Trigger::ability_activated_qualified(
+            activator,
+            filter,
+            non_mana_only,
+            loyalty_only,
+        ),
         TriggerKind::IsDealtDamage {
             target,
             combat_only,
@@ -288,7 +286,9 @@ pub(crate) fn interpret_trigger_model(
             player,
             during_turn,
         } => crate::triggers::Trigger::player_loses_life_during_turn(player, during_turn),
-        TriggerKind::PlayerLostGame { player } => crate::triggers::Trigger::player_lost_game(player),
+        TriggerKind::PlayerLostGame { player } => {
+            crate::triggers::Trigger::player_lost_game(player)
+        }
         TriggerKind::YouDrawCard => crate::triggers::Trigger::you_draw_card(),
         TriggerKind::PlayerDrawsCard { player } => {
             crate::triggers::Trigger::player_draws_card(player)

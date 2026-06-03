@@ -41,8 +41,9 @@ pub fn requires_target_selection(spec: &ChooseSpec) -> bool {
     match spec {
         // Explicit target wrappers always require cast/activation-time selection.
         ChooseSpec::Target(_) => true,
-        ChooseSpec::WithCount(inner, _)
-        | ChooseSpec::WithCountValue(inner, _, _) => requires_target_selection(inner),
+        ChooseSpec::WithCount(inner, _) | ChooseSpec::WithCountValue(inner, _, _) => {
+            requires_target_selection(inner)
+        }
         // These require target selection during casting
         ChooseSpec::AnyTarget
         | ChooseSpec::AnyOtherTarget

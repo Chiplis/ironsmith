@@ -244,8 +244,16 @@ fn hydra_omnivore_runtime_damages_each_other_opponent_only() {
         20,
         "the damaged opponent should be excluded from each other opponent"
     );
-    assert_eq!(game.life_total(charlie), 12, "first other opponent should take 8");
-    assert_eq!(game.life_total(dana), 12, "second other opponent should take 8");
+    assert_eq!(
+        game.life_total(charlie),
+        12,
+        "first other opponent should take 8"
+    );
+    assert_eq!(
+        game.life_total(dana),
+        12,
+        "second other opponent should take 8"
+    );
 }
 
 #[test]
@@ -267,7 +275,11 @@ fn hydra_omnivore_runtime_has_no_extra_damage_without_other_opponents() {
     );
 
     assert_eq!(resolve_triggers_for_source(&mut game, hydra, &combat), 1);
-    assert_eq!(game.life_total(alice), 20, "controller should not be damaged");
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "controller should not be damaged"
+    );
     assert_eq!(
         game.life_total(bob),
         20,
@@ -351,7 +363,8 @@ fn ichormoon_gauntlet_strict_parser_and_compiled_text_regression() {
         "Ichormoon Gauntlet should structurally grant loyalty abilities and preserve its noncreature-spell trigger, got {ability_debug}"
     );
     assert!(
-        !ability_debug.contains("Named(\n                                                \"additional\"")
+        !ability_debug
+            .contains("Named(\n                                                \"additional\"")
             && !ability_debug.contains("Named(\"additional\")"),
         "additional-counter wording should not lower to a named 'additional' counter, got {ability_debug}"
     );
@@ -389,10 +402,8 @@ fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_you_control(
         .build();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let alice_planeswalker =
         game.create_object_from_definition(&planeswalker, alice, Zone::Battlefield);
@@ -416,16 +427,26 @@ fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_you_control(
     );
     assert!(
         granted.iter().any(|activated| activated.mana_cost.is_free()
-            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
-                .downcast_ref::<crate::effects::ProliferateEffect>()
-                .is_some())),
+            && activated
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .any(|effect| effect
+                    .downcast_ref::<crate::effects::ProliferateEffect>()
+                    .is_some())),
         "expected granted [0] proliferate loyalty ability, got {granted:#?}"
     );
     assert!(
-        granted.iter().any(|activated| activated.mana_cost.has_loyalty_activation_cost()
-            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
-                .downcast_ref::<crate::effects::ExtraTurnEffect>()
-                .is_some())),
+        granted.iter().any(
+            |activated| activated.mana_cost.has_loyalty_activation_cost()
+                && activated
+                    .effects
+                    .flattened_default_effects()
+                    .into_iter()
+                    .any(|effect| effect
+                        .downcast_ref::<crate::effects::ExtraTurnEffect>()
+                        .is_some())
+        ),
         "expected granted -12 extra-turn loyalty ability, got {granted:#?}"
     );
 
@@ -476,10 +497,8 @@ fn ichormoon_gauntlet_trigger_adds_selected_existing_counter_kind() {
     let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let target = game.create_object_from_card(
         &CardBuilder::new(CardId::new(), "Countered Permanent")
@@ -522,10 +541,8 @@ fn ichormoon_gauntlet_trigger_does_nothing_when_target_has_no_counters() {
     let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     let target = game.create_object_from_card(
         &CardBuilder::new(CardId::new(), "Uncountered Permanent")
@@ -3761,12 +3778,15 @@ impl crate::decision::DecisionMaker for OrdealTargetBob {
         ctx.requirements
             .iter()
             .filter_map(|requirement| {
-                requirement.legal_targets.iter().find_map(|target| match target {
-                    crate::game_state::Target::Player(player) if *player == self.bob => {
-                        Some(target.clone())
-                    }
-                    _ => None,
-                })
+                requirement
+                    .legal_targets
+                    .iter()
+                    .find_map(|target| match target {
+                        crate::game_state::Target::Player(player) if *player == self.bob => {
+                            Some(target.clone())
+                        }
+                        _ => None,
+                    })
             })
             .take(1)
             .collect()
@@ -3776,7 +3796,13 @@ impl crate::decision::DecisionMaker for OrdealTargetBob {
 fn ordeal_of_erebos_game(
     starting_counters: u32,
     bob_hand_size: u32,
-) -> (crate::game_state::GameState, PlayerId, PlayerId, ObjectId, ObjectId) {
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
     let ordeal = parse_oracle_card_definition("Ordeal of Erebos");
     let creature = CardDefinitionBuilder::new(CardId::from_raw(91_124), "Grizzly Bears")
         .card_types(vec![CardType::Creature])
@@ -22125,7 +22151,10 @@ fn divine_deflection_runtime_prevents_shared_pool_and_damages_chosen_target() {
         crate::events::cause::EventCause::effect(),
     );
     assert_eq!(bob_damage, 3, "damage to Bob should not be protected");
-    assert!(!bob_prevented, "unprotected damage should not trigger prevention");
+    assert!(
+        !bob_prevented,
+        "unprotected damage should not trigger prevention"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -22186,7 +22215,10 @@ fn divine_deflection_runtime_does_not_damage_target_when_damage_cannot_be_preven
         crate::events::cause::EventCause::effect(),
     );
     assert_eq!(damage, 3, "unpreventable damage should not be reduced");
-    assert!(!prevented, "unpreventable damage should not count as prevented");
+    assert!(
+        !prevented,
+        "unpreventable damage should not count as prevented"
+    );
     assert_eq!(
         game.life_total(bob),
         20,
@@ -35087,7 +35119,9 @@ fn soulblast_strict_parser_and_compiled_text_regression() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains("as an additional cost to cast this spell, sacrifice all creatures you control"),
+        lower.contains(
+            "as an additional cost to cast this spell, sacrifice all creatures you control"
+        ),
         "expected Soulblast all-creatures additional cost, got {rendered}"
     );
     assert!(
@@ -48173,7 +48207,10 @@ fn resolve_triggers_for_source(
     event: &crate::triggers::TriggerEvent,
 ) -> usize {
     let triggers = crate::triggers::check_triggers(game, event);
-    let matching_count = triggers.iter().filter(|entry| entry.source == source).count();
+    let matching_count = triggers
+        .iter()
+        .filter(|entry| entry.source == source)
+        .count();
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
     for trigger in triggers.into_iter().filter(|entry| entry.source == source) {
         trigger_queue.add(trigger);
@@ -48217,21 +48254,25 @@ fn azorius_guildmage_activated_ability_matching(
 
 fn azorius_guildmage_tap_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
     azorius_guildmage_activated_ability_matching(def, |activated| {
-        activated.effects.flattened_default_effects().iter().any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::TapEffect>()
-                .is_some()
-        })
+        activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .any(|effect| effect.downcast_ref::<crate::effects::TapEffect>().is_some())
     })
 }
 
 fn azorius_guildmage_counter_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
     azorius_guildmage_activated_ability_matching(def, |activated| {
-        activated.effects.flattened_default_effects().iter().any(|effect| {
-            effect
-                .downcast_ref::<crate::effects::CounterEffect>()
-                .is_some()
-        })
+        activated
+            .effects
+            .flattened_default_effects()
+            .iter()
+            .any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::CounterEffect>()
+                    .is_some()
+            })
     })
 }
 
@@ -48427,7 +48468,8 @@ fn azorius_guildmage_counter_activation_counters_activated_ability_only() {
         .card_types(vec![CardType::Instant])
         .build();
     let spell = game.create_object_from_definition(&spell_def, bob, Zone::Stack);
-    game.stack.push(crate::game_state::StackEntry::new(spell, bob));
+    game.stack
+        .push(crate::game_state::StackEntry::new(spell, bob));
 
     let triggered_source_def =
         CardDefinitionBuilder::new(CardId::new(), "Triggered Ability Source")
@@ -48558,10 +48600,8 @@ fn resolve_irresistible_prey_targeting_attacker(
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let source = game.create_object_from_definition(&prey, alice, Zone::Stack);
@@ -48676,7 +48716,10 @@ fn irresistible_prey_runtime_requires_available_blocker_and_honors_if_able() {
     crate::combat_state::declare_attackers(
         &mut unable_game,
         &mut unable_combat,
-        vec![(unable_attacker, crate::combat_state::AttackTarget::Player(unable_bob))],
+        vec![(
+            unable_attacker,
+            crate::combat_state::AttackTarget::Player(unable_bob),
+        )],
     )
     .expect("Irresistible Prey target should be able to attack in tapped-blocker branch");
     crate::combat_state::declare_blockers(&mut unable_game, &mut unable_combat, vec![])
@@ -48697,9 +48740,8 @@ fn blood_tyrant_strict_parser_text_and_structure_regression() {
         "Blood Tyrant should render the life-lost counter clause, got {rendered}"
     );
     assert!(
-        rendered.contains(
-            "Whenever a player loses the game, put five +1/+1 counters on this creature"
-        ),
+        rendered
+            .contains("Whenever a player loses the game, put five +1/+1 counters on this creature"),
         "Blood Tyrant should render the player-loses-game trigger, got {rendered}"
     );
     assert!(
@@ -48806,11 +48848,7 @@ fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {
     let high_source_id =
         game.create_object_from_definition(&high_mana_value_spell, bob, Zone::Stack);
     assert!(
-        crate::targeting::has_protection_from_source(
-            &game,
-            skulk_id,
-            high_source_id,
-        ),
+        crate::targeting::has_protection_from_source(&game, skulk_id, high_source_id,),
         "Mistmeadow Skulk should be protected from a source with mana value 3"
     );
     assert!(
@@ -49022,13 +49060,7 @@ fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_turn_start_to
     assert_eq!(game.player(bob).expect("bob exists").life, 15);
     stage_life_loss(&mut game, bob, 16);
     assert_eq!(game.player(bob).expect("bob exists").life, -1);
-    game.add_player_counters_with_source(
-        bob,
-        crate::object::CounterType::Poison,
-        10,
-        None,
-        None,
-    );
+    game.add_player_counters_with_source(bob, crate::object::CounterType::Poison, 10, None, None);
 
     assert!(
         crate::rules::state_based::apply_state_based_actions(&mut game),
@@ -49457,12 +49489,15 @@ fn polliwallop_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Polliwallop");
     let rendered = compiled_text_lines(&def).join("\n");
     let debug = format!("{:#?}", def.spell_effect);
-    let affinity = def.abilities.iter().find_map(|ability| match &ability.kind {
-        AbilityKind::Static(static_ability) if static_ability.has_affinity() => {
-            Some(static_ability)
-        }
-        _ => None,
-    });
+    let affinity = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) if static_ability.has_affinity() => {
+                Some(static_ability)
+            }
+            _ => None,
+        });
 
     assert!(
         affinity.is_some_and(|static_ability| static_ability.id() == StaticAbilityId::Affinity),
@@ -49490,19 +49525,23 @@ fn polliwallop_strict_parser_and_compiled_text_regression() {
 #[test]
 fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
     let def = polliwallop_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
 
     let spell_id = game.create_object_from_definition(&def, alice, Zone::Hand);
-    let spell = game.object(spell_id).expect("Polliwallop should be in hand");
+    let spell = game
+        .object(spell_id)
+        .expect("Polliwallop should be in hand");
     let base_cost = spell
         .mana_cost
         .as_ref()
         .expect("Polliwallop has a mana cost")
         .clone();
     assert_eq!(
-        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost).mana_value(),
+        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost)
+            .mana_value(),
         4,
         "Polliwallop should not be reduced with no Frogs you control"
     );
@@ -49524,9 +49563,12 @@ fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
         Zone::Hand,
     );
 
-    let spell = game.object(spell_id).expect("Polliwallop should still be in hand");
+    let spell = game
+        .object(spell_id)
+        .expect("Polliwallop should still be in hand");
     assert_eq!(
-        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost).mana_value(),
+        crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost)
+            .mana_value(),
         4,
         "Polliwallop affinity for Frogs should ignore artifacts and Frogs outside the battlefield"
     );
@@ -49568,7 +49610,9 @@ fn polliwallop_affinity_for_frogs_reduces_only_for_your_frogs() {
         Zone::Battlefield,
     );
 
-    let spell = game.object(spell_id).expect("Polliwallop should still be in hand");
+    let spell = game
+        .object(spell_id)
+        .expect("Polliwallop should still be in hand");
     let reduced = crate::decision::calculate_effective_mana_cost(&game, alice, spell, &base_cost);
     assert_eq!(
         reduced.mana_value(),
@@ -49625,14 +49669,18 @@ fn krang_master_mind_strict_parser_and_compiled_text_regression() {
 #[test]
 fn krang_master_mind_etb_draws_up_to_four_cards_in_hand() {
     let def = krang_master_mind_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     for idx in 0..5 {
         game.create_object_from_definition(
-            &CardDefinitionBuilder::new(CardId::from_raw(955_860 + idx), &format!("Library Card {idx}"))
-                .card_types(vec![CardType::Artifact])
-                .build(),
+            &CardDefinitionBuilder::new(
+                CardId::from_raw(955_860 + idx),
+                &format!("Library Card {idx}"),
+            )
+            .card_types(vec![CardType::Artifact])
+            .build(),
             alice,
             Zone::Library,
         );
@@ -49669,23 +49717,30 @@ fn krang_master_mind_etb_draws_up_to_four_cards_in_hand() {
 #[test]
 fn krang_master_mind_etb_does_not_trigger_with_four_cards_in_hand() {
     let def = krang_master_mind_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     for idx in 0..4 {
         game.create_object_from_definition(
-            &CardDefinitionBuilder::new(CardId::from_raw(955_870 + idx), &format!("Hand Card {idx}"))
-                .card_types(vec![CardType::Artifact])
-                .build(),
+            &CardDefinitionBuilder::new(
+                CardId::from_raw(955_870 + idx),
+                &format!("Hand Card {idx}"),
+            )
+            .card_types(vec![CardType::Artifact])
+            .build(),
             alice,
             Zone::Hand,
         );
     }
     for idx in 0..3 {
         game.create_object_from_definition(
-            &CardDefinitionBuilder::new(CardId::from_raw(955_880 + idx), &format!("Library Card {idx}"))
-                .card_types(vec![CardType::Artifact])
-                .build(),
+            &CardDefinitionBuilder::new(
+                CardId::from_raw(955_880 + idx),
+                &format!("Library Card {idx}"),
+            )
+            .card_types(vec![CardType::Artifact])
+            .build(),
             alice,
             Zone::Library,
         );
@@ -49714,14 +49769,18 @@ fn krang_master_mind_etb_does_not_trigger_with_four_cards_in_hand() {
 #[test]
 fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() {
     let def = krang_master_mind_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     for idx in 0..3 {
         game.create_object_from_definition(
-            &CardDefinitionBuilder::new(CardId::from_raw(955_883 + idx), &format!("Library Card {idx}"))
-                .card_types(vec![CardType::Artifact])
-                .build(),
+            &CardDefinitionBuilder::new(
+                CardId::from_raw(955_883 + idx),
+                &format!("Library Card {idx}"),
+            )
+            .card_types(vec![CardType::Artifact])
+            .build(),
             alice,
             Zone::Library,
         );
@@ -49739,22 +49798,31 @@ fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() {
     );
     let triggers = crate::triggers::check_triggers(&game, &event);
     assert_eq!(
-        triggers.iter().filter(|entry| entry.source == krang_id).count(),
+        triggers
+            .iter()
+            .filter(|entry| entry.source == krang_id)
+            .count(),
         1,
         "Krang should initially trigger while its controller has fewer than four cards in hand"
     );
 
     let mut trigger_queue = crate::triggers::TriggerQueue::new();
-    for trigger in triggers.into_iter().filter(|entry| entry.source == krang_id) {
+    for trigger in triggers
+        .into_iter()
+        .filter(|entry| entry.source == krang_id)
+    {
         trigger_queue.add(trigger);
     }
     crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
         .expect("Krang trigger should go on the stack");
     for idx in 0..4 {
         game.create_object_from_definition(
-            &CardDefinitionBuilder::new(CardId::from_raw(955_886 + idx), &format!("Hand Card {idx}"))
-                .card_types(vec![CardType::Artifact])
-                .build(),
+            &CardDefinitionBuilder::new(
+                CardId::from_raw(955_886 + idx),
+                &format!("Hand Card {idx}"),
+            )
+            .card_types(vec![CardType::Artifact])
+            .build(),
             alice,
             Zone::Hand,
         );
@@ -49772,15 +49840,21 @@ fn krang_master_mind_etb_draw_condition_is_rechecked_on_resolution() {
 #[test]
 fn krang_master_mind_affinity_reduces_only_for_your_artifacts() {
     let def = krang_master_mind_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let krang_id = game.create_object_from_definition(&def, alice, Zone::Hand);
     let krang = game.object(krang_id).expect("Krang should be in hand");
-    let base_cost = krang.mana_cost.as_ref().expect("Krang has a mana cost").clone();
+    let base_cost = krang
+        .mana_cost
+        .as_ref()
+        .expect("Krang has a mana cost")
+        .clone();
 
     assert_eq!(
-        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost).mana_value(),
+        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost)
+            .mana_value(),
         8,
         "Krang should cost eight mana with no artifacts you control"
     );
@@ -49808,9 +49882,12 @@ fn krang_master_mind_affinity_reduces_only_for_your_artifacts() {
         Zone::Battlefield,
     );
 
-    let krang = game.object(krang_id).expect("Krang should still be in hand");
+    let krang = game
+        .object(krang_id)
+        .expect("Krang should still be in hand");
     assert_eq!(
-        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost).mana_value(),
+        crate::decision::calculate_effective_mana_cost(&game, alice, krang, &base_cost)
+            .mana_value(),
         7,
         "Krang affinity should count only artifacts controlled by its controller"
     );
@@ -49819,7 +49896,8 @@ fn krang_master_mind_affinity_reduces_only_for_your_artifacts() {
 #[test]
 fn krang_master_mind_gets_plus_one_power_for_each_other_artifact_you_control() {
     let def = krang_master_mind_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let krang_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -49858,7 +49936,8 @@ fn krang_master_mind_gets_plus_one_power_for_each_other_artifact_you_control() {
 #[test]
 fn polliwallop_targets_and_deals_twice_source_creature_power() {
     let def = polliwallop_definition();
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
@@ -49891,7 +49970,11 @@ fn polliwallop_targets_and_deals_twice_source_creature_power() {
         Some(spell_id),
         None,
     );
-    assert_eq!(requirements.len(), 2, "Polliwallop should require two targets");
+    assert_eq!(
+        requirements.len(),
+        2,
+        "Polliwallop should require two targets"
+    );
     assert!(
         requirements[0]
             .legal_targets
@@ -53216,7 +53299,9 @@ fn sages_of_the_anima_compiled_text_keeps_draw_replacement_clause() {
         "expected Sages of the Anima draw-replacement static ability, got {static_ids:?}"
     );
     assert!(
-        rendered.contains("If you would draw a card, instead reveal the top three cards of your library"),
+        rendered.contains(
+            "If you would draw a card, instead reveal the top three cards of your library"
+        ),
         "Sages of the Anima compiled text should keep the draw replacement and instead marker, got {rendered}"
     );
     assert!(
@@ -53262,8 +53347,14 @@ fn sages_of_the_anima_draw_replacement_moves_creatures_and_bottoms_rest() {
         2,
         "only revealed creature cards should move to hand, got {hand_names:?}"
     );
-    assert!(hand_names.contains(&"Library Creature One"), "{hand_names:?}");
-    assert!(hand_names.contains(&"Library Creature Two"), "{hand_names:?}");
+    assert!(
+        hand_names.contains(&"Library Creature One"),
+        "{hand_names:?}"
+    );
+    assert!(
+        hand_names.contains(&"Library Creature Two"),
+        "{hand_names:?}"
+    );
 
     let library_names = player
         .library
@@ -55807,7 +55898,10 @@ strict_parse_card_expected_fail_test!(
 );
 strict_parse_card_expected_fail_test!(strict_parse_lake_of_the_dead, "Lake of the Dead");
 strict_parse_card_test!(strict_parse_maskwood_nexus, "Maskwood Nexus");
-strict_parse_card_test!(strict_parse_mighty_servant_of_leuk_o, "Mighty Servant of Leuk-o");
+strict_parse_card_test!(
+    strict_parse_mighty_servant_of_leuk_o,
+    "Mighty Servant of Leuk-o"
+);
 strict_parse_card_test!(strict_parse_mistmeadow_skulk, "Mistmeadow Skulk");
 strict_parse_card_test!(strict_parse_mox_amber, "Mox Amber");
 strict_parse_card_test!(strict_parse_nesting_grounds, "Nesting Grounds");
@@ -56831,10 +56925,7 @@ fn polygoyf_strict_parser_and_compiled_text_preserves_all_graveyards_card_types(
             _ => None,
         })
         .expect("Polygoyf should have a characteristic-defining P/T ability");
-    let game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let effects = static_ability.generate_effects(
         crate::ids::ObjectId::from_raw(1),
         crate::ids::PlayerId::from_index(0),
@@ -56893,14 +56984,15 @@ fn polygoyf_runtime_counts_distinct_card_types_in_all_graveyards() {
     let def = parse_oracle_card_definition("Polygoyf");
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let polygoyf = game.create_object_from_definition(&def, alice, Zone::Battlefield);
 
     assert_eq!(
-        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (
+            game.current_power(polygoyf),
+            game.current_toughness(polygoyf)
+        ),
         (Some(0), Some(1)),
         "with empty graveyards, Polygoyf should be 0/1"
     );
@@ -56921,7 +57013,10 @@ fn polygoyf_runtime_counts_distinct_card_types_in_all_graveyards() {
     game.refresh_continuous_state();
 
     assert_eq!(
-        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (
+            game.current_power(polygoyf),
+            game.current_toughness(polygoyf)
+        ),
         (Some(3), Some(4)),
         "Polygoyf should count distinct card types across both players' graveyards and add 1 toughness"
     );
@@ -57508,11 +57603,7 @@ fn mob_test_card(id: u32, name: &str) -> CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn mob_owner_zone_count(
-    game: &crate::game_state::GameState,
-    owner: PlayerId,
-    zone: Zone,
-) -> usize {
+fn mob_owner_zone_count(game: &crate::game_state::GameState, owner: PlayerId, zone: Zone) -> usize {
     game.objects_in_zone(zone)
         .into_iter()
         .filter(|&id| game.object(id).is_some_and(|object| object.owner == owner))
@@ -57539,7 +57630,11 @@ fn resolve_mob_verdict_with_votes(
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
 
@@ -57589,18 +57684,46 @@ fn mob_verdict_runtime_opponent_votes_damage_players_and_their_creatures_without
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
 
-    assert_eq!(game.player(alice).unwrap().life, 20, "Alice received no votes and should not be damaged");
-    assert_eq!(game.player(bob).unwrap().life, 16, "Bob received two votes and should take 4 damage");
-    assert_eq!(game.player(charlie).unwrap().life, 18, "Charlie received one vote and should take 2 damage");
-    assert_eq!(game.damage_on(alice_creature), 0, "Alice's creature should not be damaged by opponent-only vote followup");
-    assert_eq!(game.damage_on(bob_creature), 4, "Bob's creature should be damaged once per vote Bob received");
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "Alice received no votes and should not be damaged"
+    );
+    assert_eq!(
+        game.player(bob).unwrap().life,
+        16,
+        "Bob received two votes and should take 4 damage"
+    );
+    assert_eq!(
+        game.player(charlie).unwrap().life,
+        18,
+        "Charlie received one vote and should take 2 damage"
+    );
+    assert_eq!(
+        game.damage_on(alice_creature),
+        0,
+        "Alice's creature should not be damaged by opponent-only vote followup"
+    );
+    assert_eq!(
+        game.damage_on(bob_creature),
+        4,
+        "Bob's creature should be damaged once per vote Bob received"
+    );
     assert_eq!(
         game.damage_on(bob_second_creature),
         4,
         "every creature Bob controls should be damaged once per vote Bob received"
     );
-    assert_eq!(game.damage_on(charlie_creature), 2, "Charlie's creature should be damaged once per vote Charlie received");
-    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Hand), 0, "Alice should not draw when she received no votes");
+    assert_eq!(
+        game.damage_on(charlie_creature),
+        2,
+        "Charlie's creature should be damaged once per vote Charlie received"
+    );
+    assert_eq!(
+        mob_owner_zone_count(&game, alice, Zone::Hand),
+        0,
+        "Alice should not draw when she received no votes"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -57612,14 +57735,46 @@ fn mob_verdict_runtime_votes_you_received_draw_cards_without_opponent_damage_to_
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
 
-    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Hand), 2, "Alice should draw once for each vote she received");
-    assert_eq!(mob_owner_zone_count(&game, alice, Zone::Library), 1, "drawing two cards should leave one filler in Alice's library");
-    assert_eq!(game.player(alice).unwrap().life, 20, "votes Alice received should draw cards, not damage Alice");
-    assert_eq!(game.damage_on(alice_creature), 0, "Alice's creature should not be damaged by votes Alice received");
-    assert_eq!(game.player(bob).unwrap().life, 20, "Bob received no votes and should not be damaged");
-    assert_eq!(game.damage_on(bob_creature), 0, "Bob's creature should not be damaged without Bob receiving votes");
-    assert_eq!(game.player(charlie).unwrap().life, 18, "Charlie received Alice's vote and should take 2 damage");
-    assert_eq!(game.damage_on(charlie_creature), 2, "Charlie's creature should be damaged for Charlie's received vote");
+    assert_eq!(
+        mob_owner_zone_count(&game, alice, Zone::Hand),
+        2,
+        "Alice should draw once for each vote she received"
+    );
+    assert_eq!(
+        mob_owner_zone_count(&game, alice, Zone::Library),
+        1,
+        "drawing two cards should leave one filler in Alice's library"
+    );
+    assert_eq!(
+        game.player(alice).unwrap().life,
+        20,
+        "votes Alice received should draw cards, not damage Alice"
+    );
+    assert_eq!(
+        game.damage_on(alice_creature),
+        0,
+        "Alice's creature should not be damaged by votes Alice received"
+    );
+    assert_eq!(
+        game.player(bob).unwrap().life,
+        20,
+        "Bob received no votes and should not be damaged"
+    );
+    assert_eq!(
+        game.damage_on(bob_creature),
+        0,
+        "Bob's creature should not be damaged without Bob receiving votes"
+    );
+    assert_eq!(
+        game.player(charlie).unwrap().life,
+        18,
+        "Charlie received Alice's vote and should take 2 damage"
+    );
+    assert_eq!(
+        game.damage_on(charlie_creature),
+        2,
+        "Charlie's creature should be damaged for Charlie's received vote"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -67195,11 +67350,7 @@ fn urabrask_heretic_praetor_strict_parser_and_compiled_text_regression() {
     );
 }
 
-fn add_named_library_card(
-    game: &mut crate::game_state::GameState,
-    player: PlayerId,
-    name: &str,
-) {
+fn add_named_library_card(game: &mut crate::game_state::GameState, player: PlayerId, name: &str) {
     let card = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Instant])
         .build();
@@ -67249,10 +67400,8 @@ fn urabrask_opponent_draw_before_upkeep_replacement_is_not_replaced() {
     let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     add_named_library_card(&mut game, bob, "Bob Normal Draw");
     let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
@@ -67273,10 +67422,8 @@ fn urabrask_opponent_upkeep_registers_next_draw_replacement() {
     let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     add_named_library_card(&mut game, bob, "Bob Urabrask Exiled Card");
     add_named_library_card(&mut game, bob, "Bob Normal Followup Draw");
