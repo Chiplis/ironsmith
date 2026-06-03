@@ -90,6 +90,24 @@ fn pluralize_cost_noun_phrase(phrase: &str) -> String {
     }
 }
 
+fn describe_affinity_filter(filter: &ObjectFilter) -> String {
+    if filter.card_types.is_empty() && filter.subtypes.len() == 1 {
+        return pluralize_cost_noun_phrase(&filter.subtypes[0].to_string());
+    }
+    if filter.card_types.len() == 1 && filter.subtypes.is_empty() {
+        return pluralize_cost_noun_phrase(filter.card_types[0].name());
+    }
+
+    let mut bare = filter.clone();
+    bare.controller = None;
+    pluralize_cost_noun_phrase(
+        strip_indefinite_article(&bare.description())
+            .trim()
+            .trim_end_matches(" on the battlefield")
+            .trim(),
+    )
+}
+
 fn describe_greatest_count_cost_filter(filter: &ObjectFilter) -> String {
     let Some(controller) = &filter.controller else {
         return pluralize_cost_noun_phrase(strip_indefinite_article(&filter.description()));
@@ -1834,6 +1852,7 @@ pub fn this_spell_cost_condition_is_active_for_cast_with_optional_costs_paid(
 pub struct ThisSpellCostReduction {
     pub reduction: Value,
     pub condition: ThisSpellCostCondition,
+    pub affinity_filter: Option<ObjectFilter>,
 }
 
 impl ThisSpellCostReduction {
@@ -1841,16 +1860,28 @@ impl ThisSpellCostReduction {
         Self {
             reduction,
             condition,
+            affinity_filter: None,
         }
+    }
+
+    pub fn with_affinity_filter(mut self, filter: ObjectFilter) -> Self {
+        self.affinity_filter = Some(filter);
+        self
     }
 }
 
 impl StaticAbilityKind for ThisSpellCostReduction {
     fn id(&self) -> StaticAbilityId {
+        if self.affinity_filter.is_some() {
+            return StaticAbilityId::Affinity;
+        }
         StaticAbilityId::ThisSpellCostReduction
     }
 
     fn display(&self) -> String {
+        if let Some(filter) = &self.affinity_filter {
+            return format!("Affinity for {}", describe_affinity_filter(filter));
+        }
         let (amount_text, tail) = describe_cost_modifier_amount(&self.reduction);
         let mut line = format!("This spell costs {amount_text} less to cast");
         if let Some(tail) = tail {
@@ -1875,6 +1906,10 @@ impl StaticAbilityKind for ThisSpellCostReduction {
 
     fn modifies_costs(&self) -> bool {
         true
+    }
+
+    fn has_affinity(&self) -> bool {
+        self.affinity_filter.is_some()
     }
 
     fn this_spell_cost_reduction(&self) -> Option<&ThisSpellCostReduction> {

@@ -1679,8 +1679,13 @@ impl<
             };
         }
         if let Some(payload) = label_any.downcast_ref::<ThisSpellCostReduction<Cond>>() {
+            let id = if payload.affinity_filter.is_some() {
+                StaticAbilityId::Affinity
+            } else {
+                StaticAbilityId::ThisSpellCostReduction
+            };
             return Self {
-                id: Some(StaticAbilityId::ThisSpellCostReduction),
+                id: Some(id),
                 label: "this spell cost reduction".to_string(),
                 payload: StaticAbilityPayload::ThisSpellCostReduction(payload.clone()),
             };
@@ -4359,11 +4364,21 @@ impl CostIncreaseManaCost {
 pub struct ThisSpellCostReduction<Cond> {
     pub amount: Value,
     pub condition: Cond,
+    pub affinity_filter: Option<ObjectFilter>,
 }
 
 impl<Cond> ThisSpellCostReduction<Cond> {
     pub fn new(amount: Value, condition: Cond) -> Self {
-        Self { amount, condition }
+        Self {
+            amount,
+            condition,
+            affinity_filter: None,
+        }
+    }
+
+    pub fn with_affinity_filter(mut self, filter: ObjectFilter) -> Self {
+        self.affinity_filter = Some(filter);
+        self
     }
 }
 

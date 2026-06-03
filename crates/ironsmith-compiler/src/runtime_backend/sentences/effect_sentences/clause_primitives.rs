@@ -13,7 +13,9 @@ use super::super::permission_helpers::{
     parse_unsupported_play_cast_permission_clause, parse_until_end_of_turn_may_play_tagged_clause,
     parse_until_your_next_turn_may_play_tagged_clause,
 };
-use super::super::util::{is_article, parse_subject, parse_target_phrase, span_from_tokens};
+use super::super::util::{
+    is_article, parse_subject, parse_target_phrase, parse_value_expr_words, span_from_tokens,
+};
 use super::parse_restriction_duration;
 use super::sentence_helpers::*;
 #[allow(unused_imports)]
@@ -22,7 +24,7 @@ use crate::cards::builders::{
     LineAst, OwnedLexToken, PlayerAst, PredicateAst, ReferenceImports, RetargetModeAst, SubjectAst,
     TagKey, TargetAst, TextSpan, TriggerSpec,
 };
-use crate::effect::ChoiceCount;
+use crate::effect::{ChoiceCount, Value};
 use crate::mana::ManaSymbol;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::target::{ObjectFilter, PlayerFilter};
@@ -1008,6 +1010,15 @@ pub(crate) fn parse_power_reference_word_count(words: &[&str]) -> Option<usize> 
     None
 }
 
+fn value_references_power(value: &Value) -> bool {
+    match value {
+        Value::SourcePower | Value::PowerOf(_) => true,
+        Value::Add(left, right) => value_references_power(left) || value_references_power(right),
+        Value::Scaled(value, _) | Value::SurfaceHinted { value, .. } => value_references_power(value),
+        _ => false,
+    }
+}
+
 pub(crate) fn is_damage_source_target(target: &TargetAst) -> bool {
     matches!(
         target,
@@ -1043,7 +1054,16 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
 
     let power_ref_clause = after_equal_clause.trimmed();
     let power_ref_words = power_ref_clause.word_refs();
-    let Some(power_ref_len) = parse_power_reference_word_count(&power_ref_words) else {
+    let (amount, power_ref_len) = if let Some((amount, used)) = parse_value_expr_words(&power_ref_words)
+        && value_references_power(&amount)
+    {
+        (amount, used)
+    } else if let Some(power_ref_len) = parse_power_reference_word_count(&power_ref_words) {
+        (
+            Value::PowerOf(Box::new(crate::target::ChooseSpec::Source)),
+            power_ref_len,
+        )
+    } else {
         return Ok(None);
     };
 
@@ -1089,16 +1109,18 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         let normalized_target_words = normalized_target_clause.word_refs();
         if EACH_PLAYER_TARGET_PATTERN.matches_words(&normalized_target_words) {
             return Ok(Some(EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
+                    amount.clone(),
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }));
         }
         if EACH_OPPONENT_TARGET_PATTERN.matches_words(&normalized_target_words) {
             return Ok(Some(EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
+                    amount.clone(),
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }));
@@ -1116,16 +1138,18 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         let target_words = target_clause.word_refs();
         if EACH_PLAYER_TARGET_PATTERN.matches_words(&target_words) {
             return Ok(Some(EffectAst::ForEachPlayer {
-                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
+                    amount.clone(),
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }));
         }
         if EACH_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
             return Ok(Some(EffectAst::ForEachOpponent {
-                effects: vec![EffectAst::subject_verb_damage_equal_to_power(
+                effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
+                    amount.clone(),
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }));
@@ -1151,8 +1175,8 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         return Ok(None);
     };
 
-    Ok(Some(EffectAst::subject_verb_damage_equal_to_power(
-        source, target,
+    Ok(Some(EffectAst::subject_verb_damage_with_source(
+        source, amount, target,
     )))
 }
 

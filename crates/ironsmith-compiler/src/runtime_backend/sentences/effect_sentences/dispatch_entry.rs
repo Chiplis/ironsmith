@@ -308,16 +308,22 @@ fn repair_that_object_power_damage_subject(
             {
                 subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
                     source: source_target.clone(),
+                    amount: Value::PowerOf(Box::new(ChooseSpec::Source)),
                     target: target.clone(),
                 };
             }
-            SubjectVerbActionAst::DealDamageEqualToPower { source, target }
+            SubjectVerbActionAst::DealDamageEqualToPower {
+                source,
+                amount,
+                target,
+            }
                 if (matches!(source, TargetAst::Source(_))
                     || matches!(source, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG))
                     && matches!(target, TargetAst::Source(_)) =>
             {
                 subject_verb.action = SubjectVerbActionAst::DealDamageEqualToPower {
                     source: source_target.clone(),
+                    amount: amount.clone(),
                     target: target.clone(),
                 };
             }
@@ -339,7 +345,7 @@ fn repair_target_controlled_source_damage_to_that_player(
         let EffectAst::SubjectVerb(subject_verb) = effect else {
             continue;
         };
-        let SubjectVerbActionAst::DealDamageEqualToPower { source, target } =
+        let SubjectVerbActionAst::DealDamageEqualToPower { source, target, .. } =
             &mut subject_verb.action
         else {
             continue;

@@ -16446,6 +16446,7 @@ fn describe_damage_amount_clause(amount: &Value) -> (String, Option<String>) {
         return (amount_text, Some(where_x));
     }
     if value_prefers_equal_to(amount)
+        || power_damage_prefers_equal_to(amount)
         || (!value_prefers_where_x(amount) && count_damage_prefers_equal_to(amount))
     {
         return (format!("damage equal to {}", describe_value(amount)), None);
@@ -16461,6 +16462,19 @@ fn count_damage_prefers_equal_to(amount: &Value) -> bool {
         Value::Count(_) | Value::CountScaled(_, _) => true,
         Value::CountersOnSource(_) | Value::CountersOn(_, _) => true,
         Value::Scaled(inner, _) => count_damage_prefers_equal_to(inner),
+        _ => false,
+    }
+}
+
+fn power_damage_prefers_equal_to(amount: &Value) -> bool {
+    match amount.unhinted() {
+        Value::SourcePower | Value::SourceToughness | Value::PowerOf(_) | Value::ToughnessOf(_) => {
+            true
+        }
+        Value::Scaled(inner, _) => power_damage_prefers_equal_to(inner),
+        Value::Add(left, right) => {
+            power_damage_prefers_equal_to(left) || power_damage_prefers_equal_to(right)
+        }
         _ => false,
     }
 }

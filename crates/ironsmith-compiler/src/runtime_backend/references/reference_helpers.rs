@@ -608,6 +608,10 @@ pub(crate) fn resolve_value_it_tag(
             Box::new(resolve_value_it_tag(left, refs)?),
             Box::new(resolve_value_it_tag(right, refs)?),
         )),
+        Value::Scaled(value, multiplier) => Ok(Value::Scaled(
+            Box::new(resolve_value_it_tag(value, refs)?),
+            *multiplier,
+        )),
         Value::SurfaceHinted { value, hints } => Ok(Value::SurfaceHinted {
             value: Box::new(resolve_value_it_tag(value, refs)?),
             hints: hints.clone(),

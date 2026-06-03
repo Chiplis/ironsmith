@@ -2856,20 +2856,10 @@ pub(crate) fn calculate_effective_mana_cost_with_targets_internal(
     casting_method: &CastingMethod,
     view: &DerivedGameView<'_>,
 ) -> crate::mana::ManaCost {
-    use crate::ability::AbilityKind;
-
     let mut current_cost = base_cost.clone();
 
     // Check for Affinity for artifacts
-    let has_affinity = spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.has_affinity()
-        } else {
-            false
-        }
-    });
-
-    if has_affinity {
+    if has_affinity_for_artifacts(spell) {
         // Count artifacts controlled by the player
         let artifact_count = count_artifacts_controlled_with_view(game, player, view);
         current_cost = current_cost.reduce_generic(artifact_count);
@@ -3591,15 +3581,7 @@ pub fn calculate_delve_exile_count_with_targets(
     // First apply other cost reductions (like Affinity)
     let mut cost_after_reductions = base_cost.clone();
 
-    let has_affinity = spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.has_affinity()
-        } else {
-            false
-        }
-    });
-
-    if has_affinity {
+    if has_affinity_for_artifacts(spell) {
         let artifact_count = count_artifacts_controlled(game, player);
         cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
     }
@@ -3654,6 +3636,19 @@ pub fn has_delve(spell: &crate::object::Object) -> bool {
     spell.abilities.iter().any(|a| {
         if let AbilityKind::Static(s) = &a.kind {
             s.has_delve()
+        } else {
+            false
+        }
+    })
+}
+
+fn has_affinity_for_artifacts(spell: &crate::object::Object) -> bool {
+    use crate::ability::AbilityKind;
+    use ironsmith_core::StaticAbilityId;
+
+    spell.abilities.iter().any(|a| {
+        if let AbilityKind::Static(s) = &a.kind {
+            s.id() == StaticAbilityId::AffinityForArtifacts
         } else {
             false
         }
@@ -4816,8 +4811,6 @@ pub fn calculate_convoke_creatures_to_tap(
     spell: &crate::object::Object,
     base_cost: &crate::mana::ManaCost,
 ) -> Vec<crate::ids::ObjectId> {
-    use crate::ability::AbilityKind;
-
     if !has_convoke(spell) {
         return Vec::new();
     }
@@ -4825,15 +4818,7 @@ pub fn calculate_convoke_creatures_to_tap(
     // First apply other cost reductions (like Affinity and Delve)
     let mut cost_after_reductions = base_cost.clone();
 
-    let has_affinity = spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.has_affinity()
-        } else {
-            false
-        }
-    });
-
-    if has_affinity {
+    if has_affinity_for_artifacts(spell) {
         let artifact_count = count_artifacts_controlled(game, player);
         cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
     }
@@ -4966,15 +4951,7 @@ pub fn calculate_improvise_artifacts_to_tap(
     // First apply other cost reductions (Affinity, Delve, Convoke)
     let mut cost_after_reductions = base_cost.clone();
 
-    let has_affinity = spell.abilities.iter().any(|a| {
-        if let AbilityKind::Static(s) = &a.kind {
-            s.has_affinity()
-        } else {
-            false
-        }
-    });
-
-    if has_affinity {
+    if has_affinity_for_artifacts(spell) {
         let artifact_count = count_artifacts_controlled(game, player);
         cost_after_reductions = cost_after_reductions.reduce_generic(artifact_count);
     }

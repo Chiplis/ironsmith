@@ -19,6 +19,32 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
+fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Value {
+    match value {
+        Value::SourcePower => Value::PowerOf(Box::new(source.clone())),
+        Value::SourceToughness => Value::ToughnessOf(Box::new(source.clone())),
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::PowerOf(Box::new(source.clone()))
+        }
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::ToughnessOf(Box::new(source.clone()))
+        }
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_source_value_to_damage_source(left, source)),
+            Box::new(bind_source_value_to_damage_source(right, source)),
+        ),
+        Value::Scaled(inner, multiplier) => Value::Scaled(
+            Box::new(bind_source_value_to_damage_source(inner, source)),
+            *multiplier,
+        ),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_source_value_to_damage_source(value, source)),
+            hints: hints.clone(),
+        },
+        _ => value.clone(),
+    }
+}
+
 fn prevention_target_from_non_choice_target(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
@@ -4556,9 +4582,14 @@ fn compile_subject_verb_effect(
             }
             Ok((effects, choices))
         }
-        SubjectVerbActionAst::DealDamageEqualToPower { source, target } => {
+        SubjectVerbActionAst::DealDamageEqualToPower {
+            source,
+            amount,
+            target,
+        } => {
             let (source_spec, mut choices) =
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
+            let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut damage_target_spec = if source == target {
                 source_spec.clone()
             } else {
@@ -4577,6 +4608,7 @@ fn compile_subject_verb_effect(
             } else {
                 source_spec.clone()
             };
+            let mut damage_amount = bind_source_value_to_damage_source(&amount, &source_spec);
 
             if source_spec.is_target() {
                 let source_tag = ctx.next_tag("damage_source");
@@ -4585,6 +4617,7 @@ fn compile_subject_verb_effect(
                         .tag(source_tag.clone()),
                 );
                 damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
+                damage_amount = bind_source_value_to_damage_source(&amount, &damage_source_spec);
                 if source == target {
                     damage_target_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 }
@@ -4598,7 +4631,7 @@ fn compile_subject_verb_effect(
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         per_target_source_spec.clone(),
                         Effect::deal_damage(
-                            Value::PowerOf(Box::new(per_target_source_spec.clone())),
+                            bind_source_value_to_damage_source(&amount, &per_target_source_spec),
                             ChooseSpec::Iterated,
                         ),
                     ));
@@ -4612,10 +4645,7 @@ fn compile_subject_verb_effect(
                 let damage_effect = tag_object_target_effect(
                     Effect::new(crate::effects::ExecuteWithSourceEffect::new(
                         damage_source_spec.clone(),
-                        Effect::deal_damage(
-                            Value::PowerOf(Box::new(damage_source_spec.clone())),
-                            damage_target_spec.clone(),
-                        ),
+                        Effect::deal_damage(damage_amount.clone(), damage_target_spec.clone()),
                     )),
                     &damage_target_spec,
                     ctx,

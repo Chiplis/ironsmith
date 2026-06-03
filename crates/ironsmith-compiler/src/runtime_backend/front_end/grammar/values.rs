@@ -824,7 +824,9 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     };
 
     let parse_amount_segment = |segment: &[&str]| -> Option<Value> {
-        parse_power_or_toughness_segment(segment)
+        parse_value_expr_words(segment)
+            .and_then(|(value, used)| (used == segment.len()).then_some(value))
+            .or_else(|| parse_power_or_toughness_segment(segment))
             .or_else(|| {
                 if segment.len() == 1 {
                     parse_number_word_i32(segment[0]).map(Value::Fixed)
