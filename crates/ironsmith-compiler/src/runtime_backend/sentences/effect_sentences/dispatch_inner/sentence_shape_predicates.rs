@@ -1,5 +1,9 @@
 type DispatchInnerNormalizedWords<'a> = TokenWordView<'a>;
 
+use crate::runtime_backend::effect_sentences::{
+    SubjectVerbPrimitiveClause, parse_sentence_delayed_next_step_unless_pays,
+};
+
 macro_rules! sentence_unsupported_adapters_lexed {
     ($(($adapter:ident, $predicate:ident)),* $(,)?) => {
         $(
@@ -709,6 +713,16 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if sentence_words.starts_with(&["at", "the", "beginning", "of"])
+        && sentence_words
+            .windows(3)
+            .any(|window| window == ["next", "end", "step"])
+        && let Some(effects) = parse_sentence_delayed_next_step_unless_pays(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
     if let Some(effects) = parse_it_is_aura_enchantment_sentence(sentence_words.as_slice()) {
         return Ok(effects);
     }

@@ -22429,6 +22429,12 @@ pub(super) fn describe_choose_then_sacrifice(
         constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && matches!(constraint.tag.as_str(), "triggering" | "damaged")
     });
+    let refers_to_created_token = choose.filter.token
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && (constraint.tag.as_str().starts_with("created_")
+                    || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "created"))
+        });
     let chosen = choose.filter.description();
     if choose_is_any_number && sacrifice_any_number {
         let chosen = pluralize_noun_phrase(strip_leading_article(&chosen));
@@ -22447,6 +22453,9 @@ pub(super) fn describe_choose_then_sacrifice(
     if sacrifice_count == 1 {
         if refers_to_triggering_object {
             return Some(format!("{player} {verb} it"));
+        }
+        if refers_to_created_token {
+            return Some(format!("{player} {verb} that token"));
         }
         if let Some(rest) = chosen.strip_prefix(&format!("{player}'s ")) {
             let chosen_kind = with_indefinite_article(rest);
@@ -22489,6 +22498,9 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
     }
     if matches!(sacrifice.count, Value::Fixed(value) if *value == 1) {
         let description = sacrifice.filter.description();
+        if sacrifice.filter.token && filter_is_tagged_it(sacrifice.filter) {
+            return format!("{player} {verb} that token");
+        }
         if matches!(
             sacrifice.player,
             PlayerFilter::Any | PlayerFilter::Opponent | PlayerFilter::IteratedPlayer
@@ -34738,11 +34750,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             _ => describe_choose_spec(&create_copy.target),
         };
+        let inline_tapped = create_copy.enters_tapped;
+        let inline_attacking = create_copy.enters_attacking && create_copy.attack_target_mode.is_none();
+        let token_state = match (inline_tapped, inline_attacking) {
+            (true, true) => "tapped and attacking ",
+            (true, false) => "tapped ",
+            (false, true) => "attacking ",
+            (false, false) => "",
+        };
         let mut text = match create_copy.count {
-            Value::Fixed(1) => format!("Create a token that's a copy of {target}"),
-            Value::Fixed(n) => format!("Create {n} tokens that are copies of {target}"),
+            Value::Fixed(1) => format!("Create a {token_state}token that's a copy of {target}"),
+            Value::Fixed(n) => format!("Create {n} {token_state}tokens that are copies of {target}"),
             _ => format!(
-                "Create {} tokens that are copies of {target}",
+                "Create {} {token_state}tokens that are copies of {target}",
                 describe_value(&create_copy.count)
             ),
         };
@@ -34752,13 +34772,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_possessive_player_filter(&create_copy.controller)
             ));
         }
-        if create_copy.enters_tapped {
+        if create_copy.enters_tapped && !inline_tapped {
             text.push_str(", tapped");
         }
         if create_copy.has_haste {
             text.push_str(", with haste");
         }
-        if create_copy.enters_attacking {
+        if create_copy.enters_attacking && !inline_attacking {
             if let Some(crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
                 player_filter,
             )) = &create_copy.attack_target_mode

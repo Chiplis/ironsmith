@@ -47,7 +47,8 @@ use super::for_each_helpers::{
 };
 use super::search_library::parse_restriction_duration;
 use super::subject_verb_primitives::{
-    SubjectVerbPrimitiveClause, find_unquoted_token_word, try_build_unless,
+    SubjectVerbPrimitiveClause, find_unquoted_token_word, parse_sentence_delayed_next_step_unless_pays,
+    try_build_unless,
 };
 use super::verb_dispatch::parse_effect_with_verb;
 use super::verb_handlers::parse_control_duration;
@@ -1124,6 +1125,14 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 ],
             });
         }
+    }
+
+    if let Some(effects) = parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
+    {
+        return Ok(match effects.as_slice() {
+            [effect] => effect.clone(),
+            _ => EffectAst::Sequence { effects },
+        });
     }
 
     if let Some(effect) = run_clause_primitives(tokens)? {

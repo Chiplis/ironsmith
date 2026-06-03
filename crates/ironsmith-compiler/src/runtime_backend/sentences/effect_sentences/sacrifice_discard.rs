@@ -6,7 +6,7 @@ use crate::runtime_backend::sentences::effect_sentences::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed,
 };
 use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::{
-    SubjectVerbPrimitiveClause, try_build_unless,
+    SubjectVerbPrimitiveClause, rewrite_unless_cost_source_values_to_it_tag, try_build_unless,
 };
 
 const DISCARD_SAME_MANA_VALUE_FILTER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -50,7 +50,8 @@ const CHOICE_SUFFIX_THREE_WORD_PATTERNS: &[&[&str]] = &[
 const CHOICE_SUFFIX_FIVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["of", "his", "or", "her", "choice"]);
 const TAGGED_IT_OR_CARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["that", "card"]]);
+    clause_shape!(exact_any & [&["it"], &["that", "card"], &["that", "token"]]);
+const TAGGED_TOKEN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that", "token"]);
 const ATTACHED_OBJECT_EXCLUSION_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases
         & [&[
@@ -225,6 +226,8 @@ pub(crate) fn parse_sacrifice(
                 )));
             };
             let sacrifice_tokens = trim_commas(&tokens[..unless_token_idx]);
+            let sacrifice_refs_it = TAGGED_IT_OR_CARD_PATTERN
+                .matches_words(&crate::runtime_backend::token_word_refs(&sacrifice_tokens));
             let base = parse_sacrifice(&sacrifice_tokens, subject.clone(), target.clone())?;
             if let Some(predicate) =
                 parse_unless_mana_spent_to_cast_predicate(&tokens[unless_token_idx + 1..])
@@ -244,11 +247,14 @@ pub(crate) fn parse_sacrifice(
                     if_false: vec![base],
                 });
             }
-            if let Some(unless_effect) = try_build_unless(
+            if let Some(mut unless_effect) = try_build_unless(
                 vec![base],
                 SubjectVerbPrimitiveClause::new(tokens),
                 unless_token_idx,
             )? {
+                if sacrifice_refs_it {
+                    rewrite_unless_cost_source_values_to_it_tag(&mut unless_effect);
+                }
                 return Ok(unless_effect);
             }
             return Err(CardTextError::ParseError(format!(
@@ -382,7 +388,12 @@ pub(crate) fn parse_sacrifice(
     }
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
     let mut filter = if TAGGED_IT_OR_CARD_PATTERN.matches_words(&filter_words) {
-        ObjectFilter::tagged(TagKey::from(IT_TAG))
+        let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        tagged_filter.zone = Some(Zone::Battlefield);
+        if TAGGED_TOKEN_PATTERN.matches_words(&filter_words) {
+            tagged_filter.token = true;
+        }
+        tagged_filter
     } else {
         parse_object_filter_lexed(filter_tokens, other)?
     };

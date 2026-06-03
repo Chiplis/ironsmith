@@ -198,6 +198,19 @@ const DELAYED_REPEAT_THIS_PROCESS_PATTERN: ClauseShape<'static> =
 const DELAYED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
 const DELAYED_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const NEXT_END_STEP_PREFIXES: &[&[&str]] = &[
+    &[
+        "at",
+        "the",
+        "beginning",
+        "of",
+        "the",
+        "next",
+        "end",
+        "step",
+    ],
+    &["at", "the", "beginning", "of", "next", "end", "step"],
+];
 
 fn delayed_find_phrase_start(words: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
     (0..words.len()).find(|idx| shape.matches_words(&words[*idx..]))
@@ -254,6 +267,66 @@ fn bind_unless_player_context(effect: &mut EffectAst, player: PlayerAst) {
     }
 }
 
+fn rewrite_value_source_to_it_tag(value: &mut Value) {
+    match value {
+        Value::SurfaceHinted { value, .. } => rewrite_value_source_to_it_tag(value),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            rewrite_value_source_to_it_tag(left);
+            rewrite_value_source_to_it_tag(right);
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => rewrite_value_source_to_it_tag(inner),
+        Value::PowerOf(spec) | Value::ToughnessOf(spec) | Value::ManaValueOf(spec)
+            if matches!(spec.as_ref(), crate::target::ChooseSpec::Source) =>
+        {
+            *spec = Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)));
+        }
+        _ => {}
+    }
+}
+
+fn rewrite_cost_source_values_to_it_tag(cost: &mut crate::cost::TotalCost) {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => {
+            let mut components = cost.costs().to_vec();
+            for component in &mut components {
+                match component {
+                    crate::costs::Cost::DynamicMana(dynamic) => {
+                        if let Some(value) = dynamic.x_value.as_mut() {
+                            rewrite_value_source_to_it_tag(value);
+                        }
+                        if let Some(value) = dynamic.additional_generic.as_mut() {
+                            rewrite_value_source_to_it_tag(value);
+                        }
+                        if let Some(value) = dynamic.multiplier.as_mut() {
+                            rewrite_value_source_to_it_tag(value);
+                        }
+                    }
+                    crate::costs::Cost::Energy(value)
+                    | crate::costs::Cost::Mill(value)
+                    | crate::costs::Cost::Life(value) => rewrite_value_source_to_it_tag(value),
+                    _ => {}
+                }
+            }
+            *cost = crate::cost::TotalCost::from_costs(components);
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let mut branches = branches.to_vec();
+            for branch in &mut branches {
+                rewrite_cost_source_values_to_it_tag(branch);
+            }
+            *cost = crate::cost::TotalCost::one_of(branches);
+        }
+    }
+}
+
+pub(crate) fn rewrite_unless_cost_source_values_to_it_tag(effect: &mut EffectAst) {
+    if let EffectAst::UnlessPays { cost, .. } = effect {
+        rewrite_cost_source_values_to_it_tag(cost);
+    }
+}
+
 pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -263,6 +336,50 @@ pub(crate) fn parse_sentence_delayed_next_step_unless_pays(
     }
 
     let (leading_segments, final_segment) = segments.split_at(segments.len() - 1);
+    if let Some((_, after_timing)) = final_segment[0].strip_any_prefix_clause(NEXT_END_STEP_PREFIXES)
+    {
+        let timing_clause = after_timing.trimmed();
+        if timing_clause.is_empty() {
+            return Ok(None);
+        }
+        let Some(unless_idx) = timing_clause.find_token_word("unless") else {
+            return Ok(None);
+        };
+        let delayed_effect_clause = timing_clause.before(unless_idx).trimmed();
+        if delayed_effect_clause.is_empty() {
+            return Ok(None);
+        }
+        let delayed_effects = parse_effect_chain(delayed_effect_clause.tokens())?;
+        if delayed_effects.is_empty() {
+            return Ok(None);
+        }
+        let delayed_words = delayed_effect_clause.word_refs();
+        let delayed_refs_it = matches!(
+            delayed_words.as_slice(),
+            ["sacrifice", "it"] | ["sacrifice", "that", "card"] | ["sacrifice", "that", "token"]
+        );
+        let Some(mut unless_effect) = try_build_unless(delayed_effects, timing_clause, unless_idx)?
+        else {
+            return Ok(None);
+        };
+        if delayed_refs_it {
+            rewrite_unless_cost_source_values_to_it_tag(&mut unless_effect);
+        }
+
+        let mut effects = Vec::new();
+        for segment in leading_segments {
+            let parsed = parse_effect_chain(segment.tokens())?;
+            if parsed.is_empty() {
+                return Ok(None);
+            }
+            effects.extend(parsed);
+        }
+        effects.push(EffectAst::DelayedUntilNextEndStep {
+            player: PlayerFilter::Any,
+            effects: vec![unless_effect],
+        });
+        return Ok(Some(effects));
+    }
     let Some((timing_start_word, _timing_end_word, step, player)) =
         delayed_next_step_marker(final_segment[0])
     else {
