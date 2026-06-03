@@ -21352,6 +21352,40 @@ fn parse_add_any_color_for_each_removed_counter_with_unsupported_tail_fails_stri
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_touch_of_the_eternal_counted_permanents_life_total_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(278_197), "Touch of the Eternal")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your upkeep, count the number of permanents you control. Your life total becomes that number.",
+        )
+        .expect("Touch of the Eternal should parse strictly");
+
+    let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
+    assert!(debug.contains("SetLifeTotalEffect"), "{debug}");
+    assert!(
+        compact_debug.contains("Count(") && compact_debug.contains("controller:Some(You"),
+        "expected Touch of the Eternal to count permanents you control, got {debug}"
+    );
+
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains("at the beginning of your upkeep")
+            && joined.contains("count the number of permanents you control")
+            && joined.contains("your life total becomes that number"),
+        "expected counted-permanents life-total wording, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_starting_life_total_amount_in_trigger() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Endstone Variant")
         .card_types(vec![CardType::Artifact])

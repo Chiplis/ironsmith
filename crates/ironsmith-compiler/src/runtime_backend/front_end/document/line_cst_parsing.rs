@@ -13,6 +13,61 @@ const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = 
 );
 const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
 
+fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if tokens.last().is_some_and(|token| token.kind == TokenKind::Period) {
+        &tokens[..tokens.len().saturating_sub(1)]
+    } else {
+        tokens
+    }
+}
+
+fn rewrite_count_that_number_life_total_trigger_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let (trigger_tokens, effect_tokens) = grammar::split_lexed_once_on_comma(tokens)?;
+    let sentences = structure::split_lexed_sentences(effect_tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() != 2 {
+        return None;
+    }
+
+    let count_sentence = strip_terminal_period_tokens(sentences[0]);
+    if !token_slice_first_is(count_sentence, "count") {
+        return None;
+    }
+    let count_value_tokens = count_sentence.get(1..)?;
+    let count_value_words = token_word_refs(count_value_tokens);
+    if !matches!(
+        count_value_words.as_slice(),
+        ["the", "number", "of", ..] | ["number", "of", ..]
+    ) {
+        return None;
+    }
+
+    let life_sentence = strip_terminal_period_tokens(sentences[1]);
+    let becomes_idx = find_token_word(life_sentence, "becomes")?;
+    let subject_tokens = &life_sentence[..becomes_idx];
+    let amount_tokens = &life_sentence[becomes_idx + 1..];
+    let amount_words = token_word_refs(amount_tokens);
+    if !matches!(amount_words.as_slice(), ["that", "number"]) {
+        return None;
+    }
+    let subject_words = token_word_refs(subject_tokens);
+    if !matches!(subject_words.as_slice(), [.., "life", "total"]) {
+        return None;
+    }
+
+    let rewritten = format!(
+        "{}, {} becomes {}.",
+        render_token_slice(trigger_tokens).trim(),
+        render_token_slice(subject_tokens).trim(),
+        render_token_slice(count_value_tokens).trim()
+    );
+    lex_line(rewritten.as_str(), 0).ok()
+}
+
 pub(super) fn parse_triggered_line_cst(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
@@ -44,6 +99,17 @@ pub(super) fn parse_triggered_line_cst(
     let normalized = render_token_slice(tokens_without_cap).trim().to_string();
     if let Some(err) = diagnose_known_unsupported_rewrite_line(tokens_without_cap) {
         return Err(err);
+    }
+
+    if let Some(rewritten_tokens) =
+        rewrite_count_that_number_life_total_trigger_tokens(tokens_without_cap)
+    {
+        let rewritten_line = rewrite_line_tokens(line, &rewritten_tokens);
+        if let Ok(mut parsed) = parse_triggered_line_cst(&rewritten_line) {
+            parsed.full_text = normalized.clone();
+            parsed.full_parse_tokens = tokens_without_cap.to_vec();
+            return Ok(parsed);
+        }
     }
 
     if let Some(nested_trigger_tokens) =
