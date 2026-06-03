@@ -482,9 +482,39 @@ pub(super) fn strict_unsupported_triggered_line_error(
 }
 
 pub(super) fn parse_level_item_cst(
+    builder: &CardDefinitionBuilder,
     line: &PreprocessedLine,
 ) -> Result<Option<LevelItemCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
+
+    if let Some((cost_tokens, effect_parse_tokens)) =
+        split_activation_text_tokens_lexed(&line.tokens)
+    {
+        let effect_text = render_token_slice(&effect_parse_tokens).trim().to_string();
+        let normalized_cost_tokens =
+            normalize_activation_cost_tokens_for_builder(builder, line, cost_tokens.clone())?;
+        match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
+            Ok(cost_cst) => {
+                let cost = lower_activation_cost_cst(&cost_cst)?;
+                return Ok(Some(LevelItemCst {
+                    info: line.info.clone(),
+                    text: normalized.to_string(),
+                    kind: LevelItemKindCst::ActivatedAbility,
+                    parsed: ParsedLevelAbilityItemAst::ActivatedAbility(
+                        ParsedLevelActivatedAbilityAst {
+                            info: line.info.clone(),
+                            cost,
+                            cost_parse_tokens: normalized_cost_tokens,
+                            effect_text,
+                            effect_parse_tokens,
+                        },
+                    ),
+                }));
+            }
+            Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => return Err(err),
+            Err(_) => {}
+        }
+    }
 
     if !should_skip_keyword_action_static_probe(&line.tokens)
         && let Some(actions) = parse_ability_line_lexed(&line.tokens)

@@ -49,6 +49,7 @@ pub(crate) struct EffectReferenceResolutionConfig {
     pub(crate) initial_last_effect_id: Option<EffectId>,
     pub(crate) initial_iterated_player: bool,
     pub(crate) force_auto_tag_object_targets: bool,
+    pub(crate) force_export_last_memory_effect_id: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -80,7 +81,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             | TriggerSpec::ThisDealsCombatDamageTo(_)
             | TriggerSpec::DealsCombatDamage(_)
             | TriggerSpec::DealsCombatDamageTo { .. }
-            | TriggerSpec::ThisDealsCombatDamageToPlayer
+            | TriggerSpec::ThisDealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayer { .. }
             | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { .. }
             | TriggerSpec::AttacksOneOrMore(_)
@@ -557,13 +558,19 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::Counter { target }
                 | SubjectVerbActionAst::CounterUnlessPays { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "countered")?;
+                    if let Some(tag) = frame.last_object_tag.as_deref() {
+                        frame.last_player_filter = Some(PlayerFilter::ControllerOf(
+                            ObjectRef::tagged(tag.to_string()),
+                        ));
+                    }
                 }
                 SubjectVerbActionAst::PutCounters { target, .. }
                 | SubjectVerbActionAst::PutCounterChoice { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
-                | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. } => {
+                | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
+                | SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
                     maybe_tag_target(target, frame, id_gen, "counters")?;
                 }
                 SubjectVerbActionAst::MoveAllCounters { from, to }
@@ -1262,8 +1269,7 @@ fn annotate_effect_sequence_with_env_internal(
                 || effects_reference_its_controller(remaining)
                 || effects_reference_tag(remaining, "damaged_0")
         };
-        let assigned_effect_id =
-            maybe_assign_effect_result_id(effects, idx, id_gen, in_env.allow_life_event_value);
+        let assigned_effect_id = maybe_assign_effect_result_id(effects, idx, id_gen, config);
 
         let mut out_env = advance_reference_env_for_effect(
             &effect,
@@ -1342,7 +1348,7 @@ fn maybe_assign_effect_result_id(
     effects: &[EffectAst],
     idx: usize,
     id_gen: &mut IdGenContext,
-    _allow_life_event_value: bool,
+    config: EffectReferenceResolutionConfig,
 ) -> Option<EffectId> {
     let next_is_result_gate = idx + 1 < effects.len()
         && matches!(
@@ -1385,6 +1391,9 @@ fn maybe_assign_effect_result_id(
         && effects[idx + 1..]
             .iter()
             .any(effect_is_searched_library_gate);
+    let force_export_last_memory_effect_id = config.force_export_last_memory_effect_id
+        && idx + 1 == effects.len()
+        && effect_can_supply_prior_effect_memory(&effects[idx]);
 
     if !(next_is_if_result_with_opponent_doesnt
         || next_is_if_result_with_player_doesnt
@@ -1394,7 +1403,8 @@ fn maybe_assign_effect_result_id(
         || next_needs_event_derived_amount
         || later_needs_event_derived_amount
         || next_needs_prior_effect_value
-        || later_needs_library_search_result)
+        || later_needs_library_search_result
+        || force_export_last_memory_effect_id)
     {
         return None;
     }
@@ -1795,8 +1805,15 @@ fn resolve_effect_sequence_references_with_state(
             &[]
         };
         let _ = effects_reference_it_tag(remaining) || effects_reference_its_controller(remaining);
-        let assigned_effect_id =
-            maybe_assign_effect_result_id(effects, idx, id_gen, state.allow_life_event_value);
+        let assigned_effect_id = maybe_assign_effect_result_id(
+            effects,
+            idx,
+            id_gen,
+            EffectReferenceResolutionConfig {
+                allow_life_event_value: state.allow_life_event_value,
+                ..Default::default()
+            },
+        );
         state.last_effect_id = if matches!(
             effect,
             EffectAst::ResolvedIfResult { .. }
@@ -2092,6 +2109,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+            | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
             | SubjectVerbActionAst::PutIntoHand { .. }
@@ -2136,6 +2154,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDrawReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
@@ -2701,7 +2720,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_unresolved_it_in_target(from, seed_tag)
                     + bind_unresolved_it_in_target(to, seed_tag)
             }
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. } => {
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
+            | SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
                 bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::Discard { count, filter, .. } => {
@@ -2747,6 +2767,13 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::RegisterFutureZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }
+            SubjectVerbActionAst::RegisterDrawReplacement {
+                replacement_effects,
+                ..
+            } => replacement_effects
+                .iter_mut()
+                .map(|effect| bind_unresolved_it_in_effect(effect, seed_tag))
+                .sum(),
             SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
             }

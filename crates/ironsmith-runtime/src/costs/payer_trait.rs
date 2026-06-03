@@ -73,6 +73,8 @@ pub struct CostContext<'dm> {
     /// when both are cost effects. The first effect tags the chosen creature,
     /// and the second effect can reference it via the tag.
     pub tagged_objects: HashMap<TagKey, Vec<ObjectSnapshot>>,
+    /// Outcomes of cost effects labeled with `WithIdEffect`.
+    pub effect_outcomes: HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     /// Provenance parent node for events emitted while paying this cost.
     pub provenance: ProvNodeId,
 }
@@ -88,6 +90,10 @@ impl std::fmt::Debug for CostContext<'_> {
             .field(
                 "tagged_objects",
                 &self.tagged_objects.keys().collect::<Vec<_>>(),
+            )
+            .field(
+                "effect_outcomes",
+                &self.effect_outcomes.keys().collect::<Vec<_>>(),
             )
             .field("provenance", &self.provenance)
             .finish()
@@ -109,6 +115,7 @@ impl<'dm> CostContext<'dm> {
             decision_maker,
             pre_chosen_cards: Vec::new(),
             tagged_objects: HashMap::new(),
+            effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
         }
     }
@@ -198,6 +205,7 @@ impl CostCheckContext {
             decision_maker: dm,
             pre_chosen_cards: self.pre_chosen_cards.clone(),
             tagged_objects: HashMap::new(),
+            effect_outcomes: HashMap::new(),
             provenance: ProvNodeId::default(),
         }
     }

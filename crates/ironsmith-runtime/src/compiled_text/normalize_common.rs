@@ -1,6 +1,7 @@
 use super::*;
 use crate::TaggedOpbjectRelation;
 use crate::filter::StackObjectKind;
+use ironsmith_core::ValueSurfaceHint;
 
 use std::cell::Cell;
 
@@ -268,6 +269,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Play"
             | "Put"
             | "Regenerate"
+            | "Remove"
             | "Reveal"
             | "Return"
             | "Sacrifice"
@@ -6088,22 +6090,62 @@ pub(super) fn strip_square_bracketed_segments(text: &str) -> String {
     if !text.contains('[') {
         return text.to_string();
     }
+    let chars = text.chars().collect::<Vec<_>>();
     let mut out = String::with_capacity(text.len());
-    let mut depth = 0usize;
-    for ch in text.chars() {
-        if ch == '[' {
-            depth += 1;
+    let mut idx = 0usize;
+    while idx < chars.len() {
+        if chars[idx] == '[' {
+            let start = idx;
+            let mut end = idx + 1;
+            let mut depth = 1usize;
+            while end < chars.len() {
+                match chars[end] {
+                    '[' => depth += 1,
+                    ']' => {
+                        depth = depth.saturating_sub(1);
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                end += 1;
+            }
+            if depth != 0 {
+                break;
+            }
+            let content = chars[start + 1..end].iter().collect::<String>();
+            let mut after = end + 1;
+            while after < chars.len() && chars[after].is_whitespace() {
+                after += 1;
+            }
+            if after < chars.len()
+                && chars[after] == ':'
+                && is_bracketed_loyalty_activation_cost(&content)
+            {
+                out.extend(chars[start..=end].iter());
+            }
+            idx = end + 1;
             continue;
         }
-        if ch == ']' {
-            depth = depth.saturating_sub(1);
-            continue;
-        }
-        if depth == 0 {
-            out.push(ch);
-        }
+
+        out.push(chars[idx]);
+        idx += 1;
     }
     out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn is_bracketed_loyalty_activation_cost(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed == "0" {
+        return true;
+    }
+    let amount = trimmed
+        .strip_prefix('+')
+        .or_else(|| trimmed.strip_prefix('-'))
+        .or_else(|| trimmed.strip_prefix('\u{2212}'))
+        .unwrap_or(trimmed);
+    !amount.is_empty() && (amount == "X" || amount.chars().all(|ch| ch.is_ascii_digit()))
 }
 
 pub(super) fn strip_parenthetical_segments(text: &str) -> String {
@@ -7564,6 +7606,7 @@ pub(super) fn ensure_trailing_period(text: &str) -> String {
     if trimmed.ends_with('.')
         || trimmed.ends_with('!')
         || trimmed.ends_with('?')
+        || trimmed.ends_with('—')
         || trimmed.ends_with('"')
         || trimmed.ends_with(')')
     {
@@ -7750,6 +7793,22 @@ pub(super) fn describe_mode_choice_header(
     min: Option<&Value>,
     mode_count: Option<usize>,
 ) -> String {
+    if max.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+        let max_basis = describe_value(max);
+        return match min {
+            Some(Value::Fixed(0)) => format!("Choose up to X, where X is {max_basis} —"),
+            Some(Value::Fixed(min_value)) => {
+                let min_text = number_word(*min_value).unwrap_or_else(|| min_value.to_string());
+                format!("Choose between {min_text} and X mode(s), where X is {max_basis} —")
+            }
+            Some(min) => format!(
+                "Choose between {} and X mode(s), where X is {max_basis} —",
+                describe_value(min)
+            ),
+            None => format!("Choose X mode(s), where X is {max_basis} —"),
+        };
+    }
+
     match (min, max) {
         (Some(Value::Fixed(min_value)), Value::Fixed(max_value)) => {
             match (*min_value, *max_value) {
@@ -11747,7 +11806,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceHasCounterAtLeast { counter_type, count } => {
             if *count == 1 {
                 format!(
-                    "this source has a {} counter on it",
+                    "this source has one or more {} counters on it",
                     counter_type.description()
                 )
             } else {
@@ -12892,6 +12951,16 @@ mod tests {
     }
 
     #[test]
+    fn square_bracket_cleanup_preserves_loyalty_activation_costs() {
+        assert_eq!(
+            strip_square_bracketed_segments(
+                "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\" [reminder]"
+            ),
+            "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\""
+        );
+    }
+
+    #[test]
     fn describe_condition_uses_attached_object_for_equipped_color_checks() {
         let condition = Condition::TaggedObjectMatches(
             TagKey::from("equipped"),
@@ -13134,7 +13203,9 @@ mod tests {
     fn toxic_token_blueprint_keeps_toxic_as_keyword() {
         let toxic = Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    PlayerFilter::Any,
+                ),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
                 )]),
@@ -13168,7 +13239,9 @@ mod tests {
     fn token_with_non_toxic_poison_trigger_does_not_promote_toxic_surface() {
         let toxic = Ability {
             kind: AbilityKind::Triggered(crate::ability::TriggeredAbility {
-                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                trigger: crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    PlayerFilter::Any,
+                ),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                     crate::effects::PoisonCountersEffect::new(1, PlayerFilter::DamagedPlayer),
                 )]),

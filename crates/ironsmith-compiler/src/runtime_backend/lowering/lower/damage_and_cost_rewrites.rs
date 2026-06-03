@@ -132,6 +132,7 @@ pub(crate) fn lower_normalized_card_ast(
     } = ast;
 
     let mut level_abilities = Vec::new();
+    let mut level_activated_lines = Vec::new();
     let mut last_restrictable_ability: Option<usize> = None;
     let mut state = RewriteLoweredCardState::default();
 
@@ -157,13 +158,25 @@ pub(crate) fn lower_normalized_card_ast(
                 );
             }
             NormalizedCardItem::LevelAbility(level) => {
-                level_abilities.push(rewrite_lower_level_ability_ast(level)?);
+                let lowered = rewrite_lower_level_ability_ast(level)?;
+                level_abilities.push(lowered.level_ability);
+                level_activated_lines.extend(lowered.activated_lines);
             }
         }
     }
 
     if !level_abilities.is_empty() {
         builder = builder.with_level_abilities(level_abilities);
+    }
+    for line in level_activated_lines {
+        rewrite_lower_line_ast(
+            &mut builder,
+            &mut state,
+            &mut annotations,
+            line,
+            allow_unsupported,
+            &mut last_restrictable_ability,
+        )?;
     }
 
     builder = rewrite_finalize_lowered_card(builder, &mut state);

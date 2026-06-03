@@ -198,8 +198,8 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisDealsCombatDamageTo { filter } => {
             crate::triggers::Trigger::this_deals_combat_damage_to(filter)
         }
-        TriggerKind::ThisDealsCombatDamageToPlayer => {
-            crate::triggers::Trigger::this_deals_combat_damage_to_player()
+        TriggerKind::ThisDealsCombatDamageToPlayer { player } => {
+            crate::triggers::Trigger::this_deals_combat_damage_to_player(player)
         }
         TriggerKind::DealsDamage { filter } => crate::triggers::Trigger::deals_damage(filter),
         TriggerKind::DealsDamageToPlayer { source, player } => {

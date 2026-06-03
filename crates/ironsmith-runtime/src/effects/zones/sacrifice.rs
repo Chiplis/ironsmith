@@ -131,6 +131,9 @@ fn dynamic_count_tracks_tagged_selection(
     count_filter: &ObjectFilter,
     sacrifice_filter: &ObjectFilter,
 ) -> bool {
+    if count_filter == sacrifice_filter {
+        return true;
+    }
     tagged_selection_tag(count_filter)
         .zip(tagged_selection_tag(sacrifice_filter))
         .is_some_and(|(count_tag, sacrifice_tag)| count_tag == sacrifice_tag)

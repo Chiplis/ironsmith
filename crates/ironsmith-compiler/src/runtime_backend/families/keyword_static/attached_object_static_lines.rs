@@ -286,6 +286,7 @@ pub(crate) fn display_text_for_tokens(
     let mut text = String::new();
     let mut needs_space = false;
     let mut in_effect_text = false;
+    let mut in_loyalty_cost = false;
     let mut capitalize_next_effect_word = false;
     let mut capitalize_next_cost_action = true;
 
@@ -300,7 +301,7 @@ pub(crate) fn display_text_for_tokens(
             let mut rendered = match word {
                 "t" => "{T}".to_string(),
                 "q" => "{Q}".to_string(),
-                _ if in_effect_text && numeric_like => word.to_string(),
+                _ if in_loyalty_cost || (in_effect_text && numeric_like) => word.to_string(),
                 _ => crate::runtime_backend::util::parse_mana_symbol(word)
                     .map(|symbol| ManaCost::from_symbols(vec![symbol]).to_oracle())
                     .unwrap_or_else(|_| word.to_string()),
@@ -341,6 +342,7 @@ pub(crate) fn display_text_for_tokens(
             text.push(':');
             needs_space = true;
             in_effect_text = true;
+            in_loyalty_cost = false;
             capitalize_next_effect_word = capitalize_effect_start;
         } else if token.is_comma() {
             text.push(',');
@@ -357,6 +359,23 @@ pub(crate) fn display_text_for_tokens(
         } else if token.is_semicolon() {
             text.push(';');
             needs_space = true;
+        } else if token.kind == crate::runtime_backend::lexer::TokenKind::LBracket {
+            if needs_space && !text.is_empty() {
+                text.push(' ');
+            }
+            text.push('[');
+            needs_space = false;
+            in_loyalty_cost = true;
+        } else if token.kind == crate::runtime_backend::lexer::TokenKind::RBracket {
+            text.push(']');
+            needs_space = false;
+            in_loyalty_cost = false;
+        } else if in_loyalty_cost && token.kind == crate::runtime_backend::lexer::TokenKind::Plus {
+            text.push('+');
+            needs_space = false;
+        } else if in_loyalty_cost && token.kind == crate::runtime_backend::lexer::TokenKind::Dash {
+            text.push('-');
+            needs_space = false;
         }
     }
 

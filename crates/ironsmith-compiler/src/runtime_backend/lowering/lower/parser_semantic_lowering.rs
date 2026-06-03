@@ -10,6 +10,7 @@ use crate::runtime_backend::lexer::parser_token_word_refs;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
+use crate::ZoneReplacementDurationAst;
 
 const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
@@ -313,6 +314,47 @@ fn triggered_line_source_text(line: &RewriteTriggeredLine) -> String {
     } else {
         full.to_string()
     }
+}
+
+fn next_draw_replacement_player_filter(text: &str) -> Option<PlayerFilter> {
+    let text = text.to_ascii_lowercase();
+    if !text.contains("the next time")
+        || !text.contains("would draw")
+        || !text.contains("this turn")
+        || !text.contains("instead")
+    {
+        return None;
+    }
+
+    if text.contains("they would draw") || text.contains("that player would draw") {
+        return Some(PlayerFilter::IteratedPlayer);
+    }
+    if text.contains("you would draw") {
+        return Some(PlayerFilter::You);
+    }
+    if text.contains("an opponent would draw") || text.contains("opponent would draw") {
+        return Some(PlayerFilter::Opponent);
+    }
+
+    None
+}
+
+fn wrap_future_draw_replacement_effects(
+    full_text: &str,
+    effects: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    let Some(player) = next_draw_replacement_player_filter(full_text) else {
+        return effects;
+    };
+    if effects.is_empty() {
+        return effects;
+    }
+
+    vec![EffectAst::subject_verb_register_draw_replacement(
+        player,
+        effects,
+        ZoneReplacementDurationAst::OneShot,
+    )]
 }
 
 fn raw_preserves_triggered_source(raw: &str, full: &str) -> bool {
@@ -966,7 +1008,10 @@ fn lower_rewrite_triggered_to_chunk_impl(
             .map(|sentence| sentence.to_vec())
             .collect::<Vec<_>>();
         let trigger_effect_tokens = join_sentences_with_period(&trigger_effect_sentences);
-        let effects = parse_effect_sentences_lexed(&trigger_effect_tokens)?;
+        let effects = wrap_future_draw_replacement_effects(
+            line.full_text.as_str(),
+            parse_effect_sentences_lexed(&trigger_effect_tokens)?,
+        );
         if !effects.is_empty() {
             let mut chunks = Vec::new();
             chunks.push(apply_chosen_option_to_triggered_chunk(
@@ -1008,7 +1053,8 @@ fn lower_rewrite_triggered_to_chunk_impl(
         && !EFFECT_STARTS_IF_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
-        let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens);
+        let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens)
+            .map(|effects| wrap_future_draw_replacement_effects(line.full_text.as_str(), effects));
         if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects)
             && !effects.is_empty()
         {

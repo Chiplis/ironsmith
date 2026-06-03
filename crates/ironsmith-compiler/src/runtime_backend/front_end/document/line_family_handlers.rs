@@ -1290,17 +1290,23 @@ pub(super) fn run_activation_line_family(
         )?;
         match parse_activation_cost_tokens_rewrite(&normalized_cost_tokens) {
             Ok(cost) => {
+                let activated = ActivatedLineCst {
+                    info: ctx.line.info.clone(),
+                    cost,
+                    cost_parse_tokens: normalized_cost_tokens,
+                    effect_text,
+                    effect_parse_tokens,
+                    presentation_label,
+                    chosen_option_label: None,
+                };
+                let (activated, next_idx) = extend_activated_line_with_result_followups(
+                    &ctx.preprocessed.items,
+                    ctx.idx,
+                    activated,
+                );
                 return Ok(Some(LineDispatchResult::single(
-                    RewriteLineCst::Activated(ActivatedLineCst {
-                        info: ctx.line.info.clone(),
-                        cost,
-                        cost_parse_tokens: normalized_cost_tokens,
-                        effect_text,
-                        effect_parse_tokens,
-                        presentation_label,
-                        chosen_option_label: None,
-                    }),
-                    ctx.idx + 1,
+                    RewriteLineCst::Activated(activated),
+                    next_idx,
                 )));
             }
             Err(err) if looks_like_activation_cost_prefix(&cost_tokens) => {

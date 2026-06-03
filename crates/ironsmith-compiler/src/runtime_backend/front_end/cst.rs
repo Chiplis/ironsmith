@@ -150,6 +150,7 @@ pub(crate) struct LevelHeaderCst {
 pub(crate) enum LevelItemKindCst {
     KeywordActions,
     StaticAbilities,
+    ActivatedAbility,
 }
 
 #[derive(Debug, Clone)]

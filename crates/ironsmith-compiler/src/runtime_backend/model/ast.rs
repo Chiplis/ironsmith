@@ -8,7 +8,7 @@ use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -347,7 +347,9 @@ pub(crate) enum TriggerSpec {
         surface: crate::target::SourceReferenceSurface,
         destination_name: Option<String>,
     },
-    ThisDealsCombatDamageToPlayer,
+    ThisDealsCombatDamageToPlayer {
+        player: PlayerFilter,
+    },
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
         player: PlayerFilter,
@@ -851,6 +853,7 @@ pub(crate) enum SubjectVerbActionAst {
     AddManaAnyColor {
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
+        distinct_colors: bool,
     },
     AddManaAnyOneColor {
         amount: Value,
@@ -925,6 +928,11 @@ pub(crate) enum SubjectVerbActionAst {
         from_zone: Option<Zone>,
         to_zone: Option<Zone>,
         replacement_zone: Zone,
+        duration: ZoneReplacementDurationAst,
+    },
+    RegisterDrawReplacement {
+        player: PlayerFilter,
+        replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
     },
     RegisterDamagedBySourceZoneReplacement {
@@ -1606,6 +1614,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         counter_type: Option<CounterType>,
         up_to: bool,
+        all_of_them: bool,
     },
     MoveAllCounters {
         from: TargetAst,
@@ -1618,6 +1627,9 @@ pub(crate) enum SubjectVerbActionAst {
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
         all_kinds: bool,
+    },
+    PutCounterOfChosenKind {
+        target: TargetAst,
     },
     ReturnToHand {
         target: TargetAst,
@@ -1946,10 +1958,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::AddManaAnyColor {
                 amount,
                 available_colors,
+                distinct_colors,
             } => f
                 .debug_struct("AddManaAnyColor")
                 .field("amount", amount)
                 .field("available_colors", available_colors)
+                .field("distinct_colors", distinct_colors)
                 .finish(),
             Self::AddManaAnyOneColor { amount } => {
                 f.debug_tuple("AddManaAnyOneColor").field(amount).finish()
@@ -2071,6 +2085,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from_zone", from_zone)
                 .field("to_zone", to_zone)
                 .field("replacement_zone", replacement_zone)
+                .field("duration", duration)
+                .finish(),
+            Self::RegisterDrawReplacement {
+                player,
+                replacement_effects,
+                duration,
+            } => f
+                .debug_struct("RegisterDrawReplacement")
+                .field("player", player)
+                .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
             Self::RegisterDamagedBySourceZoneReplacement {
@@ -3133,12 +3157,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 counter_type,
                 up_to,
+                all_of_them,
             } => f
                 .debug_struct("RemoveUpToAnyCounters")
                 .field("amount", amount)
                 .field("target", target)
                 .field("counter_type", counter_type)
                 .field("up_to", up_to)
+                .field("all_of_them", all_of_them)
                 .finish(),
             Self::MoveAllCounters { from, to } => f
                 .debug_struct("MoveAllCounters")
@@ -3154,6 +3180,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ForEachCounterKindPutOrRemove")
                 .field("target", target)
                 .field("all_kinds", all_kinds)
+                .finish(),
+            Self::PutCounterOfChosenKind { target } => f
+                .debug_struct("PutCounterOfChosenKind")
+                .field("target", target)
                 .finish(),
             Self::ReturnToHand { target, random } => f
                 .debug_struct("ReturnToHand")
@@ -5222,6 +5252,22 @@ impl EffectAst {
         )
     }
 
+    pub(crate) fn subject_verb_register_draw_replacement(
+        player: PlayerFilter,
+        replacement_effects: Vec<EffectAst>,
+        duration: ZoneReplacementDurationAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterDrawReplacement {
+                player,
+                replacement_effects,
+                duration,
+            },
+        )
+    }
+
     pub(crate) fn subject_verb_register_damaged_by_source_zone_replacement(
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -5590,12 +5636,27 @@ impl EffectAst {
         amount: Value,
         available_colors: Option<Vec<crate::color::Color>>,
     ) -> Self {
+        Self::subject_verb_add_mana_any_color_with_distinct(
+            player,
+            amount,
+            available_colors,
+            false,
+        )
+    }
+
+    pub(crate) fn subject_verb_add_mana_any_color_with_distinct(
+        player: PlayerAst,
+        amount: Value,
+        available_colors: Option<Vec<crate::color::Color>>,
+        distinct_colors: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::AddManaAnyColor {
                 amount,
                 available_colors,
+                distinct_colors,
             },
         )
     }
@@ -6364,6 +6425,21 @@ impl EffectAst {
                 target,
                 counter_type,
                 up_to,
+                all_of_them: false,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_remove_all_of_them_counters_from_source() -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RemoveUpToAnyCounters {
+                amount: Value::CountersOn(Box::new(ChooseSpec::Source), None),
+                target: TargetAst::Source(None),
+                counter_type: None,
+                up_to: false,
+                all_of_them: true,
             },
         )
     }
@@ -6397,6 +6473,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_counter_of_chosen_kind(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutCounterOfChosenKind { target },
         )
     }
 

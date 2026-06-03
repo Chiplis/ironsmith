@@ -2536,10 +2536,25 @@ impl Effect {
         Self::new(AddManaOfAnyColorEffect::you(amount))
     }
 
+    /// Create an "add mana of different colors" effect.
+    pub fn add_mana_of_different_colors(amount: impl Into<Value>) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::you_distinct(amount))
+    }
+
     /// Create an "add mana of any color" effect for a specific player.
     pub fn add_mana_of_any_color_player(amount: impl Into<Value>, player: PlayerFilter) -> Self {
         use crate::effects::AddManaOfAnyColorEffect;
         Self::new(AddManaOfAnyColorEffect::new(amount, player))
+    }
+
+    /// Create an "add mana of different colors" effect for a specific player.
+    pub fn add_mana_of_different_colors_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::distinct(amount, player))
     }
 
     /// Create an "add mana of restricted colors" effect (can choose different colors).
@@ -2551,6 +2566,17 @@ impl Effect {
         Self::new(AddManaOfAnyColorEffect::you_restricted(amount, colors))
     }
 
+    /// Create an "add mana of restricted different colors" effect.
+    pub fn add_mana_of_different_colors_restricted(
+        amount: impl Into<Value>,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::you_restricted_distinct(
+            amount, colors,
+        ))
+    }
+
     /// Create an "add mana of restricted colors" effect for a specific player.
     pub fn add_mana_of_any_color_restricted_player(
         amount: impl Into<Value>,
@@ -2559,6 +2585,18 @@ impl Effect {
     ) -> Self {
         use crate::effects::AddManaOfAnyColorEffect;
         Self::new(AddManaOfAnyColorEffect::restricted(amount, player, colors))
+    }
+
+    /// Create an "add mana of restricted different colors" effect for a specific player.
+    pub fn add_mana_of_different_colors_restricted_player(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        use crate::effects::AddManaOfAnyColorEffect;
+        Self::new(AddManaOfAnyColorEffect::restricted_distinct(
+            amount, player, colors,
+        ))
     }
 
     /// Create an "add mana of any one color" effect (all must be same color).

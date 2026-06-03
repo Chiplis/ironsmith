@@ -2,7 +2,7 @@ use crate::PtValue;
 use crate::ability::ActivationTiming;
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineAst, ParseAnnotations, ParsedLevelAbilityItemAst,
-    PredicateAst, TextSpan,
+    ParsedLevelActivatedAbilityAst, PredicateAst, TextSpan,
 };
 use crate::parse_trace;
 use winnow::Parser;
@@ -159,9 +159,9 @@ use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 #[cfg(test)]
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
-    extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
-    normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
-    parse_statement_line_cst,
+    extend_activated_line_with_result_followups, extend_triggered_line_with_result_followups,
+    looks_like_statement_line_lexed, normalize_statement_parse_groups_lexed,
+    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
 };
 use unsupported::diagnose_known_unsupported_rewrite_line;
 
@@ -2009,9 +2009,12 @@ mod tests {
 
     #[test]
     fn level_item_cst_stores_parsed_payload() -> Result<(), CardTextError> {
+        let builder = CardDefinitionBuilder::new(CardId::new(), "Document Parser Test")
+            .card_types(vec![CardType::Creature]);
         let line = single_preprocessed_line("Flying");
 
-        let parsed = parse_level_item_cst(&line)?.expect("expected flying to parse as level item");
+        let parsed =
+            parse_level_item_cst(&builder, &line)?.expect("expected flying to parse as level item");
 
         assert_eq!(parsed.text, "flying");
         match &parsed.parsed {

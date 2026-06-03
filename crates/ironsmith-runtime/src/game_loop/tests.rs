@@ -38,6 +38,331 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+fn component_pouch_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(900_071), "Component Pouch")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "{T}, Remove a component counter from this artifact: Add two mana of different colors.\n\
+             {T}: Roll a d20.\n\
+             1—9 | Put a component counter on this artifact.\n\
+             10—20 | Put two component counters on this artifact.",
+        )
+        .expect("Component Pouch should parse for runtime tests")
+}
+
+fn component_pouch_mana_ability_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::AddManaOfAnyColorEffect>()
+                        .is_some_and(|add| add.distinct_colors)
+                }),
+            _ => false,
+        })
+        .expect("Component Pouch should have its component-counter mana ability")
+}
+
+fn component_pouch_d20_ability_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::WithIdEffect>()
+                        .and_then(|with_id| {
+                            with_id
+                                .effect
+                                .downcast_ref::<crate::effects::RollDieEffect>()
+                        })
+                        .is_some_and(|roll| roll.sides == 20)
+                }),
+            _ => false,
+        })
+        .expect("Component Pouch should have its d20 counter ability")
+}
+
+#[test]
+fn component_pouch_mana_activation_requires_counter_pays_cost_and_adds_distinct_mana_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let def = component_pouch_definition();
+    let pouch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_index = component_pouch_mana_ability_index(&def);
+
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
+                    if *source == pouch_id && *idx == ability_index
+            )),
+        "Component Pouch mana ability should be illegal without a component counter"
+    );
+
+    game.add_counters(pouch_id, crate::object::CounterType::Named("component"), 1)
+        .expect("component counter should be addable to Component Pouch");
+    let activate_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| matches!(
+            action,
+            crate::decision::LegalAction::ActivateManaAbility { source, ability_index: idx }
+                if *source == pouch_id && *idx == ability_index
+        ))
+        .expect("Component Pouch mana ability should be legal with a component counter");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Component Pouch mana ability should pay costs and resolve");
+
+    assert_eq!(
+        game.counter_count(pouch_id, crate::object::CounterType::Named("component")),
+        0,
+        "activation cost should remove the component counter"
+    );
+    assert!(
+        game.is_tapped(pouch_id),
+        "activation cost should tap Component Pouch"
+    );
+    let pool = &game.player(alice).expect("Alice should exist").mana_pool;
+    let colored_counts = [pool.white, pool.blue, pool.black, pool.red, pool.green];
+    assert_eq!(pool.total(), 2, "mana ability should add exactly two mana");
+    assert_eq!(
+        colored_counts.iter().filter(|&&count| count > 0).count(),
+        2,
+        "mana ability should add two different colors, got {colored_counts:?}"
+    );
+}
+
+#[test]
+fn component_pouch_d20_branches_put_one_or_two_component_counters_runtime() {
+    fn resolve_forced_roll(roll: u32) -> u32 {
+        let def = component_pouch_definition();
+        let ability_index = component_pouch_d20_ability_index(&def);
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let pouch_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+        game.force_next_die_roll(roll);
+
+        let AbilityKind::Activated(activated) = &def.abilities[ability_index].kind else {
+            panic!("Component Pouch d20 ability should be activated")
+        };
+        let mut ctx = crate::effects::ExecutionContext::new_default(pouch_id, alice);
+        for effect in activated.effects.flattened_default_effects() {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Component Pouch d20 effect should resolve");
+        }
+        game.counter_count(pouch_id, crate::object::CounterType::Named("component"))
+    }
+
+    assert_eq!(
+        resolve_forced_roll(7),
+        1,
+        "1-9 branch should put one component counter"
+    );
+    assert_eq!(
+        resolve_forced_roll(15),
+        2,
+        "10-20 branch should put two component counters and not also take the low branch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn reprocess_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(646_813), "Reprocess")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice any number of artifacts, creatures, and/or lands. Draw a card for each \
+             permanent sacrificed this way.",
+        )
+        .expect("Reprocess should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_reprocess_permanent(
+    game: &mut GameState,
+    name: &str,
+    card_types: Vec<CardType>,
+    controller: PlayerId,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_reprocess_library_cards(game: &mut GameState, owner: PlayerId, count: usize) {
+    for idx in 0..count {
+        let card = CardBuilder::new(CardId::new(), &format!("Reprocess Draw Card {}", idx + 1))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ReprocessDecisionMaker {
+    selected: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ReprocessDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal && self.selected.contains(&candidate.id))
+            .map(|candidate| candidate.id)
+            .take(ctx.max.unwrap_or(self.selected.len()))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_reprocess_with_selection(
+    game: &mut GameState,
+    controller: PlayerId,
+    selected: Vec<ObjectId>,
+) {
+    let reprocess = reprocess_definition();
+    let source = game.create_object_from_definition(&reprocess, controller, Zone::Stack);
+    let mut dm = ReprocessDecisionMaker { selected };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_decision_maker(&mut dm);
+
+    for effect in reprocess
+        .spell_effect
+        .as_ref()
+        .expect("Reprocess should have spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Reprocess effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reprocess_sacrifices_selected_controlled_permanents_and_draws_that_many() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_reprocess_library_cards(&mut game, alice, 3);
+
+    let artifact = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Artifact",
+        vec![CardType::Artifact],
+        alice,
+    );
+    let land = create_reprocess_permanent(&mut game, "Reprocess Land", vec![CardType::Land], alice);
+    let creature = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Creature",
+        vec![CardType::Creature],
+        alice,
+    );
+    let bob_artifact = create_reprocess_permanent(
+        &mut game,
+        "Bob's Artifact",
+        vec![CardType::Artifact],
+        bob,
+    );
+
+    resolve_reprocess_with_selection(&mut game, alice, vec![artifact, land, bob_artifact]);
+
+    let graveyard_names = game
+        .objects_in_zone(Zone::Graveyard)
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+
+    assert!(
+        graveyard_names.iter().any(|name| name == "Reprocess Artifact"),
+        "selected artifact should be sacrificed into a graveyard, got {graveyard_names:?}"
+    );
+    assert!(
+        graveyard_names.iter().any(|name| name == "Reprocess Land"),
+        "selected land should be sacrificed into a graveyard, got {graveyard_names:?}"
+    );
+    assert_eq!(
+        game.object(creature).expect("unselected creature").zone,
+        Zone::Battlefield,
+        "unselected controlled permanents should remain on the battlefield"
+    );
+    assert_eq!(
+        game.object(bob_artifact).expect("opponent artifact").zone,
+        Zone::Battlefield,
+        "Reprocess should not choose or sacrifice permanents controlled by another player"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice").hand.len(),
+        2,
+        "Reprocess should draw one card for each permanent sacrificed this way"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn reprocess_can_choose_zero_and_draws_no_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    add_reprocess_library_cards(&mut game, alice, 2);
+
+    let artifact = create_reprocess_permanent(
+        &mut game,
+        "Reprocess Artifact",
+        vec![CardType::Artifact],
+        alice,
+    );
+
+    resolve_reprocess_with_selection(&mut game, alice, Vec::new());
+
+    assert_eq!(
+        game.object(artifact).expect("artifact").zone,
+        Zone::Battlefield,
+        "choosing zero permanents should leave available permanents untouched"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice").hand.len(),
+        0,
+        "choosing zero permanents should not draw cards"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 fn tide_of_war_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")
@@ -1246,6 +1571,246 @@ fn rampaging_aetherhood_declining_payment_gets_energy_without_counters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn sarulf_realm_eater_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(792_240), "Sarulf, Realm Eater")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wolf])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "Whenever a permanent an opponent controls is put into a graveyard from the battlefield, put a +1/+1 counter on Sarulf.\n\
+             At the beginning of your upkeep, if Sarulf has one or more +1/+1 counters on it, you may remove all of them. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.",
+        )
+        .expect("Sarulf, Realm Eater should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn sarulf_test_permanent_definition(
+    card_id: u32,
+    name: &str,
+    card_types: Vec<CardType>,
+    mana_value: u8,
+) -> crate::cards::CardDefinition {
+    let mut builder = CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(card_types.clone());
+    if mana_value > 0 {
+        builder = builder.mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]));
+    }
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    builder.build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct SarulfUpkeepDecisionMaker {
+    remove_counters: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for SarulfUpkeepDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.remove_counters
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_sarulf_upkeep_trigger(game: &mut GameState, trigger_queue: &mut TriggerQueue) {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    generate_and_queue_step_triggers(game, trigger_queue);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_death_trigger_adds_plus_one_counter_for_opponent_permanent() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    let opponent_permanent = sarulf_test_permanent_definition(
+        792_241,
+        "Opponent Relic",
+        vec![CardType::Artifact],
+        2,
+    );
+    let own_permanent =
+        sarulf_test_permanent_definition(792_242, "Own Relic", vec![CardType::Artifact], 2);
+    let opponent_id =
+        game.create_object_from_definition(&opponent_permanent, bob, Zone::Battlefield);
+    let own_id = game.create_object_from_definition(&own_permanent, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.move_object_by_effect(own_id, Zone::Graveyard)
+        .expect("own permanent should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sarulf should not trigger for its controller's permanent"
+    );
+
+    game.move_object_by_effect(opponent_id, Zone::Graveyard)
+        .expect("opponent permanent should move to graveyard");
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sarulf should trigger for an opponent-controlled permanent"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf death trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Sarulf death trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Sarulf death trigger should add a +1/+1 counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_upkeep_without_plus_one_counters_does_not_trigger() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let sarulf = sarulf_realm_eater_definition();
+    game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Sarulf upkeep ability has an intervening-if condition and should not trigger without +1/+1 counters"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_upkeep_removes_all_plus_one_counters_and_exiles_by_removed_count() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    game.add_counters(sarulf_id, crate::object::CounterType::PlusOnePlusOne, 3);
+    game.add_counters(sarulf_id, crate::object::CounterType::Charge, 1);
+
+    let low =
+        sarulf_test_permanent_definition(792_243, "Low Permanent", vec![CardType::Artifact], 3);
+    let high = sarulf_test_permanent_definition(
+        792_244,
+        "High Permanent",
+        vec![CardType::Artifact],
+        4,
+    );
+    let land = sarulf_test_permanent_definition(792_245, "Low Land", vec![CardType::Land], 0);
+    game.create_object_from_definition(&low, bob, Zone::Battlefield);
+    let high_id = game.create_object_from_definition(&high, bob, Zone::Battlefield);
+    let land_id = game.create_object_from_definition(&land, bob, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Sarulf upkeep ability should trigger while it has +1/+1 counters"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf upkeep trigger should go on the stack");
+    let mut dm = SarulfUpkeepDecisionMaker {
+        remove_counters: true,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Sarulf upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "accepting the upkeep choice should remove all +1/+1 counters"
+    );
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::Charge),
+        1,
+        "all of them should refer to the +1/+1 counters from the intervening condition, not unrelated counters"
+    );
+    assert_eq!(
+        game.object(sarulf_id).expect("Sarulf exists").zone,
+        Zone::Battlefield,
+        "Sarulf should not exile itself because the effect exiles each other permanent"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Low Permanent"),
+        1,
+        "permanents with mana value equal to the removed counter count should be exiled"
+    );
+    assert_eq!(
+        game.object(high_id).expect("high permanent exists").zone,
+        Zone::Battlefield,
+        "permanents with mana value greater than the removed counter count should remain"
+    );
+    assert_eq!(
+        game.object(land_id).expect("land exists").zone,
+        Zone::Battlefield,
+        "lands should remain even when their mana value is low enough"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn sarulf_realm_eater_declining_upkeep_removal_skips_exile_branch() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let sarulf = sarulf_realm_eater_definition();
+    let sarulf_id = game.create_object_from_definition(&sarulf, alice, Zone::Battlefield);
+    game.add_counters(sarulf_id, crate::object::CounterType::PlusOnePlusOne, 2);
+    let low = sarulf_test_permanent_definition(
+        792_246,
+        "Decline Low Permanent",
+        vec![CardType::Artifact],
+        1,
+    );
+    let low_id = game.create_object_from_definition(&low, bob, Zone::Battlefield);
+    let mut trigger_queue = TriggerQueue::new();
+
+    queue_sarulf_upkeep_trigger(&mut game, &mut trigger_queue);
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Sarulf upkeep trigger should go on the stack");
+    let mut dm = SarulfUpkeepDecisionMaker {
+        remove_counters: false,
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("declined Sarulf upkeep trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(sarulf_id, crate::object::CounterType::PlusOnePlusOne),
+        2,
+        "declining the optional removal should leave Sarulf's +1/+1 counters"
+    );
+    assert_eq!(
+        game.object(low_id).expect("low permanent exists").zone,
+        Zone::Battlefield,
+        "if no counters are removed, the if-you-do exile branch should not happen"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn assaultron_dominator_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_260), "Assaultron Dominator")
         .mana_cost(ManaCost::from_pips(vec![
@@ -1518,6 +2083,20 @@ fn twenty_toed_toad_definition() -> crate::cards::CardDefinition {
              Whenever this creature attacks, you win the game if there are twenty or more counters on it or you have twenty or more cards in hand.",
         )
         .expect("Twenty-Toed Toad should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn trusted_advisor_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_951), "Trusted Advisor")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Advisor])
+        .power_toughness(PowerToughness::fixed(1, 2))
+        .parse_text(
+            "Your maximum hand size is increased by two.\n\
+             At the beginning of your upkeep, return a blue creature you control to its owner's hand.",
+        )
+        .expect("Trusted Advisor should parse strictly")
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2417,6 +2996,140 @@ fn twenty_toed_toad_static_ability_sets_maximum_hand_size_to_twenty() {
 
     assert_eq!(game.player(alice).unwrap().max_hand_size, 20);
     assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_static_ability_increases_only_controller_maximum_hand_size() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Battlefield);
+
+    game.update_cant_effects();
+
+    assert_eq!(game.player(alice).unwrap().max_hand_size, 9);
+    assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_in_hand_does_not_increase_maximum_hand_size() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Hand);
+
+    game.update_cant_effects();
+
+    assert_eq!(game.player(alice).unwrap().max_hand_size, 7);
+    assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_upkeep_returns_blue_creature_you_control_to_owners_hand() {
+    struct ChooseTrustedAdvisorCreatureDecisionMaker {
+        chosen: ObjectId,
+        seen_legal_objects: Vec<ObjectId>,
+    }
+
+    impl DecisionMaker for ChooseTrustedAdvisorCreatureDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            panic!("Trusted Advisor should choose, not target, got {ctx:?}");
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.seen_legal_objects = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect();
+            assert!(
+                self.seen_legal_objects.contains(&self.chosen),
+                "chosen blue creature you control should be legal, got {:?}",
+                ctx.candidates
+            );
+            vec![self.chosen]
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let advisor = trusted_advisor_definition();
+    game.create_object_from_definition(&advisor, alice, Zone::Battlefield);
+    let borrowed_blue = create_colored_creature(
+        &mut game,
+        "Borrowed Drake",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+    game.set_current_controller(borrowed_blue, alice);
+    let borrowed_stable_id = game
+        .object(borrowed_blue)
+        .expect("borrowed creature should exist")
+        .stable_id;
+    let controlled_green = create_colored_creature(
+        &mut game,
+        "Alice Bear",
+        alice,
+        Some(crate::color::ColorSet::GREEN),
+    );
+    let opponents_blue = create_colored_creature(
+        &mut game,
+        "Bob Drake",
+        bob,
+        Some(crate::color::ColorSet::BLUE),
+    );
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Trusted Advisor should trigger at the beginning of its controller's upkeep"
+    );
+
+    let mut dm = ChooseTrustedAdvisorCreatureDecisionMaker {
+        chosen: borrowed_blue,
+        seen_legal_objects: Vec::new(),
+    };
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Trusted Advisor upkeep trigger should go on the stack without targets");
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Trusted Advisor upkeep trigger should resolve");
+
+    assert!(dm.seen_legal_objects.contains(&borrowed_blue));
+    assert!(!dm.seen_legal_objects.contains(&controlled_green));
+    assert!(!dm.seen_legal_objects.contains(&opponents_blue));
+    let returned_borrowed = game
+        .find_object_by_stable_id(borrowed_stable_id)
+        .expect("returned creature should still be tracked by stable id");
+    assert!(
+        game.player(bob)
+            .is_some_and(|player| player.hand.contains(&returned_borrowed)),
+        "the chosen creature should return to its owner's hand"
+    );
+    assert!(!game.battlefield.contains(&borrowed_blue));
+    assert!(game.battlefield.contains(&controlled_green));
+    assert!(game.battlefield.contains(&opponents_blue));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -5633,6 +6346,209 @@ fn party_dude_does_not_trigger_when_its_controller_is_attacked() {
         game.stack.is_empty(),
         "Party Dude should not trigger when its controller, not an opponent, is attacked"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_dragonlord_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(18_920), "Kargan Dragonlord")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red], vec![ManaSymbol::Red]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(
+            "Level up {R}\n\
+             LEVEL 4-7\n\
+             4/4\n\
+             Flying\n\
+             LEVEL 8+\n\
+             8/8\n\
+             Flying, trample\n\
+             {R}: This creature gets +1/+0 until end of turn.",
+        )
+        .expect("Kargan Dragonlord should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_pump_ability_index(game: &GameState, kargan_id: ObjectId) -> usize {
+    game.object(kargan_id)
+        .expect("Kargan Dragonlord should be on the battlefield")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.additional_restrictions.iter().any(|restriction| {
+                    restriction == "__ironsmith_level_range:8:+"
+                }) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("Kargan Dragonlord should have its level-8 pump ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_level_up_ability_index(game: &GameState, kargan_id: ObjectId) -> usize {
+    game.object(kargan_id)
+        .expect("Kargan Dragonlord should be on the battlefield")
+        .abilities
+        .iter()
+        .enumerate()
+        .find_map(|(index, ability)| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if matches!(activated.timing, crate::ability::ActivationTiming::SorcerySpeed)
+                    && activated
+                        .effects
+                        .flattened_default_effects()
+                        .iter()
+                        .any(|effect| {
+                            effect
+                                .downcast_ref::<crate::effects::PutCountersEffect>()
+                                .is_some_and(|put| put.counter_type == crate::object::CounterType::Level)
+                        }) =>
+            {
+                Some(index)
+            }
+            _ => None,
+        })
+        .expect("Kargan Dragonlord should have its level-up ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kargan_can_activate(game: &GameState, kargan_id: ObjectId, ability_index: usize) -> bool {
+    crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+        .iter()
+        .any(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kargan_id && *idx == ability_index
+            )
+        })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_kargan_ability_and_resolve(
+    game: &mut GameState,
+    kargan_id: ObjectId,
+    ability_index: usize,
+) {
+    let action = crate::decision::compute_legal_actions(game, PlayerId::from_index(0))
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kargan_id && *idx == ability_index
+            )
+        })
+        .expect("Kargan Dragonlord activation should be legal");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = AutoPassDecisionMaker;
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(action),
+        &mut dm,
+    )
+    .expect("Kargan Dragonlord activation should start");
+    resolve_stack_entry_with_dm_and_triggers(game, &mut dm, &mut trigger_queue)
+        .expect("Kargan Dragonlord activation should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kargan_dragonlord_level_up_adds_counter_and_uses_sorcery_timing() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let kargan = kargan_dragonlord_definition();
+    let kargan_id = game.create_object_from_definition(&kargan, alice, Zone::Battlefield);
+    let level_up_index = kargan_level_up_ability_index(&game, kargan_id);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 1);
+
+    assert!(
+        kargan_can_activate(&game, kargan_id, level_up_index),
+        "Kargan's level-up ability should be legal in its controller's main phase"
+    );
+    game.turn.phase = Phase::Combat;
+    assert!(
+        !kargan_can_activate(&game, kargan_id, level_up_index),
+        "Kargan's level-up ability should not be legal outside sorcery timing"
+    );
+
+    game.turn.phase = Phase::FirstMain;
+    activate_kargan_ability_and_resolve(&mut game, kargan_id, level_up_index);
+
+    assert_eq!(
+        game.object(kargan_id)
+            .expect("Kargan should exist")
+            .counters
+            .get(&crate::object::CounterType::Level)
+            .copied(),
+        Some(1),
+        "Kargan's level-up activation should put one level counter on itself"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.red,
+        0,
+        "Kargan's level-up activation should spend its red mana cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kargan_dragonlord_level_eight_pump_is_gated_and_expires() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let kargan = kargan_dragonlord_definition();
+    let kargan_id = game.create_object_from_definition(&kargan, alice, Zone::Battlefield);
+    let pump_index = kargan_pump_ability_index(&game, kargan_id);
+    game.add_counters(kargan_id, crate::object::CounterType::Level, 7);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Red, 2);
+
+    assert!(
+        !kargan_can_activate(&game, kargan_id, pump_index),
+        "Kargan's pump should not be legal before it has eight level counters"
+    );
+    game.add_counters(kargan_id, crate::object::CounterType::Level, 1);
+    assert!(
+        kargan_can_activate(&game, kargan_id, pump_index),
+        "Kargan's pump should become legal at eight level counters"
+    );
+
+    activate_kargan_ability_and_resolve(&mut game, kargan_id, pump_index);
+    game.refresh_continuous_state();
+
+    assert_eq!(game.calculated_power(kargan_id), Some(9));
+    assert_eq!(game.calculated_toughness(kargan_id), Some(8));
+    assert!(
+        game.object_has_ability(kargan_id, &StaticAbility::flying())
+            && game.object_has_ability(kargan_id, &StaticAbility::trample()),
+        "Kargan should have its level-eight flying and trample while pumped"
+    );
+
+    execute_cleanup_step(&mut game);
+    assert_eq!(game.calculated_power(kargan_id), Some(8));
+    assert_eq!(game.calculated_toughness(kargan_id), Some(8));
 }
 
 #[test]
@@ -25478,6 +26394,144 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn soulblast_definition_for_runtime_tests() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(130_369), "Soulblast")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice all creatures you control.\nSoulblast deals damage to any target equal to the total power of the sacrificed creatures.",
+        )
+        .expect("Soulblast should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cast_soulblast_targeting_player(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    spell_id: ObjectId,
+    target_player: PlayerId,
+) {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut progress = apply_priority_response(
+        game,
+        trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+    )
+    .expect("Soulblast cast should start");
+
+    for _ in 0..4 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => apply_priority_response(
+                game,
+                trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Player(target_player)]),
+            )
+            .expect("Soulblast should accept target player"),
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => break,
+            other => panic!("unexpected Soulblast cast flow state: {other:?}"),
+        };
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulblast_sacrifices_controlled_creatures_and_deals_their_total_power() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let soulblast = soulblast_definition_for_runtime_tests();
+    let spell_id = game.create_object_from_definition(&soulblast, alice, Zone::Hand);
+    let small = CardBuilder::new(CardId::new(), "Soulblast Fodder One")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let large = CardBuilder::new(CardId::new(), "Soulblast Fodder Two")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let opposing = CardBuilder::new(CardId::new(), "Bob's Untouched Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .build();
+
+    let small_id = game.create_object_from_card(&small, alice, Zone::Battlefield);
+    let large_id = game.create_object_from_card(&large, alice, Zone::Battlefield);
+    let opposing_id = game.create_object_from_card(&opposing, bob, Zone::Battlefield);
+
+    cast_soulblast_targeting_player(&mut game, &mut trigger_queue, spell_id, bob);
+
+    assert!(
+        !game.battlefield.contains(&small_id) && !game.battlefield.contains(&large_id),
+        "Soulblast should sacrifice all creatures controlled by its caster as a cost"
+    );
+    assert!(
+        game.battlefield.contains(&opposing_id),
+        "Soulblast should not sacrifice creatures controlled by another player"
+    );
+
+    resolve_stack_entry(&mut game).expect("Soulblast should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        15,
+        "Soulblast should deal damage equal to the total power of the sacrificed creatures"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn soulblast_with_no_controlled_creatures_deals_zero_damage() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let soulblast = soulblast_definition_for_runtime_tests();
+    let spell_id = game.create_object_from_definition(&soulblast, alice, Zone::Hand);
+    let opposing = CardBuilder::new(CardId::new(), "Bob's Only Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .build();
+    let opposing_id = game.create_object_from_card(&opposing, bob, Zone::Battlefield);
+
+    cast_soulblast_targeting_player(&mut game, &mut trigger_queue, spell_id, bob);
+    assert!(
+        game.battlefield.contains(&opposing_id),
+        "Soulblast should not sacrifice an opponent's creature when you control none"
+    );
+
+    resolve_stack_entry(&mut game).expect("Soulblast with zero sacrificed creatures should resolve");
+    assert_eq!(
+        game.player(bob).expect("Bob exists").life,
+        20,
+        "Soulblast should deal zero damage when no creatures were sacrificed"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_spoils_of_blood_creates_token_using_creatures_died_this_turn_count() {
     use crate::decision::LegalAction;
@@ -26431,7 +27485,7 @@ fn test_combat_damage_with_triggers() {
     let attacker_id = create_creature(&mut game, "Ninja", alice, 2, 2);
     if let Some(obj) = game.object_mut(attacker_id) {
         obj.abilities.push(Ability::triggered(
-            Trigger::this_deals_combat_damage_to_player(),
+            Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             vec![Effect::draw(1)],
         ));
     }
@@ -40989,6 +42043,20 @@ fn spell_contortion_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn frightful_delusion_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_303), "Frightful Delusion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target spell unless its controller pays {1}. That player discards a card.",
+        )
+        .expect("Frightful Delusion should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn stack_spell_probe_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(76_302), "Stack Spell Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
@@ -41014,6 +42082,66 @@ fn put_spell_contortion_on_stack(
             .with_optional_costs_paid(paid),
     );
     source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_frightful_delusion_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target_spell: ObjectId,
+) -> ObjectId {
+    let def = frightful_delusion_definition();
+    let source = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(source, controller).with_targets(vec![Target::Object(target_spell)]),
+    );
+    source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseSpecificDiscardDecisionMaker {
+    card_to_discard: ObjectId,
+    accept_boolean: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseSpecificDiscardDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_boolean
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == self.card_to_discard && candidate.legal)
+        {
+            vec![self.card_to_discard]
+        } else {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_hand_card(game: &mut GameState, owner: PlayerId, name: &str, raw_id: u32) -> ObjectId {
+    let card = CardBuilder::new(CardId::from_raw(raw_id), name)
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&card, owner, Zone::Hand)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -41168,6 +42296,112 @@ fn test_strength_of_the_tajuru_puts_x_counters_on_each_kicked_target() {
     assert_eq!(
         untargeted_counters, 0,
         "Strength of the Tajuru should affect only its chosen targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn frightful_delusion_unpaid_counter_discards_target_spell_controller_card() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let bob_discard = create_hand_card(&mut game, bob, "Bob Discards", 76_304);
+    let alice_keeps = create_hand_card(&mut game, alice, "Alice Keeps", 76_305);
+    let frightful_delusion = put_frightful_delusion_on_stack(&mut game, alice, target_spell);
+    let mut dm = ChooseSpecificDiscardDecisionMaker {
+        card_to_discard: bob_discard,
+        accept_boolean: false,
+    };
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Frightful Delusion should resolve");
+
+    let countered_target = game
+        .current_object_id_after_zone_change(target_spell)
+        .expect("target spell should still be tracked after zone change");
+    assert_eq!(
+        game.object(countered_target)
+            .expect("target spell exists")
+            .zone,
+        Zone::Graveyard,
+        "the target spell should be countered when its controller cannot pay {{1}}"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Discards"))),
+        "the target spell's controller should discard a card"
+    );
+    assert!(
+        game.object(alice_keeps)
+            .is_some_and(|obj| obj.zone == Zone::Hand),
+        "Frightful Delusion should not make its controller discard"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == frightful_delusion),
+        "Frightful Delusion should leave the stack after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn frightful_delusion_paid_target_survives_but_controller_still_discards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 1);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let bob_discard = create_hand_card(&mut game, bob, "Bob Pays And Discards", 76_306);
+    let frightful_delusion = put_frightful_delusion_on_stack(&mut game, alice, target_spell);
+    let mut dm = ChooseSpecificDiscardDecisionMaker {
+        card_to_discard: bob_discard,
+        accept_boolean: true,
+    };
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Frightful Delusion should resolve");
+
+    assert_eq!(
+        game.object(target_spell).expect("target spell exists").zone,
+        Zone::Stack,
+        "the target spell should remain on the stack when its controller pays {{1}}"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == target_spell),
+        "the paid-for target spell should still have a stack entry"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "the target spell's controller should spend {{1}} to prevent the counter effect"
+    );
+    assert!(
+        game.player(bob).is_some_and(|player| player
+            .graveyard
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|obj| obj.name == "Bob Pays And Discards"))),
+        "the target spell's controller should discard even after paying for Frightful Delusion"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == frightful_delusion),
+        "Frightful Delusion should leave the stack after resolving"
     );
 }
 

@@ -42,12 +42,13 @@ pub(crate) fn rewrite_update_last_restrictable_ability(
 
 pub(crate) fn rewrite_lower_level_ability_ast(
     level: ParsedLevelAbilityAst,
-) -> Result<crate::ability::LevelAbility, CardTextError> {
+) -> Result<RewriteLoweredLevelAbilityAst, CardTextError> {
     let mut lowered = crate::ability::LevelAbility::new(level.min_level, level.max_level);
     if let Some((power, toughness)) = level.pt {
         lowered = lowered.with_pt(power, toughness);
     }
 
+    let mut activated_lines = Vec::new();
     for item in level.items {
         match item {
             ParsedLevelAbilityItemAst::StaticAbilities(abilities) => {
@@ -62,10 +63,83 @@ pub(crate) fn rewrite_lower_level_ability_ast(
                     }
                 }
             }
+            ParsedLevelAbilityItemAst::ActivatedAbility(activated) => {
+                let info = activated.info.clone();
+                let mut activated = lower_rewrite_activated_to_chunk(
+                    info.clone(),
+                    activated.cost,
+                    activated.cost_parse_tokens,
+                    activated.effect_text,
+                    activated.effect_parse_tokens,
+                    ActivationTiming::AnyTime,
+                    false,
+                    None,
+                    None,
+                )?;
+                apply_level_range_activation_condition(
+                    &mut activated.chunk,
+                    level.min_level,
+                    level.max_level,
+                );
+                activated_lines.push(normalize_rewrite_line_ast_standalone(
+                    info,
+                    vec![activated.chunk],
+                    activated.restrictions,
+                )?);
+            }
         }
     }
 
-    Ok(lowered)
+    Ok(RewriteLoweredLevelAbilityAst {
+        level_ability: lowered,
+        activated_lines,
+    })
+}
+
+pub(crate) struct RewriteLoweredLevelAbilityAst {
+    pub(crate) level_ability: crate::ability::LevelAbility,
+    pub(crate) activated_lines: Vec<NormalizedLineAst>,
+}
+
+fn apply_level_range_activation_condition(
+    chunk: &mut LineAst,
+    min_level: u32,
+    max_level: Option<u32>,
+) {
+    let LineAst::Ability(parsed) = chunk else {
+        return;
+    };
+    let AbilityKind::Activated(activated) = parsed.kind_mut() else {
+        return;
+    };
+
+    let min_condition = crate::ConditionExpr::SourceHasCounterAtLeast {
+        counter_type: crate::CounterType::Level,
+        count: min_level,
+    };
+    let level_condition = if let Some(max_level) = max_level {
+        crate::ConditionExpr::And(
+            Box::new(min_condition),
+            Box::new(crate::ConditionExpr::ValueComparison {
+                left: crate::Value::CountersOnSource(crate::CounterType::Level),
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                right: crate::Value::Fixed(max_level as i32),
+            }),
+        )
+    } else {
+        min_condition
+    };
+
+    activated.activation_condition = Some(match activated.activation_condition.take() {
+        Some(existing) => crate::ConditionExpr::And(Box::new(existing), Box::new(level_condition)),
+        None => level_condition,
+    });
+    let max_label = max_level
+        .map(|level| level.to_string())
+        .unwrap_or_else(|| "+".to_string());
+    activated
+        .additional_restrictions
+        .push(format!("__ironsmith_level_range:{min_level}:{max_label}"));
 }
 
 pub(crate) fn uses_spell_only_functional_zones(static_ability: &StaticAbility) -> bool {

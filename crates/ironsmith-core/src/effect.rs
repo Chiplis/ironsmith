@@ -3501,6 +3501,17 @@ impl ForEachCounterKindPutOrRemoveEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct PutCounterOfChosenKindEffect {
+    pub target: ChooseSpec,
+}
+
+impl PutCounterOfChosenKindEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct PhaseOutEffect {
     pub target: ChooseSpec,
 }
@@ -3841,6 +3852,13 @@ pub struct RegisterFutureZoneReplacementEffect {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RegisterDrawReplacementEffect<E = ()> {
+    pub player: PlayerFilter,
+    pub replacement_effects: Vec<E>,
+    pub mode: ReplacementApplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegisterDamagedBySourceZoneReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub from_zone: Option<crate::zone::Zone>,
@@ -3888,6 +3906,20 @@ impl RegisterFutureZoneReplacementEffect {
     pub fn requiring_cause_source_match(mut self) -> Self {
         self.require_cause_source_match = true;
         self
+    }
+}
+
+impl<E> RegisterDrawReplacementEffect<E> {
+    pub fn new(
+        player: PlayerFilter,
+        replacement_effects: Vec<E>,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            player,
+            replacement_effects,
+            mode,
+        }
     }
 }
 
@@ -4101,6 +4133,7 @@ pub struct AddManaOfAnyColorEffect {
     pub amount: Value,
     pub player: PlayerFilter,
     pub available_colors: Option<Vec<Color>>,
+    pub distinct_colors: bool,
 }
 
 impl AddManaOfAnyColorEffect {
@@ -4109,6 +4142,16 @@ impl AddManaOfAnyColorEffect {
             amount: amount.into(),
             player,
             available_colors: None,
+            distinct_colors: false,
+        }
+    }
+
+    pub fn distinct(amount: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            available_colors: None,
+            distinct_colors: true,
         }
     }
 
@@ -4121,6 +4164,20 @@ impl AddManaOfAnyColorEffect {
             amount: amount.into(),
             player,
             available_colors: Some(available_colors),
+            distinct_colors: false,
+        }
+    }
+
+    pub fn restricted_distinct(
+        amount: impl Into<Value>,
+        player: PlayerFilter,
+        available_colors: Vec<Color>,
+    ) -> Self {
+        Self {
+            amount: amount.into(),
+            player,
+            available_colors: Some(available_colors),
+            distinct_colors: true,
         }
     }
 
@@ -4128,8 +4185,19 @@ impl AddManaOfAnyColorEffect {
         Self::new(amount, PlayerFilter::You)
     }
 
+    pub fn you_distinct(amount: impl Into<Value>) -> Self {
+        Self::distinct(amount, PlayerFilter::You)
+    }
+
     pub fn you_restricted(amount: impl Into<Value>, available_colors: Vec<Color>) -> Self {
         Self::restricted(amount, PlayerFilter::You, available_colors)
+    }
+
+    pub fn you_restricted_distinct(
+        amount: impl Into<Value>,
+        available_colors: Vec<Color>,
+    ) -> Self {
+        Self::restricted_distinct(amount, PlayerFilter::You, available_colors)
     }
 }
 

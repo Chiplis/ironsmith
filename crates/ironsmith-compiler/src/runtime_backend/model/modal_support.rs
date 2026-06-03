@@ -4,6 +4,7 @@ use crate::cards::builders::{
 };
 use crate::effect::Value;
 use crate::target::PlayerFilter;
+use ironsmith_core::ValueSurfaceHint;
 
 use super::activation_and_restrictions::activated_line_core::infer_activated_functional_zones_lexed;
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
@@ -182,6 +183,7 @@ fn parse_x_is_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
     ));
     where_prefixed.extend_from_slice(tokens);
     parse_value_binding_clause_lexed(&where_prefixed)
+        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
 }
 
 pub(crate) fn replace_modal_header_x_in_effects_ast(
@@ -411,6 +413,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+            | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
             | SubjectVerbActionAst::PutIntoHand { .. }
@@ -455,6 +458,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MayMoveToZone { .. }
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
+            | SubjectVerbActionAst::RegisterDrawReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }

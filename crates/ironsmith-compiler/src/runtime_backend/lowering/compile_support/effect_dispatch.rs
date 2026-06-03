@@ -417,7 +417,7 @@ fn compile_subject_verb_effect(
             player,
             count,
             ctx,
-            false,
+            true,
             false,
             true,
             false,
@@ -928,6 +928,7 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::AddManaAnyColor {
             amount,
             available_colors,
+            distinct_colors,
         } => {
             let (amount, player_filter, choices) =
                 resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
@@ -936,18 +937,34 @@ fn compile_subject_verb_effect(
                 choices,
                 || {
                     if let Some(colors) = available_colors.clone() {
-                        Effect::add_mana_of_any_color_restricted(amount.clone(), colors)
+                        if *distinct_colors {
+                            Effect::add_mana_of_different_colors_restricted(amount.clone(), colors)
+                        } else {
+                            Effect::add_mana_of_any_color_restricted(amount.clone(), colors)
+                        }
+                    } else if *distinct_colors {
+                        Effect::add_mana_of_different_colors(amount.clone())
                     } else {
                         Effect::add_mana_of_any_color(amount.clone())
                     }
                 },
                 |filter| {
                     if let Some(colors) = available_colors.clone() {
-                        Effect::add_mana_of_any_color_restricted_player(
-                            amount.clone(),
-                            filter,
-                            colors,
-                        )
+                        if *distinct_colors {
+                            Effect::add_mana_of_different_colors_restricted_player(
+                                amount.clone(),
+                                filter,
+                                colors,
+                            )
+                        } else {
+                            Effect::add_mana_of_any_color_restricted_player(
+                                amount.clone(),
+                                filter,
+                                colors,
+                            )
+                        }
+                    } else if *distinct_colors {
+                        Effect::add_mana_of_different_colors_player(amount.clone(), filter)
                     } else {
                         Effect::add_mana_of_any_color_player(amount.clone(), filter)
                     }
@@ -1224,6 +1241,30 @@ fn compile_subject_verb_effect(
                 .requiring_cause_source_match(),
             );
             Ok((vec![effect], Vec::new()))
+        }
+        SubjectVerbActionAst::RegisterDrawReplacement {
+            player,
+            replacement_effects,
+            duration,
+        } => {
+            let player_filter = player.clone();
+            let mut choices = Vec::new();
+            let (replacement_effects, replacement_choices) =
+                compile_effects(replacement_effects, ctx)?;
+            for choice in replacement_choices {
+                push_choice(&mut choices, choice);
+            }
+            let mode = match duration {
+                crate::cards::builders::ZoneReplacementDurationAst::OneShot => {
+                    crate::effects::ReplacementApplyMode::OneShot
+                }
+            };
+            let effect = Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
+                player_filter,
+                replacement_effects,
+                mode,
+            ));
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
             filter,
@@ -5072,13 +5113,22 @@ fn compile_subject_verb_effect(
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::Counter { target } => {
-            compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)
+            let compiled =
+                compile_tagged_effect_for_target(target, ctx, "countered", Effect::counter)?;
+            if let Some(tag) = ctx.last_object_tag.clone() {
+                ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+            }
+            Ok(compiled)
         }
         SubjectVerbActionAst::CounterUnlessPays { target, cost } => {
             let cost = cost.clone();
-            compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
+            let compiled = compile_tagged_effect_for_target(target, ctx, "countered", |spec| {
                 Effect::counter_unless_pays_total_cost(spec, cost.clone())
-            })
+            })?;
+            if let Some(tag) = ctx.last_object_tag.clone() {
+                ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
+            }
+            Ok(compiled)
         }
         SubjectVerbActionAst::PutCounters {
             counter_type,
@@ -5167,7 +5217,13 @@ fn compile_subject_verb_effect(
             target,
             counter_type,
             up_to,
+            all_of_them,
         } => {
+            if *all_of_them {
+                return Err(CardTextError::ParseError(
+                    "unable to resolve 'all of them' counter reference".to_string(),
+                ));
+            }
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
@@ -5251,6 +5307,14 @@ fn compile_subject_verb_effect(
             };
             Ok((
                 vec![Effect::new(effect)],
+                choices,
+            ))
+        }
+        SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((
+                vec![Effect::new(crate::effects::PutCounterOfChosenKindEffect::new(spec))],
                 choices,
             ))
         }

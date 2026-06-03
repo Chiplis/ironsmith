@@ -724,6 +724,7 @@ pub(crate) fn compile_effects(
             initial_iterated_player: ctx.iterated_player,
             force_auto_tag_object_targets: ctx.force_auto_tag_object_targets
                 || ctx.auto_tag_object_targets,
+            force_export_last_memory_effect_id: false,
         },
         ctx.id_gen_context(),
     )?;
@@ -2631,7 +2632,7 @@ pub(crate) fn parse_token_tap_add_single_mana_symbol(words: &[&str]) -> Option<M
 pub(crate) fn token_damage_to_player_poison_counter_ability() -> Ability {
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: Trigger::this_deals_combat_damage_to_player(),
+            trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![
                 Effect::poison_counters_player(1, PlayerFilter::DamagedPlayer),
             ]),
@@ -2670,7 +2671,7 @@ pub(crate) fn token_combat_damage_gain_control_target_artifact_ability() -> Abil
     ));
     Ability {
         kind: AbilityKind::Triggered(TriggeredAbility {
-            trigger: Trigger::this_deals_combat_damage_to_player(),
+            trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
                 crate::effects::ApplyContinuousEffect::with_spec_runtime(
                     target.clone(),

@@ -1857,6 +1857,8 @@ const COUNTERS_REMOVED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const DESTROYED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["destroyed"]);
+const SACRIFICED_THIS_WAY_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["sacrificed"]);
 const DISCARDED_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["this", "way"]]; contains_words & ["discarded"]);
 const REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> =
@@ -2075,6 +2077,8 @@ const MAX_HAND_SIZE_IS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["maximum", "hand", "size", "is"]);
 const MAX_HAND_SIZE_REDUCED_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["maximum", "hand", "size", "is", "reduced"]);
+const MAX_HAND_SIZE_INCREASED_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["maximum", "hand", "size", "is", "increased"]);
 const MAX_HAND_SIZE_SEVEN_MINUS_CARD_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -5998,6 +6002,12 @@ fn parse_characteristic_defining_stat_value(tokens: &[OwnedLexToken]) -> Option<
     equal_prefixed.push(OwnedLexToken::word("to".to_string(), TextSpan::synthetic()));
     equal_prefixed.extend(trimmed.iter().cloned());
 
+    if CARD_TYPES_AMONG_MARKER_PATTERN.matches_words(&trimmed_words)
+        && let Some(value) = parse_characteristic_defining_pt_value(&trimmed)
+    {
+        return Some(value);
+    }
+
     parse_equal_to_aggregate_filter_value(&equal_prefixed)
         .or_else(|| parse_add_mana_equal_amount_value(&equal_prefixed))
         .or_else(|| parse_equal_to_number_of_filter_plus_or_minus_fixed_value(&equal_prefixed))
@@ -7903,6 +7913,12 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         return Ok(Some(Value::X));
     }
     if DESTROYED_THIS_WAY_PATTERN.matches_words(&filter_words) {
+        return Ok(Some(Value::PendingEffectMetric {
+            source: EffectMetricSource::AffectedObjects,
+            metric: EffectMetric::Count,
+        }));
+    }
+    if SACRIFICED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::PendingEffectMetric {
             source: EffectMetricSource::AffectedObjects,
             metric: EffectMetric::Count,
@@ -10138,6 +10154,43 @@ pub(crate) fn parse_reduced_maximum_hand_size_line(
         }
 
         return Ok(Some(StaticAbility::reduce_maximum_hand_size(
+            player, amount,
+        )));
+    }
+
+    if line_words
+        .get(idx..)
+        .is_some_and(|tail| MAX_HAND_SIZE_INCREASED_PATTERN.matches_words(tail))
+    {
+        idx += 5;
+        if !line_words
+            .get(idx)
+            .is_some_and(|word| BY_WORD_PATTERN.matches_word(word))
+        {
+            return Ok(None);
+        }
+        idx += 1;
+
+        let Some(amount_word) = line_words.get(idx) else {
+            return Err(CardTextError::ParseError(format!(
+                "missing maximum-hand-size increase amount (clause: '{}')",
+                line_words.join(" ")
+            )));
+        };
+        let Some(amount) = parse_named_number(amount_word) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported maximum-hand-size increase amount '{}' (clause: '{}')",
+                amount_word,
+                line_words.join(" ")
+            )));
+        };
+        idx += 1;
+
+        if idx != line_words.len() {
+            return Ok(None);
+        }
+
+        return Ok(Some(StaticAbility::increase_maximum_hand_size(
             player, amount,
         )));
     }

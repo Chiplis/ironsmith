@@ -567,6 +567,7 @@ pub(super) fn resolve_stack_entry_full(
     if let Some(x) = entry.x_value {
         ctx = ctx.with_x(x);
     }
+    ctx.effect_outcomes = entry.effect_outcomes.clone();
     if let Some(defending) = entry.defending_player {
         ctx = ctx.with_defending_player(defending);
     }

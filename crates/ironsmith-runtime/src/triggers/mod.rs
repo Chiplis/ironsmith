@@ -584,9 +584,9 @@ impl Trigger {
         Self::either(Self::this_blocks(), Self::this_becomes_blocked())
     }
 
-    /// Create a "when this creature deals combat damage to a player" trigger.
-    pub fn this_deals_combat_damage_to_player() -> Self {
-        Self::new(ThisDealsCombatDamageToPlayerTrigger)
+    /// Create a "when this creature deals combat damage to [player]" trigger.
+    pub fn this_deals_combat_damage_to_player(player: PlayerFilter) -> Self {
+        Self::new(ThisDealsCombatDamageToPlayerTrigger::new(player))
     }
 
     /// Create a "when this creature deals combat damage" trigger.
@@ -1147,7 +1147,7 @@ impl Trigger {
     /// ```ignore
     /// let trigger = Trigger::or(vec![
     ///     Trigger::this_enters_battlefield(),
-    ///     Trigger::this_deals_combat_damage_to_player(),
+    ///     Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
     /// ]);
     /// ```
     pub fn or(triggers: Vec<Self>) -> Self {
@@ -1163,7 +1163,7 @@ impl Trigger {
     /// ```ignore
     /// let trigger = Trigger::either(
     ///     Trigger::this_enters_battlefield(),
-    ///     Trigger::this_deals_combat_damage_to_player(),
+    ///     Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
     /// );
     /// ```
     pub fn either(a: Self, b: Self) -> Self {

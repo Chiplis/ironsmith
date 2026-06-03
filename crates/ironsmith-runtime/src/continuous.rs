@@ -2630,7 +2630,9 @@ fn apply_modification_to_chars(
         }
         Modification::AddCombatDamageDrawAbility => {
             chars.abilities.push(Ability::triggered(
-                crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                    crate::target::PlayerFilter::Any,
+                ),
                 vec![crate::effect::Effect::draw(1)],
             ));
         }
@@ -3477,7 +3479,9 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                 }
                 Modification::AddCombatDamageDrawAbility => {
                     chars.abilities.push(Ability::triggered(
-                        crate::triggers::Trigger::this_deals_combat_damage_to_player(),
+                        crate::triggers::Trigger::this_deals_combat_damage_to_player(
+                            crate::target::PlayerFilter::Any,
+                        ),
                         vec![crate::effect::Effect::draw(1)],
                     ));
                 }
@@ -4174,6 +4178,24 @@ fn resolve_value_with_context(
             });
             seen.len() as i32
         }
+        Value::CardTypesInGraveyard(player_filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            let mut seen = HashSet::new();
+            for player in ctx.game.players.iter().filter(|player| player.is_in_game()) {
+                if !player_filter.matches_player(player.id, &filter_ctx) {
+                    continue;
+                }
+                for &card_id in &player.graveyard {
+                    let Some(obj) = ctx.game.object(card_id) else {
+                        continue;
+                    };
+                    for card_type in &obj.card_types {
+                        seen.insert(*card_type);
+                    }
+                }
+            }
+            seen.len() as i32
+        }
         Value::ColorsAmong(filter) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
 
@@ -4447,7 +4469,6 @@ fn resolve_value_with_context(
         | Value::ThisAbilityResolvedThisTurnCount
         | Value::SourceRegeneratedThisTurnCount
         | Value::DamageDealtThisTurnByTaggedSpellCast(_)
-        | Value::CardTypesInGraveyard(_)
         | Value::EffectValue(_)
         | Value::EffectValueOffset(_, _)
         | Value::EffectMetric { .. }

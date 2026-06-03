@@ -1413,8 +1413,26 @@ impl Effect {
         ))
     }
 
+    pub fn add_mana_of_different_colors_restricted(
+        amount: impl Into<Value>,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        Self::new(crate::effects::AddManaOfAnyColorEffect::restricted_distinct(
+            amount,
+            crate::target::PlayerFilter::You,
+            colors,
+        ))
+    }
+
     pub fn add_mana_of_any_color(amount: impl Into<Value>) -> Self {
         Self::new(crate::effects::AddManaOfAnyColorEffect::new(
+            amount,
+            crate::target::PlayerFilter::You,
+        ))
+    }
+
+    pub fn add_mana_of_different_colors(amount: impl Into<Value>) -> Self {
+        Self::new(crate::effects::AddManaOfAnyColorEffect::distinct(
             amount,
             crate::target::PlayerFilter::You,
         ))
@@ -1430,11 +1448,30 @@ impl Effect {
         ))
     }
 
+    pub fn add_mana_of_different_colors_restricted_player(
+        amount: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+        colors: Vec<crate::color::Color>,
+    ) -> Self {
+        Self::new(crate::effects::AddManaOfAnyColorEffect::restricted_distinct(
+            amount, player, colors,
+        ))
+    }
+
     pub fn add_mana_of_any_color_player(
         amount: impl Into<Value>,
         player: crate::target::PlayerFilter,
     ) -> Self {
         Self::new(crate::effects::AddManaOfAnyColorEffect::new(amount, player))
+    }
+
+    pub fn add_mana_of_different_colors_player(
+        amount: impl Into<Value>,
+        player: crate::target::PlayerFilter,
+    ) -> Self {
+        Self::new(crate::effects::AddManaOfAnyColorEffect::distinct(
+            amount, player,
+        ))
     }
 
     pub fn add_mana_of_any_one_color(amount: impl Into<Value>) -> Self {

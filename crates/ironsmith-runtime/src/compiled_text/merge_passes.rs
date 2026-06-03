@@ -920,6 +920,20 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             if is_trait(left_verb)
                 && is_trait(right_verb)
                 && left_verb.eq_ignore_ascii_case(right_verb)
+                && let (Some(left_quote), Some(right_quote)) = (
+                    trim_quoted_ability_sentence_end(&left_rest),
+                    quoted_ability_text(&right_rest),
+                )
+            {
+                merged.push(format!(
+                    "{left_subject} {left_verb} {left_quote} and {right_quote}"
+                ));
+                idx += 2;
+                continue;
+            }
+            if is_trait(left_verb)
+                && is_trait(right_verb)
+                && left_verb.eq_ignore_ascii_case(right_verb)
             {
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_rest}"
@@ -937,6 +951,23 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
     }
 
     merged
+}
+
+fn trim_quoted_ability_sentence_end(text: &str) -> Option<String> {
+    let inner = quoted_ability_inner_text(text)?;
+    Some(format!("\"{}\"", inner.trim_end_matches('.')))
+}
+
+fn quoted_ability_text(text: &str) -> Option<String> {
+    quoted_ability_inner_text(text).map(|inner| format!("\"{inner}\""))
+}
+
+fn quoted_ability_inner_text(text: &str) -> Option<&str> {
+    let inner = text.trim().strip_prefix('"')?.strip_suffix('"')?.trim();
+    if inner.is_empty() || !inner.contains(':') {
+        return None;
+    }
+    Some(inner)
 }
 
 pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
@@ -1382,8 +1413,12 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                 && left_subject.eq_ignore_ascii_case(&right_subject)
             {
                 let verb = have_verb_for_subject(&left_subject);
-                let left_tail = normalize_keyword_predicate_case(&left_tail);
-                let right_tail = normalize_keyword_predicate_case(&right_tail);
+                let left_tail = normalize_have_tail_for_merge(&normalize_keyword_predicate_case(
+                    &left_tail,
+                ));
+                let right_tail = normalize_have_tail_for_merge(&normalize_keyword_predicate_case(
+                    &right_tail,
+                ));
                 let left_key = strip_parenthetical_segments(&left_tail).to_ascii_lowercase();
                 let right_key = strip_parenthetical_segments(&right_tail).to_ascii_lowercase();
                 if left_key == right_key
@@ -1426,6 +1461,17 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         idx += 1;
     }
     merged
+}
+
+fn normalize_have_tail_for_merge(tail: &str) -> String {
+    let trimmed = tail.trim();
+    if trimmed.starts_with('"')
+        && trimmed.ends_with(".\"")
+        && let Some(stripped) = trimmed.strip_suffix(".\"")
+    {
+        return format!("{stripped}\"");
+    }
+    trimmed.to_string()
 }
 
 pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {

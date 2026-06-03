@@ -122,7 +122,9 @@ pub enum TriggerKind {
     ThisDealsCombatDamageTo {
         filter: ObjectFilter,
     },
-    ThisDealsCombatDamageToPlayer,
+    ThisDealsCombatDamageToPlayer {
+        player: PlayerFilter,
+    },
     DealsDamage {
         filter: ObjectFilter,
     },
@@ -615,10 +617,10 @@ impl Trigger {
             TriggerKind::ThisDealsCombatDamageTo { filter },
         )
     }
-    pub fn this_deals_combat_damage_to_player() -> Self {
+    pub fn this_deals_combat_damage_to_player(player: PlayerFilter) -> Self {
         Self::typed(
             "this_deals_combat_damage_to_player",
-            TriggerKind::ThisDealsCombatDamageToPlayer,
+            TriggerKind::ThisDealsCombatDamageToPlayer { player },
         )
     }
     pub fn deals_damage(filter: ObjectFilter) -> Self {

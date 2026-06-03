@@ -203,6 +203,7 @@ fn convert_line(line: RewriteLineCst) -> OracleGrammarLine {
                     kind: match item.kind {
                         LevelItemKindCst::KeywordActions => "KeywordActions",
                         LevelItemKindCst::StaticAbilities => "StaticAbilities",
+                        LevelItemKindCst::ActivatedAbility => "ActivatedAbility",
                     }
                     .to_string(),
                     parsed_debug: format!("{:?}", item.parsed),

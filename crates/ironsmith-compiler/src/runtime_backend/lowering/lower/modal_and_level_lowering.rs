@@ -155,7 +155,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         choose_both_control_card_types,
         trigger,
         activated,
-        x_replacement: _,
+        x_replacement,
         prefix_effects_ast: _,
         modal_gate,
         line_text,
@@ -226,8 +226,20 @@ pub(crate) fn rewrite_lower_parsed_modal(
 
     let mode_count = compiled_modes.len() as i32;
     let default_max = crate::effect::Value::Fixed(mode_count);
-    let max = header_max.unwrap_or_else(|| default_max.clone());
-    let min = header_min;
+    let max = header_max
+        .map(|max| {
+            if matches!(max, crate::effect::Value::X) {
+                x_replacement.clone().unwrap_or(max)
+            } else {
+                max
+            }
+        })
+        .unwrap_or_else(|| default_max.clone());
+    let min = if matches!(header_min, crate::effect::Value::X) {
+        x_replacement.unwrap_or(header_min)
+    } else {
+        header_min
+    };
     let is_fixed_one =
         |value: &crate::effect::Value| matches!(value, crate::effect::Value::Fixed(1));
     let apply_modal_metadata = |effect: crate::effect::Effect| {

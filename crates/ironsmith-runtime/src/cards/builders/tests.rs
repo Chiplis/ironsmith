@@ -144,6 +144,138 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn hydra_omnivore_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Hydra Omnivore");
+
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(def.name(), "Hydra Omnivore");
+    assert!(
+        ability_debug.contains("ThisDealsCombatDamageToPlayerTrigger")
+            && ability_debug.contains("player: Opponent")
+            && ability_debug.contains("ForPlayersEffect")
+            && ability_debug.contains("Excluding")
+            && ability_debug.contains("Opponent")
+            && ability_debug.contains("DamagedPlayer")
+            && ability_debug.contains("DealDamageEffect")
+            && ability_debug.contains("EventValue")
+            && ability_debug.contains("Amount"),
+        "Hydra Omnivore should compile to damage each opponent except the damaged player, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever this creature deals combat damage to an opponent, it deals that much damage to each other opponent."
+        ),
+        "Hydra Omnivore should render the each-other-opponent damage clause, got {rendered}"
+    );
+}
+
+#[test]
+fn hydra_omnivore_runtime_damages_each_other_opponent_only() {
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let mut game = crate::game_state::GameState::new(
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+            "Dana".to_string(),
+        ],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let dana = PlayerId::from_index(3);
+    let hydra = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let noncombat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &noncombat),
+        0,
+        "Hydra Omnivore should not trigger from noncombat damage"
+    );
+
+    let hits_controller = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(alice),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &hits_controller),
+        0,
+        "Hydra Omnivore should not trigger from combat damage to its controller"
+    );
+
+    let combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, hydra, &combat),
+        1,
+        "Hydra Omnivore should trigger once from its combat damage to an opponent"
+    );
+
+    assert_eq!(game.life_total(alice), 20, "controller is not an opponent");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "the damaged opponent should be excluded from each other opponent"
+    );
+    assert_eq!(game.life_total(charlie), 12, "first other opponent should take 8");
+    assert_eq!(game.life_total(dana), 12, "second other opponent should take 8");
+}
+
+#[test]
+fn hydra_omnivore_runtime_has_no_extra_damage_without_other_opponents() {
+    let def = parse_oracle_card_definition("Hydra Omnivore");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let hydra = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            hydra,
+            crate::events::DamageTarget::Player(bob),
+            8,
+            true,
+            crate::events::cause::EventCause::combat_damage(hydra),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(resolve_triggers_for_source(&mut game, hydra, &combat), 1);
+    assert_eq!(game.life_total(alice), 20, "controller should not be damaged");
+    assert_eq!(
+        game.life_total(bob),
+        20,
+        "with no other opponent, the damaged opponent should not take extra damage"
+    );
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 
@@ -176,6 +308,303 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
             "Choose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it."
         ),
         "Clockspinning should render the chosen-counter put/remove clause, got {rendered}"
+    );
+}
+
+fn ichormoon_gauntlet_chosen_counter_effect(def: &CardDefinition) -> &Effect {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .find(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
+                        .is_some()
+                }),
+            _ => None,
+        })
+        .expect("Ichormoon Gauntlet should have a chosen-counter trigger effect")
+}
+
+#[test]
+fn ichormoon_gauntlet_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Ichormoon Gauntlet");
+
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("GrantObjectAbilityForFilter")
+            && ability_debug.contains("ProliferateEffect")
+            && ability_debug.contains("ExtraTurnEffect")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("Loyalty")
+            && ability_debug.contains("SpellCastTrigger")
+            && ability_debug.contains("caster: You")
+            && ability_debug.contains("excluded_card_types")
+            && ability_debug.contains("Creature")
+            && ability_debug.contains("PutCounterOfChosenKindEffect"),
+        "Ichormoon Gauntlet should structurally grant loyalty abilities and preserve its noncreature-spell trigger, got {ability_debug}"
+    );
+    assert!(
+        !ability_debug.contains("Named(\n                                                \"additional\"")
+            && !ability_debug.contains("Named(\"additional\")"),
+        "additional-counter wording should not lower to a named 'additional' counter, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Planeswalkers you control have \"[0]: Proliferate\" and \"[−12]: Take an extra turn after this one.\""
+        ),
+        "expected compiled text to preserve granted bracketed loyalty abilities as one quoted line, got {rendered}"
+    );
+    assert!(
+        rendered.contains("choose a counter on target permanent")
+            || rendered.contains("Choose a counter on target permanent"),
+        "expected compiled text to preserve choose-counter target clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Put an additional counter of that kind on that permanent"),
+        "expected compiled text to preserve additional-counter-kind clause, got {rendered}"
+    );
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Ichormoon Gauntlet should compile without unsupported runtime markers: {ability_debug}"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_you_control() {
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let planeswalker = CardDefinitionBuilder::new(CardId::new(), "Gauntlet Test Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Gauntlet Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_planeswalker =
+        game.create_object_from_definition(&planeswalker, alice, Zone::Battlefield);
+    let bob_planeswalker =
+        game.create_object_from_definition(&planeswalker, bob, Zone::Battlefield);
+    let alice_creature = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+
+    let granted = game
+        .current_abilities(alice_planeswalker)
+        .expect("Alice planeswalker should have current abilities")
+        .into_iter()
+        .filter_map(|ability| match ability.kind {
+            AbilityKind::Activated(activated) if activated.is_loyalty_ability => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        granted.len(),
+        2,
+        "controlled planeswalker should gain both Ichormoon loyalty abilities, got {granted:#?}"
+    );
+    assert!(
+        granted.iter().any(|activated| activated.mana_cost.is_free()
+            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
+                .downcast_ref::<crate::effects::ProliferateEffect>()
+                .is_some())),
+        "expected granted [0] proliferate loyalty ability, got {granted:#?}"
+    );
+    assert!(
+        granted.iter().any(|activated| activated.mana_cost.has_loyalty_activation_cost()
+            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
+                .downcast_ref::<crate::effects::ExtraTurnEffect>()
+                .is_some())),
+        "expected granted -12 extra-turn loyalty ability, got {granted:#?}"
+    );
+
+    let bob_granted = game
+        .current_abilities(bob_planeswalker)
+        .expect("Bob planeswalker should have current abilities")
+        .into_iter()
+        .filter(|ability| {
+            matches!(ability.kind, AbilityKind::Activated(ref activated) if activated.is_loyalty_ability)
+        })
+        .count();
+    assert_eq!(
+        bob_granted, 0,
+        "opposing planeswalkers should not gain the abilities"
+    );
+    let creature_granted = game
+        .current_abilities(alice_creature)
+        .expect("Alice creature should have current abilities")
+        .into_iter()
+        .filter(|ability| {
+            matches!(ability.kind, AbilityKind::Activated(ref activated) if activated.is_loyalty_ability)
+        })
+        .count();
+    assert_eq!(
+        creature_granted, 0,
+        "non-planeswalkers should not gain the abilities"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_trigger_adds_selected_existing_counter_kind() {
+    struct ChooseFirstCounterKind;
+    impl crate::decision::DecisionMaker for ChooseFirstCounterKind {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description == "Choose a counter kind" {
+                vec![0]
+            } else {
+                vec![0]
+            }
+        }
+    }
+
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Countered Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.add_counters(target, CounterType::Charge, 2)
+        .expect("target should accept charge counters");
+    game.add_counters(target, CounterType::PlusOnePlusOne, 1)
+        .expect("target should accept +1/+1 counters");
+
+    let mut dm = ChooseFirstCounterKind;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("chosen-kind counter effect should resolve");
+
+    assert_eq!(
+        game.counter_count(target, CounterType::Charge),
+        3,
+        "chosen charge counter kind should receive one additional counter"
+    );
+    assert_eq!(
+        game.counter_count(target, CounterType::PlusOnePlusOne),
+        1,
+        "unchosen counter kinds should not change"
+    );
+    assert_eq!(
+        game.counter_count(target, CounterType::Named("additional")),
+        0,
+        "the effect must not create a literal named additional counter"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_trigger_does_nothing_when_target_has_no_counters() {
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Uncountered Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("chosen-kind counter effect should safely resolve with no counters");
+
+    assert_eq!(
+        game.object(target)
+            .expect("target should still exist")
+            .counters
+            .values()
+            .sum::<u32>(),
+        0,
+        "a target with no counters should not receive any counter"
+    );
+}
+
+#[test]
+fn reprocess_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Reprocess");
+
+    let def = parse_oracle_card_definition("Reprocess");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert_eq!(def.name(), "Reprocess");
+    assert_eq!(def.card.card_types, vec![CardType::Sorcery]);
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Reprocess should have spell effects")
+        .flattened_default_effects();
+    let [choose_effect, sacrifice_effect, draw_effect] = effects else {
+        panic!("Reprocess should lower to choose, sacrifice, and draw effects, got {effects:#?}");
+    };
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("Reprocess should choose permanents to sacrifice");
+    let sacrifice_with_id = sacrifice_effect
+        .downcast_ref::<crate::effects::WithIdEffect>()
+        .expect("Reprocess sacrifice should be effect-metric addressable");
+    let sacrifice = sacrifice_with_id
+        .effect
+        .downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
+        .expect("Reprocess should sacrifice the chosen permanents");
+    let draw = draw_effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .expect("Reprocess should draw from the sacrificed count");
+
+    assert_eq!(choose.filter.controller, Some(PlayerFilter::You));
+    assert_eq!(
+        choose.filter.card_types,
+        vec![CardType::Artifact, CardType::Creature, CardType::Land]
+    );
+    assert_eq!(sacrifice.player, PlayerFilter::You);
+    assert!(
+        matches!(
+            draw.count,
+            Value::EffectMetric {
+                effect_id,
+                source: crate::effect::EffectMetricSource::AffectedObjects,
+                metric: crate::effect::EffectMetric::Count,
+            } if effect_id == sacrifice_with_id.id
+        ),
+        "Reprocess draw count should reference the sacrificed-object metric, got {:?}",
+        draw.count
+    );
+    assert!(
+        rendered.contains(
+            "Sacrifice any number of artifacts, creatures, and/or lands. Draw a card for each permanent sacrificed this way."
+        ),
+        "Reprocess should render its sacrificed-this-way draw clause, got {rendered}"
     );
 }
 
@@ -2634,6 +3063,208 @@ fn tromp_the_domains_strict_parser_and_compiled_text_regression() {
             && rendered_lower
                 .contains("get +1/+1 for each basic land type among lands you control"),
         "expected Tromp the Domains compiled text to preserve the domain P/T clause, got {rendered}"
+    );
+}
+
+fn bumi_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Bumi, King of Three Trials should compile an enters trigger");
+    triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Bumi, King of Three Trials should compile one modal choice effect")
+}
+
+fn bumi_game_with_lessons(
+    lesson_count: usize,
+) -> (
+    CardDefinition,
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+) {
+    let def = parse_oracle_card_definition("Bumi, King of Three Trials");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let lesson = CardDefinitionBuilder::new(CardId::new(), "Bumi Test Lesson")
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Lesson])
+        .build();
+
+    for _ in 0..lesson_count {
+        game.create_object_from_definition(&lesson, alice, Zone::Graveyard);
+    }
+
+    (def, game, alice, bob, source)
+}
+
+fn bumi_earthbend_target_assignment() -> crate::game_state::TargetAssignment {
+    crate::game_state::TargetAssignment {
+        spec: ChooseSpec::target(ChooseSpec::Object(
+            crate::filter::ObjectFilter::land().you_control(),
+        )),
+        range: 0..1,
+    }
+}
+
+#[test]
+fn parse_oracle_bumi_king_of_three_trials_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Bumi, King of Three Trials");
+
+    let def = parse_oracle_card_definition("Bumi, King of Three Trials");
+    let modal = bumi_modal_effect(&def);
+    let modal_debug = format!("{modal:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let canonical = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "When Bumi enters, choose up to X, where X is the number of Lesson cards in your graveyard"
+        ),
+        "expected Bumi compiled text to keep the Lesson-based modal X clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Target player scries 3") && rendered.contains("Earthbend 3"),
+        "expected Bumi compiled text to keep the targeted scry and earthbend modes, got {rendered}"
+    );
+    assert!(
+        canonical.contains(
+            "When Bumi enters, choose up to X, where X is the number of Lesson cards in your graveyard —\n•"
+        ) && !canonical.contains("—.\n•"),
+        "Bumi canonical compiled text should not add a period after the modal-header dash, got {canonical}"
+    );
+    assert_eq!(modal.min_choose_count, Value::Fixed(0));
+    assert_eq!(modal.modes.len(), 3);
+    assert!(
+        modal_debug.contains("WhereXIs")
+            && modal_debug.contains("Lesson")
+            && modal_debug.contains("TargetOnlyEffect")
+            && modal_debug.contains("ScryEffect")
+            && modal_debug.contains("EarthbendEffect"),
+        "Bumi should structurally model dynamic Lesson mode count, targeted scry, and earthbend, got {modal_debug}"
+    );
+}
+
+#[test]
+fn bumi_zero_lesson_graveyard_cannot_apply_selected_counter_mode() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(0);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi with zero Lesson cards should resolve without choosing modes");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        0,
+        "zero Lesson cards in graveyard should make Bumi choose up to zero modes"
+    );
+}
+
+#[test]
+fn bumi_counter_mode_uses_lesson_based_modal_bound() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi should allow one mode with one Lesson card in graveyard");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        3,
+        "counter mode should put three +1/+1 counters on Bumi"
+    );
+}
+
+#[test]
+fn bumi_target_player_scry_mode_targets_the_chosen_player() {
+    let (def, mut game, alice, bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Bumi Scry Card")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_definition(&library_card, bob, Zone::Library);
+    game.create_object_from_definition(&library_card, bob, Zone::Library);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_player(),
+            range: 0..1,
+        }]);
+
+    let outcome = modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi targeted scry mode should resolve");
+
+    let scry_event = outcome
+        .events_of_type::<crate::events::KeywordActionEvent>()
+        .find(|event| event.action == crate::events::KeywordActionKind::Scry)
+        .expect("targeted scry mode should emit a scry keyword action event");
+    assert_eq!(scry_event.player, bob);
+    assert_eq!(
+        scry_event.amount, 2,
+        "targeted scry should apply to Bob's two-card library"
+    );
+}
+
+#[test]
+fn bumi_earthbend_mode_targets_a_land_you_control() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let land = CardDefinitionBuilder::new(CardId::new(), "Bumi Test Land")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let land_id = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![2]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(land_id)])
+        .with_target_assignments(vec![bumi_earthbend_target_assignment()]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi earthbend mode should resolve with a controlled land target");
+
+    assert!(
+        game.current_is_creature(land_id),
+        "earthbend should make the targeted land a creature"
+    );
+    assert_eq!(game.counter_count(land_id, CounterType::PlusOnePlusOne), 3);
+    assert_eq!(game.calculated_power(land_id), Some(3));
+    assert_eq!(game.calculated_toughness(land_id), Some(3));
+}
+
+#[test]
+fn bumi_earthbend_mode_is_illegal_without_a_controlled_land_target() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![2]));
+
+    let err = modal
+        .execute(&mut game, &mut ctx)
+        .expect_err("Bumi earthbend mode should be illegal with no land you control");
+    assert!(
+        format!("{err:?}").contains("Selected mode is not legal"),
+        "expected earthbend target legality failure, got {err:?}"
     );
 }
 
@@ -7666,6 +8297,39 @@ fn test_parse_aberrant_mind_sorcerer_rolls_and_branch_ranges() {
             || rendered.contains("you may put it on top of"))
             && (rendered.contains("return that card to") || rendered.contains("return it to")),
         "expected both psionic spells outcomes in compiled text, got {rendered}"
+    );
+}
+
+#[test]
+fn component_pouch_strict_parser_compiled_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Component Pouch");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered.join("\n"),
+        "{T}, Remove a component counter from this artifact: Add two mana of different colors.\n{T}: Roll a d20.\n1—9 | Put a component counter on this artifact.\n10—20 | Put two component counters on this artifact.",
+        "Component Pouch should compile back to its strict oracle text"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    let compact_debug = debug.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        compact_debug.contains("RemoveCountersEffect")
+            && compact_debug.contains("Named( \"component\"")
+            && compact_debug.contains("distinct_colors: true"),
+        "expected Component Pouch mana ability to remove a component counter and add distinct-color mana, got {debug}"
+    );
+    assert!(
+        compact_debug.contains("RollDieEffect")
+            && compact_debug.contains("sides: 20")
+            && compact_debug.contains("BetweenInclusive( 1, 9")
+            && compact_debug.contains("BetweenInclusive( 10, 20"),
+        "expected Component Pouch d20 branches for 1-9 and 10-20, got {debug}"
+    );
+    assert!(
+        compact_debug.contains("PutCountersEffect")
+            && compact_debug.contains("Named( \"component\"")
+            && compact_debug.contains("Fixed( 2"),
+        "expected Component Pouch d20 high branch to put two component counters, got {debug}"
     );
 }
 
@@ -16390,6 +17054,32 @@ fn test_counter_unless_pays_rendering() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn frightful_delusion_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Frightful Delusion");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.spell_effect.is_some(),
+        "Frightful Delusion should parse as a strict spell"
+    );
+    assert!(
+        spell_debug.contains("UnlessPaysEffect")
+            && spell_debug.contains("CounterEffect")
+            && spell_debug.contains("DiscardEffect")
+            && spell_debug.contains("ControllerOf(")
+            && !spell_debug.contains("IteratedPlayer"),
+        "expected counter-unless-pay followed by target controller discard, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("Counter target spell unless its controller pays {1}")
+            && rendered.contains("That player discards a card"),
+        "expected Frightful Delusion counter-unless and discard text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_counter_unless_pays_and_life_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mundungu Probe")
         .card_types(vec![CardType::Creature])
@@ -16934,6 +17624,37 @@ Double strike",
     assert!(
         joined.contains("level 7+") && joined.contains("double strike"),
         "expected rendered level-7 tier details, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_kargan_dragonlord_level_tier_activation() {
+    assert_oracle_card_parses_strict("Kargan Dragonlord");
+    let def = parse_oracle_card_definition("Kargan Dragonlord");
+    let debug = format!("{:?}", def.abilities);
+
+    assert!(
+        debug.contains("__ironsmith_level_range:8:+")
+            && debug.contains("SourceHasCounterAtLeast")
+            && debug.contains("ModifyPowerToughness"),
+        "Kargan Dragonlord should lower its level-8 pump as a level-gated activated ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn compiled_text_kargan_dragonlord_keeps_pump_in_level_block() {
+    let def = parse_oracle_card_definition("Kargan Dragonlord");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Level up {R}")
+            && rendered.contains(
+                "Level 8+.\n8/8.\nFlying, trample\n{R}: This creature gets +1/+0 until end of turn."
+            )
+            && !rendered.contains("Activated ability"),
+        "Kargan Dragonlord compiled text should render the level-up line and level-8 pump block, got {rendered}"
     );
 }
 
@@ -34021,6 +34742,33 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn soulblast_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Soulblast");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("as an additional cost to cast this spell, sacrifice all creatures you control"),
+        "expected Soulblast all-creatures additional cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Soulblast deals damage to any target equal to the total power of the sacrificed creatures"
+        ),
+        "expected Soulblast damage to use sacrificed-creatures total power, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def);
+    assert!(
+        debug.contains("WithIdEffect")
+            && debug.contains("SacrificePlayerEffect")
+            && debug.contains("EffectMetric")
+            && debug.contains("TotalPower"),
+        "expected Soulblast cost sacrifice to feed total-power damage metric, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn corpse_lunge_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Corpse Lunge");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
@@ -37910,6 +38658,33 @@ fn remove_all_named_counters_from_target_renders_generically() {
 }
 
 #[test]
+fn sarulf_realm_eater_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Sarulf, Realm Eater");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let upkeep_text = "At the beginning of your upkeep, if this creature has one or more +1/+1 counters on it, you may remove all +1/+1 counters from it. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.";
+
+    assert!(
+        rendered.contains("Whenever a permanent an opponent controls is put into a graveyard from the battlefield, put a +1/+1 counter on Sarulf."),
+        "expected Sarulf death trigger text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(upkeep_text),
+        "expected Sarulf upkeep all-of-them counter removal and removed-this-way exile text, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("SourceHasCounterAtLeast")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("PlusOnePlusOne")
+            && ability_debug.contains("IfEffect")
+            && ability_debug.contains("ExileEffect")
+            && ability_debug.contains("EffectValue"),
+        "expected Sarulf to structurally remove +1/+1 counters and exile by the removed count, got {ability_debug}"
+    );
+}
+
+#[test]
 fn blitz_leech_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Blitz Leech");
 
@@ -41651,6 +42426,35 @@ fn parse_each_opponents_maximum_hand_size_reduced_static_line() {
     assert!(
         rendered.contains("maximum hand size is reduced by"),
         "expected maximum-hand-size reduction in rendered text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn trusted_advisor_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Trusted Advisor");
+
+    let has_increase_max_hand_size = def.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::IncreaseMaximumHandSize
+        )
+    });
+    assert!(
+        has_increase_max_hand_size,
+        "Trusted Advisor should compile its maximum hand size increase as a static ability"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "Your maximum hand size is increased by two.".to_string(),
+            "At the beginning of your upkeep, return a blue creature you control to its owner's hand."
+                .to_string(),
+        ],
+        "Trusted Advisor should render its full oracle text"
     );
 }
 
@@ -47069,6 +47873,311 @@ fn assert_oracle_card_parses_strict(name: &str) {
         "strict parser regression failed for '{name}': {:?}\nOracle text:\n{}",
         result.err(),
         oracle
+    );
+}
+
+fn azorius_guildmage_activated_ability_matching(
+    def: &CardDefinition,
+    predicate: impl Fn(&crate::ability::ActivatedAbility) -> bool,
+) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            predicate(activated).then_some(activated)
+        })
+        .expect("Azorius Guildmage should have the requested activated ability")
+}
+
+fn azorius_guildmage_tap_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    azorius_guildmage_activated_ability_matching(def, |activated| {
+        activated.effects.flattened_default_effects().iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TapEffect>()
+                .is_some()
+        })
+    })
+}
+
+fn azorius_guildmage_counter_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    azorius_guildmage_activated_ability_matching(def, |activated| {
+        activated.effects.flattened_default_effects().iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::CounterEffect>()
+                .is_some()
+        })
+    })
+}
+
+fn azorius_guildmage_counter_target_filter(
+    activated: &crate::ability::ActivatedAbility,
+) -> &crate::target::ObjectFilter {
+    let target_spec = activated
+        .choices
+        .first()
+        .expect("counter ability should declare a target");
+    let ChooseSpec::Object(filter) = target_spec.base() else {
+        panic!("counter target should lower to an object filter, got {target_spec:?}");
+    };
+    filter
+}
+
+fn pay_azorius_guildmage_activation(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    source: ObjectId,
+    activated: &crate::ability::ActivatedAbility,
+    colored_mana: ManaSymbol,
+) {
+    game.player_mut(player)
+        .expect("activating player exists")
+        .mana_pool
+        .add(colored_mana, 3);
+    crate::cost::can_pay_cost(game, source, player, &activated.mana_cost)
+        .expect("Azorius Guildmage activation cost should be payable");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        game,
+        player,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Azorius Guildmage activation cost should be paid");
+    assert_eq!(
+        game.player(player)
+            .expect("activating player exists")
+            .mana_pool
+            .total(),
+        0,
+        "activation should consume the supplied colored mana for its colored and generic costs"
+    );
+}
+
+#[test]
+fn azorius_guildmage_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Azorius Guildmage");
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "{2}{W}: Tap target creature.",
+            "{2}{U}: Counter target activated ability.",
+        ],
+        "Azorius Guildmage should render both activated abilities exactly"
+    );
+
+    let activated_count = def
+        .abilities
+        .iter()
+        .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .count();
+    assert_eq!(
+        activated_count, 2,
+        "Azorius Guildmage should have exactly two activated abilities"
+    );
+
+    let tap = azorius_guildmage_tap_ability(&def);
+    let counter = azorius_guildmage_counter_ability(&def);
+    assert!(
+        format!("{:?}", tap.mana_cost).contains("White"),
+        "tap ability should keep its white activation cost, got {:?}",
+        tap.mana_cost
+    );
+    assert!(
+        format!("{:?}", counter.mana_cost).contains("Blue"),
+        "counter ability should keep its blue activation cost, got {:?}",
+        counter.mana_cost
+    );
+
+    let filter = azorius_guildmage_counter_target_filter(counter);
+    assert_eq!(
+        filter.stack_kind,
+        Some(crate::filter::StackObjectKind::ActivatedAbility),
+        "counter ability should structurally target activated abilities on the stack"
+    );
+}
+
+#[test]
+fn azorius_guildmage_tap_activation_taps_target_creature_after_cost_payment() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_tap_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target_def = CardDefinitionBuilder::new(CardId::new(), "Azorius Guildmage Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let target = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::White);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: activated
+                .choices
+                .first()
+                .expect("tap ability should declare a target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(&game);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Azorius Guildmage tap ability should resolve");
+    }
+
+    assert!(
+        game.is_tapped(target),
+        "tap activation should tap the targeted creature"
+    );
+}
+
+#[test]
+fn azorius_guildmage_counter_activation_counters_activated_ability_only() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_counter_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_source_def = CardDefinitionBuilder::new(CardId::new(), "Stack Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ability_source =
+        game.create_object_from_definition(&ability_source_def, bob, Zone::Battlefield);
+    game.stack.push(crate::game_state::StackEntry::ability(
+        ability_source,
+        bob,
+        vec![crate::effect::Effect::draw(1)],
+    ));
+
+    let filter = azorius_guildmage_counter_target_filter(activated);
+    let filter_ctx = crate::filter::FilterContext::new(alice).with_source(source);
+    assert!(
+        filter.matches(
+            game.object(ability_source)
+                .expect("activated ability source should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should match an activated ability on the stack"
+    );
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::Blue);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(ability_source)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: activated
+                .choices
+                .first()
+                .expect("counter ability should declare a target")
+                .clone(),
+            range: 0..1,
+        }]);
+    ctx.snapshot_targets(&game);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Azorius Guildmage counter ability should resolve");
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "counter activation should remove the targeted activated ability from the stack"
+    );
+    assert_eq!(
+        game.object(ability_source)
+            .expect("ability source should remain on battlefield")
+            .zone,
+        Zone::Battlefield,
+        "countering an activated ability should not move its source permanent"
+    );
+
+    let spell_def = CardDefinitionBuilder::new(CardId::new(), "Ordinary Stack Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let spell = game.create_object_from_definition(&spell_def, bob, Zone::Stack);
+    game.stack.push(crate::game_state::StackEntry::new(spell, bob));
+
+    let triggered_source_def =
+        CardDefinitionBuilder::new(CardId::new(), "Triggered Ability Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+    let triggered_source =
+        game.create_object_from_definition(&triggered_source_def, bob, Zone::Battlefield);
+    game.stack.push(
+        crate::game_state::StackEntry::ability(
+            triggered_source,
+            bob,
+            vec![crate::effect::Effect::draw(1)],
+        )
+        .with_triggering_event(crate::events::RawEvent::new(
+            crate::events::AbilityActivatedEvent::new(triggered_source, bob, false),
+            crate::provenance::ProvNodeId::default(),
+        )),
+    );
+
+    assert!(
+        !filter.matches(
+            game.object(spell).expect("spell stack object should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should reject ordinary spells"
+    );
+    assert!(
+        !filter.matches(
+            game.object(triggered_source)
+                .expect("triggered ability source should exist"),
+            &filter_ctx,
+            &game,
+        ),
+        "counter target filter should reject triggered abilities"
+    );
+}
+
+#[test]
+fn azorius_guildmage_counter_activation_rejects_target_that_left_stack() {
+    let def = parse_oracle_card_definition("Azorius Guildmage");
+    let activated = azorius_guildmage_counter_ability(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_source_def = CardDefinitionBuilder::new(CardId::new(), "Resolved Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let ability_source =
+        game.create_object_from_definition(&ability_source_def, bob, Zone::Battlefield);
+
+    pay_azorius_guildmage_activation(&mut game, alice, source, activated, ManaSymbol::Blue);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(ability_source)]);
+    for effect in activated.effects.flattened_default_effects() {
+        let result = crate::effects::execute_effect(&mut game, effect, &mut ctx);
+        assert_eq!(
+            result,
+            Err(crate::effects::ExecutionError::InvalidTarget),
+            "counter ability should reject a target that left the stack"
+        );
+    }
+
+    assert!(
+        game.stack.is_empty(),
+        "no stack entry should be removed when the target activated ability has already left the stack"
+    );
+    assert_eq!(
+        game.object(ability_source)
+            .expect("ability source should remain on battlefield")
+            .zone,
+        Zone::Battlefield,
+        "invalid counter target should not move the source permanent"
     );
 }
 
@@ -54697,6 +55806,122 @@ fn nighthawk_scavenger_characteristic_runtime_scaling_regression() {
         matches!(toughness, crate::effect::Value::SourceToughness),
         "expected Nighthawk Scavenger toughness CDA axis to keep source toughness, got {:?}",
         toughness
+    );
+}
+
+#[test]
+fn polygoyf_strict_parser_and_compiled_text_preserves_all_graveyards_card_types() {
+    assert_oracle_card_parses_strict("Polygoyf");
+
+    let def = parse_oracle_card_definition("Polygoyf");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability)
+                if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT =>
+            {
+                Some(static_ability)
+            }
+            _ => None,
+        })
+        .expect("Polygoyf should have a characteristic-defining P/T ability");
+    let game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let effects = static_ability.generate_effects(
+        crate::ids::ObjectId::from_raw(1),
+        crate::ids::PlayerId::from_index(0),
+        &game,
+    );
+    let crate::continuous::Modification::SetPowerToughness {
+        power,
+        toughness,
+        sublayer: _,
+    } = &effects[0].modification
+    else {
+        panic!("expected Polygoyf to use a SetPowerToughness CDA");
+    };
+
+    assert!(
+        matches!(
+            power,
+            crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any)
+        ),
+        "Polygoyf should structurally count card types across all graveyards, got {power:?}"
+    );
+    assert!(
+        matches!(
+            toughness,
+            crate::effect::Value::Add(left, right)
+                if matches!(&**left, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(&**right, crate::effect::Value::Fixed(1))
+        ) || matches!(
+            toughness,
+            crate::effect::Value::Add(left, right)
+                if matches!(&**right, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(&**left, crate::effect::Value::Fixed(1))
+        ),
+        "Polygoyf toughness should be card types across all graveyards plus 1, got {toughness:?}"
+    );
+    assert!(
+        rendered.contains("trample") && rendered.contains("myriad"),
+        "Polygoyf compiled text should preserve keyword identity, got {rendered}"
+    );
+    assert!(
+        rendered.contains("number of card types among cards in all graveyards"),
+        "Polygoyf compiled text should preserve the all-graveyards card-types-among clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("toughness is equal to that number plus 1"),
+        "Polygoyf compiled text should render the shared toughness value as that number plus 1, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("number of cards in all graveyards"),
+        "Polygoyf must not collapse card types among graveyards into a plain card count, got {rendered}"
+    );
+}
+
+#[test]
+fn polygoyf_runtime_counts_distinct_card_types_in_all_graveyards() {
+    let def = parse_oracle_card_definition("Polygoyf");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let polygoyf = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(
+        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (Some(0), Some(1)),
+        "with empty graveyards, Polygoyf should be 0/1"
+    );
+
+    let artifact_creature = CardDefinitionBuilder::new(CardId::new(), "Artifact Creature Probe")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .build();
+    let enchantment = CardDefinitionBuilder::new(CardId::new(), "Enchantment Probe")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let duplicate_artifact = CardDefinitionBuilder::new(CardId::new(), "Duplicate Artifact Probe")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    game.create_object_from_definition(&artifact_creature, alice, Zone::Graveyard);
+    game.create_object_from_definition(&enchantment, bob, Zone::Graveyard);
+    game.create_object_from_definition(&duplicate_artifact, bob, Zone::Graveyard);
+    game.refresh_continuous_state();
+
+    assert_eq!(
+        (game.current_power(polygoyf), game.current_toughness(polygoyf)),
+        (Some(3), Some(4)),
+        "Polygoyf should count distinct card types across both players' graveyards and add 1 toughness"
     );
 }
 
@@ -64708,6 +65933,157 @@ fn eruth_tormented_prophet_compiled_text_keeps_replacement_and_play_clause() {
         "expected play-permission clause in compiled text, got {rendered}"
     );
 }
+
+#[test]
+fn urabrask_heretic_praetor_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Urabrask, Heretic Praetor");
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("RegisterDrawReplacementEffect"),
+        "Urabrask should lower the opponent upkeep ability to a draw replacement registration, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("the next time they would draw a card this turn, instead they exile the top card of their library"),
+        "Urabrask compiled text should preserve the next-draw instead clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("At the beginning of your upkeep, exile the top card of your library"),
+        "Urabrask compiled text should preserve its controller upkeep impulse draw trigger, got {rendered}"
+    );
+}
+
+fn add_named_library_card(
+    game: &mut crate::game_state::GameState,
+    player: PlayerId,
+    name: &str,
+) {
+    let card = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .build();
+    game.create_object_from_definition(&card, player, Zone::Library);
+}
+
+fn urabrask_triggered_effects<'a>(
+    def: &'a crate::cards::CardDefinition,
+    needle: &str,
+) -> &'a crate::resolution::ResolutionProgram {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if format!("{:#?}", triggered.effects).contains(needle) =>
+            {
+                Some(&triggered.effects)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing Urabrask triggered ability containing {needle}"))
+}
+
+#[test]
+fn urabrask_controller_upkeep_exiles_top_card_and_grants_play_permission() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, alice, "Alice Urabrask Top Card");
+    let effects = urabrask_triggered_effects(&def, "GrantPlayTaggedEffect");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+
+    for effect in effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Urabrask controller upkeep effect should resolve");
+    }
+
+    let alice_state = game.player(alice).expect("Alice exists");
+    assert_eq!(alice_state.library.len(), 0);
+    assert_eq!(alice_state.hand.len(), 0);
+    assert_eq!(game.exile.len(), 1);
+}
+
+#[test]
+fn urabrask_opponent_draw_before_upkeep_replacement_is_not_replaced() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, bob, "Bob Normal Draw");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+
+    let outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob draw before Urabrask replacement should resolve normally");
+
+    assert_eq!(outcome.count_or_zero(), 1);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 0);
+    assert_eq!(bob_state.hand.len(), 1);
+    assert_eq!(game.exile.len(), 0);
+}
+
+#[test]
+fn urabrask_opponent_upkeep_registers_next_draw_replacement() {
+    let def = parse_oracle_card_definition("Urabrask, Heretic Praetor");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    add_named_library_card(&mut game, bob, "Bob Urabrask Exiled Card");
+    add_named_library_card(&mut game, bob, "Bob Normal Followup Draw");
+    let effects = urabrask_triggered_effects(&def, "RegisterDrawReplacementEffect");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    ctx.iteration.iterated_player = Some(bob);
+
+    for effect in effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Urabrask opponent upkeep should register a draw replacement");
+    }
+    assert!(
+        game.effect_store
+            .replacement_effects
+            .effects()
+            .iter()
+            .any(|replacement| {
+                replacement.source == source
+                    && matches!(
+                        replacement.replacement,
+                        crate::replacement::ReplacementAction::Instead(_)
+                    )
+            }),
+        "Urabrask should register a one-shot draw replacement from its opponent upkeep trigger"
+    );
+
+    let outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob draw should be replaced by Urabrask");
+
+    assert_eq!(outcome.count_or_zero(), 0);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 1);
+    assert_eq!(bob_state.hand.len(), 0);
+    assert_eq!(game.exile.len(), 1);
+
+    let followup_outcome = DrawCardsEffect::new(1, PlayerFilter::Specific(bob))
+        .execute(&mut game, &mut ctx)
+        .expect("Bob's next draw after the replaced draw should resolve normally");
+
+    assert_eq!(followup_outcome.count_or_zero(), 1);
+    let bob_state = game.player(bob).expect("Bob exists");
+    assert_eq!(bob_state.library.len(), 0);
+    assert_eq!(bob_state.hand.len(), 1);
+    assert_eq!(game.exile.len(), 1);
+}
+
 #[test]
 fn parse_oracle_trove_tracker_regression_compiles_with_encore_keyword_line() {
     let def = parse_oracle_card_definition("Trove Tracker");

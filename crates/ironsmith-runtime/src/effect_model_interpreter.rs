@@ -1158,6 +1158,11 @@ where
             effect,
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect) {
+        return Ok(Effect::new(
+            crate::effects::PutCounterOfChosenKindEffect::new(payload.target.clone()),
+        ));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DoubleCountersEffect>(&effect) {
         return Ok(Effect::new(crate::effects::DoubleCountersEffect::new(
             payload.counter_type,
@@ -1238,6 +1243,15 @@ where
         clone_direct_effect::<M, crate::effects::RegisterFutureZoneReplacementEffect>(&effect)
     {
         return Ok(converted);
+    }
+    if let Some(payload) =
+        M::downcast_ref::<ironsmith_core::RegisterDrawReplacementEffect<M::Effect>>(&effect)
+    {
+        return Ok(Effect::new(crate::effects::RegisterDrawReplacementEffect::new(
+            payload.player.clone(),
+            convert_effects(payload.replacement_effects.iter().cloned(), hooks)?,
+            payload.mode,
+        )));
     }
     if let Some(converted) = clone_direct_effect::<
         M,

@@ -3926,6 +3926,7 @@ fn rewrite_activation_helpers_parse_add_mana_accepts_player_choice_tail_without_
                 action: crate::cards::builders::SubjectVerbActionAst::AddManaAnyColor {
                     amount: crate::effect::Value::Fixed(1),
                     available_colors: None,
+                    distinct_colors: false,
                 },
             }
         )

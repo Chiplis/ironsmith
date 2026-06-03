@@ -33,6 +33,7 @@ pub(crate) use activated_lowering::lower_rewrite_activated_to_chunk;
 use activated_lowering::{LoweredRewriteActivatedLine, align_rewrite_activated_parse_sentences};
 use normalization_support::{
     apply_chosen_option_to_triggered_chunk, apply_explicit_intervening_if_to_triggered_chunk,
+    normalize_rewrite_line_ast_standalone,
 };
 pub(crate) use normalization_support::{
     prepare_parsed_card_ast_for_lowering, rewrite_document_to_normalized_card_ast,
@@ -115,6 +116,7 @@ use super::lowering_support::{
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,
     rewrite_lower_static_ability_ast, rewrite_parsed_triggered_ability,
+    rewrite_prepare_additional_cost_effects_for_lowering,
     rewrite_prepare_effects_for_lowering,
     rewrite_prepare_effects_with_trigger_context_for_lowering,
     rewrite_prepare_triggered_effects_for_lowering, rewrite_static_ability_for_keyword_action,

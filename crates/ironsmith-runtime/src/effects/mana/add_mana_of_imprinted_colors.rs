@@ -66,7 +66,7 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
         }
 
         let chosen_color =
-            choose_mana_colors(game, ctx, controller, 1, true, Some(&colors), colors[0])
+            choose_mana_colors(game, ctx, controller, 1, true, false, Some(&colors), colors[0])
                 .into_iter()
                 .next()
                 .unwrap_or(colors[0]);

@@ -5,6 +5,7 @@ use crate::ability::{Ability, AbilityKind, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cost::OptionalCost;
 use crate::effect::{EffectPredicate, Value};
+use crate::runtime_backend::lexer::OwnedLexToken;
 use crate::zone::Zone;
 
 use super::super::{KeywordAction, PlayerAst, SharedTypeConstraintAst, TargetAst, TotalCost};
@@ -273,7 +274,17 @@ pub(crate) struct ParsedLevelAbilityAst {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct ParsedLevelActivatedAbilityAst {
+    pub(crate) info: LineInfo,
+    pub(crate) cost: TotalCost,
+    pub(crate) cost_parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) effect_text: String,
+    pub(crate) effect_parse_tokens: Vec<OwnedLexToken>,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) enum ParsedLevelAbilityItemAst {
     StaticAbilities(Vec<StaticAbilityAst>),
     KeywordActions(Vec<KeywordAction>),
+    ActivatedAbility(ParsedLevelActivatedAbilityAst),
 }

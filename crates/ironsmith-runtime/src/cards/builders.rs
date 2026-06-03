@@ -2438,7 +2438,7 @@ impl CardDefinitionBuilder {
     pub fn toxic(self, amount: u32) -> Self {
         self.with_ability(Ability {
             kind: AbilityKind::Triggered(TriggeredAbility {
-                trigger: Trigger::this_deals_combat_damage_to_player(),
+                trigger: Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
                 effects: vec![Effect::poison_counters_player(
                     amount as i32,
                     PlayerFilter::DamagedPlayer,
@@ -2541,7 +2541,7 @@ impl CardDefinitionBuilder {
     /// put N +1/+1 counters on it and it becomes renowned."
     pub fn renown(self, amount: u32) -> Self {
         self.with_ability(Ability::triggered(
-            Trigger::this_deals_combat_damage_to_player(),
+            Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             vec![Effect::renown_source(amount)],
         ))
     }
@@ -3652,7 +3652,7 @@ impl CardDefinitionBuilder {
     /// that player exiles the top card of their library."
     pub fn ingest(self) -> Self {
         self.with_ability(Ability::triggered(
-            Trigger::this_deals_combat_damage_to_player(),
+            Trigger::this_deals_combat_damage_to_player(PlayerFilter::Any),
             vec![Effect::exile_top_of_library_player(
                 1,
                 PlayerFilter::DamagedPlayer,

@@ -377,6 +377,8 @@ pub struct ManaColorsSpec {
     pub count: u32,
     /// If true, all mana must be the same color.
     pub same_color: bool,
+    /// If true, selected mana colors must be different when possible.
+    pub distinct_colors: bool,
     /// Available colors (None = all five colors).
     pub available_colors: Option<Vec<Color>>,
 }
@@ -388,6 +390,18 @@ impl ManaColorsSpec {
             source,
             count,
             same_color,
+            distinct_colors: false,
+            available_colors: None,
+        }
+    }
+
+    /// Create a new ManaColorsSpec for different colors.
+    pub fn different_colors(source: ObjectId, count: u32) -> Self {
+        Self {
+            source,
+            count,
+            same_color: false,
+            distinct_colors: true,
             available_colors: None,
         }
     }
@@ -403,6 +417,22 @@ impl ManaColorsSpec {
             source,
             count,
             same_color,
+            distinct_colors: false,
+            available_colors: Some(available_colors),
+        }
+    }
+
+    /// Create a new ManaColorsSpec with restricted different colors.
+    pub fn restricted_different_colors(
+        source: ObjectId,
+        count: u32,
+        available_colors: Vec<Color>,
+    ) -> Self {
+        Self {
+            source,
+            count,
+            same_color: false,
+            distinct_colors: true,
             available_colors: Some(available_colors),
         }
     }
@@ -414,6 +444,8 @@ impl DecisionSpec for ManaColorsSpec {
     fn description(&self) -> String {
         if self.same_color {
             format!("Choose a color for {} mana", self.count)
+        } else if self.distinct_colors {
+            format!("Choose {} different mana color(s)", self.count)
         } else {
             format!("Choose {} mana color(s)", self.count)
         }
@@ -423,17 +455,27 @@ impl DecisionSpec for ManaColorsSpec {
         DecisionPrimitive::SelectColors {
             count: self.count,
             same_color: self.same_color,
+            distinct_colors: self.distinct_colors,
         }
     }
 
     fn default_response(&self, _strategy: FallbackStrategy) -> Vec<Color> {
         // Default: green (arbitrary but consistent)
-        let default_color = self
-            .available_colors
-            .as_ref()
-            .and_then(|colors| colors.first().copied())
-            .unwrap_or(Color::Green);
-        vec![default_color; self.count as usize]
+        let available = self.available_colors.as_deref().unwrap_or(&Color::ALL);
+        let default_color = available.first().copied().unwrap_or(Color::Green);
+        if self.distinct_colors && !self.same_color {
+            let mut colors = available
+                .iter()
+                .copied()
+                .take(self.count as usize)
+                .collect::<Vec<_>>();
+            while colors.len() < self.count as usize {
+                colors.push(default_color);
+            }
+            colors
+        } else {
+            vec![default_color; self.count as usize]
+        }
     }
 
     fn build_context(
@@ -448,10 +490,17 @@ impl DecisionSpec for ManaColorsSpec {
                 Some(self.source),
                 self.count,
                 self.same_color,
+                self.distinct_colors,
                 colors.clone(),
             )
         } else {
-            ColorsContext::any_color(player, Some(self.source), self.count, self.same_color)
+            ColorsContext::any_color(
+                player,
+                Some(self.source),
+                self.count,
+                self.same_color,
+                self.distinct_colors,
+            )
         };
 
         DecisionContext::Colors(ctx)

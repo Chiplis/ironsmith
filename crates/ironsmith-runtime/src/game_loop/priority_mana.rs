@@ -3548,6 +3548,8 @@ pub(super) fn finalize_spell_cast(
     mut mana_spent_to_cast: ManaPool,
     keyword_payment_contributions: Vec<KeywordPaymentContribution>,
     stack_entry_tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    stack_entry_effect_outcomes:
+        std::collections::HashMap<crate::effect::EffectId, crate::effect::EffectOutcome>,
     payment_trace: &mut Vec<CostStep>,
     mana_already_paid: bool,
     stack_id: ObjectId,
@@ -3849,6 +3851,7 @@ pub(super) fn finalize_spell_cast(
         .with_chosen_player(game.chosen_player(new_id))
         .with_chosen_modes(chosen_modes)
         .with_tagged_objects(stack_entry_tagged_objects)
+        .with_effect_outcomes(stack_entry_effect_outcomes)
         .with_keyword_payment_contributions(keyword_payment_contributions);
     if let Some(spell_obj) = game.object(new_id).cloned() {
         entry = entry.with_source_info(spell_obj.stable_id, spell_obj.name.clone());

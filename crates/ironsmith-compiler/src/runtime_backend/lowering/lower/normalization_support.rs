@@ -2,7 +2,8 @@ use super::*;
 use crate::runtime_backend::ast::TriggerIntroSurfaceAst;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    predicate_contains_source_match, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects, predicate_contains_source_match,
+    predicate_object_filter_antecedent, predicate_source_counter_antecedent,
     retarget_it_animations_to_source,
 };
 use crate::runtime_backend::front_end::lexer::{TokenKind, lex_line};
@@ -328,6 +329,15 @@ fn normalize_rewrite_line_ast(
     })
 }
 
+pub(super) fn normalize_rewrite_line_ast_standalone(
+    info: crate::cards::builders::LineInfo,
+    chunks: Vec<LineAst>,
+    restrictions: ParsedRestrictions,
+) -> Result<NormalizedLineAst, CardTextError> {
+    let mut state = RewriteNormalizationState::default();
+    normalize_rewrite_line_ast(info, chunks, restrictions, &mut state)
+}
+
 fn normalize_rewrite_line_chunk(
     chunk: LineAst,
     state: &mut RewriteNormalizationState,
@@ -379,8 +389,10 @@ fn normalize_rewrite_line_chunk(
         }
         LineAst::AdditionalCost { effects } => {
             let effects = rewrite_normalize_additional_cost_sacrifice_tags(effects);
-            let prepared =
-                rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())?;
+            let prepared = rewrite_prepare_additional_cost_effects_for_lowering(
+                &effects,
+                ReferenceImports::default(),
+            )?;
             state.latest_additional_cost_exports = prepared.exports.clone();
             NormalizedLineChunk::AdditionalCost {
                 effects_ast: effects,
@@ -649,6 +661,9 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                     ConditionAntecedentBinding::TaggedItOnly,
                 );
             }
+            if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
+                bind_condition_counter_antecedent_in_effects(&mut effects, counter_type);
+            }
             if predicate_contains_source_match(&predicate) {
                 retarget_it_animations_to_source(&mut effects);
             }
@@ -683,6 +698,9 @@ pub(super) fn apply_explicit_intervening_if_to_triggered_chunk(
                         &antecedent,
                         ConditionAntecedentBinding::TaggedItOnly,
                     );
+                }
+                if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
+                    bind_condition_counter_antecedent_in_effects(&mut effects_ast, counter_type);
                 }
                 if predicate_contains_source_match(&predicate) {
                     retarget_it_animations_to_source(&mut effects_ast);
