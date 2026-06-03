@@ -269,6 +269,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Play"
             | "Put"
             | "Regenerate"
+            | "Remove"
             | "Reveal"
             | "Return"
             | "Sacrifice"
@@ -11765,7 +11766,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::SourceHasCounterAtLeast { counter_type, count } => {
             if *count == 1 {
                 format!(
-                    "this source has a {} counter on it",
+                    "this source has one or more {} counters on it",
                     counter_type.description()
                 )
             } else {

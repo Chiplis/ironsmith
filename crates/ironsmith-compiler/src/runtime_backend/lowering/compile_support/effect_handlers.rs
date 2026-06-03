@@ -1,7 +1,8 @@
 use super::*;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
+    predicate_source_counter_antecedent,
 };
 
 fn compile_delayed_trigger_spec(
@@ -612,6 +613,9 @@ pub(super) fn try_compile_stack_and_condition_effect(
                     &antecedent,
                     ConditionAntecedentBinding::IncludeRandomWithCountObjects,
                 );
+            }
+            if let Some(counter_type) = predicate_source_counter_antecedent(predicate) {
+                bind_condition_counter_antecedent_in_effects(&mut effective_if_true, counter_type);
             }
             let saved_last_tag = ctx.last_object_tag.clone();
             let saved_source_object_antecedent = ctx.source_object_antecedent;

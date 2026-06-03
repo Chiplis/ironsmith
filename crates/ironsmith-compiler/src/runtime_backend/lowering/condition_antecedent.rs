@@ -1,5 +1,7 @@
 use crate::cards::builders::{EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst, TargetAst};
+use crate::effect::Value;
 use crate::filter::{ObjectFilter, TaggedOpbjectRelation};
+use crate::object::CounterType;
 
 use super::effect_ast_traversal::for_each_nested_effects_mut;
 
@@ -38,6 +40,21 @@ pub(crate) fn predicate_object_filter_antecedent(predicate: &PredicateAst) -> Op
                 .or_else(|| predicate_object_filter_antecedent(right))
         }
         PredicateAst::Not(inner) => predicate_object_filter_antecedent(inner),
+        _ => None,
+    }
+}
+
+pub(crate) fn predicate_source_counter_antecedent(predicate: &PredicateAst) -> Option<CounterType> {
+    match predicate {
+        PredicateAst::SourceHasCounterAtLeast { counter_type, .. } => Some(*counter_type),
+        PredicateAst::And(left, right) => match (
+            predicate_source_counter_antecedent(left),
+            predicate_source_counter_antecedent(right),
+        ) {
+            (Some(left), Some(right)) if left == right => Some(left),
+            (Some(counter_type), None) | (None, Some(counter_type)) => Some(counter_type),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -157,6 +174,38 @@ pub(crate) fn bind_condition_antecedent_in_effects(
 ) {
     for effect in effects {
         bind_condition_antecedent_in_effect(effect, antecedent, mode);
+    }
+}
+
+fn bind_condition_counter_antecedent_in_effect(effect: &mut EffectAst, counter_type: CounterType) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::RemoveUpToAnyCounters {
+            amount,
+            target,
+            counter_type: remove_counter_type,
+            all_of_them,
+            ..
+        } = &mut subject_verb.action
+        && *all_of_them
+        && remove_counter_type.is_none()
+        && matches!(target, TargetAst::Source(_))
+    {
+        *amount = Value::CountersOnSource(counter_type);
+        *remove_counter_type = Some(counter_type);
+        *all_of_them = false;
+    }
+
+    for_each_nested_effects_mut(effect, true, |nested| {
+        bind_condition_counter_antecedent_in_effects(nested, counter_type);
+    });
+}
+
+pub(crate) fn bind_condition_counter_antecedent_in_effects(
+    effects: &mut [EffectAst],
+    counter_type: CounterType,
+) {
+    for effect in effects {
+        bind_condition_counter_antecedent_in_effect(effect, counter_type);
     }
 }
 

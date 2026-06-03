@@ -84,6 +84,11 @@ fn remove_find_exact_phrase_shape(
 }
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if matches!(words.as_slice(), ["all", "of", "them"]) {
+        return Ok(EffectAst::subject_verb_remove_all_of_them_counters_from_source());
+    }
+
     if let Some(from_idx) = find_index(tokens, |token| FROM_WORD_PATTERN.matches_token(token)) {
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[from_idx + 1..]);
         if COMBAT_WORD_PATTERN.matches_words(&tail_words) {

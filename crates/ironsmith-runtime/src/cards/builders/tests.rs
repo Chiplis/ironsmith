@@ -38387,6 +38387,33 @@ fn remove_all_named_counters_from_target_renders_generically() {
 }
 
 #[test]
+fn sarulf_realm_eater_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Sarulf, Realm Eater");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let upkeep_text = "At the beginning of your upkeep, if this creature has one or more +1/+1 counters on it, you may remove all +1/+1 counters from it. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.";
+
+    assert!(
+        rendered.contains("Whenever a permanent an opponent controls is put into a graveyard from the battlefield, put a +1/+1 counter on Sarulf."),
+        "expected Sarulf death trigger text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(upkeep_text),
+        "expected Sarulf upkeep all-of-them counter removal and removed-this-way exile text, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("SourceHasCounterAtLeast")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("PlusOnePlusOne")
+            && ability_debug.contains("IfEffect")
+            && ability_debug.contains("ExileEffect")
+            && ability_debug.contains("EffectValue"),
+        "expected Sarulf to structurally remove +1/+1 counters and exile by the removed count, got {ability_debug}"
+    );
+}
+
+#[test]
 fn blitz_leech_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Blitz Leech");
 
