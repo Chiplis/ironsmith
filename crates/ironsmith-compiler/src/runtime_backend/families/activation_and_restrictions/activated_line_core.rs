@@ -630,6 +630,7 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
 pub(crate) fn parse_loyalty_shorthand_activation_cost(
     cost_tokens: &[OwnedLexToken],
 ) -> Option<TotalCost> {
+    let cost_tokens = trim_bracketed_loyalty_cost_tokens(cost_tokens);
     let shorthand = match cost_tokens {
         [token] => parse_loyalty_shorthand_word(token.as_word()?),
         [sign, value] if sign.kind == TokenKind::Plus => {
@@ -674,6 +675,18 @@ pub(crate) fn parse_loyalty_shorthand_activation_cost(
         None => {}
     }
     None
+}
+
+fn trim_bracketed_loyalty_cost_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    if start < end && tokens[start].kind == TokenKind::LBracket {
+        start += 1;
+    }
+    if end > start && tokens[end - 1].kind == TokenKind::RBracket {
+        end -= 1;
+    }
+    &tokens[start..end]
 }
 
 enum LoyaltyShorthandCost {

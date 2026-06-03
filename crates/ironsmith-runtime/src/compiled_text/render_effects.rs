@@ -36088,6 +36088,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "Choose a counter on {target}. Remove that counter from it or put another of those counters on it"
         );
     }
+    if let Some(chosen_kind) = effect.downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
+    {
+        if matches!(&chosen_kind.target, ChooseSpec::Target(_)) {
+            return "Choose a counter on target permanent. Put an additional counter of that kind on that permanent".to_string();
+        }
+        let target = describe_choose_spec(&chosen_kind.target);
+        return format!(
+            "Choose a counter on {target}. Put an additional counter of that kind on it"
+        );
+    }
     if let Some(grant) = effect.downcast_ref::<crate::effects::GrantEffect>() {
         if grant.duration == crate::grant::GrantDuration::Forever
             && matches!(&grant.target, ChooseSpec::Tagged(_))

@@ -1381,8 +1381,12 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                 && left_subject.eq_ignore_ascii_case(&right_subject)
             {
                 let verb = have_verb_for_subject(&left_subject);
-                let left_tail = normalize_keyword_predicate_case(&left_tail);
-                let right_tail = normalize_keyword_predicate_case(&right_tail);
+                let left_tail = normalize_have_tail_for_merge(&normalize_keyword_predicate_case(
+                    &left_tail,
+                ));
+                let right_tail = normalize_have_tail_for_merge(&normalize_keyword_predicate_case(
+                    &right_tail,
+                ));
                 let left_key = strip_parenthetical_segments(&left_tail).to_ascii_lowercase();
                 let right_key = strip_parenthetical_segments(&right_tail).to_ascii_lowercase();
                 if left_key == right_key
@@ -1425,6 +1429,17 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         idx += 1;
     }
     merged
+}
+
+fn normalize_have_tail_for_merge(tail: &str) -> String {
+    let trimmed = tail.trim();
+    if trimmed.starts_with('"')
+        && trimmed.ends_with(".\"")
+        && let Some(stripped) = trimmed.strip_suffix(".\"")
+    {
+        return format!("{stripped}\"");
+    }
+    trimmed.to_string()
 }
 
 pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {

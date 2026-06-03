@@ -411,6 +411,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::MoveAllCounters { .. }
             | SubjectVerbActionAst::MoveOneCounter { .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+            | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
             | SubjectVerbActionAst::Sacrifice { .. }
             | SubjectVerbActionAst::SacrificeAll { .. }
             | SubjectVerbActionAst::PutIntoHand { .. }

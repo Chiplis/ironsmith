@@ -1156,6 +1156,11 @@ where
             effect,
         ));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::PutCounterOfChosenKindEffect>(&effect) {
+        return Ok(Effect::new(
+            crate::effects::PutCounterOfChosenKindEffect::new(payload.target.clone()),
+        ));
+    }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::DoubleCountersEffect>(&effect) {
         return Ok(Effect::new(crate::effects::DoubleCountersEffect::new(
             payload.counter_type,

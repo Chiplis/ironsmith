@@ -4309,6 +4309,12 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
 
     fn display(&self) -> String {
         let mut ability_text = self.display.clone();
+        if let AbilityKind::Activated(activated) = &self.ability.kind
+            && activated.is_loyalty_ability
+            && let Some(rendered) = loyalty_activated_ability_display(activated, &ability_text)
+        {
+            ability_text = rendered;
+        }
         if let Some((head, tail)) = ability_text.split_once(": ")
             && let Some(first) = tail.chars().next()
             && first.is_ascii_lowercase()
@@ -4378,6 +4384,39 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             &self.condition,
         )]
     }
+}
+
+fn loyalty_activated_ability_display(
+    activated: &crate::ability::ActivatedAbility,
+    fallback: &str,
+) -> Option<String> {
+    let tail = fallback
+        .split_once(": ")
+        .map(|(_, tail)| tail)
+        .unwrap_or(fallback);
+    let cost = if activated.mana_cost.is_free() {
+        "0".to_string()
+    } else {
+        let [cost] = activated.mana_cost.as_all()? else {
+            return None;
+        };
+        let effect = cost.effect_ref()?;
+        if let Some(remove) = effect.downcast_ref::<crate::effects::RemoveCountersEffect>()
+            && remove.counter_type == CounterType::Loyalty
+            && let Value::Fixed(amount) = remove.count
+        {
+            format!("-{amount}")
+        } else if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+            && put.counter_type == CounterType::Loyalty
+            && matches!(put.target, crate::target::ChooseSpec::Source)
+            && let Value::Fixed(amount) = put.amount
+        {
+            format!("+{amount}")
+        } else {
+            return None;
+        }
+    };
+    Some(format!("{cost}: {tail}"))
 }
 
 fn grant_subject_is_plural(subject: &str) -> bool {

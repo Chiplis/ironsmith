@@ -1608,6 +1608,9 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         all_kinds: bool,
     },
+    PutCounterOfChosenKind {
+        target: TargetAst,
+    },
     ReturnToHand {
         target: TargetAst,
         random: bool,
@@ -3133,6 +3136,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ForEachCounterKindPutOrRemove")
                 .field("target", target)
                 .field("all_kinds", all_kinds)
+                .finish(),
+            Self::PutCounterOfChosenKind { target } => f
+                .debug_struct("PutCounterOfChosenKind")
+                .field("target", target)
                 .finish(),
             Self::ReturnToHand { target, random } => f
                 .debug_struct("ReturnToHand")
@@ -6295,6 +6302,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_counter_of_chosen_kind(target: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutCounterOfChosenKind { target },
         )
     }
 

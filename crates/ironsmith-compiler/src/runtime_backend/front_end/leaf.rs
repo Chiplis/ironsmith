@@ -526,6 +526,7 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<ActivationCostSegmentCst>> {
     let tokens = trim_activation_cost_segment_tokens(activation_cost_prefix_tokens(tokens));
+    let tokens = trim_bracketed_loyalty_cost_tokens(tokens);
     let parse_single = |text: &str| {
         let bytes = text.as_bytes();
         if let Some((&sign, rest)) = bytes.split_first() {
@@ -596,6 +597,18 @@ fn parse_loyalty_shorthand_activation_cost_tokens(
         }
         _ => None,
     }
+}
+
+fn trim_bracketed_loyalty_cost_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    if start < end && tokens[start].kind == TokenKind::LBracket {
+        start += 1;
+    }
+    if end > start && tokens[end - 1].kind == TokenKind::RBracket {
+        end -= 1;
+    }
+    &tokens[start..end]
 }
 
 fn parse_generic_choice_prefix_tokens<'a>(

@@ -112,7 +112,7 @@ pub use effect::{
     PoisonCountersEffect, PopulateEffect, PreventAllCombatDamageEffect, PreventAllDamageEffect,
     PreventAllDamageToTargetEffect, PreventDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget, PreventionTarget, ProliferateEffect,
-    PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
+    PutCounterOfChosenKindEffect, PutCountersEffect, PutOntoBattlefieldEffect, PutStickerEffect,
     PutTaggedRemainderOnLibraryBottomEffect, RearrangeLookedCardsInLibraryEffect,
     ReconfigureEffect, RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
     RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,

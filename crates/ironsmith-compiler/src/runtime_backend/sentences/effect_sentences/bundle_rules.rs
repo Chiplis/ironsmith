@@ -1296,6 +1296,50 @@ fn parse_choose_counter_on_target_then_put_or_remove_bundle(
     ]))
 }
 
+fn parse_choose_counter_on_target_then_put_additional_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_words = parser_token_word_refs(first);
+    if first_words.len() < 5 || !first_words.starts_with(&["choose", "a", "counter", "on"]) {
+        return Ok(None);
+    }
+
+    let second_words = parser_token_word_refs(second);
+    if !matches!(
+        second_words.as_slice(),
+        [
+            "put",
+            "an",
+            "additional",
+            "counter",
+            "of",
+            "that",
+            "kind",
+            "on",
+            "that",
+            "permanent"
+        ] | [
+            "put",
+            "an",
+            "additional",
+            "counter",
+            "of",
+            "that",
+            "kind",
+            "on",
+            "it"
+        ]
+    ) {
+        return Ok(None);
+    }
+
+    let target = choose_counter_target(first, &first_words)?;
+    Ok(Some(vec![EffectAst::subject_verb_put_counter_of_chosen_kind(
+        target,
+    )]))
+}
+
 fn split_search_library_slot_filter_items_lexed(
     filter_tokens: &[OwnedLexToken],
 ) -> Option<Vec<Vec<OwnedLexToken>>> {
@@ -2252,6 +2296,14 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_choose_counter_on_target_then_put_or_remove_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) = parse_choose_counter_on_target_then_put_additional_bundle(
+            sentences[0],
+            sentences[1],
+        )
     {
         return Some(effects);
     }

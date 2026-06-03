@@ -179,6 +179,240 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
     );
 }
 
+fn ichormoon_gauntlet_chosen_counter_effect(def: &CardDefinition) -> &Effect {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .into_iter()
+                .find(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::PutCounterOfChosenKindEffect>()
+                        .is_some()
+                }),
+            _ => None,
+        })
+        .expect("Ichormoon Gauntlet should have a chosen-counter trigger effect")
+}
+
+#[test]
+fn ichormoon_gauntlet_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Ichormoon Gauntlet");
+
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("GrantObjectAbilityForFilter")
+            && ability_debug.contains("ProliferateEffect")
+            && ability_debug.contains("ExtraTurnEffect")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("Loyalty")
+            && ability_debug.contains("SpellCastTrigger")
+            && ability_debug.contains("caster: You")
+            && ability_debug.contains("excluded_card_types")
+            && ability_debug.contains("Creature")
+            && ability_debug.contains("PutCounterOfChosenKindEffect"),
+        "Ichormoon Gauntlet should structurally grant loyalty abilities and preserve its noncreature-spell trigger, got {ability_debug}"
+    );
+    assert!(
+        !ability_debug.contains("Named(\n                                                \"additional\"")
+            && !ability_debug.contains("Named(\"additional\")"),
+        "additional-counter wording should not lower to a named 'additional' counter, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("choose a counter on target permanent")
+            || rendered.contains("Choose a counter on target permanent"),
+        "expected compiled text to preserve choose-counter target clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Put an additional counter of that kind on that permanent"),
+        "expected compiled text to preserve additional-counter-kind clause, got {rendered}"
+    );
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Ichormoon Gauntlet should compile without unsupported runtime markers: {ability_debug}"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_you_control() {
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let planeswalker = CardDefinitionBuilder::new(CardId::new(), "Gauntlet Test Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Gauntlet Test Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_planeswalker =
+        game.create_object_from_definition(&planeswalker, alice, Zone::Battlefield);
+    let bob_planeswalker =
+        game.create_object_from_definition(&planeswalker, bob, Zone::Battlefield);
+    let alice_creature = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+
+    let granted = game
+        .current_abilities(alice_planeswalker)
+        .expect("Alice planeswalker should have current abilities")
+        .into_iter()
+        .filter_map(|ability| match ability.kind {
+            AbilityKind::Activated(activated) if activated.is_loyalty_ability => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        granted.len(),
+        2,
+        "controlled planeswalker should gain both Ichormoon loyalty abilities, got {granted:#?}"
+    );
+    assert!(
+        granted.iter().any(|activated| activated.mana_cost.is_free()
+            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
+                .downcast_ref::<crate::effects::ProliferateEffect>()
+                .is_some())),
+        "expected granted [0] proliferate loyalty ability, got {granted:#?}"
+    );
+    assert!(
+        granted.iter().any(|activated| activated.mana_cost.has_loyalty_activation_cost()
+            && activated.effects.flattened_default_effects().into_iter().any(|effect| effect
+                .downcast_ref::<crate::effects::ExtraTurnEffect>()
+                .is_some())),
+        "expected granted -12 extra-turn loyalty ability, got {granted:#?}"
+    );
+
+    let bob_granted = game
+        .current_abilities(bob_planeswalker)
+        .expect("Bob planeswalker should have current abilities")
+        .into_iter()
+        .filter(|ability| {
+            matches!(ability.kind, AbilityKind::Activated(ref activated) if activated.is_loyalty_ability)
+        })
+        .count();
+    assert_eq!(
+        bob_granted, 0,
+        "opposing planeswalkers should not gain the abilities"
+    );
+    let creature_granted = game
+        .current_abilities(alice_creature)
+        .expect("Alice creature should have current abilities")
+        .into_iter()
+        .filter(|ability| {
+            matches!(ability.kind, AbilityKind::Activated(ref activated) if activated.is_loyalty_ability)
+        })
+        .count();
+    assert_eq!(
+        creature_granted, 0,
+        "non-planeswalkers should not gain the abilities"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_trigger_adds_selected_existing_counter_kind() {
+    struct ChooseFirstCounterKind;
+    impl crate::decision::DecisionMaker for ChooseFirstCounterKind {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if ctx.description == "Choose a counter kind" {
+                vec![0]
+            } else {
+                vec![0]
+            }
+        }
+    }
+
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Countered Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    game.add_counters(target, CounterType::Charge, 2)
+        .expect("target should accept charge counters");
+    game.add_counters(target, CounterType::PlusOnePlusOne, 1)
+        .expect("target should accept +1/+1 counters");
+
+    let mut dm = ChooseFirstCounterKind;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("chosen-kind counter effect should resolve");
+
+    assert_eq!(
+        game.counter_count(target, CounterType::Charge),
+        3,
+        "chosen charge counter kind should receive one additional counter"
+    );
+    assert_eq!(
+        game.counter_count(target, CounterType::PlusOnePlusOne),
+        1,
+        "unchosen counter kinds should not change"
+    );
+    assert_eq!(
+        game.counter_count(target, CounterType::Named("additional")),
+        0,
+        "the effect must not create a literal named additional counter"
+    );
+}
+
+#[test]
+fn ichormoon_gauntlet_trigger_does_nothing_when_target_has_no_counters() {
+    let def = parse_oracle_card_definition("Ichormoon Gauntlet");
+    let effect = ichormoon_gauntlet_chosen_counter_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::new(), "Uncountered Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+    crate::effects::execute_effect(&mut game, effect, &mut ctx)
+        .expect("chosen-kind counter effect should safely resolve with no counters");
+
+    assert_eq!(
+        game.object(target)
+            .expect("target should still exist")
+            .counters
+            .values()
+            .sum::<u32>(),
+        0,
+        "a target with no counters should not receive any counter"
+    );
+}
+
 #[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");

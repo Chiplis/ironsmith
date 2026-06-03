@@ -139,6 +139,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::RemoveUpToAnyCounters { target, .. }
             | SubjectVerbActionAst::DoubleCountersOnTarget { target, .. }
             | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, .. }
+            | SubjectVerbActionAst::PutCounterOfChosenKind { target }
             | SubjectVerbActionAst::PutSticker { target, .. }
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
@@ -704,6 +705,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::MoveAllCounters { .. }
         | SubjectVerbActionAst::MoveOneCounter { .. }
         | SubjectVerbActionAst::ForEachCounterKindPutOrRemove { .. }
+        | SubjectVerbActionAst::PutCounterOfChosenKind { .. }
         | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
         | SubjectVerbActionAst::ReturnToHand { .. }
         | SubjectVerbActionAst::ReturnAllToHand { .. }
