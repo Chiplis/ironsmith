@@ -7008,6 +7008,42 @@ fn everybody_lives_compiled_text_includes_player_hexproof_and_life_lock_clauses(
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn gilded_light_parses_strictly_with_player_shroud_and_cycling() {
+    CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse strictly");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gilded_light_compiled_text_includes_player_shroud_and_cycling() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(46_396), "Gilded Light")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "You gain shroud until end of turn. (You can't be the target of spells or abilities.)\nCycling {2} ({2}, Discard this card: Draw a card.)",
+        )
+        .expect("Gilded Light should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("You can't be targeted this turn") && rendered.contains("Cycling {2}"),
+        "expected Gilded Light compiled text to keep player shroud and cycling, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_characteristic_pt_constant_plus_count() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Aysen Crusader")
         .parse_text(

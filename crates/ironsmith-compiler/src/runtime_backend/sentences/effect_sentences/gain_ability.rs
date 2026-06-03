@@ -486,6 +486,13 @@ fn player_gain_effects_for_abilities(
                     None,
                 ));
             }
+            GrantedAbilityAst::KeywordAction(KeywordAction::Shroud) => {
+                effects.push(EffectAst::subject_verb_cant(
+                    crate::effect::Restriction::be_targeted_player(player_filter.clone()),
+                    duration.clone(),
+                    None,
+                ));
+            }
             GrantedAbilityAst::KeywordAction(KeywordAction::ProtectionFromEverything) => {
                 effects.push(EffectAst::subject_verb_cant(
                     crate::effect::Restriction::be_targeted_player(player_filter.clone()),
@@ -2480,6 +2487,22 @@ mod tests {
                 && string_contains(&debug, "GrantAbilitiesAll")
                 && string_contains(&debug, "Hexproof"),
             "expected player hexproof restriction plus permanent hexproof grant, got {debug}"
+        );
+    }
+
+    #[test]
+    fn you_gain_shroud_lowers_to_unscoped_player_target_restriction() {
+        let tokens = tokenize_line("You gain shroud until end of turn.", 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("player shroud grant should parse")
+            .expect("player shroud grant should produce effects");
+
+        let debug = format!("{effects:?}");
+        assert!(
+            string_contains(&debug, "Cant")
+                && string_contains(&debug, "BeTargetedPlayer")
+                && !string_contains(&debug, "BeTargetedPlayerFrom"),
+            "expected shroud to prevent all targeting of the player, got {debug}"
         );
     }
 
