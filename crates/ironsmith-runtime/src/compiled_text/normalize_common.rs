@@ -6143,6 +6143,9 @@ pub(super) fn describe_card_count(value: &Value) -> String {
         Value::CardTypesAmong(_) | Value::CardTypesInGraveyard(_) => {
             format!("X cards, where X is {}", describe_value(value))
         }
+        value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference) => {
+            "cards equal to the difference".to_string()
+        }
         value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo) => {
             format!("cards equal to {}", describe_value(value.unhinted()))
         }
@@ -8119,6 +8122,11 @@ fn describe_effect_metric_value(
 
 pub(crate) fn describe_value(value: &Value) -> String {
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::Difference) =>
+        {
+            "the difference".to_string()
+        }
         Value::SurfaceHinted { value, .. } => describe_value(value),
         Value::Fixed(n) => n.to_string(),
         Value::Add(left, right) => {

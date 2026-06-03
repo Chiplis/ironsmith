@@ -5,8 +5,13 @@ use winnow::stream::Stream;
 use winnow::token::any;
 
 use crate::cards::TextSpan;
-use crate::cards::builders::{CardTextError, EffectAst, IfResultPredicate, PredicateAst};
+use crate::cards::builders::{
+    CardTextError, EffectAst, IfResultPredicate, PlayerAst, PredicateAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst,
+};
 use crate::effect::{Comparison, Value};
+use crate::target::PlayerFilter;
+use ironsmith_core::ValueSurfaceHint;
 
 use super::super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::super::lexer::{
@@ -1438,8 +1443,7 @@ pub(crate) fn split_if_clause_lexed(
         if !predicate_tokens_without_commas.is_empty() {
             if let Ok(predicate) =
                 parse_predicate_with_grammar_entrypoint_lexed(&predicate_tokens_without_commas)
-                && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1472,15 +1476,25 @@ pub(crate) fn split_if_clause_lexed(
             if effect_tokens.is_empty() {
                 continue;
             }
-            if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens)
-                && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
-                && !effects.is_empty()
-            {
-                return Ok(IfClauseSplitSpec {
-                    predicate: IfClausePredicateSpec::Conditional(predicate),
-                    effects,
-                });
+            if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens) {
+                if let Some(effects) = parse_cards_in_hand_difference_draw_effect(
+                    &predicate,
+                    predicate_tokens,
+                    effect_tokens,
+                ) {
+                    return Ok(IfClauseSplitSpec {
+                        predicate: IfClausePredicateSpec::Conditional(predicate),
+                        effects,
+                    });
+                }
+                if let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                    && !effects.is_empty()
+                {
+                    return Ok(IfClauseSplitSpec {
+                        predicate: IfClausePredicateSpec::Conditional(predicate),
+                        effects,
+                    });
+                }
             }
             if let Some(predicate) = parse_if_result_predicate(predicate_tokens)
                 && let Ok(effects) =
@@ -1503,6 +1517,16 @@ pub(crate) fn split_if_clause_lexed(
         let predicate_tokens = &tokens[1..first_comma_idx];
         if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens) {
             let effect_tokens = &tokens[first_comma_idx + 1..];
+            if let Some(effects) = parse_cards_in_hand_difference_draw_effect(
+                &predicate,
+                predicate_tokens,
+                effect_tokens,
+            ) {
+                return Ok(IfClauseSplitSpec {
+                    predicate: IfClausePredicateSpec::Conditional(predicate),
+                    effects,
+                });
+            }
             let comma_fragment_looks_like_effect = if comma_indices.len() > 1 {
                 let fragment_tokens = &tokens[first_comma_idx + 1..comma_indices[1]];
                 parse_effects_with_leading_instead(fragment_tokens, &mut parse_effects)
@@ -1515,8 +1539,7 @@ pub(crate) fn split_if_clause_lexed(
                 .first()
                 .is_some_and(|token| token.is_word("when") || token.is_word("whenever"));
             if (comma_fragment_looks_like_effect || comma_fragment_looks_like_delayed_trigger)
-                && let Ok(effects) =
-                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && let Ok(effects) = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
                 && !effects.is_empty()
             {
                 return Ok(IfClauseSplitSpec {
@@ -1579,6 +1602,54 @@ pub(crate) fn split_if_clause_lexed(
         predicate: IfClausePredicateSpec::Result(predicate),
         effects,
     })
+}
+
+fn parse_cards_in_hand_difference_draw_effect(
+    predicate: &PredicateAst,
+    predicate_tokens: &[OwnedLexToken],
+    effect_tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let PredicateAst::PlayerCardsInHandOrFewer { player, count } = predicate else {
+        return None;
+    };
+    let predicate_words = TokenWordView::new(predicate_tokens).to_word_refs();
+    if !words_contain_phrase(&predicate_words, &["fewer", "than"])
+        && !words_contain_phrase(&predicate_words, &["less", "than"])
+    {
+        return None;
+    }
+
+    let effect_words = TokenWordView::new(trim_lexed_commas(effect_tokens)).to_word_refs();
+    let subject = match effect_words.as_slice() {
+        ["draw", "cards", "equal", "to", "the", "difference"]
+        | ["draw", "cards", "equal", "to", "difference"] => PlayerAst::Implicit,
+        ["you", "draw", "cards", "equal", "to", "the", "difference"]
+        | ["you", "draw", "cards", "equal", "to", "difference"] => PlayerAst::You,
+        _ => return None,
+    };
+    let hand_player = match player {
+        PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+        _ => return None,
+    };
+    let threshold = (*count as i32) + 1;
+    let difference = Value::Add(
+        Box::new(Value::Fixed(threshold)),
+        Box::new(Value::Scaled(
+            Box::new(Value::CardsInHand(hand_player)),
+            -1,
+        )),
+    )
+    .with_surface_hint(ValueSurfaceHint::Difference);
+
+    Some(vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::AffectedPlayer,
+        subject,
+        SubjectVerbActionAst::Draw { count: difference },
+    )])
+}
+
+fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 pub(crate) fn split_trailing_unless_clause_lexed<'a>(

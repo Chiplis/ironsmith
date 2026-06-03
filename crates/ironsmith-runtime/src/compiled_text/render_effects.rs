@@ -17388,6 +17388,12 @@ fn describe_triggered_inline_ability(
     line = normalize_redundant_short_name_etb_surface(line, triggered, self_subject);
     line = normalize_modal_named_source_etb_surface(line, triggered, self_subject);
     line = normalize_spellcast_trigger_mana_value_surface(triggered, line);
+    if triggered_has_you_difference_draw(triggered) {
+        line = line.replace(
+            "you draw cards equal to the difference",
+            "draw cards equal to the difference",
+        );
+    }
     if triggered.presentation_label.is_none()
         && line.starts_with("Whenever you cast a spell that targets this creature")
     {
@@ -17405,12 +17411,38 @@ fn describe_trigger_intervening_condition(
     condition: &Condition,
     triggered: &crate::ability::TriggeredAbility,
 ) -> String {
+    if let Condition::PlayerCardsInHandOrFewer { player, count } = condition
+        && *player == PlayerFilter::You
+        && triggered_has_you_difference_draw(triggered)
+    {
+        let threshold = count + 1;
+        if threshold > 0 {
+            let count_text = number_word(threshold).unwrap_or_else(|| threshold.to_string());
+            return format!("you have fewer than {count_text} cards in hand");
+        }
+    }
     if matches!(condition, Condition::SourceIsInZone(Zone::Graveyard))
         && let Some(subject) = source_return_from_graveyard_subject(triggered)
     {
         return format!("{subject} is in your graveyard");
     }
     describe_condition(condition)
+}
+
+fn triggered_has_you_difference_draw(triggered: &crate::ability::TriggeredAbility) -> bool {
+    triggered
+        .effects
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter())
+        .any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DrawCardsEffect>()
+                .is_some_and(|draw| {
+                    draw.player == PlayerFilter::You
+                        && draw.count.has_surface_hint(ValueSurfaceHint::Difference)
+                })
+        })
 }
 
 fn source_return_from_graveyard_subject(
@@ -17592,6 +17624,9 @@ fn normalize_redundant_short_name_etb_surface(
     else {
         return line;
     };
+    if triggered_has_you_difference_draw(triggered) {
+        return line;
+    }
 
     let Some((start, prefix_len)) = [
         format!("When {surface} enters,"),
@@ -29635,6 +29670,32 @@ pub(super) fn describe_effect(effect: &Effect) -> String {
     with_effect_render_depth(|| describe_effect_impl(effect))
 }
 
+fn describe_cards_in_hand_difference_conditional(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let Condition::PlayerCardsInHandOrFewer { player, count } = &conditional.condition else {
+        return None;
+    };
+    if *player != PlayerFilter::You {
+        return None;
+    }
+    let draw = conditional.if_true[0].downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You || !draw.count.has_surface_hint(ValueSurfaceHint::Difference) {
+        return None;
+    }
+    let threshold = count + 1;
+    if threshold <= 0 {
+        return None;
+    }
+    let count_text = number_word(threshold).unwrap_or_else(|| threshold.to_string());
+    Some(format!(
+        "If you have fewer than {count_text} cards in hand, draw cards equal to the difference"
+    ))
+}
+
 fn describe_unless_any_player_pays_search_prefix(
     unless_pays: &crate::effects::UnlessPaysEffect,
     payment_text: &str,
@@ -33617,6 +33678,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
     }
     if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+        if let Some(compact) = describe_cards_in_hand_difference_conditional(conditional) {
+            return compact;
+        }
         if let Some(compact) = describe_conditional_damage_instead(conditional) {
             return compact;
         }
@@ -40594,6 +40658,12 @@ pub(super) fn describe_ability(
                     line.push_str(": ");
                     line.push_str(&clauses.join(": "));
                 }
+            }
+            if triggered_has_you_difference_draw(triggered) {
+                line = line.replace(
+                    "you draw cards equal to the difference",
+                    "draw cards equal to the difference",
+                );
             }
             let line_lower = line.to_ascii_lowercase();
             if line_lower.contains("whenever an opponent loses life")

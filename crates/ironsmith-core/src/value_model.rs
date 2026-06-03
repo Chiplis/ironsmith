@@ -43,6 +43,7 @@ pub enum ValueSurfaceHint {
     EqualTo,
     ForEach,
     CountersRemovedThisWay,
+    Difference,
 }
 
 #[derive(Debug, Clone, PartialEq)]
