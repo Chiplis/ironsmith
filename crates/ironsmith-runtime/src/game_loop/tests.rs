@@ -1524,7 +1524,6 @@ fn ox_drover_definition() -> crate::cards::CardDefinition {
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(3)],
             vec![ManaSymbol::White],
-            vec![ManaSymbol::Blue],
         ]))
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Human, Subtype::Peasant])
@@ -9306,7 +9305,7 @@ fn crystalline_resonance_copies_target_permanent_when_you_cycle() {
 
     let target_def = CardDefinitionBuilder::new(CardId::new(), "Target Bear")
         .card_types(vec![CardType::Creature])
-        .power_toughness(PowerToughness::fixed(4, 4))
+        .power_toughness(PowerToughness::fixed(3, 3))
         .build();
     let target_id = game.create_object_from_definition(&target_def, bob, Zone::Battlefield);
 
@@ -18790,14 +18789,16 @@ fn sp_dr_piloted_by_peni_definition() -> crate::cards::CardDefinition {
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(3)],
             vec![ManaSymbol::White],
+            vec![ManaSymbol::Blue],
         ]))
         .supertypes(vec![Supertype::Legendary])
         .card_types(vec![CardType::Artifact, CardType::Creature])
-        .power_toughness(PowerToughness::fixed(3, 3))
+        .subtypes(vec![Subtype::Spider, Subtype::Hero])
+        .power_toughness(PowerToughness::fixed(4, 4))
         .parse_text(
             "Vigilance
 When SP//dr enters, put a +1/+1 counter on target creature.
-Whenever a modified creature you control deals combat damage to a player, draw a card.",
+Whenever a modified creature you control deals combat damage to a player, draw a card. (Equipment, Auras you control, and counters are modifications.)",
         )
         .expect("SP//dr, Piloted by Peni should parse strictly")
 }
