@@ -2737,6 +2737,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_effect_discard_to_library_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replace_exile_top_face_down_line),
         single_static_ability_ast_rule!(parse_draw_replacement_exile_top_and_play_line),
+        single_static_ability_ast_rule!(
+            parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line
+        ),
         single_static_ability_ast_rule!(parse_conditional_draw_replacement_line),
         single_static_ability_ast_rule!(parse_draw_replacement_double_line),
         single_static_ability_ast_rule!(parse_draw_replacement_skip_empty_library_line),
@@ -3232,6 +3235,12 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(ability) =
+        parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(tokens)?
+    {
+        return Ok(Some(vec![StaticAbilityAst::from(ability)]));
+    }
+
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() > 1 {
         let mut combined = Vec::new();
@@ -10306,6 +10315,85 @@ pub(crate) fn parse_draw_replacement_exile_top_and_play_line(
     Ok(Some(StaticAbility::draw_replacement_exile_top_and_play(
         count,
     )))
+}
+
+pub(crate) fn parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let normalized_words = parser_token_word_refs(tokens)
+        .into_iter()
+        .map(|word| word.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let words = normalized_words
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>();
+    let prefix = [
+        "if", "you", "would", "draw", "a", "card", "instead", "reveal", "the", "top",
+    ];
+    if !words.starts_with(&prefix) {
+        return Ok(None);
+    }
+
+    let Some((count, used_count_words)) =
+        ironsmith_core::parse_cardinal_words(&words[prefix.len()..])
+    else {
+        return Ok(None);
+    };
+    if count == 0 {
+        return Ok(None);
+    }
+
+    let mut idx = prefix.len() + used_count_words;
+    if !words
+        .get(idx)
+        .is_some_and(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+        || words.get(idx + 1..idx + 6) != Some(&["of", "your", "library", "put", "all"][..])
+    {
+        return Ok(None);
+    }
+    idx += 6;
+
+    let Some(card_type) = words.get(idx).and_then(|word| parse_card_type(word)) else {
+        return Ok(None);
+    };
+    idx += 1;
+
+    if words.get(idx..idx + 17)
+        != Some(&[
+            "cards", "revealed", "this", "way", "into", "your", "hand", "and", "the",
+            "rest", "on", "the", "bottom", "of", "your", "library", "in",
+        ][..])
+    {
+        return Ok(None);
+    }
+    idx += 17;
+
+    let (order, used) = if words.get(idx..idx + 2) == Some(&["any", "order"][..]) {
+        (ironsmith_core::LibraryBottomOrder::ChooserChooses, 2)
+    } else if words.get(idx..idx + 3) == Some(&["a", "random", "order"][..]) {
+        (ironsmith_core::LibraryBottomOrder::Random, 3)
+    } else if words.get(idx..idx + 2) == Some(&["random", "order"][..]) {
+        (ironsmith_core::LibraryBottomOrder::Random, 2)
+    } else {
+        return Ok(None);
+    };
+    idx += used;
+    if idx != words.len() {
+        return Ok(None);
+    }
+
+    let mut filter = ObjectFilter::default();
+    filter.card_types.push(card_type);
+
+    Ok(Some(
+        StaticAbility::draw_replacement_reveal_top_matching_to_hand_rest_bottom(
+            count as u32,
+            filter,
+            order,
+            render_token_slice(tokens),
+        ),
+    ))
 }
 
 pub(crate) fn parse_draw_replacement_double_line(

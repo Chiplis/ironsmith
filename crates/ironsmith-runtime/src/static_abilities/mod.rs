@@ -3025,6 +3025,17 @@ impl StaticAbility {
         Self::new(DrawReplacementExileTopAndPlay::new(count))
     }
 
+    pub fn draw_replacement_reveal_top_matching_to_hand_rest_bottom(
+        count: u32,
+        filter: crate::target::ObjectFilter,
+        order: crate::effects::consult_helpers::LibraryBottomOrder,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(DrawReplacementRevealTopMatchingToHandRestBottom::new(
+            count, filter, order, display,
+        ))
+    }
+
     pub fn keyword_action_replacement(
         action: crate::events::KeywordActionKind,
         source_filter: crate::target::ObjectFilter,
