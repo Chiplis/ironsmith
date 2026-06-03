@@ -1588,20 +1588,6 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.model.label.clone()
     }
 
-    fn rule_restriction(&self) -> Option<&crate::effect::Restriction> {
-        if let Some(ability) = self.leaf_static_ability()
-            && let Some(restriction) = ability.rule_restriction()
-        {
-            return Some(restriction);
-        }
-        match self.payload() {
-            ironsmith_core::StaticAbilityPayload::RuleRestriction { restriction, .. } => {
-                Some(restriction)
-            }
-            _ => None,
-        }
-    }
-
     fn life_total_note_as_enters(
         &self,
     ) -> Option<crate::static_abilities::NoteLifeTotalAsEntersSpec> {

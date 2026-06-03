@@ -4931,6 +4931,13 @@ fn may_cast_copy_targets_tag(effect: &Effect, tag: &str) -> bool {
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let [first, second] = effects
+        && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
+        && let Some(compact) = describe_tagged_target_then_cant_restriction(tagged, cant)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
@@ -18392,6 +18399,30 @@ mod tests {
     }
 
     #[test]
+    fn target_then_must_be_blocked_renders_single_target_sentence() {
+        let target_tag = TagKey::from("targeted_0");
+        let target = Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::target(
+            ChooseSpec::Object(ObjectFilter::creature()),
+        )))
+        .tag(target_tag.clone());
+
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: target_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let cant = Effect::cant_until(
+            crate::effect::Restriction::must_be_blocked(filter),
+            Until::EndOfTurn,
+        );
+
+        assert_eq!(
+            describe_effect_list(&[target, cant]),
+            "Target creature must be blocked this turn if able"
+        );
+    }
+
+    #[test]
     fn tap_it_then_cant_untap_keeps_it_reference() {
         let tag = TagKey::from("__it__");
         let tap = Effect::tap(ChooseSpec::Tagged(tag.clone()));
@@ -22349,6 +22380,9 @@ pub(super) fn describe_tagged_target_then_cant_restriction(
     let (filter, restriction_text) = match &cant.restriction {
         crate::effect::Restriction::Block(filter) => (filter, "can't block this turn"),
         crate::effect::Restriction::BeBlocked(filter) => (filter, "can't be blocked this turn"),
+        crate::effect::Restriction::MustBeBlocked(filter) => {
+            (filter, "must be blocked this turn if able")
+        }
         _ => return None,
     };
     if !filter.tagged_constraints.iter().any(|constraint| {

@@ -46463,11 +46463,15 @@ fn irresistible_prey_strict_parser_and_compiled_text_regression() {
         "expected exact Irresistible Prey oracle-shaped compiled text"
     );
     assert!(
-        spell_debug.contains("ApplyContinuousEffect")
-            && spell_debug.contains("RuleRestriction")
+        spell_debug.contains("TargetOnlyEffect")
+            && spell_debug.contains("CantEffect")
             && spell_debug.contains("MustBeBlocked")
             && spell_debug.contains("DrawCardsEffect"),
-        "expected targeted must-be-blocked restriction plus card draw, got {spell_debug}"
+        "expected direct targeted must-be-blocked restriction plus card draw, got {spell_debug}"
+    );
+    assert!(
+        !spell_debug.contains("AddAbility") && !spell_debug.contains("RuleRestriction"),
+        "Irresistible Prey must not grant a removable ability, got {spell_debug}"
     );
     assert!(
         compact_debug.contains("Target( Object(")
@@ -46539,6 +46543,47 @@ fn resolve_irresistible_prey_targeting_attacker(
     );
 
     (game, alice, bob, attacker, blocker)
+}
+
+#[test]
+fn irresistible_prey_runtime_requirement_survives_ability_removal() {
+    let (mut game, alice, bob, attacker, _blocker) =
+        resolve_irresistible_prey_targeting_attacker(false);
+
+    let remove_abilities = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Object(crate::target::ObjectFilter::specific(attacker)),
+        crate::continuous::Modification::RemoveAllAbilities,
+        crate::effect::Until::EndOfTurn,
+    ));
+    let mut removal_ctx = crate::effects::ExecutionContext::new_default(attacker, alice);
+    crate::effects::execute_effect(&mut game, &remove_abilities, &mut removal_ctx)
+        .expect("remove all abilities effect should resolve");
+
+    assert!(
+        game.must_be_blocked(attacker),
+        "Irresistible Prey's direct restriction should survive effects that remove abilities"
+    );
+
+    let mut combat = crate::combat_state::CombatState::default();
+    crate::combat_state::declare_attackers(
+        &mut game,
+        &mut combat,
+        vec![(attacker, crate::combat_state::AttackTarget::Player(bob))],
+    )
+    .expect("Irresistible Prey target should still be able to attack after ability removal");
+
+    let missing_block = crate::combat_state::declare_blockers(&mut game, &mut combat, vec![]);
+    assert!(
+        matches!(
+            missing_block,
+            Err(crate::combat_state::CombatError::NotEnoughBlockers {
+                attacker: blocked_attacker,
+                required: 1,
+                provided: 0,
+            }) if blocked_attacker == attacker
+        ),
+        "Irresistible Prey should still require a block after ability removal, got {missing_block:?}"
+    );
 }
 
 #[test]
