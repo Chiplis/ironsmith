@@ -1,6 +1,7 @@
 use super::*;
 use crate::TaggedOpbjectRelation;
 use crate::filter::StackObjectKind;
+use ironsmith_core::ValueSurfaceHint;
 
 use std::cell::Cell;
 
@@ -7564,6 +7565,7 @@ pub(super) fn ensure_trailing_period(text: &str) -> String {
     if trimmed.ends_with('.')
         || trimmed.ends_with('!')
         || trimmed.ends_with('?')
+        || trimmed.ends_with('—')
         || trimmed.ends_with('"')
         || trimmed.ends_with(')')
     {
@@ -7750,6 +7752,22 @@ pub(super) fn describe_mode_choice_header(
     min: Option<&Value>,
     mode_count: Option<usize>,
 ) -> String {
+    if max.has_surface_hint(ValueSurfaceHint::WhereXIs) {
+        let max_basis = describe_value(max);
+        return match min {
+            Some(Value::Fixed(0)) => format!("Choose up to X, where X is {max_basis} —"),
+            Some(Value::Fixed(min_value)) => {
+                let min_text = number_word(*min_value).unwrap_or_else(|| min_value.to_string());
+                format!("Choose between {min_text} and X mode(s), where X is {max_basis} —")
+            }
+            Some(min) => format!(
+                "Choose between {} and X mode(s), where X is {max_basis} —",
+                describe_value(min)
+            ),
+            None => format!("Choose X mode(s), where X is {max_basis} —"),
+        };
+    }
+
     match (min, max) {
         (Some(Value::Fixed(min_value)), Value::Fixed(max_value)) => {
             match (*min_value, *max_value) {

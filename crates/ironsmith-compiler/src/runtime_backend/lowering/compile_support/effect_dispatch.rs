@@ -417,7 +417,7 @@ fn compile_subject_verb_effect(
             player,
             count,
             ctx,
-            false,
+            true,
             false,
             true,
             false,

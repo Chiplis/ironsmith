@@ -2826,6 +2826,208 @@ fn tromp_the_domains_strict_parser_and_compiled_text_regression() {
     );
 }
 
+fn bumi_modal_effect(def: &CardDefinition) -> &ChooseModeEffect {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Bumi, King of Three Trials should compile an enters trigger");
+    triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        .expect("Bumi, King of Three Trials should compile one modal choice effect")
+}
+
+fn bumi_game_with_lessons(
+    lesson_count: usize,
+) -> (
+    CardDefinition,
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+) {
+    let def = parse_oracle_card_definition("Bumi, King of Three Trials");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let lesson = CardDefinitionBuilder::new(CardId::new(), "Bumi Test Lesson")
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Lesson])
+        .build();
+
+    for _ in 0..lesson_count {
+        game.create_object_from_definition(&lesson, alice, Zone::Graveyard);
+    }
+
+    (def, game, alice, bob, source)
+}
+
+fn bumi_earthbend_target_assignment() -> crate::game_state::TargetAssignment {
+    crate::game_state::TargetAssignment {
+        spec: ChooseSpec::target(ChooseSpec::Object(
+            crate::filter::ObjectFilter::land().you_control(),
+        )),
+        range: 0..1,
+    }
+}
+
+#[test]
+fn parse_oracle_bumi_king_of_three_trials_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Bumi, King of Three Trials");
+
+    let def = parse_oracle_card_definition("Bumi, King of Three Trials");
+    let modal = bumi_modal_effect(&def);
+    let modal_debug = format!("{modal:#?}");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let canonical = canonical_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "When Bumi enters, choose up to X, where X is the number of Lesson cards in your graveyard"
+        ),
+        "expected Bumi compiled text to keep the Lesson-based modal X clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Target player scries 3") && rendered.contains("Earthbend 3"),
+        "expected Bumi compiled text to keep the targeted scry and earthbend modes, got {rendered}"
+    );
+    assert!(
+        canonical.contains(
+            "When Bumi enters, choose up to X, where X is the number of Lesson cards in your graveyard —\n•"
+        ) && !canonical.contains("—.\n•"),
+        "Bumi canonical compiled text should not add a period after the modal-header dash, got {canonical}"
+    );
+    assert_eq!(modal.min_choose_count, Value::Fixed(0));
+    assert_eq!(modal.modes.len(), 3);
+    assert!(
+        modal_debug.contains("WhereXIs")
+            && modal_debug.contains("Lesson")
+            && modal_debug.contains("TargetOnlyEffect")
+            && modal_debug.contains("ScryEffect")
+            && modal_debug.contains("EarthbendEffect"),
+        "Bumi should structurally model dynamic Lesson mode count, targeted scry, and earthbend, got {modal_debug}"
+    );
+}
+
+#[test]
+fn bumi_zero_lesson_graveyard_cannot_apply_selected_counter_mode() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(0);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi with zero Lesson cards should resolve without choosing modes");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        0,
+        "zero Lesson cards in graveyard should make Bumi choose up to zero modes"
+    );
+}
+
+#[test]
+fn bumi_counter_mode_uses_lesson_based_modal_bound() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![0]));
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi should allow one mode with one Lesson card in graveyard");
+
+    assert_eq!(
+        game.counter_count(source, CounterType::PlusOnePlusOne),
+        3,
+        "counter mode should put three +1/+1 counters on Bumi"
+    );
+}
+
+#[test]
+fn bumi_target_player_scry_mode_targets_the_chosen_player() {
+    let (def, mut game, alice, bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let library_card = CardDefinitionBuilder::new(CardId::new(), "Bumi Scry Card")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    game.create_object_from_definition(&library_card, bob, Zone::Library);
+    game.create_object_from_definition(&library_card, bob, Zone::Library);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![1]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_player(),
+            range: 0..1,
+        }]);
+
+    let outcome = modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi targeted scry mode should resolve");
+
+    let scry_event = outcome
+        .events_of_type::<crate::events::KeywordActionEvent>()
+        .find(|event| event.action == crate::events::KeywordActionKind::Scry)
+        .expect("targeted scry mode should emit a scry keyword action event");
+    assert_eq!(scry_event.player, bob);
+    assert_eq!(
+        scry_event.amount, 2,
+        "targeted scry should apply to Bob's two-card library"
+    );
+}
+
+#[test]
+fn bumi_earthbend_mode_targets_a_land_you_control() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let land = CardDefinitionBuilder::new(CardId::new(), "Bumi Test Land")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let land_id = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![2]))
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(land_id)])
+        .with_target_assignments(vec![bumi_earthbend_target_assignment()]);
+
+    modal
+        .execute(&mut game, &mut ctx)
+        .expect("Bumi earthbend mode should resolve with a controlled land target");
+
+    assert!(
+        game.current_is_creature(land_id),
+        "earthbend should make the targeted land a creature"
+    );
+    assert_eq!(game.counter_count(land_id, CounterType::PlusOnePlusOne), 3);
+    assert_eq!(game.calculated_power(land_id), Some(3));
+    assert_eq!(game.calculated_toughness(land_id), Some(3));
+}
+
+#[test]
+fn bumi_earthbend_mode_is_illegal_without_a_controlled_land_target() {
+    let (def, mut game, alice, _bob, source) = bumi_game_with_lessons(1);
+    let modal = bumi_modal_effect(&def).clone();
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_chosen_modes(Some(vec![2]));
+
+    let err = modal
+        .execute(&mut game, &mut ctx)
+        .expect_err("Bumi earthbend mode should be illegal with no land you control");
+    assert!(
+        format!("{err:?}").contains("Selected mode is not legal"),
+        "expected earthbend target legality failure, got {err:?}"
+    );
+}
+
 #[test]
 fn kin_tree_nurturer_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Kin-Tree Nurturer");
