@@ -144,6 +144,199 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn consulate_surveillance_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Consulate Surveillance");
+    let def = parse_oracle_card_definition("Consulate Surveillance");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
+        "Consulate Surveillance should parse its enters trigger strictly"
+    );
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "Consulate Surveillance should parse its activated prevention ability strictly"
+    );
+    assert!(
+        ability_debug.contains("EnergyCountersEffect")
+            && ability_debug.contains("PreventAllDamageEffect")
+            && ability_debug.contains("source_of_your_choice: true"),
+        "expected energy trigger and chosen-source prevent-all-damage effect, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("When this enchantment enters, you get {E}{E}{E}{E}")
+            && rendered.contains(
+                "Pay {E}{E}: Prevent all damage that would be dealt to you this turn by a source of your choice"
+            ),
+        "expected Consulate Surveillance compiled text to preserve energy and source-choice prevention clauses, got {rendered}"
+    );
+}
+
+#[test]
+fn consulate_surveillance_activation_cost_requires_and_spends_two_energy() {
+    let def = parse_oracle_card_definition("Consulate Surveillance");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Consulate Surveillance should have an activated ability");
+    let costs = activated.mana_cost.costs();
+    assert_eq!(
+        costs.len(),
+        1,
+        "Consulate Surveillance activation should have only its energy payment cost"
+    );
+    assert!(
+        costs[0].display().contains("{E}{E}"),
+        "expected two-energy activation cost, got {}",
+        costs[0].display()
+    );
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .energy_counters = 1;
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let ctx = crate::costs::CostContext::new(source, alice, &mut dm);
+    assert!(
+        costs[0].can_pay(&game, &ctx).is_err(),
+        "Consulate Surveillance activation should not be payable with one energy"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .energy_counters = 2;
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::costs::CostContext::new(source, alice, &mut dm);
+    costs[0]
+        .pay(&mut game, &mut ctx)
+        .expect("Consulate Surveillance activation should spend two energy");
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        0,
+        "Consulate Surveillance activation should spend exactly two energy"
+    );
+}
+
+#[test]
+fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
+    struct ChooseSourceDecisionMaker {
+        chosen: ObjectId,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseSourceDecisionMaker {
+        fn decide_objects(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            if ctx
+                .candidates
+                .iter()
+                .any(|candidate| candidate.id == self.chosen && candidate.legal)
+            {
+                vec![self.chosen]
+            } else {
+                Vec::new()
+            }
+        }
+    }
+
+    let def = parse_oracle_card_definition("Consulate Surveillance");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Consulate Surveillance should have an activated ability");
+    let creature_def = CardDefinitionBuilder::new(CardId::new(), "Damage Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chosen_source = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+    let other_source = game.create_object_from_definition(&creature_def, bob, Zone::Battlefield);
+    let surveillance = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let mut dm = ChooseSourceDecisionMaker {
+        chosen: chosen_source,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(surveillance, alice, &mut dm);
+    for effect in activated.effects.flattened_default_effects() {
+        effect
+            .0
+            .execute(&mut game, &mut ctx)
+            .expect("Consulate Surveillance prevention effect should resolve");
+    }
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(
+        shields.len(),
+        1,
+        "activation should create one prevention shield"
+    );
+    assert_eq!(
+        shields[0].damage_filter.from_specific_source,
+        Some(chosen_source),
+        "prevention shield should be restricted to the chosen source"
+    );
+
+    let (chosen_remaining, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        chosen_remaining, 0,
+        "chosen source damage should be prevented"
+    );
+
+    let (chosen_to_bob_remaining, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        chosen_source,
+        crate::events::DamageTarget::Player(bob),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        chosen_to_bob_remaining, 3,
+        "chosen source damage to another player should not be prevented"
+    );
+
+    let (other_remaining, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        other_source,
+        crate::events::DamageTarget::Player(alice),
+        2,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        other_remaining, 2,
+        "damage from a different source should not be prevented"
+    );
+}
+
+#[test]
 fn hydra_omnivore_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Hydra Omnivore");
 

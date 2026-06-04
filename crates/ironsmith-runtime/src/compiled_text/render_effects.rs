@@ -36766,6 +36766,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         };
     }
     if let Some(prevent_all) = effect.downcast_ref::<crate::effects::PreventAllDamageEffect>() {
+        if prevent_all.source_of_your_choice && matches!(prevent_all.until, Until::EndOfTurn) {
+            let protected = describe_prevention_target(&prevent_all.target);
+            if prevent_all.damage_filter == crate::prevention::DamageFilter::all() {
+                if matches!(prevent_all.target, crate::prevention::PreventionTarget::All) {
+                    return "Prevent all damage that would be dealt this turn by a source of your choice"
+                        .to_string();
+                }
+                return format!(
+                    "Prevent all damage that would be dealt to {protected} this turn by a source of your choice"
+                );
+            }
+        }
         let simple_damage_filter = prevent_all.damage_filter.from_source.is_none()
             && prevent_all.damage_filter.from_colors.is_none()
             && prevent_all.damage_filter.from_card_types.is_none()

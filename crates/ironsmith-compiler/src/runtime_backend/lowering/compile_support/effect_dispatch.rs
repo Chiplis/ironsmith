@@ -1846,19 +1846,41 @@ fn compile_subject_verb_effect(
                 Ok((effects, choices))
             }
         }
-        SubjectVerbActionAst::PreventAllDamageToTarget { target, duration } => {
+        SubjectVerbActionAst::PreventAllDamageToTarget {
+            target,
+            duration,
+            source_of_your_choice,
+        } => {
+            if *source_of_your_choice
+                && let TargetAst::Player(crate::target::PlayerFilter::You, _) = target
+            {
+                let effect = crate::effects::PreventAllDamageEffect::new(
+                    ironsmith_core::PreventionTarget::You,
+                    ironsmith_core::DamageFilter::all(),
+                    duration.clone(),
+                )
+                .with_source_of_your_choice();
+                return Ok((vec![Effect::new(effect)], Vec::new()));
+            }
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
                 let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-                Ok((
-                    vec![Effect::prevent_all_damage_to(
-                        resolved_filter,
-                        duration.clone(),
-                    )],
-                    Vec::new(),
-                ))
+                let mut effect = crate::effects::PreventAllDamageEffect::matching(
+                    resolved_filter,
+                    duration.clone(),
+                );
+                if *source_of_your_choice {
+                    effect = effect.with_source_of_your_choice();
+                }
+                Ok((vec![Effect::new(effect)], Vec::new()))
             } else {
+                if *source_of_your_choice {
+                    return Err(CardTextError::ParseError(
+                        "prevent-all damage by a source of your choice currently supports non-targeted recipients"
+                            .to_string(),
+                    ));
+                }
                 compile_effect_for_target(target, ctx, |spec| {
                     Effect::prevent_all_damage_to_target(spec, duration.clone())
                 })

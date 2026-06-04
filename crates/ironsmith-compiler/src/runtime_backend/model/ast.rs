@@ -1051,6 +1051,7 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+        source_of_your_choice: bool,
     },
     PreventAllDamageToTargetFromSourceFilter {
         target: TargetAst,
@@ -2264,10 +2265,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("follow_up_effects", follow_up_effects)
                 .finish(),
-            Self::PreventAllDamageToTarget { target, duration } => f
+            Self::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice,
+            } => f
                 .debug_struct("PreventAllDamageToTarget")
                 .field("target", target)
                 .field("duration", duration)
+                .field("source_of_your_choice", source_of_your_choice)
                 .finish(),
             Self::PreventAllDamageToTargetFromSourceFilter {
                 target,
@@ -3808,10 +3814,22 @@ impl EffectAst {
         target: TargetAst,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_prevent_all_damage_to_target_with_source_choice(target, duration, false)
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_to_target_with_source_choice(
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PreventAllDamageToTarget { target, duration },
+            SubjectVerbActionAst::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice,
+            },
         )
     }
 
