@@ -959,6 +959,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ) -> Option<CountAsCardNamedForSpellEffectSpec> {
         None
     }
+
+    /// Return a die-roll result adjustment descriptor, if any.
+    fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        None
+    }
 }
 
 /// Spec for "as this enters, choose a color" abilities.
@@ -1087,6 +1092,15 @@ pub struct CountAsCardNamedForSpellEffectSpec {
     pub counted_name: String,
 }
 
+/// Spec for abilities that can change a die-roll result as it is rolled.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustmentSpec {
+    pub player: crate::target::PlayerFilter,
+    pub life_cost: u32,
+    pub amount: u32,
+    pub once_each_turn: bool,
+}
+
 // Implement Clone for Box<dyn StaticAbilityKind>
 impl Clone for Box<dyn StaticAbilityKind> {
     fn clone(&self) -> Self {
@@ -1211,6 +1225,10 @@ impl StaticAbility {
         &self,
     ) -> Option<CountAsCardNamedForSpellEffectSpec> {
         self.0.count_as_card_named_for_spell_effect_spec()
+    }
+
+    pub fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        self.0.die_roll_result_adjustment_spec()
     }
 
     /// Get the display text for this ability.
@@ -3216,6 +3234,22 @@ impl StaticAbility {
     /// you may pay 2 life. If you don't, it enters the battlefield tapped."
     pub fn pay_life_or_enter_tapped(life_cost: u32) -> Self {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
+    }
+
+    pub fn die_roll_result_adjustment(
+        player: crate::target::PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(DieRollResultAdjustment::new(
+            player,
+            life_cost,
+            amount,
+            once_each_turn,
+            display,
+        ))
     }
 
     pub fn keyword_fallback_text(text: impl Into<String>) -> Self {

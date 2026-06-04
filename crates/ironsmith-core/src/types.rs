@@ -213,6 +213,7 @@ pub enum Subtype {
     Elephant,
     Elk,
     Elf,
+    Employee,
     Eye,
     Faerie,
     Fish,
@@ -510,6 +511,7 @@ impl Subtype {
             Subtype::Elephant,
             Subtype::Elk,
             Subtype::Elf,
+            Subtype::Employee,
             Subtype::Eye,
             Subtype::Faerie,
             Subtype::Fish,
@@ -847,6 +849,7 @@ impl Subtype {
                 | Subtype::Elephant
                 | Subtype::Elk
                 | Subtype::Elf
+                | Subtype::Employee
                 | Subtype::Eye
                 | Subtype::Faerie
                 | Subtype::Fish

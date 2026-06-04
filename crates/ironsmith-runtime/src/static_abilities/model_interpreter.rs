@@ -113,6 +113,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
             }
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                format!("DieRollResultAdjustment {{ spec: {spec:?} }}")
+            }
             payload => format!("{payload:?}"),
         }
     }
@@ -1191,6 +1194,15 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                StaticAbility::die_roll_result_adjustment(
+                    spec.player.clone(),
+                    spec.life_cost,
+                    spec.amount,
+                    spec.once_each_turn,
+                    spec.display.clone(),
+                )
+            }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
@@ -2031,6 +2043,20 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 spell_name: spell_name.clone(),
                 counted_name: counted_name.clone(),
             }),
+            _ => None,
+        }
+    }
+
+    fn die_roll_result_adjustment_spec(&self) -> Option<super::DieRollResultAdjustmentSpec> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                Some(super::DieRollResultAdjustmentSpec {
+                    player: spec.player.clone(),
+                    life_cost: spec.life_cost,
+                    amount: spec.amount,
+                    once_each_turn: spec.once_each_turn,
+                })
+            }
             _ => None,
         }
     }

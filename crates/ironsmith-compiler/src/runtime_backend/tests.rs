@@ -13766,6 +13766,40 @@ fn hordewing_skaab_parses_and_keeps_if_you_do_discard_followup() -> Result<(), C
 }
 
 #[test]
+fn night_shift_parses_die_adjustment_and_zombie_employee_token() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Night Shift of the Living Dead")
+        .card_types(vec![CardType::Enchantment]);
+    let text = "After you roll a die, you may pay 1 life. If you do, increase or decrease the result by 1. Do this only once each turn.\nWhenever you roll a 6, create a 2/2 black Zombie Employee creature token.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("DieRollResultAdjustment"),
+        "expected lowered die-roll result adjustment static ability: {debug}"
+    );
+    assert!(
+        debug.contains("PlayerRollsResult") && debug.contains("CreateTokenEffect"),
+        "expected die-roll trigger to create a token: {debug}"
+    );
+    assert!(
+        debug.contains("Zombie") && debug.contains("Employee"),
+        "expected created token to keep both creature subtypes: {debug}"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn token_definition_keeps_multiple_creature_subtypes() {
+    let token = super::compile_support::token_definition_for(
+        "2/2 black Zombie Employee creature token",
+    )
+    .expect("Zombie Employee token should be recognized");
+
+    assert_eq!(token.card.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
+}
+
+#[test]
 fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spec() -> Result<(), CardTextError>
 {
     let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Fight Variant")

@@ -495,6 +495,13 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Generic);
     }
 
+    if primitives::parse_prefix(tokens, primitives::phrase(&["after", "you", "roll", "a", "die"])).is_some()
+        && primitives::contains_phrase(tokens, &["you", "may", "pay"])
+        && primitives::contains_phrase(tokens, &["increase", "or", "decrease", "the", "result"])
+    {
+        return Some(StatementLineFamily::Generic);
+    }
+
     let sentence_words_match = |sentence_tokens: &[OwnedLexToken], expected: &[&str]| {
         let words = TokenWordView::new(sentence_tokens);
         words.len() == expected.len() && words.slice_eq(0, expected)

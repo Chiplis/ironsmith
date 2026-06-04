@@ -212,6 +212,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         maximum: Value,
         display: String,
     },
+    DieRollResultAdjustment(DieRollResultAdjustment),
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
@@ -565,6 +566,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    pub player: PlayerFilter,
+    pub life_cost: u32,
+    pub amount: u32,
+    pub once_each_turn: bool,
+    pub display: String,
+}
+
 impl<T, E, C, Cond> StaticAbility<T, E, C, Cond>
 where
     C: Clone,
@@ -906,6 +916,9 @@ where
             }
             StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
+            }
+            StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                StaticAbilityPayload::DieRollResultAdjustment(spec)
             }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
@@ -1769,6 +1782,27 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMaximum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
+        }
+    }
+
+    pub fn die_roll_result_adjustment(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost,
+                amount,
+                once_each_turn,
+                display,
+            }),
         }
     }
 

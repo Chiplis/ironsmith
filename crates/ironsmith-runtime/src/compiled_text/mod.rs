@@ -1257,6 +1257,37 @@ mod tests {
     }
 
     #[test]
+    fn create_token_text_preserves_multiple_creature_subtypes() {
+        let token = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Zombie")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Zombie, Subtype::Employee])
+            .color_indicator(crate::color::ColorSet::BLACK)
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build();
+
+        assert_eq!(
+            compile_effect_list(&[Effect::create_tokens(token, Value::Fixed(1))]),
+            "Create a 2/2 black Zombie Employee creature token"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn night_shift_compiled_text_preserves_die_adjustment_and_zombie_employee_token() {
+        let text = "After you roll a die, you may pay 1 life. If you do, increase or decrease the result by 1. Do this only once each turn.\nWhenever you roll a 6, create a 2/2 black Zombie Employee creature token.";
+        let definition = crate::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Night Shift of the Living Dead",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(text)
+            .expect("Night Shift should compile");
+
+        assert_eq!(compiled_text_lines(&definition).join("\n"), text);
+    }
+
+    #[test]
     fn conditional_enters_with_counter_uses_adamant_prefix_surface() {
         assert_eq!(
             finalize_ast_surface_line(

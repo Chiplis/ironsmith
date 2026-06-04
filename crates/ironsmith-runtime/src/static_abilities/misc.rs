@@ -5,7 +5,7 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, DieRollResultAdjustmentSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
@@ -174,6 +174,52 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
 /// Daybound keyword static ability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Daybound;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    player: PlayerFilter,
+    life_cost: u32,
+    amount: u32,
+    once_each_turn: bool,
+    display: String,
+}
+
+impl DieRollResultAdjustment {
+    pub fn new(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            player,
+            life_cost,
+            amount,
+            once_each_turn,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DieRollResultAdjustment {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DieRollResultAdjustment
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        Some(DieRollResultAdjustmentSpec {
+            player: self.player.clone(),
+            life_cost: self.life_cost,
+            amount: self.amount,
+            once_each_turn: self.once_each_turn,
+        })
+    }
+}
 
 impl StaticAbilityKind for Daybound {
     fn id(&self) -> StaticAbilityId {
