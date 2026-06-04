@@ -205,6 +205,9 @@ pub(super) fn extend_triggered_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if super::is_nonkeyword_choice_labeled_line(line) {
+            break;
+        }
         if !is_trigger_result_followup_line(line) {
             break;
         }
@@ -235,6 +238,9 @@ pub(super) fn extend_activated_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if super::is_nonkeyword_choice_labeled_line(line) {
+            break;
+        }
         if !is_trigger_result_followup_line(line) {
             break;
         }

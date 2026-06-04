@@ -349,6 +349,7 @@ pub(crate) struct ObjectDeathThisTurnConditionAst {
     pub(crate) event: ObjectDeathThisTurnEventAst,
     pub(crate) filter: ObjectFilter,
     pub(crate) comparison: Comparison,
+    pub(crate) under_controller: Option<PlayerFilter>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1677,6 +1678,35 @@ fn parse_object_died_this_turn_shape(
 ) -> Option<ObjectDeathThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
     let object_phrases: &[&[&str]] = &[&["creature"], &["creatures"]];
+    if let Some(matched) = LexPattern::new(&[
+        LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
+        LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["died"])),
+        LexPattern::phrase(&["under", "your", "control"]),
+        LexPattern::phrase(&["this", "turn"]),
+    ])
+    .match_clause(clause)
+    {
+        let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
+        let comparison = if amount_capture.word_range.is_empty() {
+            Comparison::GreaterThanOrEqual(1)
+        } else {
+            let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+            if clause_matches_phrase(amount_clause, &["a"]) {
+                Comparison::GreaterThanOrEqual(1)
+            } else {
+                parse_amount_capture_comparison(tokens, clause, &matched, "object-death condition")?
+            }
+        };
+
+        return Some(ObjectDeathThisTurnConditionAst {
+            event: ObjectDeathThisTurnEventAst::Died,
+            filter: ObjectFilter::creature(),
+            comparison,
+            under_controller: Some(PlayerFilter::You),
+        });
+    }
+
     let atoms = [
         LexPattern::amount("amount", LexCaptureKind::UntilAnyPhrase(object_phrases)),
         LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
@@ -1700,6 +1730,7 @@ fn parse_object_died_this_turn_shape(
         event: ObjectDeathThisTurnEventAst::Died,
         filter: ObjectFilter::creature(),
         comparison,
+        under_controller: None,
     })
 }
 
@@ -1728,6 +1759,7 @@ fn parse_object_put_into_your_graveyard_from_anywhere_shape(
         event: ObjectDeathThisTurnEventAst::PutIntoYourGraveyardFromAnywhere,
         filter: ObjectFilter::creature(),
         comparison: Comparison::GreaterThanOrEqual(1),
+        under_controller: None,
     })
 }
 

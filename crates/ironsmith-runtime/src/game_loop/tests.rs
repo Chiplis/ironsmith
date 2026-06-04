@@ -3716,6 +3716,182 @@ fn create_vanilla_creature(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn barrensteppe_siege_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1_149_701), "Barrensteppe Siege")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "As this enchantment enters, choose Abzan or Mardu.\n\
+             • Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control.\n\
+             • Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.",
+        )
+        .expect("Barrensteppe Siege should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct BarrensteppeChoiceDecisionMaker {
+    option_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for BarrensteppeChoiceDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx
+            .options
+            .iter()
+            .any(|option| option.legal && option.index == self.option_index)
+        {
+            vec![self.option_index]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn enter_barrensteppe_siege_with_choice(
+    game: &mut GameState,
+    controller: PlayerId,
+    option_index: usize,
+    expected_option: &str,
+) -> ObjectId {
+    let hand_id = game.create_object_from_definition(
+        &barrensteppe_siege_definition(),
+        controller,
+        Zone::Hand,
+    );
+    let mut dm = BarrensteppeChoiceDecisionMaker { option_index };
+    let siege = game
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .expect("Barrensteppe Siege should enter the battlefield")
+        .new_id;
+
+    assert_eq!(
+        game.chosen_named_option(siege),
+        Some(expected_option),
+        "Barrensteppe Siege should record its as-enters named option choice"
+    );
+    siege
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_barrensteppe_end_step_triggers_on_stack(game: &mut GameState) -> usize {
+    let mut trigger_queue = TriggerQueue::new();
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_triggers(game, &event) {
+        trigger_queue.add(trigger);
+    }
+    let count = trigger_queue.entries.len();
+    if count > 0 {
+        put_triggers_on_stack(game, &mut trigger_queue)
+            .expect("Barrensteppe Siege trigger should go on stack");
+    }
+    count
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_abzan_end_step_puts_counters_on_each_creature_you_control() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 0, "abzan");
+    let first = create_vanilla_creature(&mut game, "Abzan Initiate", alice, 2, 2);
+    let second = create_vanilla_creature(&mut game, "Abzan Acolyte", alice, 1, 1);
+    let opponent = create_vanilla_creature(&mut game, "Opponent Creature", bob, 3, 3);
+
+    assert_eq!(put_barrensteppe_end_step_triggers_on_stack(&mut game), 1);
+    resolve_stack_entry(&mut game).expect("Barrensteppe Siege Abzan trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(first, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "first controlled creature should get a +1/+1 counter"
+    );
+    assert_eq!(
+        game.counter_count(second, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "second controlled creature should get a +1/+1 counter"
+    );
+    assert_eq!(
+        game.counter_count(opponent, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "opponent's creature should not get a counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_mardu_does_not_trigger_for_opponent_creature_death() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 1, "mardu");
+    let bob_victim = create_vanilla_creature(&mut game, "Bob Victim", bob, 1, 1);
+    create_vanilla_creature(&mut game, "Bob Survivor", bob, 2, 2);
+
+    game.move_object_by_effect(bob_victim, Zone::Graveyard)
+        .expect("opponent creature should die");
+    let mut pending = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut pending);
+
+    assert_eq!(
+        put_barrensteppe_end_step_triggers_on_stack(&mut game),
+        0,
+        "Mardu branch should not trigger when only an opponent's creature died"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_mardu_sacrifices_each_opponents_chosen_creature_after_yours_died() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 1, "mardu");
+    let alice_victim = create_vanilla_creature(&mut game, "Alice Victim", alice, 1, 1);
+    let bob_creature = create_vanilla_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let charlie_creature = create_vanilla_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+    game.move_object_by_effect(alice_victim, Zone::Graveyard)
+        .expect("your creature should die");
+    let mut pending = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut pending);
+
+    assert_eq!(put_barrensteppe_end_step_triggers_on_stack(&mut game), 1);
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Barrensteppe Siege Mardu trigger should resolve");
+
+    assert!(
+        !game.battlefield.contains(&bob_creature),
+        "Mardu branch should remove Bob's chosen creature from the battlefield"
+    );
+    assert!(
+        !game.battlefield.contains(&charlie_creature),
+        "Mardu branch should remove Charlie's chosen creature from the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn mighty_servant_of_leuk_o_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(274_545), "Mighty Servant of Leuk-o")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))

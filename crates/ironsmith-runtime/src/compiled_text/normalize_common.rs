@@ -12532,6 +12532,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
+                Value::CreaturesDiedThisTurnControlledBy(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "a creature died under {} control this turn",
+                    describe_possessive_player_filter(player)
+                );
+            }
+            if let (
                 Value::LifeTotal(player),
                 crate::effect::ValueComparisonOperator::LessThanOrEqual,
                 Value::Fixed(count),

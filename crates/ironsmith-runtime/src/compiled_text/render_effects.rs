@@ -18018,6 +18018,8 @@ fn describe_triggered_inline_ability(
     } else {
         intervening_condition
     };
+    intervening_condition = intervening_condition
+        .and_then(|condition| remove_presentation_label_chosen_option(&condition, triggered));
     let mut line = describe_trigger_surface_with_frequency(triggered, trigger_frequency);
     if triggered_deals_same_damage_to_each_other_opponent(triggered) {
         line = line.replace("combat damage to a player", "combat damage to an opponent");
@@ -41610,6 +41612,53 @@ pub(super) fn split_trigger_intervening_if(
     (fold_condition_exprs(non_limit), frequency)
 }
 
+fn remove_presentation_label_chosen_option(
+    condition: &crate::ConditionExpr,
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<crate::ConditionExpr> {
+    match condition {
+        crate::ConditionExpr::SourceChosenOption(option) => {
+            if presentation_label_matches_chosen_option(triggered, option) {
+                None
+            } else {
+                Some(condition.clone())
+            }
+        }
+        crate::ConditionExpr::And(left, right) => match (
+            remove_presentation_label_chosen_option(left, triggered),
+            remove_presentation_label_chosen_option(right, triggered),
+        ) {
+            (Some(left), Some(right)) => {
+                Some(crate::ConditionExpr::And(Box::new(left), Box::new(right)))
+            }
+            (Some(only), None) | (None, Some(only)) => Some(only),
+            (None, None) => None,
+        },
+        other => Some(other.clone()),
+    }
+}
+
+fn presentation_label_matches_chosen_option(
+    triggered: &crate::ability::TriggeredAbility,
+    option: &str,
+) -> bool {
+    triggered
+        .presentation_label
+        .as_deref()
+        .is_some_and(|label| {
+            let label = label
+                .trim()
+                .trim_start_matches(|ch: char| !ch.is_alphanumeric())
+                .trim();
+            let label = label
+                .split(['—', '-'])
+                .next()
+                .unwrap_or(label)
+                .trim();
+            label.eq_ignore_ascii_case(option)
+        })
+}
+
 fn describe_zone_change_triggering_card_to_your_library(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
@@ -41896,6 +41945,9 @@ pub(super) fn describe_ability(
             } else {
                 intervening_condition
             };
+            intervening_condition = intervening_condition.and_then(|condition| {
+                remove_presentation_label_chosen_option(&condition, triggered)
+            });
             let mut trigger_surface = apply_triggered_presentation_label(
                 triggered,
                 describe_trigger_surface_with_frequency(triggered, trigger_frequency),
