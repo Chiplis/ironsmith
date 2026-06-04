@@ -31778,6 +31778,38 @@ fn parse_search_its_controller_graveyard_hand_and_library_exiles_same_name_cards
 }
 
 #[test]
+fn parse_invasive_surgery_oracle_strict_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Invasive Surgery");
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Counter target sorcery spell")
+            && rendered.contains("Delirium — If there are four or more card types among cards in your graveyard")
+            && rendered.contains("search the graveyard, hand, and library of that spell's controller")
+            && rendered.contains("for any number of cards with the same name as that spell")
+            && rendered.contains("exile those cards, then that player shuffles"),
+        "expected Invasive Surgery compiled text to preserve counter, delirium, optional same-name multi-zone search, and shuffle, got {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("unsupported")
+            && !rendered.contains("sorcery spell spell")
+            && !rendered.contains("for all cards with the same name"),
+        "Invasive Surgery should parse strictly without fallback or over-broad all-cards wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("conditionaleffect")
+            && debug.contains("playerhascardtypesingraveyardormore")
+            && debug.contains("samenameastagged")
+            && debug.contains("controllerof")
+            && debug.contains("additional_zones: [hand, library]")
+            && debug.matches("shufflelibraryeffect").count() == 1,
+        "expected Invasive Surgery to lower to one delirium-gated controller same-name search/exile/shuffle, got {debug}"
+    );
+}
+
+#[test]
 fn parse_oracle_reap_intellect_regression() {
     let def = parse_oracle_card_definition("Reap Intellect");
 

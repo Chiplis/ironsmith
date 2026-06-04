@@ -29523,6 +29523,92 @@ pub(super) fn describe_search_origin_zones(
     Some(zone_text)
 }
 
+fn describe_delirium_countered_spell_same_name_search(
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    let crate::effect::Condition::PlayerHasCardTypesInGraveyardOrMore { player, count } =
+        &conditional.condition
+    else {
+        return None;
+    };
+    if *player != PlayerFilter::You || *count != 4 || !conditional.if_false.is_empty() {
+        return None;
+    }
+
+    let [choose_effect, for_each_effect, shuffle_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose.chooser != PlayerFilter::You
+        || choose.count.min != 0
+        || choose.count.max.is_some()
+        || choose.search_mode != SearchSelectionMode::Optional
+        || choose.reveal
+    {
+        return None;
+    }
+    let zones = choose_search_zones(choose)?;
+    if zones.len() != 3
+        || !zones.contains(&Zone::Graveyard)
+        || !zones.contains(&Zone::Hand)
+        || !zones.contains(&Zone::Library)
+    {
+        return None;
+    }
+    if !matches!(
+        choose.filter.owner.as_ref(),
+        Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+    ) {
+        return None;
+    }
+    if !choose.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+            && constraint.tag.as_str().starts_with("countered_")
+    }) {
+        return None;
+    }
+    let mut unqualified_filter = choose.filter.clone();
+    unqualified_filter.owner = None;
+    unqualified_filter.tagged_constraints.clear();
+    if unqualified_filter != ObjectFilter::default() {
+        return None;
+    }
+
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.tag != choose.tag || for_each.effects.len() != 1 {
+        return None;
+    }
+    let move_effect = if let Some(tagged) =
+        for_each.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+    {
+        tagged.effect.as_ref()
+    } else {
+        &for_each.effects[0]
+    };
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Exile
+        || move_to_zone.to_top
+        || !matches!(&move_to_zone.target, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+    {
+        return None;
+    }
+
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle.player != PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target) {
+        return None;
+    }
+
+    Some(
+        concat!(
+            "Delirium — If there are four or more card types among cards in your graveyard, ",
+            "search the graveyard, hand, and library of that spell's controller for any number ",
+            "of cards with the same name as that spell, exile those cards, then that player shuffles"
+        )
+        .to_string(),
+    )
+}
+
 pub(super) fn describe_search_choose_for_each(
     choose: &crate::effects::ChooseObjectsEffect,
     for_each: &crate::effects::ForEachTaggedEffect,
@@ -29653,7 +29739,9 @@ pub(super) fn describe_search_choose_for_each(
     } else {
         let mut count_text = describe_choice_count(&choose.count);
         if count_text == "any number" {
-            count_text = if is_same_name_search(&choose.filter) {
+            count_text = if is_same_name_search(&choose.filter)
+                && choose.search_mode == crate::effect::SearchSelectionMode::AllMatching
+            {
                 "all".to_string()
             } else {
                 "any number of".to_string()
@@ -32846,7 +32934,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(target_text) = describe_counter_all_stack_abilities(&counter_spell.target) {
             return format!("Counter {target_text}");
         }
-        return format!("Counter {}", describe_choose_spec(&counter_spell.target));
+        let target_text = describe_choose_spec(&counter_spell.target)
+            .replace("instant spell spell", "instant spell")
+            .replace("sorcery spell spell", "sorcery spell");
+        return format!("Counter {target_text}");
     }
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
         let payer = match unless_pays.player {
@@ -34854,6 +34945,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_no_more_counters_move_then_each_player_return(conditional) {
+            return compact;
+        }
+        if let Some(compact) = describe_delirium_countered_spell_same_name_search(conditional) {
             return compact;
         }
         if conditional.if_false.is_empty()

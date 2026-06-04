@@ -1626,20 +1626,21 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     if has_trailing_that_player_shuffle(tokens) {
-        let mut rewrote_existing_shuffle = false;
+        let mut has_existing_shuffle = false;
         for effect in &mut effects {
             if let EffectAst::SubjectVerb(subject_verb) = effect
                 && matches!(subject_verb.action, SubjectVerbActionAst::ShuffleLibrary)
-                && matches!(
+            {
+                has_existing_shuffle = true;
+                if matches!(
                     subject_verb.subject.player,
                     PlayerAst::You | PlayerAst::Implicit
-                )
-            {
-                subject_verb.subject.player = PlayerAst::That;
-                rewrote_existing_shuffle = true;
+                ) {
+                    subject_verb.subject.player = PlayerAst::That;
+                }
             }
         }
-        if !rewrote_existing_shuffle {
+        if !has_existing_shuffle {
             effects.push(EffectAst::subject_verb(
                 SubjectVerbRoleAst::LibraryOwner,
                 PlayerAst::That,

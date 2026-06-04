@@ -45041,6 +45041,178 @@ fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn invasive_surgery_test_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Invasive Surgery")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target sorcery spell.\nDelirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles.",
+        )
+        .expect("Invasive Surgery should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn invasive_surgery_target_sorcery(name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_invasive_surgery_delirium_cards(game: &mut GameState, controller: PlayerId, count: usize) {
+    let type_sets = [
+        ("Delirium Artifact", vec![CardType::Artifact]),
+        ("Delirium Creature", vec![CardType::Creature]),
+        ("Delirium Enchantment", vec![CardType::Enchantment]),
+        ("Delirium Land", vec![CardType::Land]),
+    ];
+    for (name, card_types) in type_sets.into_iter().take(count) {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build();
+        game.create_object_from_definition(&def, controller, Zone::Graveyard);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct InvasiveSurgeryDecisionMaker {
+    object_selection_calls: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for InvasiveSurgeryDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.object_selection_calls += 1;
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_invasive_surgery_with_delirium_exiles_same_name_cards_from_controller_zones() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    put_invasive_surgery_delirium_cards(&mut game, alice, 4);
+
+    let target_def = invasive_surgery_target_sorcery("Duplicated Sorcery");
+    let stack_copy = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(stack_copy, bob));
+    game.create_object_from_definition(&target_def, bob, Zone::Graveyard);
+    game.create_object_from_definition(&target_def, bob, Zone::Hand);
+    game.create_object_from_definition(&target_def, bob, Zone::Library);
+    let other_def = invasive_surgery_target_sorcery("Different Sorcery");
+    game.create_object_from_definition(&other_def, bob, Zone::Library);
+
+    let invasive_surgery = invasive_surgery_test_definition();
+    let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
+        stack_copy,
+    )]));
+
+    let mut decisions = InvasiveSurgeryDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");
+
+    assert_eq!(
+        decisions.object_selection_calls, 1,
+        "delirium branch should perform one same-name multi-zone search"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Duplicated Sorcery"),
+        4,
+        "delirium branch should exile the countered spell and same-name cards from graveyard, hand, and library"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Duplicated Sorcery"),
+        0,
+        "same-name graveyard cards should be exiled after the counter resolves"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Hand, "Duplicated Sorcery"),
+        0,
+        "same-name hand cards should be exiled"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Duplicated Sorcery"),
+        0,
+        "same-name library cards should be exiled"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Different Sorcery"),
+        1,
+        "cards with a different name should remain in the searched player's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_invasive_surgery_without_delirium_only_counters_target_sorcery() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    put_invasive_surgery_delirium_cards(&mut game, alice, 3);
+
+    let target_def = invasive_surgery_target_sorcery("Duplicated Sorcery");
+    let stack_copy = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(stack_copy, bob));
+    game.create_object_from_definition(&target_def, bob, Zone::Graveyard);
+    game.create_object_from_definition(&target_def, bob, Zone::Hand);
+    game.create_object_from_definition(&target_def, bob, Zone::Library);
+
+    let invasive_surgery = invasive_surgery_test_definition();
+    let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
+        stack_copy,
+    )]));
+
+    let mut decisions = InvasiveSurgeryDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");
+
+    assert_eq!(
+        decisions.object_selection_calls, 0,
+        "non-delirium branch should not perform the same-name search"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Duplicated Sorcery"),
+        0,
+        "without delirium, Invasive Surgery should not exile same-name cards"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Duplicated Sorcery"),
+        2,
+        "without delirium, only the target sorcery should be countered into the graveyard alongside the existing copy"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Hand, "Duplicated Sorcery"),
+        1,
+        "same-name hand card should remain when delirium is not satisfied"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Duplicated Sorcery"),
+        1,
+        "same-name library card should remain when delirium is not satisfied"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_not_available_with_only_nonblue_card() {
     use crate::cards::definitions::force_of_will;
