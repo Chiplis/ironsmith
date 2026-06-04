@@ -3097,6 +3097,82 @@ fn parse_player_cards_in_hand_predicate(words: &[&str]) -> Option<PredicateAst> 
     }
 }
 
+fn parse_player_cards_in_hand_at_turn_start_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let Some(words) = strip_at_beginning_this_turn_suffix(words) else {
+        let had_idx = words.iter().position(|word| *word == "had")?;
+        return parse_player_had_card_in_hand_at_turn_start_without_amount(words, had_idx);
+    };
+    let had_idx = words.iter().position(|word| *word == "had")?;
+    let mut present_words = words.to_vec();
+    present_words[had_idx] = "have";
+    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&present_words);
+    let Some(condition) =
+        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(&tokens)
+    else {
+        return parse_player_had_card_in_hand_at_turn_start_without_amount(words, had_idx);
+    };
+    let player = player_ast_from_status_player_filter(condition.player.clone())?;
+    match condition.comparison {
+        crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
+            Some(PredicateAst::PlayerCardsInHandAtTurnStartOrMore {
+                player,
+                count: count as u32,
+            })
+        }
+        crate::effect::Comparison::GreaterThan(count) if count >= -1 => {
+            Some(PredicateAst::PlayerCardsInHandAtTurnStartOrMore {
+                player,
+                count: (count + 1) as u32,
+            })
+        }
+        crate::effect::Comparison::LessThanOrEqual(count) if count >= 0 => {
+            Some(PredicateAst::PlayerCardsInHandAtTurnStartOrFewer {
+                player,
+                count: count as u32,
+            })
+        }
+        crate::effect::Comparison::LessThan(count) if count > 0 => {
+            Some(PredicateAst::PlayerCardsInHandAtTurnStartOrFewer {
+                player,
+                count: (count - 1) as u32,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn parse_player_had_card_in_hand_at_turn_start_without_amount(
+    words: &[&str],
+    had_idx: usize,
+) -> Option<PredicateAst> {
+    let subject = match &words[..had_idx] {
+        ["you"] => PlayerAst::You,
+        ["that", "player"] | ["that"] => PlayerAst::That,
+        _ => return None,
+    };
+    match &words[had_idx + 1..] {
+        ["card", "in", "hand"] | ["cards", "in", "hand"] => {
+            Some(PredicateAst::PlayerCardsInHandAtTurnStartOrMore {
+                player: subject,
+                count: 1,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn strip_at_beginning_this_turn_suffix<'a>(words: &'a [&'a str]) -> Option<&'a [&'a str]> {
+    for suffix in [
+        ["at", "the", "beginning", "of", "this", "turn"].as_slice(),
+        ["at", "beginning", "of", "this", "turn"].as_slice(),
+    ] {
+        if words.len() > suffix.len() && words[words.len() - suffix.len()..] == *suffix {
+            return Some(&words[..words.len() - suffix.len()]);
+        }
+    }
+    None
+}
+
 fn parse_player_life_total_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let condition =
@@ -5839,6 +5915,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_player_cards_in_hand_relation_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_player_cards_in_hand_at_turn_start_predicate(&filtered) {
         return Ok(predicate);
     }
 

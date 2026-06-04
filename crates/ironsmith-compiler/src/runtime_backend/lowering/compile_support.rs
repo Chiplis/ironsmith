@@ -493,6 +493,20 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 count: *count as i32,
             }
         }
+        PredicateAst::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerCardsInHandAtTurnStartOrMore {
+                player,
+                count: *count as i32,
+            }
+        }
+        PredicateAst::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+            let player = resolve_non_target_player_filter(*player, &refs)?;
+            Condition::PlayerCardsInHandAtTurnStartOrFewer {
+                player,
+                count: *count as i32,
+            }
+        }
         PredicateAst::PlayerHasMoreCardsInHandThanYou { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreCardsInHandThanYou { player }

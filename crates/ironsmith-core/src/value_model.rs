@@ -726,6 +726,14 @@ pub enum Condition {
         player: PlayerFilter,
         count: i32,
     },
+    PlayerCardsInHandAtTurnStartOrMore {
+        player: PlayerFilter,
+        count: i32,
+    },
+    PlayerCardsInHandAtTurnStartOrFewer {
+        player: PlayerFilter,
+        count: i32,
+    },
     PlayerHasMoreCardsInHandThanYou {
         player: PlayerFilter,
     },

@@ -11670,6 +11670,34 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 count_text
             )
         }
+        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            if *count == 1 {
+                return format!(
+                    "{} had a card in hand at the beginning of this turn",
+                    subject
+                );
+            }
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+            format!(
+                "{} had {} or more cards in hand at the beginning of this turn",
+                subject, count_text
+            )
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+            let subject = describe_player_filter(player);
+            if *count == 0 {
+                return format!(
+                    "{} had no cards in hand at the beginning of this turn",
+                    subject
+                );
+            }
+            let count_text = number_word(*count).unwrap_or_else(|| count.to_string());
+            format!(
+                "{} had {} or fewer cards in hand at the beginning of this turn",
+                subject, count_text
+            )
+        }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             format!(
                 "{} has more cards in hand than you",

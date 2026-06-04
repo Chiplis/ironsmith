@@ -40647,6 +40647,140 @@ fn blitz_leech_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn mindstorm_crown_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Mindstorm Crown");
+
+    let def = parse_oracle_card_definition("Mindstorm Crown");
+    let rendered = unprocessed_compiled_lines(&def);
+    let expected = concat!(
+        "At the beginning of your upkeep, draw a card if you had no cards in hand at the beginning of this turn. ",
+        "If you had a card in hand, this artifact deals 1 damage to you."
+    );
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(def.name(), "Mindstorm Crown");
+    assert_eq!(rendered, vec![expected.to_string()]);
+    assert!(
+        ability_debug.contains("PlayerCardsInHandAtTurnStartOrFewer")
+            && ability_debug.contains("PlayerCardsInHandAtTurnStartOrMore")
+            && ability_debug.contains("DrawCardsEffect")
+            && ability_debug.contains("DealDamageEffect"),
+        "Mindstorm Crown should structurally model both turn-start hand branches, got {ability_debug}"
+    );
+}
+
+fn mindstorm_crown_triggered_ability(
+    def: &CardDefinition,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Mindstorm Crown should have an upkeep triggered ability")
+}
+
+fn create_mindstorm_crown_test_card(
+    game: &mut crate::game_state::GameState,
+    id: u32,
+    owner: PlayerId,
+    zone: Zone,
+) -> ObjectId {
+    game.create_object_from_card(
+        &crate::card::CardBuilder::new(CardId::from_raw(id), &format!("Mindstorm Test Card {id}"))
+            .card_types(vec![CardType::Creature])
+            .build(),
+        owner,
+        zone,
+    )
+}
+
+#[test]
+fn mindstorm_crown_draws_when_hand_was_empty_at_turn_start() {
+    let def = parse_oracle_card_definition("Mindstorm Crown");
+    let triggered = mindstorm_crown_triggered_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let crown_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    create_mindstorm_crown_test_card(&mut game, 91_001, alice, Zone::Library);
+
+    game.record_turn_start_hand_sizes();
+    create_mindstorm_crown_test_card(&mut game, 91_002, alice, Zone::Hand);
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(crown_id, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        crown_id,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Mindstorm Crown trigger should resolve");
+
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "empty turn-start hand should not deal damage"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        2,
+        "empty turn-start hand should draw even if Alice had a card by resolution"
+    );
+}
+
+#[test]
+fn mindstorm_crown_deals_damage_when_hand_had_card_at_turn_start() {
+    let def = parse_oracle_card_definition("Mindstorm Crown");
+    let triggered = mindstorm_crown_triggered_ability(&def);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let crown_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    create_mindstorm_crown_test_card(&mut game, 91_101, alice, Zone::Library);
+    let hand_card = create_mindstorm_crown_test_card(&mut game, 91_102, alice, Zone::Hand);
+
+    game.record_turn_start_hand_sizes();
+    game.move_object(
+        hand_card,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::from_game_rule(),
+    )
+    .expect("setup should move hand card out of hand");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(crown_id, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        crown_id,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Mindstorm Crown trigger should resolve");
+
+    assert_eq!(
+        game.life_total(alice),
+        19,
+        "nonempty turn-start hand should deal 1 damage"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        0,
+        "nonempty turn-start hand should not draw even if Alice's hand is empty by resolution"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn fear_of_immobility_keeps_tap_target_and_conditional_stun_counter() {

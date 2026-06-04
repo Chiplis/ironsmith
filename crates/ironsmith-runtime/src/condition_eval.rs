@@ -944,6 +944,14 @@ fn triggering_object_had_to_attack_this_combat(
         })
 }
 
+fn player_hand_count_at_turn_start(game: &GameState, player_id: PlayerId) -> Option<i32> {
+    game.turn_store
+        .hand_sizes_at_turn_start
+        .get(&player_id)
+        .copied()
+        .map(|count| count as i32)
+}
+
 fn evaluate_condition_shared_core(
     game: &GameState,
     condition: &Condition,
@@ -1313,6 +1321,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::ValueComparison { .. } => {}
         Condition::PlayerCardsInHandOrMore { .. } => {}
         Condition::PlayerCardsInHandOrFewer { .. } => {}
+        Condition::PlayerCardsInHandAtTurnStartOrMore { .. } => {}
+        Condition::PlayerCardsInHandAtTurnStartOrFewer { .. } => {}
         Condition::PlayerControlsBasicLandTypesAmongLandsOrMore { .. } => {}
         Condition::PlayerHasCardTypesInGraveyardOrMore { .. } => {}
         Condition::PlayerHasLessLifeThanYou { .. } => {}
@@ -1532,6 +1542,22 @@ pub fn evaluate_condition_external(
             };
             game.player(player_id)
                 .map(|p| p.hand.len() as i32 <= *count)
+                .unwrap_or(false)
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count >= *count)
+                .unwrap_or(false)
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+            let Some(player_id) = resolve_condition_player_external(game, ctx, player) else {
+                return false;
+            };
+            player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count <= *count)
                 .unwrap_or(false)
         }
         Condition::PlayerHasLessLifeThanYou { player } => {
@@ -2708,6 +2734,22 @@ fn evaluate_condition_simple(
             let hand = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
             hand <= *count as usize
         }
+        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count >= *count)
+                .unwrap_or(false)
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+            let Some(player_id) = resolve_condition_player_simple(game, controller, player) else {
+                return false;
+            };
+            player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count <= *count)
+                .unwrap_or(false)
+        }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             let your_hand = game.player(controller).map(|p| p.hand.len()).unwrap_or(0);
             matching_condition_players_simple(game, controller, player)
@@ -3387,6 +3429,18 @@ fn evaluate_condition(
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let hand_count = game.player(player_id).map(|p| p.hand.len()).unwrap_or(0);
             Ok(hand_count <= *count as usize)
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrMore { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count >= *count)
+                .unwrap_or(false))
+        }
+        Condition::PlayerCardsInHandAtTurnStartOrFewer { player, count } => {
+            let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
+            Ok(player_hand_count_at_turn_start(game, player_id)
+                .map(|hand_count| hand_count <= *count)
+                .unwrap_or(false))
         }
         Condition::PlayerHasMoreCardsInHandThanYou { player } => {
             let your_hand = game
