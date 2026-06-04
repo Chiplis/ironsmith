@@ -30414,6 +30414,220 @@ fn riveteers_charm_mode_two_play_permission_lasts_through_next_end_step_window()
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn rakdos_the_muscle_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(90_662), "Rakdos, the Muscle")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Demon, Subtype::Mercenary])
+        .power_toughness(PowerToughness::fixed(6, 5))
+        .parse_text(
+            "Flying, trample\n\
+             Whenever you sacrifice another creature, exile cards equal to its mana value from the top of target player's library. Until your next end step, you may play those cards, and mana of any type can be spent to cast those spells.\n\
+             Sacrifice another creature: Rakdos gains indestructible until end of turn. Tap it. Activate only once each turn.",
+        )
+        .expect("Rakdos, the Muscle should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_any_color_play() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let rakdos = rakdos_the_muscle_definition();
+    let rakdos_id = game.create_object_from_definition(&rakdos, alice, Zone::Battlefield);
+    let sacrificed = CardBuilder::new(CardId::from_raw(90_663), "Rakdos Sacrifice Fuel")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let sacrificed_id = game.create_object_from_card(&sacrificed, alice, Zone::Battlefield);
+    let noncreature = CardBuilder::new(CardId::from_raw(90_664), "Rakdos Noncreature Fuel")
+        .card_types(vec![CardType::Artifact])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .build();
+    let noncreature_id = game.create_object_from_card(&noncreature, alice, Zone::Battlefield);
+
+    let exiled_land = CardBuilder::new(CardId::from_raw(90_665), "Rakdos Exiled Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let exiled_spell = CardBuilder::new(CardId::from_raw(90_666), "Rakdos Exiled Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Green]]))
+        .build();
+    let library_spare = CardBuilder::new(CardId::from_raw(90_667), "Rakdos Library Spare")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .build();
+    game.create_object_from_card(&exiled_land, bob, Zone::Library);
+    game.create_object_from_card(&exiled_spell, bob, Zone::Library);
+    game.create_object_from_card(&library_spare, bob, Zone::Library);
+
+    let noncreature_event = TriggerEvent::new_with_provenance(
+        crate::events::permanents::SacrificeEvent::new(noncreature_id, Some(rakdos_id))
+            .with_snapshot(
+                game.object(noncreature_id)
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, &game)),
+                Some(alice),
+            ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &noncreature_event)
+            .into_iter()
+            .filter(|entry| entry.source == rakdos_id)
+            .count()
+            == 0,
+        "Rakdos should not trigger when you sacrifice a noncreature"
+    );
+
+    let self_event = TriggerEvent::new_with_provenance(
+        crate::events::permanents::SacrificeEvent::new(rakdos_id, Some(rakdos_id)).with_snapshot(
+            game.object(rakdos_id)
+                .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, &game)),
+            Some(alice),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &self_event)
+            .into_iter()
+            .filter(|entry| entry.source == rakdos_id)
+            .count()
+            == 0,
+        "Rakdos should not trigger when itself is sacrificed"
+    );
+
+    let sacrifice_event = TriggerEvent::new_with_provenance(
+        crate::events::permanents::SacrificeEvent::new(sacrificed_id, Some(rakdos_id))
+            .with_snapshot(
+                game.object(sacrificed_id)
+                    .map(|object| crate::snapshot::ObjectSnapshot::from_object(object, &game)),
+                Some(alice),
+            ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let matching_triggers: Vec<_> = crate::triggers::check_triggers(&game, &sacrifice_event)
+        .into_iter()
+        .filter(|entry| entry.source == rakdos_id)
+        .collect();
+    assert_eq!(
+        matching_triggers.len(),
+        1,
+        "Rakdos should trigger exactly once when you sacrifice another creature"
+    );
+
+    let triggered = rakdos
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Rakdos should have a sacrifice trigger");
+    let mut ctx = ExecutionContext::new_default(rakdos_id, alice)
+        .with_triggering_event(sacrifice_event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .unwrap_or_else(|err| panic!("Rakdos trigger effect should resolve: {effect:?}: {err:?}"));
+    }
+
+    assert_eq!(
+        game.exile.len(),
+        2,
+        "Rakdos should exile cards equal to the sacrificed creature's mana value"
+    );
+    let exiled_names: Vec<_> = game
+        .exile
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| (id, object.name.clone())))
+        .collect();
+    let exiled_land_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Rakdos Exiled Land").then_some(*id))
+        .expect("Rakdos should exile the land among the two cards");
+    let exiled_spell_id = exiled_names
+        .iter()
+        .find_map(|(id, name)| (*name == "Rakdos Exiled Spell").then_some(*id))
+        .expect("Rakdos should exile the spell among the two cards");
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .library
+            .iter()
+            .any(|&id| game.object(id).is_some_and(|object| object.name == "Rakdos Library Spare")),
+        "Rakdos should leave the third library card behind"
+    );
+
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_land_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Rakdos should let you play exiled lands during the window"
+    );
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Rakdos should let you cast exiled spells during the window"
+    );
+    assert!(
+        game.can_spend_mana_as_any_color(alice, Some(exiled_spell_id)),
+        "Rakdos should allow mana of any color to cast exiled spells"
+    );
+    assert!(
+        !game.can_spend_mana_as_any_color(alice, Some(exiled_land_id)),
+        "Rakdos's any-color cast permission should not apply to exiled lands"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+    game.turn.active_player = bob;
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Rakdos play window should survive before your next end step"
+    );
+
+    game.turn.turn_number = game.turn.turn_number.saturating_add(2);
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            exiled_spell_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Rakdos play window should expire after your next end step"
+    );
+    assert!(
+        !game.can_spend_mana_as_any_color(alice, Some(exiled_spell_id)),
+        "Rakdos any-color cast permission should expire with the play window"
+    );
+}
+
 // === Full Game Flow Integration Test ===
 
 #[cfg(ironsmith_runtime_parser_tests)]

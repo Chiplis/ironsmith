@@ -175,6 +175,12 @@ pub(crate) fn parse_exile(
     }
     if !face_down
         && !until_source_leaves
+        && let Some(effect) = parse_exile_dynamic_count_from_top_library_clause(tokens, subject)
+    {
+        return Ok(effect);
+    }
+    if !face_down
+        && !until_source_leaves
         && let Some(effect) = parse_exile_top_library_clause(tokens, subject)
     {
         return Ok(effect);
@@ -534,6 +540,60 @@ fn parse_library_owner_prefix(
         ));
     }
     None
+}
+
+fn parse_exile_dynamic_count_from_top_library_clause(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let tokens = trim_commas(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    if !words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+
+    let from_word_idx = find_index(&words, |word| EXILE_FROM_WORD_PATTERN.matches_word(word))?;
+    if from_word_idx <= 1 {
+        return None;
+    }
+    let count_start = token_index_for_word_index(&tokens, 1)?;
+    let from_token_idx = token_index_for_word_index(&tokens, from_word_idx)?;
+    let count_tokens = trim_commas(&tokens[count_start..from_token_idx]);
+    let count = crate::runtime_backend::grammar::values::parse_add_mana_equal_amount_value_lexed(
+        &count_tokens,
+    )?;
+
+    let after_from = &words[from_word_idx + 1..];
+    let owner_words = if after_from.len() >= 3
+        && after_from[0] == "the"
+        && EXILE_TOP_WORD_PATTERN.matches_word(after_from[1])
+        && EXILE_OF_WORD_PATTERN.matches_word(after_from[2])
+    {
+        &after_from[3..]
+    } else if after_from.len() >= 2
+        && EXILE_TOP_WORD_PATTERN.matches_word(after_from[0])
+        && EXILE_OF_WORD_PATTERN.matches_word(after_from[1])
+    {
+        &after_from[2..]
+    } else {
+        return None;
+    };
+
+    let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (player, used_words) = parse_library_owner_prefix(owner_words, default_player)?;
+    if used_words < owner_words.len() {
+        return None;
+    }
+
+    Some(EffectAst::subject_verb_exile_top_of_library(
+        player,
+        count,
+        vec![helper_tag_for_tokens(&tokens, "exiled")],
+        Vec::new(),
+    ))
 }
 
 pub(crate) fn parse_exile_top_library_clause(

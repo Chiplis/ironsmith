@@ -5450,6 +5450,24 @@ fn rewrite_lexed_permission_helpers_preserve_any_color_cast_suffix() {
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_preserve_until_next_end_step_any_color_cast_suffix() {
+    let tokens = lex_line(
+        "Until your next end step, you may play those cards, and mana of any type can be spent to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify plural tagged permission with mana-spend suffix");
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("tagged permission clause should parse")
+        .expect("tagged permission clause should produce an effect");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("GrantPlayTaggedUntilYourNextTurn"), "{debug}");
+    assert!(debug.contains("allow_land: true"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_parse_while_exiled_tail_lifetime() {
     let tokens = lex_line(
         "cast that card for as long as it remains exiled and mana of any type can be spent to cast that spell",

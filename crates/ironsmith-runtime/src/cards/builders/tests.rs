@@ -62679,6 +62679,37 @@ fn parse_oracle_riveteers_charm_strict_regression() {
     );
 }
 
+#[test]
+fn parse_oracle_rakdos_the_muscle_strict_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Rakdos, the Muscle");
+    let def = parse_oracle_card_definition("Rakdos, the Muscle");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "whenever you sacrifice another creature, exile cards equal to its mana value from the top of target player's library"
+        ),
+        "expected dynamic sacrificed-creature mana-value exile clause, got {rendered}"
+    );
+    assert!(
+        rendered_lower.contains(
+            "until your next end step, you may play those cards, and mana of any type can be spent to cast those spells"
+        ),
+        "expected next-end-step play permission with any-color mana suffix, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileTopOfLibraryEffect")
+            && debug.contains("ManaValueOf")
+            && debug.contains("GrantPlayTaggedEffect")
+            && debug.contains("UntilYourNextTurnEnd")
+            && debug.contains("allow_any_color_for_cast: true"),
+        "expected Rakdos trigger to lower to dynamic top-library exile plus next-end-step any-color play grant, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn planar_genesis_fallback_with_extra_tail_still_fails_loudly() {

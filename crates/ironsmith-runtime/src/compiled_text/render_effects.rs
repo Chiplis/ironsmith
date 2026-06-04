@@ -25538,33 +25538,46 @@ fn describe_exile_top_then_play(
     let Some(first_tag) = exile_top.moved_tags.first() else {
         return None;
     };
-    if grant_play.tag != *first_tag
-        || grant_play.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
-        || grant_play.player != exile_top.player
-    {
+    if grant_play.tag != *first_tag {
         return None;
     }
-
-    let singular_count = matches!(exile_top.count, Value::Fixed(1));
-    let exile_clause = match &exile_top.count {
-        Value::Fixed(n) if *n >= 0 => {
-            let count_u32 = *n as u32;
-            let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
-            let noun = if *n == 1 { "card" } else { "cards" };
-            let owner = describe_possessive_player_filter(&exile_top.player);
-            format!("Exile the top {count_text} {noun} of {owner} library")
+    let duration_text = match grant_play.duration {
+        crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "Until end of turn",
+        crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
+            "Until your next end step"
         }
-        _ => {
-            let owner = describe_possessive_player_filter(&exile_top.player);
-            let value_text = describe_value(&exile_top.count);
-            if value_text == "X"
-                || (suppress_count_where_clause
-                    && value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs))
-            {
-                format!("Exile the top X cards of {owner} library")
-            } else {
-                format!("Exile the top X cards of {owner} library, where X is {value_text}")
-            }
+        _ => return None,
+    };
+
+    let owner = describe_possessive_player_filter(&exile_top.player);
+    let dynamic_count_basis = match &exile_top.count {
+        Value::ManaValueOf(spec)
+            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" || tag.as_str().starts_with("sacrificed")) =>
+        {
+            Some("its mana value")
+        }
+        _ => None,
+    };
+    let singular_count = matches!(exile_top.count, Value::Fixed(1));
+    let exile_clause = if let Some(basis) = dynamic_count_basis {
+        format!("Exile cards equal to {basis} from the top of {owner} library")
+    } else if let Value::Fixed(n) = &exile_top.count {
+        if *n < 0 {
+            return None;
+        }
+        let count_u32 = *n as u32;
+        let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
+        let noun = if *n == 1 { "card" } else { "cards" };
+        format!("Exile the top {count_text} {noun} of {owner} library")
+    } else {
+        let value_text = describe_value(&exile_top.count);
+        if value_text == "X"
+            || (suppress_count_where_clause
+                && value_has_surface_hint(&exile_top.count, ValueSurfaceHint::WhereXIs))
+        {
+            format!("Exile the top X cards of {owner} library")
+        } else {
+            format!("Exile the top X cards of {owner} library, where X is {value_text}")
         }
     };
     let cards_text = if singular_count {
@@ -25577,13 +25590,44 @@ fn describe_exile_top_then_play(
     } else {
         "cast"
     };
+    let player = describe_player_filter(&grant_play.player);
+    let mana_suffix = if grant_play.allow_any_color_for_cast {
+        if grant_play.allow_land {
+            let spell_ref = if singular_count {
+                "that spell"
+            } else {
+                "those spells"
+            };
+            format!(", and mana of any type can be spent to cast {spell_ref}")
+        } else {
+            let spell_ref = if singular_count { "that spell" } else { "them" };
+            format!(", and mana of any type can be spent to cast {spell_ref}")
+        }
+    } else {
+        String::new()
+    };
+
     if !grant_play.allow_land && !singular_count {
         return Some(format!(
-            "{exile_clause}. Until end of turn, you may cast spells from among those exiled cards"
+            "{exile_clause}. {duration_text}, {player} may cast spells from among those cards{mana_suffix}"
         ));
     }
+
+    if grant_play.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        && !grant_play.allow_any_color_for_cast
+        && grant_play.player == exile_top.player
+    {
+        return Some(format!("{exile_clause}. You may {verb} {cards_text} this turn"));
+    }
+
+    if player == "you" {
+        return Some(format!(
+            "{exile_clause}. {duration_text}, you may {verb} {cards_text}{mana_suffix}"
+        ));
+    }
+
     Some(format!(
-        "{exile_clause}. You may {verb} {cards_text} this turn"
+        "{exile_clause}. {duration_text}, {player} may {verb} {cards_text}{mana_suffix}"
     ))
 }
 
