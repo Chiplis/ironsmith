@@ -144,6 +144,65 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn wondrous_crucible_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Wondrous Crucible");
+
+    let def = parse_oracle_card_definition("Wondrous Crucible");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("GrantAbility")
+            && ability_debug.contains("Ward")
+            && ability_debug.contains("Generic(2)"),
+        "Wondrous Crucible should grant ward {{2}} to permanents you control, got {ability_debug}"
+    );
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Wondrous Crucible should have an end-step triggered ability");
+    let effects = triggered.effects.flattened_default_effects();
+    let exile = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<MoveToZoneEffect>())
+        .expect("Wondrous Crucible should exile a card from the graveyard");
+    let ChooseSpec::Object(filter) = exile.target.base() else {
+        panic!(
+            "Wondrous Crucible exile target should be a graveyard object filter, got {:?}",
+            exile.target
+        );
+    };
+
+    assert_eq!(exile.zone, Zone::Exile);
+    assert!(
+        exile.target.count().is_random(),
+        "Wondrous Crucible should structurally mark the graveyard exile choice as random"
+    );
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(filter.owner, Some(PlayerFilter::You));
+    assert!(filter.excluded_card_types.contains(&CardType::Land));
+    assert!(
+        ability_debug.contains("CopySpellEffect")
+            && ability_debug.contains("CastTaggedEffect")
+            && ability_debug.contains("as_copy: true")
+            && ability_debug.contains("without_paying_mana_cost: true"),
+        "Wondrous Crucible should copy the exiled card and allow casting that copy for free, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("Exile a nonland card at random from your graveyard"),
+        "compiled text should preserve the at-random exile clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Copy it. You may cast the copy without paying its mana cost"),
+        "compiled text should compact the copy/cast-copy sequence, got {rendered}"
+    );
+}
+
+#[test]
 fn consulate_surveillance_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Consulate Surveillance");
     let def = parse_oracle_card_definition("Consulate Surveillance");
