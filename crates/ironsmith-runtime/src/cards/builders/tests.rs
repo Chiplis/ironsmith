@@ -192,13 +192,43 @@ fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model_regression
         put_counters.target_count.is_some(),
         "Feast should preserve the any-number distribution target count"
     );
+    let (inner_target, target_count) = match &put_counters.target {
+        ChooseSpec::WithCount(inner, count) => (inner.as_ref(), count),
+        other => panic!("expected counted distribution target, got {other:?}"),
+    };
+    assert_eq!(target_count.min, 0, "Feast should allow zero distribution targets");
+    assert_eq!(target_count.max, None, "Feast should allow any number of distribution targets");
+    assert_eq!(
+        put_counters.target_count,
+        Some(*target_count),
+        "Feast should preserve the same distribution target count on the effect"
+    );
+    let target_filter = match inner_target {
+        ChooseSpec::Object(filter) => filter,
+        other => panic!("expected object distribution target, got {other:?}"),
+    };
+    assert_eq!(
+        target_filter.zone,
+        Some(Zone::Battlefield),
+        "Feast should distribute counters only on battlefield objects"
+    );
+    assert_eq!(
+        target_filter.controller,
+        Some(PlayerFilter::You),
+        "Feast should distribute counters only among creatures you control"
+    );
+    assert!(
+        target_filter.card_types.contains(&CardType::Creature),
+        "Feast should distribute counters only among creatures, got {target_filter:?}"
+    );
 
     assert!(
         rendered.contains("At the beginning of your end step")
             && rendered.contains("creature")
             && rendered.contains("died this turn")
-            && rendered.contains("+1/+1 counters")
-            && rendered.to_ascii_lowercase().contains("distribute"),
+            && rendered.contains(
+                "you gain that much life and distribute that many +1/+1 counters among any number of creatures you control"
+            ),
         "expected Feast compiled text to preserve the end-step died-this-turn distribution, got {rendered}"
     );
 }
