@@ -15008,6 +15008,24 @@ fn gaeas_revenge_source_filtered_targeting_restriction_parses_strictly() {
 }
 
 #[test]
+fn bartel_runeaxe_aura_spell_targeting_restriction_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bartel Runeaxe")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Warrior])
+        .parse_text("Vigilance\nBartel Runeaxe can't be the target of Aura spells.")
+        .expect("Bartel Runeaxe text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("Vigilance")
+            && debug.contains("BeTargetedFrom")
+            && debug.contains("stack_kind: Some(Spell)")
+            && debug.contains("subtypes: [Aura]"),
+        "expected vigilance and an Aura spell targeting restriction, got {debug}"
+    );
+}
+
+#[test]
 fn source_filtered_targeting_restriction_rejects_mismatched_spell_and_source_filters() {
     let err = parse_error_message(
         CardDefinitionBuilder::new(CardId::new(), "Mismatched Target Restriction")

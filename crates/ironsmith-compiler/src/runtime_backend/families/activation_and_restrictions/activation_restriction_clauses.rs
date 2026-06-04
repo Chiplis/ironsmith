@@ -530,7 +530,7 @@ fn source_filtered_target_restriction(
     words: &[&str],
     target_filter: &ObjectFilter,
 ) -> Result<Option<crate::effect::Restriction>, CardTextError> {
-    if words.len() < 8 || !words.starts_with(&["be", "the", "target", "of"]) {
+    if words.len() < 6 || !words.starts_with(&["be", "the", "target", "of"]) {
         return Ok(None);
     }
 
@@ -539,7 +539,7 @@ fn source_filtered_target_restriction(
         .position(|window| window == ["spells", "or", "abilities", "from"])
         .map(|idx| idx + 4)
     else {
-        return Ok(None);
+        return source_only_target_restriction(tokens, words, target_filter);
     };
     let source_words_start = source_marker_start + 4;
     if source_words_start >= words.len() {
@@ -605,6 +605,48 @@ fn source_filtered_target_restriction(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
+
+    Ok(Some(crate::effect::Restriction::be_targeted_from(
+        target_filter.clone(),
+        source_filter,
+    )))
+}
+
+fn source_only_target_restriction(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+    target_filter: &ObjectFilter,
+) -> Result<Option<crate::effect::Restriction>, CardTextError> {
+    if !words
+        .last()
+        .is_some_and(|word| matches!(*word, "spell" | "spells"))
+    {
+        return Ok(None);
+    }
+
+    let word_view = ActivationRestrictionCompatWords::new(tokens);
+    let source_token_start = word_view.token_index_after_words(4).unwrap_or(tokens.len());
+    let source_tokens = trim_commas(&tokens[source_token_start..]);
+    let descriptor_tokens = source_tokens
+        .get(..source_tokens.len().saturating_sub(1))
+        .unwrap_or_default();
+    let mut source_filter = match parse_object_filter(&source_tokens, false).ok() {
+        Some(filter) => Some(filter),
+        None => parse_subject_object_filter(&source_tokens)?,
+    }
+    .or_else(|| match parse_object_filter(descriptor_tokens, false).ok() {
+        Some(filter) => Some(filter),
+        None => parse_subject_object_filter(descriptor_tokens).ok().flatten(),
+    })
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "unsupported source-filtered target restriction tail (clause: '{}')",
+            crate::runtime_backend::token_word_refs(tokens).join(" ")
+        ))
+    })?;
+
+    source_filter.zone = Some(crate::zone::Zone::Stack);
+    source_filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
 
     Ok(Some(crate::effect::Restriction::be_targeted_from(
         target_filter.clone(),
@@ -691,6 +733,10 @@ pub(crate) fn format_negated_restriction_display(tokens: &[OwnedLexToken]) -> St
             ("non", Some("phyrexian")) => {
                 out.push("non-phyrexian".to_string());
                 idx += 2;
+            }
+            ("aura", _) => {
+                out.push("Aura".to_string());
+                idx += 1;
             }
             _ => {
                 out.push(words[idx].to_string());
