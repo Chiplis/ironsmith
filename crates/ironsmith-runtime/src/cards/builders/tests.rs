@@ -144,6 +144,66 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Feast of the Victorious Dead");
+
+    let def = parse_oracle_card_definition("Feast of the Victorious Dead");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Feast of the Victorious Dead should have an end-step trigger");
+
+    assert_eq!(
+        triggered.intervening_if,
+        Some(crate::effect::Condition::CreatureDiedThisTurn),
+        "Feast of the Victorious Dead should be gated by creatures dying this turn"
+    );
+
+    let effects = triggered.effects.flattened_default_effects();
+    let gain_life = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<GainLifeEffect>())
+        .expect("Feast of the Victorious Dead should gain life");
+    assert_eq!(
+        gain_life.amount,
+        Value::CreaturesDiedThisTurn,
+        "Feast life gain should count creatures that died this turn"
+    );
+
+    let put_counters = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        .expect("Feast of the Victorious Dead should distribute counters");
+    assert_eq!(
+        put_counters.amount,
+        Value::CreaturesDiedThisTurn,
+        "Feast counter distribution should count creatures that died this turn"
+    );
+    assert!(
+        put_counters.distributed,
+        "Feast should lower as a distributed counter effect"
+    );
+    assert!(
+        put_counters.target_count.is_some(),
+        "Feast should preserve the any-number distribution target count"
+    );
+
+    assert!(
+        rendered.contains("At the beginning of your end step")
+            && rendered.contains("creature")
+            && rendered.contains("died this turn")
+            && rendered.contains("+1/+1 counters")
+            && rendered.to_ascii_lowercase().contains("distribute"),
+        "expected Feast compiled text to preserve the end-step died-this-turn distribution, got {rendered}"
+    );
+}
+
+#[test]
 fn wondrous_crucible_strict_parser_compiled_text_and_model_regression() {
     assert_oracle_card_parses_strict("Wondrous Crucible");
 

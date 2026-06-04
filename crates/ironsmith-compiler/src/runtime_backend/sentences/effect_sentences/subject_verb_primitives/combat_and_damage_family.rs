@@ -1011,7 +1011,7 @@ pub(crate) fn parse_distribute_counters_sentence(
     }
 
     let amount_clause = clause.from(1);
-    let (count, used) = parse_number(amount_clause.tokens()).ok_or_else(|| {
+    let (count, used) = parse_value(amount_clause.tokens()).ok_or_else(|| {
         CardTextError::ParseError(format!(
             "missing distributed counter amount (clause: '{}')",
             clause.text()
@@ -1055,7 +1055,7 @@ pub(crate) fn parse_distribute_counters_sentence(
 
     Ok(Some(EffectAst::subject_verb_put_counters(
         counter_type,
-        Value::Fixed(count as i32),
+        count,
         target,
         Some(target_count),
         true,

@@ -1,9 +1,10 @@
 #![allow(dead_code)]
 
 use crate::cards::builders::{
-    CardTextError, EffectAst, KeywordAction, LineAst, StaticAbilityAst, TargetAst, TriggerSpec,
+    CardTextError, EffectAst, KeywordAction, LineAst, PredicateAst, StaticAbilityAst,
+    SubjectVerbActionAst, TargetAst, TriggerSpec,
 };
-use crate::effect::Value;
+use crate::effect::{EventValueSpec, Value};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -77,6 +78,61 @@ const TWO_WORD_KEYWORD_ACTIONS: &[(&[&str], KeywordAction)] = &[
         KeywordAction::Marker("doctor companion"),
     ),
 ];
+
+fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
+    matches!(
+        predicate,
+        PredicateAst::CreatureDiedThisTurn | PredicateAst::CreatureDiedThisTurnOrMore(_)
+    )
+}
+
+fn bind_event_amount_to_creatures_died_this_turn(value: &mut Value) {
+    match value {
+        Value::EventValue(EventValueSpec::Amount) | Value::EventValue(EventValueSpec::LifeAmount) => {
+            *value = Value::CreaturesDiedThisTurn;
+        }
+        Value::EventValueOffset(EventValueSpec::Amount, offset)
+        | Value::EventValueOffset(EventValueSpec::LifeAmount, offset) => {
+            *value = Value::Add(
+                Box::new(Value::CreaturesDiedThisTurn),
+                Box::new(Value::Fixed(*offset)),
+            );
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            bind_event_amount_to_creatures_died_this_turn(left);
+            bind_event_amount_to_creatures_died_this_turn(right);
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner)
+        | Value::SurfaceHinted { value: inner, .. } => {
+            bind_event_amount_to_creatures_died_this_turn(inner);
+        }
+        _ => {}
+    }
+}
+
+fn bind_creatures_died_condition_amounts(effects: &mut [EffectAst]) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                SubjectVerbActionAst::GainLife { amount }
+                | SubjectVerbActionAst::PutCounters { count: amount, .. } => {
+                    bind_event_amount_to_creatures_died_this_turn(amount);
+                }
+                _ => {}
+            },
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            } => {
+                bind_creatures_died_condition_amounts(if_true);
+                bind_creatures_died_condition_amounts(if_false);
+            }
+            _ => {}
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 enum AttackedPlayerFilterKind {
     Any,
@@ -976,7 +1032,10 @@ pub(crate) fn parse_triggered_line_lexed(
             spec.trigger_tokens,
             spec.effects_tokens,
         );
-        if let Ok(effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
+        if let Ok(mut effects) = parse_effect_sentences_lexed(&rewritten_effects_tokens) {
+            if predicate_counts_creatures_died_this_turn(&spec.predicate) {
+                bind_creatures_died_condition_amounts(&mut effects);
+            }
             return Ok(LineAst::Triggered {
                 trigger,
                 effects: vec![EffectAst::Conditional {
