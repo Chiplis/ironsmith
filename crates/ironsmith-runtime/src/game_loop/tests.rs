@@ -51923,6 +51923,231 @@ fn splinters_technique_sneak_cast_returns_attacker_and_searches_library() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn kitsunes_technique_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_492), "Kitsune's Technique")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Sneak {1}{U} (You may cast this spell for {1}{U} if you also return an unblocked attacker you control to hand during the declare blockers step.)\n\
+             Target opponent mills half their library, rounded up.",
+        )
+        .expect("Kitsune's Technique should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn set_up_kitsunes_technique_sneak_game(
+    step: Step,
+    include_unblocked_attacker: bool,
+) -> (GameState, PlayerId, PlayerId, ObjectId, Option<ObjectId>) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(step);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+
+    let spell_id =
+        game.create_object_from_definition(&kitsunes_technique_definition(), alice, Zone::Hand);
+    let attacker_id = if include_unblocked_attacker {
+        let attacker = CardBuilder::new(CardId::from_raw(80_493), "Kitsune Sneak Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker_id,
+                target: AttackTarget::Player(bob),
+            }],
+            ..Default::default()
+        });
+        Some(attacker_id)
+    } else {
+        game.combat = Some(Default::default());
+        None
+    };
+
+    (game, alice, bob, spell_id, attacker_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_kitsune_library_cards(game: &mut GameState, owner: PlayerId, count: u32) {
+    for index in 0..count {
+        let card = CardBuilder::new(
+            CardId::from_raw(80_500 + index),
+            &format!("Kitsune Library Card {index}"),
+        )
+        .card_types(vec![CardType::Sorcery])
+        .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_kitsunes_technique_targeting_bob(
+    game: &mut GameState,
+    alice: PlayerId,
+    bob: PlayerId,
+    spell_id: ObjectId,
+    spell_effect: &crate::resolution::ResolutionProgram,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_opponent(),
+            range: 0..1,
+        }]);
+    for effect in spell_effect.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Kitsune's Technique effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_sneak_cast_is_legal_only_with_unblocked_attacker_during_declare_blockers() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, true);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique should be sneak-castable during declare blockers with an unblocked attacker"
+    );
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, false);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                casting_method: CastingMethod::Alternative(0),
+                ..
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique should not be sneak-castable without an unblocked attacker"
+    );
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::CombatDamage, true);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                casting_method: CastingMethod::Alternative(0),
+                ..
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique sneak timing should end after the declare blockers step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_sneak_cost_returns_attacker_and_mills_odd_library_rounded_up() {
+    let (mut game, alice, bob, spell_id, attacker_id) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, true);
+    let attacker_id = attacker_id.expect("attacker should exist");
+    add_kitsune_library_cards(&mut game, bob, 5);
+
+    let total_cost = game
+        .object(spell_id)
+        .and_then(|object| object.alternative_casts[0].total_cost().cloned())
+        .expect("Kitsune's Technique should have a sneak total cost");
+    let spell_effect = game
+        .object(spell_id)
+        .and_then(|object| object.spell_effect.clone())
+        .expect("Kitsune's Technique should have a spell effect");
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
+    crate::special_actions::pay_total_cost_with_choice_in_context(
+        &mut game,
+        alice,
+        spell_id,
+        &total_cost,
+        crate::costs::PaymentReason::CastSpell,
+        &mut ctx,
+    )
+    .expect("paying Kitsune's Technique sneak cost should succeed");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Kitsune Sneak Attacker")),
+        "paying sneak should return the unblocked attacker to hand"
+    );
+    assert!(
+        !game.battlefield.contains(&attacker_id),
+        "paying sneak should remove the attacker from the battlefield"
+    );
+
+    resolve_kitsunes_technique_targeting_bob(&mut game, alice, bob, spell_id, &spell_effect);
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "five-card library should mill three cards when rounded up"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "Kitsune's Technique should leave the un-milled half in Bob's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_even_library_does_not_round_past_half() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = kitsunes_technique_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    add_kitsune_library_cards(&mut game, bob, 4);
+    let spell_effect = def
+        .spell_effect
+        .as_ref()
+        .expect("Kitsune's Technique should have a spell effect");
+
+    resolve_kitsunes_technique_targeting_bob(&mut game, alice, bob, spell_id, spell_effect);
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        2,
+        "four-card library should mill exactly two cards"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "rounded-up half should not mill an extra card for an even library size"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn quandrix_apprentice_magecraft_puts_only_a_looked_land_into_hand() {
     let mut game = setup_game();

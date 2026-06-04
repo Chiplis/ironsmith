@@ -24798,6 +24798,51 @@ fn splinters_technique_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn kitsunes_technique_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Kitsune's Technique");
+
+    let sneak = def
+        .alternative_casts
+        .iter()
+        .find(|method| method.name().eq_ignore_ascii_case("Sneak"))
+        .expect("Kitsune's Technique should compile with a sneak alternative cost");
+    assert_eq!(
+        sneak.mana_cost().map(|cost| cost.to_oracle()),
+        Some("{1}{U}".to_string()),
+        "Kitsune's Technique should preserve its printed Sneak cost"
+    );
+    assert!(
+        sneak.non_mana_costs().iter().any(|cost| {
+            cost.effect_ref().is_some_and(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::SneakCostEffect>()
+                    .is_some()
+            })
+        }),
+        "Kitsune's Technique Sneak should require returning an unblocked attacker as a real cost"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Sneak {1}{U}"),
+        "compiled text should preserve the Kitsune's Technique sneak keyword cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Target opponent mills half their library, rounded up"),
+        "compiled text should render the rounded-up half-library mill clause, got {rendered}"
+    );
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("MillEffect")
+            && spell_debug.contains("HalfRoundedDown")
+            && spell_debug.contains("CardsInLibrary"),
+        "Kitsune's Technique should lower to a dynamic half-library MillEffect, got {spell_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn permanent_sneak_form_stays_unsupported_until_tapped_attacking_is_modeled() {
     let err = CardDefinitionBuilder::new(CardId::from_raw(80_491), "Permanent Sneak Probe")
         .card_types(vec![CardType::Creature])

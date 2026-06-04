@@ -27680,10 +27680,41 @@ pub(super) fn describe_mill_then_may_return(
     let mill_clause = format!(
         "{player} {} {}",
         player_verb(&player, "mill", "mills"),
-        describe_card_count(&mill.count)
+        describe_mill_count_for_player(&mill.count, &mill.player)
     );
     let return_clause = lowercase_first(&describe_effect(return_effect));
     Some(format!("{mill_clause}, then {player} may {return_clause}"))
+}
+
+fn describe_mill_count_for_player(count: &Value, player: &PlayerFilter) -> String {
+    fn half_library_count(count: &Value) -> Option<(&PlayerFilter, bool)> {
+        let Value::HalfRoundedDown(inner) = count else {
+            return None;
+        };
+        match inner.as_ref() {
+            Value::CardsInLibrary(filter) => Some((filter, false)),
+            Value::Add(left, right) => match (left.as_ref(), right.as_ref()) {
+                (Value::CardsInLibrary(filter), Value::Fixed(1))
+                | (Value::Fixed(1), Value::CardsInLibrary(filter)) => Some((filter, true)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    if let Some((library_player, rounded_up)) = half_library_count(count)
+        && library_player == player
+    {
+        let possessive = if matches!(player, PlayerFilter::You) {
+            "your"
+        } else {
+            "their"
+        };
+        let rounding = if rounded_up { "up" } else { "down" };
+        return format!("half {possessive} library, rounded {rounding}");
+    }
+
+    describe_card_count(count)
 }
 
 fn describe_choose_filter_from_tagged_cards(
@@ -27742,13 +27773,16 @@ fn describe_choose_filter_from_tagged_cards(
 
 fn describe_tagged_mill_clause(mill: &crate::effects::MillEffect) -> String {
     if matches!(mill.player, PlayerFilter::You) {
-        format!("Mill {}", describe_card_count(&mill.count))
+        format!(
+            "Mill {}",
+            describe_mill_count_for_player(&mill.count, &mill.player)
+        )
     } else {
         let player = describe_player_filter(&mill.player);
         format!(
             "{player} {} {}",
             player_verb(&player, "mill", "mills"),
-            describe_card_count(&mill.count)
+            describe_mill_count_for_player(&mill.count, &mill.player)
         )
     }
 }
@@ -33884,7 +33918,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             {
                 return format!("Mill X cards, where X is {where_x}");
             }
-            let count_text = describe_card_count(&mill.count);
+            let count_text = describe_mill_count_for_player(&mill.count, &mill.player);
             if let Some(rest) = count_text.strip_prefix("the number of ") {
                 let basis = singularize_for_each_basis(rest.strip_suffix(" cards").unwrap_or(rest));
                 return format!("Mill a card for each {basis}");
@@ -33908,7 +33942,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 player_verb(&player, "mill", "mills")
             );
         }
-        let count_text = describe_card_count(&mill.count);
+        let count_text = describe_mill_count_for_player(&mill.count, &mill.player);
         if let Some(rest) = count_text.strip_prefix("the number of ") {
             let basis = singularize_for_each_basis(rest.strip_suffix(" cards").unwrap_or(rest));
             return format!(
