@@ -7,8 +7,8 @@ use crate::compiled_text::{
 };
 use crate::effects::{
     AddManaEffect, ChooseModeEffect, ChooseObjectsEffect, ConsultTopOfLibraryEffect,
-    CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect, EffectExecutor,
-    GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
+    CreateTokenCopyEffect, CreateTokenEffect, DestroyEffect, DoubleCountersEffect, DrawCardsEffect,
+    EffectExecutor, GainLifeEffect, IfEffect, MoveToZoneEffect, ReturnFromGraveyardToHandEffect,
     TagTriggeringObjectEffect, TaggedEffect, TargetOnlyEffect, UntapEffect, WithIdEffect,
 };
 use crate::filter::ObjectFilterExt;
@@ -496,6 +496,116 @@ fn staff_of_the_storyteller_multiple_creature_tokens_add_one_story_counter() {
         game.counter_count(staff, CounterType::Named("story")),
         1,
         "creating multiple creature tokens in one event should add one story counter"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_creature_token_copies_add_one_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Story Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let effect = CreateTokenCopyEffect::new(ChooseSpec::creature(), 2, PlayerFilter::You);
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+
+    effect
+        .execute(&mut game, &mut ctx)
+        .expect("creating two creature token copies should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let staff_trigger_count = trigger_queue
+        .entries
+        .iter()
+        .filter(|entry| entry.source == staff)
+        .count();
+    assert_eq!(
+        staff_trigger_count, 1,
+        "one-or-more token-created trigger should fire once for a batch of creature token copies"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Staff token-copy-created trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Staff token-copy-created trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        1,
+        "creating multiple creature token copies in one event should add one story counter"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_noncreature_token_copy_does_not_add_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let artifact = CardDefinitionBuilder::new(CardId::new(), "Story Rock")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_definition(&artifact, alice, Zone::Battlefield);
+    let effect = CreateTokenCopyEffect::new(
+        ChooseSpec::Object(crate::target::ObjectFilter::artifact()),
+        1,
+        PlayerFilter::You,
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+
+    effect
+        .execute(&mut game, &mut ctx)
+        .expect("creating a noncreature token copy should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        "Staff should not trigger from creating a noncreature token copy"
+    );
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        0,
+        "noncreature token copies should not add story counters"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_opponent_creature_token_copy_does_not_add_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Opponent Story Bear")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Bear])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let target = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let effect = CreateTokenCopyEffect::new(ChooseSpec::creature(), 1, PlayerFilter::Opponent);
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)]);
+
+    effect
+        .execute(&mut game, &mut ctx)
+        .expect("creating an opponent creature token copy should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        "Staff should not trigger from creature token copies created by an opponent"
+    );
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        0,
+        "opponent-created creature token copies should not add story counters"
     );
 }
 
