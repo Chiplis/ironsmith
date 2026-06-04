@@ -24096,6 +24096,11 @@ pub(super) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
                 "{player} {verb} a card for each {prefix}{base} {tail}"
             ))
         }
+        Value::PlayerCounters(counter_player, counter_type) => Some(format!(
+            "{player} {verb} a card for each {} counter {}",
+            describe_counter_type(*counter_type),
+            describe_player_counter_holder(counter_player)
+        )),
         Value::CountersOnSource(counter_type) => Some(format!(
             "{player} {verb} a card for each {} counter on this permanent",
             describe_counter_type(*counter_type)
@@ -37650,16 +37655,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);
-        return format!(
-            "{player} {} {} experience counter{}",
-            player_verb(&player, "get", "gets"),
-            describe_value(&experience.count),
-            if matches!(&experience.count, Value::Fixed(1)) {
-                ""
-            } else {
-                "s"
-            }
-        );
+        let amount = match experience.count {
+            Value::Fixed(1) => "an experience counter".to_string(),
+            _ => format!("{} experience counters", describe_value(&experience.count)),
+        };
+        return format!("{player} {} {amount}", player_verb(&player, "get", "gets"));
     }
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()

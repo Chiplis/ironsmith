@@ -2350,6 +2350,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::DiscardHand
                 | SubjectVerbActionAst::PoisonCounters { .. }
                 | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::ExperienceCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
@@ -2426,6 +2427,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::DiscardHand
                 | SubjectVerbActionAst::PoisonCounters { .. }
                 | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::ExperienceCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }

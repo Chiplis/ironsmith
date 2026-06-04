@@ -141,6 +141,16 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
     }
 }
 
+pub(super) fn describe_player_counter_holder(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::You => "you have".to_string(),
+        PlayerFilter::Opponent => "an opponent has".to_string(),
+        PlayerFilter::Any => "a player has".to_string(),
+        PlayerFilter::Target(_) | PlayerFilter::Specific(_) => "that player has".to_string(),
+        other => format!("{} has", describe_player_filter(other)),
+    }
+}
+
 pub(super) fn describe_player_set_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Opponent => "your opponents".to_string(),
@@ -8641,6 +8651,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
             title_case_card_name_fragment(card_name)
         ),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
+        Value::PlayerCounters(player, counter_type) => format!(
+            "the number of {} counters {}",
+            counter_type.description(),
+            describe_player_counter_holder(player)
+        ),
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {

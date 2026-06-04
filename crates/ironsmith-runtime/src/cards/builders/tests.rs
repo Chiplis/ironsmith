@@ -288,6 +288,256 @@ fn consulate_surveillance_activation_cost_requires_and_spends_two_energy() {
 }
 
 #[test]
+fn katara_waterbending_master_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Katara, Waterbending Master");
+    let def = parse_oracle_card_definition("Katara, Waterbending Master");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        "Whenever you cast a spell during an opponent's turn, you get an experience counter.\n\
+Whenever Katara attacks, you may draw a card for each experience counter you have. If you do, discard a card.",
+        "Katara compiled text should preserve experience-counter and if-you-do discard clauses"
+    );
+    assert!(
+        ability_debug.contains("ExperienceCountersEffect")
+            && ability_debug.contains("PlayerCounters")
+            && ability_debug.contains("Experience")
+            && ability_debug.contains("MayEffect")
+            && ability_debug.contains("IfEffect")
+            && ability_debug.contains("DiscardEffect"),
+        "Katara should structurally lower both triggers, got {ability_debug}"
+    );
+}
+
+#[test]
+fn katara_experience_counter_effect_and_count_value_resolve_for_controller() {
+    let def = parse_oracle_card_definition("Katara, Waterbending Master");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
+
+    crate::effects::ExperienceCountersEffect::new(1, PlayerFilter::You)
+        .execute(&mut game, &mut ctx)
+        .expect("Katara experience-counter effect should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").experience_counters,
+        1,
+        "Katara controller should get one experience counter"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").experience_counters,
+        0,
+        "opponent should not get Katara's experience counter"
+    );
+
+    game.player_mut(bob)
+        .expect("Bob exists")
+        .experience_counters = 3;
+    let you_count = crate::effect::Value::PlayerCounters(
+        PlayerFilter::You,
+        crate::object::CounterType::Experience,
+    );
+    let opponent_count = crate::effect::Value::PlayerCounters(
+        PlayerFilter::Opponent,
+        crate::object::CounterType::Experience,
+    );
+    assert_eq!(
+        crate::effects::helpers::resolve_value(&game, &you_count, &ctx)
+            .expect("Katara's draw count should resolve from your experience counters"),
+        1
+    );
+    assert_eq!(
+        crate::effects::helpers::resolve_value(&game, &opponent_count, &ctx)
+            .expect("opponent experience counter value should resolve independently"),
+        3
+    );
+}
+
+#[test]
+fn katara_spell_cast_trigger_only_fires_during_opponents_turn() {
+    fn spell_cast_event(spell: ObjectId, caster: PlayerId) -> crate::triggers::TriggerEvent {
+        crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new(spell, caster, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        )
+    }
+
+    fn instant_definition(name: &str) -> CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build()
+    }
+
+    let def = parse_oracle_card_definition("Katara, Waterbending Master");
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    let own_turn_spell = game.create_object_from_definition(
+        &instant_definition("Alice Own-Turn Instant"),
+        alice,
+        Zone::Stack,
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &spell_cast_event(own_turn_spell, alice))
+            .into_iter()
+            .all(|entry| entry.source != katara),
+        "Katara should not trigger when its controller casts a spell during their own turn"
+    );
+
+    game.turn.active_player = bob;
+    let opponent_spell = game.create_object_from_definition(
+        &instant_definition("Bob Opponent Instant"),
+        bob,
+        Zone::Stack,
+    );
+    assert!(
+        crate::triggers::check_triggers(&game, &spell_cast_event(opponent_spell, bob))
+            .into_iter()
+            .all(|entry| entry.source != katara),
+        "Katara should not trigger for an opponent casting a spell during that opponent's turn"
+    );
+
+    let opponents_turn_spell = game.create_object_from_definition(
+        &instant_definition("Alice Opponent-Turn Instant"),
+        alice,
+        Zone::Stack,
+    );
+    let triggered = crate::triggers::check_triggers(
+        &game,
+        &spell_cast_event(opponents_turn_spell, alice),
+    );
+    let entry = triggered
+        .iter()
+        .find(|entry| entry.source == katara)
+        .expect("Katara should trigger when its controller casts a spell during an opponent's turn");
+    assert_eq!(
+        entry.ability.trigger.display(),
+        "Whenever you cast a spell during an opponent's turn"
+    );
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(katara, alice, &mut dm)
+        .with_triggering_event(entry.triggering_event.clone());
+    for effect in &entry.ability.effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Katara opponent-turn spell trigger should resolve");
+    }
+    assert_eq!(
+        game.player(alice).expect("Alice exists").experience_counters,
+        1,
+        "Katara's controller should get one experience counter from the trigger"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").experience_counters,
+        0,
+        "the opponent should not get Katara's experience counter"
+    );
+}
+
+#[test]
+fn katara_if_you_do_discard_branch_discards_from_controller_only() {
+    fn hand_card(
+        game: &mut crate::game_state::GameState,
+        player: PlayerId,
+        name: &str,
+    ) -> ObjectId {
+        let card = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_definition(&card, player, Zone::Hand)
+    }
+
+    fn katara_attack_if_effect(def: &CardDefinition) -> crate::effects::IfEffect {
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered)
+                    if {
+                        let debug = format!("{:#?}", triggered.effects);
+                        debug.contains("PlayerCounters") && debug.contains("DrawCardsEffect")
+                    } =>
+                {
+                    triggered
+                        .effects
+                        .flattened_default_effects()
+                        .iter()
+                        .find_map(|effect| effect.downcast_ref::<IfEffect>().cloned())
+                }
+                _ => None,
+            })
+            .expect("Katara attack trigger should have an if-you-do follow-up")
+    }
+
+    let def = parse_oracle_card_definition("Katara, Waterbending Master");
+    let if_effect = katara_attack_if_effect(&def);
+    let discard = if_effect
+        .then
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+        .expect("Katara if-you-do branch should discard a card");
+    assert_eq!(
+        discard.player,
+        PlayerFilter::You,
+        "Katara's implicit discard must bind to the controller, not the defending player"
+    );
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    hand_card(&mut game, alice, "Katara Discard Fodder");
+    hand_card(&mut game, bob, "Bob Should Keep This");
+    let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
+    ctx.store_outcome(if_effect.condition, crate::effect::EffectOutcome::count(1));
+
+    if_effect
+        .execute(&mut game, &mut ctx)
+        .expect("Katara positive if-you-do branch should resolve");
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 1);
+    assert_eq!(
+        game.player(bob).expect("Bob exists").hand.len(),
+        1,
+        "defending player should not discard for Katara's if-you-do branch"
+    );
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    hand_card(&mut game, alice, "Katara Declined Fodder");
+    let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
+    ctx.store_outcome(if_effect.condition, crate::effect::EffectOutcome::declined());
+
+    if_effect
+        .execute(&mut game, &mut ctx)
+        .expect("Katara declined if-you-do branch should resolve without discarding");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "declining the draw should skip the discard branch"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 0);
+}
+
+#[test]
 fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
     struct ChooseSourceDecisionMaker {
         chosen: ObjectId,

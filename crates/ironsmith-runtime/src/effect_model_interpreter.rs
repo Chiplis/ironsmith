@@ -1552,6 +1552,12 @@ where
             payload.player.clone(),
         )));
     }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ExperienceCountersEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ExperienceCountersEffect::new(
+            payload.count.clone(),
+            payload.player.clone(),
+        )));
+    }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ControlCombatChoicesThisTurnEffect>(&effect)
     {

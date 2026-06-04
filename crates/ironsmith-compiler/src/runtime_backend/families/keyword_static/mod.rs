@@ -7985,6 +7985,15 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     if COUNTERS_REMOVED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::X));
     }
+    if filter_words.len() >= 4
+        && let Some(counter_type) = parse_counter_type_word(filter_words[0])
+        && COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(filter_words[1])
+    {
+        let player_words = &filter_words[2..];
+        if player_words == ["you", "have"] || player_words == ["you", "ve"] {
+            return Ok(Some(Value::PlayerCounters(PlayerFilter::You, counter_type)));
+        }
+    }
     if DESTROYED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::PendingEffectMetric {
             source: EffectMetricSource::AffectedObjects,
