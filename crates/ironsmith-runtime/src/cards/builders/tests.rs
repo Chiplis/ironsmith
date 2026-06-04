@@ -54167,6 +54167,103 @@ fn calamity_bearer_runtime_ignores_non_giant_and_opposing_giant_sources() {
 }
 
 #[test]
+fn charging_tuskodon_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Charging Tuskodon");
+    let def = parse_oracle_card_definition("Charging Tuskodon");
+    let rendered_lines = canonical_compiled_lines(&def);
+
+    assert!(
+        rendered_lines.iter().any(|line| line == "Trample"),
+        "Charging Tuskodon should render trample, got {rendered_lines:?}"
+    );
+    assert!(
+        rendered_lines.iter().any(|line| line
+            == "If this creature would deal combat damage to a player, it deals double that damage to that player instead."),
+        "Charging Tuskodon should render its combat-damage replacement clause, got {rendered_lines:?}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("DoubleDamageAmountReplacement")
+            && debug.contains("factor: 2")
+            && debug.contains("combat_only: true")
+            && debug.contains("target_player_filter: Some")
+            && debug.contains("target_object_filter: None"),
+        "Charging Tuskodon should compile to a combat-only player damage multiplier, got {debug}"
+    );
+}
+
+#[test]
+fn charging_tuskodon_runtime_doubles_only_its_combat_damage_to_players() {
+    let def = parse_oracle_card_definition("Charging Tuskodon");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let tuskodon = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_305), "Other Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let target_permanent = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_306), "Bob Permanent")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let combat_to_player = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        tuskodon,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(combat_to_player.assignments.len(), 1);
+    assert_eq!(combat_to_player.assignments[0].amount, 8);
+
+    let noncombat_to_player = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        tuskodon,
+        crate::events::DamageTarget::Player(bob),
+        4,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(noncombat_to_player.assignments.len(), 1);
+    assert_eq!(noncombat_to_player.assignments[0].amount, 4);
+
+    let combat_to_permanent = crate::events::processing::process_damage_assignments_with_event(
+        &mut game,
+        tuskodon,
+        crate::events::DamageTarget::Object(target_permanent),
+        4,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(combat_to_permanent.assignments.len(), 1);
+    assert_eq!(combat_to_permanent.assignments[0].amount, 4);
+
+    let other_source_combat_to_player =
+        crate::events::processing::process_damage_assignments_with_event(
+            &mut game,
+            other_creature,
+            crate::events::DamageTarget::Player(bob),
+            4,
+            true,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(other_source_combat_to_player.assignments.len(), 1);
+    assert_eq!(other_source_combat_to_player.assignments[0].amount, 4);
+}
+
+#[test]
 fn rebbec_architect_of_ascension_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Rebbec, Architect of Ascension");
 
