@@ -1410,6 +1410,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::WasEntwined
         | Value::TimesPaidLabel(_)
         | Value::KickCount
+        | Value::PlayerCounters(_, _)
         | Value::CountersOnSource(_)
         | Value::CountersOn(_, _)
         | Value::WasPaid(_)

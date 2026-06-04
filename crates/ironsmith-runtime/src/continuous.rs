@@ -4296,6 +4296,21 @@ fn resolve_value_with_context(
                 })
                 .sum()
         }
+        Value::PlayerCounters(player_filter, counter_type) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| match counter_type {
+                    crate::object::CounterType::Poison => player.poison_counters,
+                    crate::object::CounterType::Energy => player.energy_counters,
+                    crate::object::CounterType::Experience => player.experience_counters,
+                    _ => 0,
+                } as i32)
+                .sum()
+        }
 
         Value::SourcePower => ctx
             .objects

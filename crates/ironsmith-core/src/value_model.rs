@@ -166,6 +166,7 @@ pub enum Value {
         card_name: String,
     },
     LastNotedLifeTotal,
+    PlayerCounters(PlayerFilter, CounterType),
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,

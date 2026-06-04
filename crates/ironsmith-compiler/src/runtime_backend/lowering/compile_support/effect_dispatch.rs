@@ -5602,7 +5602,11 @@ fn compile_subject_verb_effect(
                     if let Some(inferred_player) = resolved_filter
                         .as_ref()
                         .and_then(infer_player_filter_from_object_filter)
-                        .or_else(|| ctx.last_player_filter.clone())
+                        .or_else(|| {
+                            ctx.last_player_filter
+                                .clone()
+                                .filter(|player| !matches!(player, PlayerFilter::Defending))
+                        })
                     {
                         (inferred_player, Vec::new())
                     } else {
@@ -5681,6 +5685,20 @@ fn compile_subject_verb_effect(
             Effect::energy_counters,
             Effect::energy_counters_player,
         ),
+        SubjectVerbActionAst::ExperienceCounters { count } => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::experience_counters,
+                Effect::experience_counters_player,
+            )
+        }
         SubjectVerbActionAst::TicketCounters { count } => compile_subject_verb_player_value_effect(
             role,
             player,

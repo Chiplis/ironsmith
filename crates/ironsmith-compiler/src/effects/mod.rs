@@ -73,7 +73,7 @@ pub use ironsmith_core::{
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
     SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SecretChoiceEffect,
     SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect,
-    SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
+    ExperienceCountersEffect, SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
     ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect,
     SkipDrawStepEffect, SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect,

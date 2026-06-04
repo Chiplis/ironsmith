@@ -1697,6 +1697,9 @@ pub(crate) enum SubjectVerbActionAst {
     EnergyCounters {
         count: Value,
     },
+    ExperienceCounters {
+        count: Value,
+    },
     TicketCounters {
         count: Value,
     },
@@ -3300,6 +3303,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DiscardHand => f.write_str("DiscardHand"),
             Self::PoisonCounters { count } => f.debug_tuple("PoisonCounters").field(count).finish(),
             Self::EnergyCounters { count } => f.debug_tuple("EnergyCounters").field(count).finish(),
+            Self::ExperienceCounters { count } => {
+                f.debug_tuple("ExperienceCounters").field(count).finish()
+            }
             Self::TicketCounters { count } => f.debug_tuple("TicketCounters").field(count).finish(),
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
             Self::PayAnyEnergy { min_amount } => f
@@ -6731,6 +6737,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::EnergyCounters { count },
+        )
+    }
+
+    pub(crate) fn subject_verb_experience_counters(player: PlayerAst, count: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::ExperienceCounters { count },
         )
     }
 
