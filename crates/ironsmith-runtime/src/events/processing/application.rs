@@ -193,6 +193,15 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::ReplaceMana(mana) => {
+            use crate::events::{ManaAddedEvent, downcast_event};
+
+            let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
+                return TraitApplyResult::Unchanged(event);
+            };
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(mana.clone())))
+        }
+
         ReplacementAction::EnterAsCopy {
             source,
             enters_tapped,

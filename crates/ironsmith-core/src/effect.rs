@@ -3899,6 +3899,13 @@ pub struct RegisterDrawReplacementEffect<E = ()> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct RegisterManaReplacementEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub replacement_mana: Vec<ManaSymbol>,
+    pub mode: ReplacementApplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RegisterDamagedBySourceZoneReplacementEffect {
     pub filter: crate::filter_model::ObjectFilter,
     pub from_zone: Option<crate::zone::Zone>,
@@ -3958,6 +3965,20 @@ impl<E> RegisterDrawReplacementEffect<E> {
         Self {
             player,
             replacement_effects,
+            mode,
+        }
+    }
+}
+
+impl RegisterManaReplacementEffect {
+    pub fn new(
+        source_filter: crate::filter_model::ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            source_filter,
+            replacement_mana,
             mode,
         }
     }

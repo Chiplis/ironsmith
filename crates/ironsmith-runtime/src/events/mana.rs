@@ -3,11 +3,13 @@
 use std::any::Any;
 
 use crate::events::raw_event::RawEvent;
-use crate::events::traits::{EventKind, GameEventType};
+use crate::events::traits::{EventKind, GameEventType, ReplacementMatcher, ReplacementPriority};
+use crate::filter::ObjectFilterExt as _;
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 use crate::mana::ManaSymbol;
 use crate::snapshot::ObjectSnapshot;
+use crate::target::ObjectFilter;
 
 /// Mana was added to a player's mana pool.
 #[derive(Debug, Clone)]
@@ -45,6 +47,11 @@ impl ManaAddedEvent {
         self
     }
 
+    pub fn with_mana(mut self, mana: Vec<ManaSymbol>) -> Self {
+        self.mana = mana;
+        self
+    }
+
     pub fn into_trigger_event(self) -> RawEvent {
         RawEvent::new_with_provenance(self, crate::provenance::ProvNodeId::default())
     }
@@ -56,6 +63,92 @@ impl ManaAddedEvent {
         mana: Vec<ManaSymbol>,
     ) -> RawEvent {
         Self::new(source, controller, player, mana).into_trigger_event()
+    }
+}
+
+pub(crate) fn apply_mana_replacements(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    player: PlayerId,
+    mana: Vec<ManaSymbol>,
+    snapshot: Option<ObjectSnapshot>,
+    decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
+) -> Vec<ManaSymbol> {
+    if mana.is_empty() {
+        return mana;
+    }
+
+    let event = crate::events::Event::new_with_provenance(
+        ManaAddedEvent::new(source, controller, player, mana.clone()).with_snapshot(snapshot),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let applied_effects = std::collections::HashSet::new();
+    let applied_effect_keys = std::collections::HashSet::new();
+    match crate::events::processing::process_trait_event_with_dm_and_applied_effects(
+        game,
+        event,
+        decision_maker,
+        &applied_effects,
+        &applied_effect_keys,
+    )
+    .into_event()
+    {
+        Some(event) => crate::events::downcast_event::<ManaAddedEvent>(event.inner())
+            .map(|event| event.mana.clone())
+            .unwrap_or(mana),
+        None => Vec::new(),
+    }
+}
+
+pub mod matchers {
+    use super::*;
+    use crate::events::context::EventContext;
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct ManaProducedBySourceMatcher {
+        source_filter: ObjectFilter,
+    }
+
+    impl ManaProducedBySourceMatcher {
+        pub fn new(source_filter: ObjectFilter) -> Self {
+            Self { source_filter }
+        }
+    }
+
+    impl ReplacementMatcher for ManaProducedBySourceMatcher {
+        fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+            if event.event_kind() != EventKind::ManaAdded {
+                return false;
+            }
+            let Some(mana_event) = event.as_any().downcast_ref::<ManaAddedEvent>() else {
+                return false;
+            };
+            if mana_event.mana.is_empty() {
+                return false;
+            }
+
+            if let Some(object) = ctx.game.object(mana_event.source) {
+                return self.source_filter.matches(object, &ctx.filter_ctx, ctx.game);
+            }
+            if let Some(snapshot) = mana_event.snapshot.as_ref() {
+                return self
+                    .source_filter
+                    .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game);
+            }
+            false
+        }
+
+        fn priority(&self) -> ReplacementPriority {
+            ReplacementPriority::Other
+        }
+
+        fn display(&self) -> String {
+            format!(
+                "If {} would produce mana",
+                self.source_filter.description()
+            )
+        }
     }
 }
 

@@ -936,6 +936,11 @@ pub(crate) enum SubjectVerbActionAst {
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterManaReplacement {
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    },
     RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -2098,6 +2103,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("player", player)
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
+                .finish(),
+            Self::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
+            } => f
+                .debug_struct("RegisterManaReplacement")
+                .field("source_filter", source_filter)
+                .field("replacement_mana", replacement_mana)
+                .field("mode", mode)
                 .finish(),
             Self::RegisterDamagedBySourceZoneReplacement {
                 filter,
@@ -5285,6 +5300,22 @@ impl EffectAst {
                 player,
                 replacement_effects,
                 duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_mana_replacement(
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
             },
         )
     }

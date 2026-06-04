@@ -22983,18 +22983,253 @@ fn parse_starting_life_total_amount_with_extra_math_fails_strictly() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_mana_replacement_clause_deep_water_fails_instead_of_partial_tap() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Deep Water Variant")
-            .parse_text(
-                "{U}: Until end of turn, if you tap a land you control for mana, it produces {U} instead of any other type.",
-            )
-            .expect_err("unsupported mana replacement clause should fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported mana replacement clause")
-            || message.contains("unsupported until-end-of-turn permission clause"),
-        "expected strict mana replacement parse error, got {message}"
+fn parse_deep_water_mana_replacement_clause_strictly() {
+    let def = deep_water_test_definition();
+    let activated = deep_water_activated_ability(&def);
+    assert_eq!(
+        activated.mana_cost.display(),
+        "{U}",
+        "Deep Water activation cost should parse as {{U}}"
     );
+
+    let debug = format!("{:?}", activated.effects);
+    assert!(
+        debug.contains("RegisterManaReplacement"),
+        "Deep Water should lower to a mana replacement registration, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_compiled_text_renders_mana_replacement_clause() {
+    let def = deep_water_test_definition();
+    let joined = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        joined.contains(
+            "Until end of turn, if you tap a land you control for mana, it produces {U} instead of any other type"
+        ),
+        "expected Deep Water replacement clause in compiled text, got {joined}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_replaces_mana_from_land_you_control_until_end_of_turn() {
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let land_id = create_deep_water_test_land(&mut game, alice, "Deep Water Test Swamp");
+    crate::special_actions::perform_activate_mana_ability(&mut game, alice, land_id, 0, &mut dm)
+        .expect("land mana ability should activate");
+
+    let pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        pool.blue, 1,
+        "Deep Water should replace the land's mana with blue"
+    );
+    assert_eq!(pool.black, 0, "the land's original black mana should not be produced");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_mana_replacement_expires_at_cleanup() {
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+    crate::turn::execute_cleanup_step(&mut game);
+
+    let land_id = create_deep_water_test_land(&mut game, alice, "Post-Cleanup Test Swamp");
+    crate::special_actions::perform_activate_mana_ability(&mut game, alice, land_id, 0, &mut dm)
+        .expect("land mana ability should activate after cleanup");
+
+    let pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        pool.black, 1,
+        "the original black mana should be produced after cleanup"
+    );
+    assert_eq!(
+        pool.blue, 0,
+        "Deep Water's replacement should expire at cleanup"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_does_not_replace_mana_from_nonland_you_control() {
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let artifact_id = create_deep_water_test_mana_artifact(&mut game, alice);
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        alice,
+        artifact_id,
+        0,
+        &mut dm,
+    )
+    .expect("artifact mana ability should activate");
+
+    let pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        pool.black, 1,
+        "nonland mana should keep its original black mana"
+    );
+    assert_eq!(pool.blue, 0, "Deep Water should only replace mana from lands");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_does_not_replace_mana_from_land_you_do_not_control() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let land_id = create_deep_water_test_land(&mut game, bob, "Bob's Deep Water Test Swamp");
+    crate::special_actions::perform_activate_mana_ability(&mut game, bob, land_id, 0, &mut dm)
+        .expect("opponent land mana ability should activate");
+
+    let pool = &game.player(bob).expect("bob").mana_pool;
+    assert_eq!(pool.black, 1, "Bob's land should keep its original black mana");
+    assert_eq!(
+        pool.blue, 0,
+        "Deep Water should not replace mana from lands Alice doesn't control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn deep_water_test_definition() -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Deep Water")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{U}: Until end of turn, if you tap a land you control for mana, it produces {U} instead of any other type.",
+        )
+        .expect("Deep Water should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn deep_water_activated_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Deep Water should have an activated ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_deep_water_activation(
+    game: &mut crate::game_state::GameState,
+    deep_water_id: ObjectId,
+    controller: PlayerId,
+    dm: &mut dyn crate::decision::DecisionMaker,
+) {
+    let effects = {
+        let object = game.object(deep_water_id).expect("Deep Water should exist");
+        let activated = object
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("Deep Water should have an activated ability");
+        activated.effects.clone()
+    };
+    let mut ctx = crate::effects::ExecutionContext::new(deep_water_id, controller, dm);
+    crate::game_loop::execute_resolution_program(
+        game,
+        &mut ctx,
+        controller,
+        deep_water_id,
+        &effects,
+        None,
+        &[],
+    )
+    .expect("Deep Water activation should register a mana replacement");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_deep_water_test_land(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let land = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, controller, Zone::Battlefield);
+    game.object_mut(land_id)
+        .expect("land should exist")
+        .abilities
+        .push(crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Black],
+        ));
+    land_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_deep_water_test_mana_artifact(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+) -> ObjectId {
+    let artifact = crate::card::CardBuilder::new(CardId::new(), "Deep Water Test Mana Rock")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, controller, Zone::Battlefield);
+    game.object_mut(artifact_id)
+        .expect("artifact should exist")
+        .abilities
+        .push(crate::ability::Ability::mana(
+            crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
+            vec![ManaSymbol::Black],
+        ));
+    artifact_id
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

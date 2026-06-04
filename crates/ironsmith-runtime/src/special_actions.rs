@@ -1601,6 +1601,16 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         let x_value_from_costs = cost_summary.x_value;
         drop(cost_ctx);
 
+        let mana = crate::events::mana::apply_mana_replacements(
+            game,
+            permanent_id,
+            player,
+            player,
+            mana,
+            Some(source_snapshot.clone()),
+            decision_maker,
+        );
+
         // Add mana to player's pool
         if let Some(player_data) = game.player_mut(player) {
             for symbol in mana.iter().copied() {

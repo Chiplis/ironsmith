@@ -1010,6 +1010,18 @@ pub fn apply_priority_response_with_dm(
                     drain_pending_trigger_events(game, trigger_queue);
 
                     // Add fixed mana to player's pool
+                    let source_snapshot = game
+                        .object(*source)
+                        .map(|obj| ObjectSnapshot::from_object(obj, game));
+                    let mana_to_add = crate::events::mana::apply_mana_replacements(
+                        game,
+                        *source,
+                        player,
+                        player,
+                        mana_to_add.clone(),
+                        source_snapshot.clone(),
+                        decision_maker,
+                    );
                     if !mana_to_add.is_empty() {
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
@@ -1028,16 +1040,13 @@ pub fn apply_priority_response_with_dm(
                                 }
                             }
                         }
-                        let snapshot = game
-                            .object(*source)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game));
                         let event = crate::events::ManaAddedEvent::new(
                             *source,
                             player,
                             player,
-                            mana_to_add.clone(),
+                            mana_to_add,
                         )
-                        .with_snapshot(snapshot)
+                        .with_snapshot(source_snapshot)
                         .into_trigger_event();
                         queue_triggers_from_event(game, trigger_queue, event, false);
                     }

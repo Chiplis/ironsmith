@@ -1272,6 +1272,18 @@ fn compile_subject_verb_effect(
             ));
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::RegisterManaReplacement {
+            source_filter,
+            replacement_mana,
+            mode,
+        } => {
+            let effect = Effect::new(crate::effects::RegisterManaReplacementEffect::new(
+                source_filter.clone(),
+                replacement_mana.clone(),
+                *mode,
+            ));
+            Ok((vec![effect], Vec::new()))
+        }
         SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
             filter,
             from_zone,

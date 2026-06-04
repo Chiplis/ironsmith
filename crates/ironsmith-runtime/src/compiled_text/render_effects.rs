@@ -37162,6 +37162,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             "The next time {player} would draw a card{duration}, instead {replacement}"
         );
     }
+    if let Some(register) = effect.downcast_ref::<crate::effects::RegisterManaReplacementEffect>() {
+        let source = register.source_filter.description();
+        let mana = register
+            .replacement_mana
+            .iter()
+            .copied()
+            .map(describe_mana_symbol)
+            .collect::<Vec<_>>()
+            .join("");
+        let prefix = match register.mode {
+            crate::effects::ReplacementApplyMode::UntilEndOfTurn => "Until end of turn, if ",
+            crate::effects::ReplacementApplyMode::OneShot => "The next time ",
+            crate::effects::ReplacementApplyMode::Resolution => "If ",
+        };
+        if matches!(register.source_filter.controller, Some(PlayerFilter::You)) {
+            return format!(
+                "{prefix}you tap {source} for mana, it produces {mana} instead of any other type"
+            );
+        }
+        return format!(
+            "{prefix}{source} is tapped for mana, it produces {mana} instead of any other type"
+        );
+    }
     if let Some(register) =
         effect.downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()
     {
