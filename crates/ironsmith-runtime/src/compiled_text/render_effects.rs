@@ -621,6 +621,44 @@ fn wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
     None
 }
 
+fn describe_copy_tagged_then_may_cast_copy(effects: &[Effect]) -> Option<String> {
+    let [copy_effect, may_effect] = effects else {
+        return None;
+    };
+
+    let copy_spell = unwrap_basic_tag_wrappers(copy_effect)
+        .downcast_ref::<crate::effects::CopySpellEffect>()?;
+    if copy_spell.count != Value::Fixed(1) || !copy_spell.removed_supertypes.is_empty() {
+        return None;
+    }
+    let ChooseSpec::Tagged(copy_tag) = &copy_spell.target else {
+        return None;
+    };
+
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast_tagged = unwrap_basic_tag_wrappers(cast_effect)
+        .downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if !cast_tagged.as_copy || &cast_tagged.tag != copy_tag {
+        return None;
+    }
+
+    let verb = if cast_tagged.allow_land { "play" } else { "cast" };
+    let mut text = format!("Copy it. You may {verb} the copy");
+    if cast_tagged.without_paying_mana_cost {
+        text.push_str(" without paying its mana cost");
+    }
+    if let Some(reduction) = cast_tagged.cost_reduction.as_ref() {
+        text.push_str(&format!(
+            ". That copy costs {} less to cast",
+            reduction.to_oracle()
+        ));
+    }
+    Some(text)
+}
+
 fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
     let [move_effect, conditional_effect] = effects else {
         return None;
@@ -5435,6 +5473,19 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
+    }
+    if let Some(compact) = describe_copy_tagged_then_may_cast_copy(effects) {
+        return compact;
+    }
+    if effects.len() > 2
+        && let Some(compact_tail) =
+            describe_copy_tagged_then_may_cast_copy(&effects[effects.len() - 2..])
+    {
+        let prefix = describe_effect_list(&effects[..effects.len() - 2]);
+        if prefix.trim().is_empty() {
+            return compact_tail;
+        }
+        return format!("{}. {compact_tail}", prefix.trim_end_matches('.'));
     }
     if let [for_players_effect, look_effect, grant_effect] = effects
         && let Some(for_players) =
@@ -32048,8 +32099,13 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return match move_to_zone.zone {
             Zone::Exile => {
                 if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
-                    let target_text =
+                    let mut target_text =
                         describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+                    if move_to_zone.target.count().is_random()
+                        && !target_text.to_ascii_lowercase().contains(" at random")
+                    {
+                        target_text.push_str(" at random");
+                    }
                     let from_text = match owner {
                         Some(owner) => {
                             format!("{} graveyard", describe_possessive_player_filter(&owner))

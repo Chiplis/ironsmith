@@ -649,6 +649,52 @@ fn colfenors_urn_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(696_480), "Wondrous Crucible")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Permanents you control have ward {2}.\n\
+             At the beginning of your end step, mill two cards, then exile a nonland card at random from your graveyard. Copy it. You may cast the copy without paying its mana cost.",
+        )
+        .expect("Wondrous Crucible should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_spell_definition(
+    card_id: u32,
+    name: &str,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Draw a card.")
+        .expect("Wondrous Crucible test spell should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_land_card(card_id: u32, name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_wondrous_crucible_end_step_trigger_on_stack(game: &mut GameState) -> usize {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Wondrous Crucible end-step trigger processing should succeed");
+    game.stack.len()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn vanilla_creature_definition(
     card_id: u32,
     name: &str,
@@ -693,6 +739,170 @@ fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
         .iter()
         .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_grants_ward_two_to_permanents_you_control_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let protected = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(696_481), "Protected Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let opponent_ward = crate::targeting::collect_ward_costs(&game, &[protected], bob);
+    assert_eq!(opponent_ward.len(), 1, "opponent targeting should see ward");
+    assert_eq!(opponent_ward[0].target, protected);
+    assert_eq!(opponent_ward[0].ward_controller, alice);
+    assert_eq!(opponent_ward[0].cost.display(), "{2}");
+    assert!(
+        crate::targeting::collect_ward_costs(&game, &[protected], alice).is_empty(),
+        "ward should not tax the controller's own targeting"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_randomly_exiles_nonland_and_declining_cast_leaves_it_exiled() {
+    struct DeclineMay;
+
+    impl DecisionMaker for DeclineMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let spark = wondrous_crucible_spell_definition(696_482, "Crucible Spark");
+    game.create_object_from_definition(&spark, alice, Zone::Library);
+    let land = wondrous_crucible_land_card(696_483, "Milled Plains");
+    game.create_object_from_card(&land, alice, Zone::Library);
+    let random_before = game.irreversible_random_count();
+
+    assert_eq!(
+        put_wondrous_crucible_end_step_trigger_on_stack(&mut game),
+        1,
+        "Wondrous Crucible should trigger at the beginning of your end step"
+    );
+    let mut dm = DeclineMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(
+        game.irreversible_random_count(),
+        random_before + 1,
+        "the at-random graveyard selection should consume match randomness"
+    );
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Milled Plains"), 1);
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
+        0,
+        "declining the may-cast branch should not put a copy on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_accepting_may_casts_copy_without_paying_mana() {
+    struct AcceptMay;
+
+    impl DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let spark = wondrous_crucible_spell_definition(696_484, "Crucible Spark");
+    game.create_object_from_definition(&spark, alice, Zone::Library);
+    let land = wondrous_crucible_land_card(696_485, "Milled Island");
+    game.create_object_from_card(&land, alice, Zone::Library);
+
+    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    let mut dm = AcceptMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
+        1,
+        "accepting the may-cast branch should cast a stack copy"
+    );
+    let copy_id = game
+        .stack
+        .last()
+        .expect("the copied spell should be on the stack")
+        .object_id;
+    let copy = game.object(copy_id).expect("stack copy object exists");
+    assert_eq!(copy.name, "Crucible Spark");
+    assert_eq!(copy.zone, Zone::Stack);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "the copied spell should be cast without paying its {{3}} mana cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_with_no_nonland_graveyard_card_mills_but_casts_no_copy() {
+    struct AcceptMay;
+
+    impl DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let plains = wondrous_crucible_land_card(696_486, "Only Plains");
+    let island = wondrous_crucible_land_card(696_487, "Only Island");
+    game.create_object_from_card(&plains, alice, Zone::Library);
+    game.create_object_from_card(&island, alice, Zone::Library);
+
+    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    let mut dm = AcceptMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Plains"), 1);
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Island"), 1);
+    assert_eq!(
+        game.objects_in_zone(Zone::Exile).len(),
+        0,
+        "without a nonland graveyard card, Wondrous Crucible should exile nothing"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "without an exiled nonland card, the copy/may-cast branch should put nothing on the stack"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
