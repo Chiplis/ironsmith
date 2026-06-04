@@ -197,6 +197,14 @@ impl TurnHistory {
             .unwrap_or(0)
     }
 
+    pub fn max_die_rolls_for_players(&self, players: &[PlayerId]) -> u32 {
+        players
+            .iter()
+            .map(|player| self.die_rolls_this_turn.get(player).map_or(0, Vec::len) as u32)
+            .max()
+            .unwrap_or(0)
+    }
+
     pub fn spells_cast_by_player(&self, player: PlayerId) -> u32 {
         self.projected_records()
             .filter_map(|record| record.event.downcast::<SpellCastEvent>())

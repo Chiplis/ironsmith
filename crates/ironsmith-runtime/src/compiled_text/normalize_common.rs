@@ -8528,6 +8528,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 describe_player_filter(filter)
             ),
         },
+        Value::MaxDiceRolledThisTurn(filter) => match filter {
+            PlayerFilter::You => "the number of dice you've rolled this turn".to_string(),
+            PlayerFilter::Opponent => {
+                "the greatest number of dice an opponent has rolled this turn".to_string()
+            }
+            PlayerFilter::Any => "the greatest number of dice a player has rolled this turn".to_string(),
+            _ => format!(
+                "the greatest number of dice {} has rolled this turn",
+                describe_player_filter(filter)
+            ),
+        },
         Value::LandsEnteredBattlefieldThisTurn(filter) => match filter {
             PlayerFilter::You => {
                 "the number of lands that entered the battlefield under your control this turn"

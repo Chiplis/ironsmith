@@ -1394,6 +1394,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
         | Value::MaxCardsDrawnThisTurn(_)
+        | Value::MaxDiceRolledThisTurn(_)
         | Value::LandsEnteredBattlefieldThisTurn(_)
         | Value::MaxCardsInHand(_)
         | Value::CardsInGraveyard(_)
