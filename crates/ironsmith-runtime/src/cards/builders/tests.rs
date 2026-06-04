@@ -5969,6 +5969,55 @@ fn test_parse_soulshift_keyword_line_compiles_keyword_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn kodama_of_the_center_tree_parses_dynamic_soulshift_and_renders_oracle_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(74086), "Kodama of the Center Tree")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Green,
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control.\n\
+             Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control. (When this creature dies, you may return target Spirit card with mana value X or less from your graveyard to your hand.)",
+        )
+        .expect("Kodama of the Center Tree should parse strict oracle text");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control."
+        ),
+        "expected named CDA surface, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control."
+        ),
+        "expected named dynamic soulshift surface, got {rendered}"
+    );
+
+    let soulshift = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Kodama should have a real soulshift triggered ability");
+    let debug = format!("{soulshift:?}");
+    assert!(
+        debug.contains("LessThanOrEqualExpr")
+            && debug.contains("Count(ObjectFilter")
+            && debug.contains("subtypes: [Spirit]"),
+        "expected soulshift target cap to count Spirits you control, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_outlast_keyword_line_compiles_keyword_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Outlast Parse Test")
         .card_types(vec![CardType::Creature])

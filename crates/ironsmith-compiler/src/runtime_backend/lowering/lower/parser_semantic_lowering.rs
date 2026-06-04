@@ -8,14 +8,18 @@ use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
 };
 use crate::runtime_backend::lexer::parser_token_word_refs;
+use crate::runtime_backend::util::is_source_reference_words;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
+use crate::KeywordAction;
 
 const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
 const THIS_CREATURE_SOURCE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["this", "creature"]);
+const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
 const PARTNER_KEYWORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["partner"]);
 const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
@@ -1654,6 +1658,9 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if let Some(actions) = parse_source_has_keyword_actions(&lexed) {
+        return Ok(LineAst::Abilities(actions));
+    }
     if !should_skip_keyword_action_static_probe_tokens(parse_tokens)
         && let Some(actions) = parse_ability_line_lexed(&lexed)
     {
@@ -1701,6 +1708,20 @@ fn lower_rewrite_static_to_chunk_impl(
         "rewrite static lowering could not reconstitute static line '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_source_has_keyword_actions(lexed: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let words = crate::runtime_backend::lexer::token_word_refs(lexed);
+    let has_word_idx = words
+        .iter()
+        .position(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
+    if has_word_idx == 0 || !is_source_reference_words(&words[..has_word_idx]) {
+        return None;
+    }
+
+    let has_token_idx = token_index_for_word_index(lexed, has_word_idx)?;
+    let tail = trim_commas(&lexed[has_token_idx + 1..]);
+    parse_ability_line_lexed(&tail)
 }
 
 fn looks_like_ability_word_marker_tokens(parse_tokens: &[OwnedLexToken]) -> bool {

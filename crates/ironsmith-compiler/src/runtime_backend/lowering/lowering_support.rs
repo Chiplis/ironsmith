@@ -1010,6 +1010,10 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Soulshift(amount) => {
             Some(StaticAbility::keyword_marker(format!("soulshift {amount}")))
         }
+        KeywordAction::SoulshiftValue(value) => Some(StaticAbility::keyword_marker(format!(
+            "soulshift X, where X is {}",
+            crate::payload::describe_soulshift_value(&value)
+        ))),
         KeywordAction::Outlast(cost) => Some(StaticAbility::keyword_marker(format!(
             "outlast {}",
             cost.to_oracle()

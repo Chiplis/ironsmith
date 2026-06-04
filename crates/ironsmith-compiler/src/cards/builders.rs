@@ -301,6 +301,7 @@ impl CardDefinitionBuilder {
             KeywordAction::Riot => self.riot(),
             KeywordAction::Soulbond => self.soulbond(),
             KeywordAction::Soulshift(amount) => self.soulshift(amount),
+            KeywordAction::SoulshiftValue(value) => self.soulshift_value(value),
             KeywordAction::Recover(cost) => self.recover(cost),
             KeywordAction::Outlast(cost) => self.outlast(cost),
             KeywordAction::Scavenge(cost) => self.scavenge(cost),
@@ -1198,15 +1199,39 @@ impl CardDefinitionBuilder {
     }
 
     pub fn soulshift(self, amount: u32) -> Self {
+        self.with_ability(Self::soulshift_triggered_ability(
+            crate::filter::Comparison::LessThanOrEqual(amount as i32),
+            None,
+        ))
+    }
+
+    pub fn soulshift_value(self, amount: Value) -> Self {
+        self.with_ability(Self::soulshift_triggered_ability(
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
+            Some("keyword:soulshift X".to_string()),
+        ))
+    }
+
+    pub(crate) fn soulshift_triggered_ability_from_value(amount: Value) -> crate::ability::Ability {
+        Self::soulshift_triggered_ability(
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(amount)),
+            Some("keyword:soulshift X".to_string()),
+        )
+    }
+
+    fn soulshift_triggered_ability(
+        mana_value: crate::filter::Comparison,
+        presentation_label: Option<String>,
+    ) -> crate::ability::Ability {
         let filter = crate::target::ObjectFilter::default()
             .with_subtype(Subtype::Spirit)
             .owned_by(crate::target::PlayerFilter::You)
             .in_zone(crate::zone::Zone::Graveyard)
-            .with_mana_value(crate::filter::Comparison::LessThanOrEqual(amount as i32));
+            .with_mana_value(mana_value);
         let target = crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(filter))
             .with_count(ChoiceCount::up_to(1));
 
-        self.with_ability(crate::ability::Ability {
+        crate::ability::Ability {
             kind: crate::ability::AbilityKind::Triggered(crate::ability::TriggeredAbility {
                 trigger: crate::triggers::Trigger::this_dies(),
                 effects: crate::resolution::ResolutionProgram::from_effects(vec![
@@ -1214,10 +1239,10 @@ impl CardDefinitionBuilder {
                 ]),
                 choices: vec![target],
                 intervening_if: None,
-                presentation_label: None,
+                presentation_label,
             }),
             functional_zones: vec![crate::zone::Zone::Battlefield],
-        })
+        }
     }
 
     pub fn recover(self, cost: ManaCost) -> Self {

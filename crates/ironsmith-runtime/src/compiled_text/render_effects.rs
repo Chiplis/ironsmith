@@ -40537,14 +40537,14 @@ fn describe_structural_soulshift_keyword(
         return None;
     }
 
-    let amount = soulshift_target_amount(&return_effect.target)?;
-    if soulshift_target_amount(&triggered.choices[0]) != Some(amount) {
+    let amount = soulshift_target_amount_text(&return_effect.target)?;
+    if soulshift_target_amount_text(&triggered.choices[0]) != Some(amount.clone()) {
         return None;
     }
     Some(format!("Soulshift {amount}"))
 }
 
-fn soulshift_target_amount(spec: &ChooseSpec) -> Option<i32> {
+fn soulshift_target_amount_text(spec: &ChooseSpec) -> Option<String> {
     let ChooseSpec::WithCount(inner, count) = spec else {
         return None;
     };
@@ -40563,8 +40563,12 @@ fn soulshift_target_amount(spec: &ChooseSpec) -> Option<i32> {
     {
         return None;
     }
-    match filter.mana_value {
-        Some(crate::filter::Comparison::LessThanOrEqual(amount)) if amount >= 0 => Some(amount),
+    match &filter.mana_value {
+        Some(crate::filter::Comparison::LessThanOrEqual(amount)) if *amount >= 0 => {
+            Some(amount.to_string())
+        }
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => describe_where_x_basis(value)
+            .map(|basis| format!("X, where X is {basis}")),
         _ => None,
     }
 }

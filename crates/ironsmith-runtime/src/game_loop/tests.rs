@@ -12581,6 +12581,154 @@ fn test_card_with_mana_value(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn kodama_of_the_center_tree_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_086), "Kodama of the Center Tree")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Green,
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control.\n\
+             Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control. (When this creature dies, you may return target Spirit card with mana value X or less from your graveyard to your hand.)",
+        )
+        .expect("Kodama of the Center Tree should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spirit_card_with_mana_value(name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kodama_soulshift_effect(def: &crate::cards::CardDefinition) -> &Effect {
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Kodama should have soulshift as a triggered ability");
+
+    triggered
+        .effects
+        .segments
+        .first()
+        .and_then(|segment| segment.default_effects.first())
+        .expect("Kodama soulshift should return a graveyard target")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn player_zone_contains_named(game: &GameState, player: PlayerId, zone: Zone, name: &str) -> bool {
+    let object_ids = match zone {
+        Zone::Hand => &game.player(player).expect("player exists").hand,
+        Zone::Graveyard => &game.player(player).expect("player exists").graveyard,
+        _ => panic!("unsupported zone check {zone:?}"),
+    };
+    object_ids.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|object| object.name == name && object.zone == zone)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_soulshift_returns_spirit_with_mana_value_at_most_spirits_controlled() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit One", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Returned Spirit", 2),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(kodama, alice).with_targets(vec![
+        crate::effects::ResolvedTarget::Object(target),
+    ]);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        kodama_soulshift_effect(&def),
+        &mut ctx,
+    )
+    .expect("Kodama soulshift effect should execute");
+
+    assert!(outcome.status.is_success(), "expected success, got {outcome:?}");
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Hand, "Returned Spirit"),
+        "soulshift should move the legal Spirit card to hand"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Graveyard, "Returned Spirit"),
+        "returned Spirit should no longer be in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_soulshift_rejects_spirit_above_dynamic_mana_value_cap() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit One", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Too Large Spirit", 3),
+        alice,
+        Zone::Graveyard,
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(kodama, alice).with_targets(vec![
+        crate::effects::ResolvedTarget::Object(target),
+    ]);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        kodama_soulshift_effect(&def),
+        &mut ctx,
+    )
+    .expect("Kodama soulshift effect should execute");
+
+    assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Graveyard, "Too Large Spirit"),
+        "over-cap Spirit should stay in the graveyard"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Hand, "Too Large Spirit"),
+        "over-cap Spirit should not move to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn infernal_kirin_discards_only_cards_matching_triggering_spell_mana_value() {
     struct ChooseBobAndAllDiscardCards {

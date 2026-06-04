@@ -119,8 +119,9 @@ pub(crate) use choice_object_clauses::{
 };
 use keyword_action_costs::*;
 pub(crate) use keyword_action_costs::{
-    normalize_cant_words, parse_ability_phrase, parse_payment_clause_as_total_cost,
-    parse_single_word_keyword_action, target_ast_to_object_filter,
+    normalize_cant_words, parse_ability_phrase, parse_dynamic_soulshift_keyword_action,
+    parse_payment_clause_as_total_cost, parse_single_word_keyword_action,
+    target_ast_to_object_filter,
 };
 use keyword_activated_lines::*;
 pub(crate) use keyword_activated_lines::{
