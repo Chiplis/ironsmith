@@ -944,6 +944,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter.clone()),
+            ironsmith_core::StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(
+                filter,
+            ) => StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter.clone()),
             ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => {
                 StaticAbility::hexproof_from(filter.clone())
             }

@@ -1078,6 +1078,130 @@ fn templar_knight_deck_construction_rule_has_no_game_runtime_effects() {
 }
 
 #[test]
+fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_regression() {
+    assert_oracle_card_parses_strict("Mark of Asylum");
+
+    let def = parse_oracle_card_definition("Mark of Asylum");
+    let rendered = unprocessed_compiled_lines(&def);
+    assert_eq!(
+        rendered,
+        vec![
+            "Prevent all noncombat damage that would be dealt to creatures you control."
+                .to_string(),
+        ],
+        "Mark of Asylum should render its noncombat prevention clause exactly"
+    );
+
+    let static_ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            let is_mark_prevention = static_ability.id()
+                == StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching;
+            is_mark_prevention.then_some(static_ability)
+        })
+        .expect("Mark of Asylum should lower to filtered noncombat damage prevention");
+    assert_eq!(
+        static_ability.display(),
+        "Prevent all noncombat damage that would be dealt to creatures you control."
+    );
+
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let _mark = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let damage_source = CardBuilder::new(CardId::new(), "Damage Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source_id = game.create_object_from_card(&damage_source, bob, Zone::Battlefield);
+
+    let protected = CardBuilder::new(CardId::new(), "Protected Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let protected_id = game.create_object_from_card(&protected, alice, Zone::Battlefield);
+
+    let controlled_noncreature = CardBuilder::new(CardId::new(), "Controlled Noncreature")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let controlled_noncreature_id =
+        game.create_object_from_card(&controlled_noncreature, alice, Zone::Battlefield);
+
+    let opponent_creature = CardBuilder::new(CardId::new(), "Opponent Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let opponent_creature_id =
+        game.create_object_from_card(&opponent_creature, bob, Zone::Battlefield);
+
+    let (noncombat_damage, noncombat_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(protected_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        noncombat_damage, 0,
+        "Mark of Asylum should prevent noncombat damage to creatures you control"
+    );
+    assert!(noncombat_prevented);
+
+    let (combat_damage, combat_prevented) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        source_id,
+        crate::events::DamageTarget::Object(protected_id),
+        3,
+        true,
+        crate::events::cause::EventCause::from_combat_damage(source_id, bob),
+    );
+    assert_eq!(
+        combat_damage, 3,
+        "Mark of Asylum should not prevent combat damage"
+    );
+    assert!(!combat_prevented);
+
+    let (controlled_noncreature_damage, controlled_noncreature_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(controlled_noncreature_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        controlled_noncreature_damage, 3,
+        "Mark of Asylum should not prevent damage to noncreature permanents you control"
+    );
+    assert!(!controlled_noncreature_prevented);
+
+    let (opponent_damage, opponent_prevented) =
+        crate::events::processing::process_damage_with_event(
+            &mut game,
+            source_id,
+            crate::events::DamageTarget::Object(opponent_creature_id),
+            3,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+    assert_eq!(
+        opponent_damage, 3,
+        "Mark of Asylum should not prevent damage to creatures you do not control"
+    );
+    assert!(!opponent_prevented);
+}
+
+#[test]
 fn templar_knight_activation_cost_filter_requires_untapped_attacking_named_creatures_you_control() {
     let def = parse_oracle_card_definition("Templar Knight");
     let activated = def

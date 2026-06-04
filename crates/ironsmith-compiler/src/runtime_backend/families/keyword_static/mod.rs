@@ -39,6 +39,7 @@ use super::grammar::abilities::{
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
+    is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed,
     is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed,
     is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed,
     is_protection_mana_value_marker_line_lexed, is_remove_snow_line_lexed,
@@ -2933,6 +2934,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(
             parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
+        ),
+        single_static_ability_ast_rule!(
+            parse_prevent_all_noncombat_damage_to_matching_permanents_line
         ),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
         single_static_ability_ast_rule!(
@@ -9069,6 +9073,42 @@ pub(crate) fn parse_prevent_all_noncombat_damage_to_other_creatures_you_control_
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_prevent_all_noncombat_damage_to_matching_permanents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(tokens) {
+        return Ok(None);
+    }
+
+    let Some((_phrase_idx, phrase_end)) = find_token_word_sequence_span(
+        tokens,
+        &[
+            "prevent",
+            "all",
+            "noncombat",
+            "damage",
+            "that",
+            "would",
+            "be",
+            "dealt",
+            "to",
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[phrase_end..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing prevent-all noncombat damage target filter: {}",
+            render_token_slice(tokens)
+        )));
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    Ok(Some(
+        StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter),
+    ))
 }
 
 pub(crate) fn parse_prevent_all_damage_to_source_by_creatures_line(

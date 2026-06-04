@@ -2452,6 +2452,12 @@ impl StaticAbility {
         Self::new(PreventAllCombatDamageToPermanentsMatching::new(filter))
     }
 
+    pub fn prevent_all_noncombat_damage_to_permanents_matching(
+        filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(PreventAllNoncombatDamageToPermanentsMatching::new(filter))
+    }
+
     pub fn prevent_all_damage_to_self() -> Self {
         Self::new(PreventAllDamageToSelf)
     }
