@@ -1355,6 +1355,57 @@ fn reprocess_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn necromancers_covenant_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Necromancer's Covenant");
+
+    let def = parse_oracle_card_definition("Necromancer's Covenant");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(def.name(), "Necromancer's Covenant");
+    assert_eq!(def.card.card_types, vec![CardType::Enchantment]);
+    assert!(
+        rendered.contains(
+            "When this enchantment enters, exile all creature cards from target player's graveyard, then create a 2/2 black Zombie creature token for each card exiled this way."
+        ),
+        "Necromancer's Covenant should render its exiled-this-way token count, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("target player creates"),
+        "bare create after target-player graveyard exile should be controlled by you, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Zombies you control have Lifelink"),
+        "Necromancer's Covenant should render the Zombie lifelink grant, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("ExileEffect")
+            && ability_debug.contains("CreateTokenEffect")
+            && ability_debug.contains("EffectMetric")
+            && ability_debug.contains("AffectedObjects")
+            && ability_debug.contains("GrantAbility")
+            && ability_debug.contains("Lifelink"),
+        "Necromancer's Covenant should structurally exile, count affected cards, create Zombies, and grant lifelink, got {ability_debug}"
+    );
+}
+
+#[test]
+fn explicit_target_player_create_after_exile_keeps_target_controller() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(405_318), "Explicit Target Create")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile all creature cards from target player's graveyard, then target player creates a 2/2 black Zombie creature token for each card exiled this way.",
+        )
+        .expect("explicit target-player create should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("target player creates"),
+        "explicit target-player token creation should not be rewritten to you, got {rendered}"
+    );
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

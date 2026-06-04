@@ -10009,6 +10009,41 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         None
     }
 
+    fn describe_prior_effect_count_create_token_bundle(filtered: &[&Effect]) -> Option<String> {
+        let [prior_effect, create_effect] = filtered else {
+            return None;
+        };
+        let with_id = prior_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let create = downcast_create_token(create_effect)?;
+        if prior_effect_count_metric(&create.count) != Some(with_id.id)
+            || !matches!(create.controller, PlayerFilter::You)
+            || create.controller_target.is_some()
+            || create.enters_tapped
+            || create.enters_attacking
+            || create.exile_at_end_of_combat
+            || create.sacrifice_at_end_of_combat
+            || create.sacrifice_at_next_end_step
+            || create.exile_at_next_end_step
+        {
+            return None;
+        }
+        let (subject, action) = prior_effect_count_subject(&with_id.effect)?;
+        let subject = if action == "exiled" && subject.contains(" card") {
+            "card".to_string()
+        } else {
+            subject
+        };
+        let prior_text = describe_effect(prior_effect)
+            .replace(" in target player's graveyard", " from target player's graveyard")
+            .replace(" in your graveyard", " from your graveyard")
+            .trim_end_matches('.')
+            .to_string();
+        Some(format!(
+            "{prior_text}, then create a {} for each {subject} {action} this way",
+            describe_token_blueprint(&create.token)
+        ))
+    }
+
     fn describe_prior_effect_dynamic_count_token_bundle(filtered: &[&Effect]) -> Option<String> {
         let [prior_effect, create_effect, set_pt_effect] = filtered else {
             return None;
@@ -14183,6 +14218,14 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         {
             parts.push(rendered);
             idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(rendered) =
+                describe_prior_effect_count_create_token_bundle(&filtered[idx..idx + 2])
+        {
+            parts.push(rendered);
+            idx += 2;
             continue;
         }
         if idx + 2 < filtered.len()
