@@ -58,7 +58,7 @@ impl EffectExecutor for AddColorlessManaEffect {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
         let count = resolve_value(game, &self.amount, ctx)?.max(0) as u32;
 
-        credit_repeated_mana_symbol_from_context(
+        let mana_added = credit_repeated_mana_symbol_from_context(
             game,
             player_id,
             ManaSymbol::Colorless,
@@ -66,7 +66,6 @@ impl EffectExecutor for AddColorlessManaEffect {
             ctx,
         );
 
-        let mana_added: Vec<ManaSymbol> = (0..count).map(|_| ManaSymbol::Colorless).collect();
         Ok(mana_added_value_outcome(ctx, player_id, mana_added))
     }
 

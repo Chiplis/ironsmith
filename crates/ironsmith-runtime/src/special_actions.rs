@@ -1639,7 +1639,8 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
             let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions)
-                .with_mana_source_chosen_creature_type(source_chosen_creature_type);
+                .with_mana_source_chosen_creature_type(source_chosen_creature_type)
+                .with_source_snapshot(source_snapshot.clone());
             if let Some(x) = x_value_from_costs {
                 effect_ctx = effect_ctx.with_x(x);
             }

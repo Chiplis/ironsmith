@@ -50,15 +50,13 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
 
         // If colorless identity, add colorless mana
         if color_identity.is_empty() {
-            credit_repeated_mana_symbol_from_context(
+            let mana = credit_repeated_mana_symbol_from_context(
                 game,
                 player_id,
                 ManaSymbol::Colorless,
                 amount,
                 ctx,
             );
-            let mana =
-                std::iter::repeat_n(ManaSymbol::Colorless, amount as usize).collect::<Vec<_>>();
             return Ok(mana_added_count_outcome(
                 ctx,
                 player_id,
@@ -103,8 +101,7 @@ impl EffectExecutor for AddManaFromCommanderColorIdentityEffect {
         }
 
         let symbol = ManaSymbol::from_color(color);
-        credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
-        let mana = std::iter::repeat_n(symbol, amount as usize).collect::<Vec<_>>();
+        let mana = credit_repeated_mana_symbol_from_context(game, player_id, symbol, amount, ctx);
 
         Ok(mana_added_count_outcome(
             ctx,

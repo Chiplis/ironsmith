@@ -2019,7 +2019,7 @@ pub(super) fn execute_pending_mana_ability(
             pending.activator,
             mana_to_add,
         )
-        .with_snapshot(source_snapshot)
+        .with_snapshot(source_snapshot.clone())
         .into_trigger_event();
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
@@ -2030,6 +2030,9 @@ pub(super) fn execute_pending_mana_ability(
             .with_provenance(pending.provenance)
             .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
             .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type);
+        if let Some(snapshot) = source_snapshot.clone() {
+            ctx = ctx.with_source_snapshot(snapshot);
+        }
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,
             &mut ctx,

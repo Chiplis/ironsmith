@@ -1046,7 +1046,7 @@ pub fn apply_priority_response_with_dm(
                             player,
                             mana_to_add,
                         )
-                        .with_snapshot(source_snapshot)
+                        .with_snapshot(source_snapshot.clone())
                         .into_trigger_event();
                         queue_triggers_from_event(game, trigger_queue, event, false);
                     }
@@ -1059,6 +1059,9 @@ pub fn apply_priority_response_with_dm(
                             .with_mana_source_chosen_creature_type(
                                 mana_source_chosen_creature_type,
                             );
+                        if let Some(snapshot) = source_snapshot.clone() {
+                            ctx = ctx.with_source_snapshot(snapshot);
+                        }
                         if let Some(x) = x_value_from_costs {
                             ctx = ctx.with_x(x);
                         }

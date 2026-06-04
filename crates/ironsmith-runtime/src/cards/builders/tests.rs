@@ -23081,6 +23081,60 @@ fn deep_water_preserves_amount_from_multi_mana_land() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn deep_water_replaces_effect_based_mana_from_tapped_land_you_control() {
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let land_id = create_deep_water_test_land_with_mana_effect(
+        &mut game,
+        alice,
+        "Deep Water Effect-Mana Test Land",
+        vec![ManaSymbol::Black],
+    );
+    let events = crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
+        &mut game,
+        alice,
+        land_id,
+        0,
+        None,
+        &mut dm,
+    )
+    .expect("effect-based land mana ability should activate");
+
+    let pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        pool.blue, 1,
+        "Deep Water should replace effect-produced land mana with blue"
+    );
+    assert_eq!(pool.black, 0, "the effect's original black mana should not be produced");
+
+    let event = events
+        .iter()
+        .find_map(|event| event.downcast::<crate::events::ManaAddedEvent>())
+        .expect("effect-based mana ability should emit a ManaAddedEvent");
+    assert_eq!(event.source, land_id);
+    assert_eq!(event.controller, alice);
+    assert_eq!(event.player, alice);
+    assert_eq!(
+        event.mana,
+        vec![ManaSymbol::Blue],
+        "the emitted mana event should carry the replaced mana"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn deep_water_mana_replacement_expires_at_cleanup() {
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(
@@ -23178,6 +23232,70 @@ fn deep_water_does_not_replace_mana_from_land_you_do_not_control() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn deep_water_does_not_replace_effect_based_mana_from_nonland_or_uncontrolled_land() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let artifact_id = create_deep_water_test_mana_artifact_with_effect(&mut game, alice);
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        alice,
+        artifact_id,
+        0,
+        &mut dm,
+    )
+    .expect("effect-based artifact mana ability should activate");
+
+    let bob_land_id = create_deep_water_test_land_with_mana_effect(
+        &mut game,
+        bob,
+        "Bob's Deep Water Effect-Mana Test Land",
+        vec![ManaSymbol::Black],
+    );
+    crate::special_actions::perform_activate_mana_ability(
+        &mut game,
+        bob,
+        bob_land_id,
+        0,
+        &mut dm,
+    )
+    .expect("opponent effect-based land mana ability should activate");
+
+    let alice_pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        alice_pool.black, 1,
+        "effect-based nonland mana should keep its original black mana"
+    );
+    assert_eq!(
+        alice_pool.blue, 0,
+        "Deep Water should not replace effect-based nonland mana"
+    );
+
+    let bob_pool = &game.player(bob).expect("bob").mana_pool;
+    assert_eq!(
+        bob_pool.black, 1,
+        "effect-based mana from an uncontrolled land should keep its original black mana"
+    );
+    assert_eq!(
+        bob_pool.blue, 0,
+        "Deep Water should not replace effect-based land mana Alice does not control"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn deep_water_test_definition() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Deep Water")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue], vec![ManaSymbol::Blue]]))
@@ -23262,6 +23380,27 @@ fn create_deep_water_test_land_with_mana(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn create_deep_water_test_land_with_mana_effect(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+    mana: Vec<ManaSymbol>,
+) -> ObjectId {
+    let land = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, controller, Zone::Battlefield);
+    game.object_mut(land_id)
+        .expect("land should exist")
+        .abilities
+        .push(crate::ability::Ability::mana_with_effects(
+            crate::cost::TotalCost::free(),
+            vec![crate::effect::Effect::add_mana(mana)],
+        ));
+    land_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn create_deep_water_test_mana_artifact(
     game: &mut crate::game_state::GameState,
     controller: PlayerId,
@@ -23276,6 +23415,25 @@ fn create_deep_water_test_mana_artifact(
         .push(crate::ability::Ability::mana(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
             vec![ManaSymbol::Black],
+        ));
+    artifact_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_deep_water_test_mana_artifact_with_effect(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+) -> ObjectId {
+    let artifact = crate::card::CardBuilder::new(CardId::new(), "Deep Water Effect-Mana Test Rock")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, controller, Zone::Battlefield);
+    game.object_mut(artifact_id)
+        .expect("artifact should exist")
+        .abilities
+        .push(crate::ability::Ability::mana_with_effects(
+            crate::cost::TotalCost::free(),
+            vec![crate::effect::Effect::add_mana(vec![ManaSymbol::Black])],
         ));
     artifact_id
 }
