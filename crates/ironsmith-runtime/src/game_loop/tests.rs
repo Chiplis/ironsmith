@@ -12761,6 +12761,350 @@ fn emrakul_cast_trigger_prompt_does_not_autofill_or_stack_before_choice() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(27_376), "Last Rites")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Black,
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Discard any number of cards. Target player reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards.",
+        )
+        .expect("Last Rites should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_test_card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct LastRitesDecisionMaker {
+    target: PlayerId,
+    discard_from_hand: Vec<ObjectId>,
+    choose_from_target: Vec<ObjectId>,
+    reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for LastRitesDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        vec![Target::Player(self.target)]
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let legal_ids = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        let scripted = if self
+            .discard_from_hand
+            .iter()
+            .any(|id| legal_ids.contains(id))
+        {
+            &self.discard_from_hand
+        } else {
+            &self.choose_from_target
+        };
+        scripted
+            .iter()
+            .copied()
+            .filter(|id| legal_ids.contains(id))
+            .collect()
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.reveal_calls
+            .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let _alice_keeps = game.create_object_from_card(
+        &last_rites_test_card("Alice Keeps", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland_one = game.create_object_from_card(
+        &last_rites_test_card("Bob Nonland One", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_nonland_two = game.create_object_from_card(
+        &last_rites_test_card("Bob Nonland Two", vec![CardType::Creature]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_land = game.create_object_from_card(
+        &last_rites_test_card("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two],
+        choose_from_target: vec![bob_nonland_one, bob_nonland_two],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Last Rites should resolve");
+
+    assert_eq!(
+        dm.reveal_calls.len(),
+        game.players.len(),
+        "Last Rites should reveal the target player's hand publicly"
+    );
+    for (_viewer, subject, public, cards) in &dm.reveal_calls {
+        assert_eq!(*subject, bob);
+        assert!(*public);
+        assert!(cards.contains(&bob_nonland_one));
+        assert!(cards.contains(&bob_nonland_two));
+        assert!(cards.contains(&bob_land));
+    }
+
+    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard One"));
+    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard Two"));
+    assert!(player_zone_contains_named(&game, alice, Zone::Hand, "Alice Keeps"));
+
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland One"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland Two"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
+
+    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard One"));
+    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard Two"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland One"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland Two"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_available_nonlands_when_more_cards_were_discarded() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_three = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Three", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland = game.create_object_from_card(
+        &last_rites_test_card("Bob Only Nonland", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let _bob_land = game.create_object_from_card(
+        &last_rites_test_card("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two, alice_discard_three],
+        choose_from_target: vec![bob_nonland],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Last Rites should resolve with fewer target nonlands than discarded cards");
+
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Only Nonland"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Only Nonland"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kodama_of_the_center_tree_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_086), "Kodama of the Center Tree")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Green,
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control.\n\
+             Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control. (When this creature dies, you may return target Spirit card with mana value X or less from your graveyard to your hand.)",
+        )
+        .expect("Kodama of the Center Tree should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spirit_card_with_mana_value(name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn player_zone_contains_named(game: &GameState, player: PlayerId, zone: Zone, name: &str) -> bool {
+    let object_ids = match zone {
+        Zone::Hand => &game.player(player).expect("player exists").hand,
+        Zone::Graveyard => &game.player(player).expect("player exists").graveyard,
+        _ => panic!("unsupported zone check {zone:?}"),
+    };
+    object_ids.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|object| object.name == name && object.zone == zone)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_dynamic_soulshift_counts_itself_when_dying() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_spirit_one = game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit One", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let other_spirit_two = game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Returned Spirit", 3),
+        alice,
+        Zone::Graveyard,
+    );
+
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        entry.targets.contains(&Target::Object(target)),
+        "two other Spirits plus dying Kodama should make a mana value 3 Spirit legal"
+    );
+
+    game.move_object_by_effect(other_spirit_one, Zone::Graveyard);
+    game.move_object_by_effect(other_spirit_two, Zone::Graveyard);
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Kodama soulshift should resolve");
+
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Hand, "Returned Spirit"),
+        "soulshift should use the pre-death value instead of drifting with later battlefield changes"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Graveyard, "Returned Spirit"),
+        "returned Spirit should no longer be in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_dynamic_soulshift_rejects_above_predeath_count() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Too Large Spirit", 3),
+        alice,
+        Zone::Graveyard,
+    );
+
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack even when choosing no target");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        !entry.targets.contains(&Target::Object(target)),
+        "one other Spirit plus dying Kodama should cap soulshift at mana value 2"
+    );
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Graveyard, "Too Large Spirit"),
+        "over-cap Spirit should stay in the graveyard"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Hand, "Too Large Spirit"),
+        "over-cap Spirit should not move to hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn infernal_kirin_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(74_377), "Infernal Kirin")
         .mana_cost(ManaCost::from_symbols(vec![

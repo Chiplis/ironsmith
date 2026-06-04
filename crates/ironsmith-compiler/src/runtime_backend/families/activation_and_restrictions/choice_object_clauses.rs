@@ -20,6 +20,8 @@ const SECOND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["second
 const THIRD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["third"]);
 const CHOOSE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["choose"], &["chooses"]]);
+const FOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["for"]);
+const EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each"]);
 const CHOICE_CONNECTOR_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["or"], &["and"]]);
 const CREATURE_TYPE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["creature", "type"]);
@@ -78,6 +80,13 @@ const OF_TAGGED_REFERENCE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["of", "them"], &["of", "those"]]);
 const OF_TAGGED_CARDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["of", "those", "card"], &["of", "those", "cards"]]);
+const FOR_EACH_CARD_DISCARDED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["for", "each", "card", "discarded", "this", "way"],
+            &["for", "each", "cards", "discarded", "this", "way"]
+        ]
+);
 const CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
 const CONTROLLER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -209,6 +218,15 @@ fn expand_graveyard_or_hand_disjunction_filter(
     filter
 }
 
+fn parse_choose_objects_for_each_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if FOR_EACH_CARD_DISCARDED_THIS_WAY_PATTERN.matches_words(&words) {
+        Some(Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG))))
+    } else {
+        None
+    }
+}
+
 pub(crate) fn parse_target_player_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
@@ -307,6 +325,14 @@ pub(crate) fn parse_target_player_choose_objects_clause(
 pub(crate) fn parse_you_choose_objects_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount)>, CardTextError> {
+    Ok(parse_you_choose_objects_clause_with_count_value(tokens)?.map(
+        |(chooser, filter, count, _count_value)| (chooser, filter, count),
+    ))
+}
+
+pub(crate) fn parse_you_choose_objects_clause_with_count_value(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<(PlayerAst, ObjectFilter, ChoiceCount, Option<Value>)>, CardTextError> {
     let trimmed_tokens = trim_edge_punctuation(tokens);
     let tokens = trimmed_tokens.as_slice();
     let clause_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
@@ -339,6 +365,19 @@ pub(crate) fn parse_you_choose_objects_clause(
             "missing chosen object after choose clause (clause: '{}')",
             clause_words.join(" ")
         )));
+    }
+
+    let mut count_value = None;
+    let for_each_idx = (0..choose_object_tokens.len().saturating_sub(1)).find(|idx| {
+        FOR_WORD_PATTERN.matches_token(&choose_object_tokens[*idx])
+            && EACH_WORD_PATTERN.matches_token(&choose_object_tokens[*idx + 1])
+    });
+    if let Some(for_each_idx) = for_each_idx {
+        let count_tokens = trim_commas(&choose_object_tokens[for_each_idx..]);
+        if let Some(value) = parse_choose_objects_for_each_count_value(&count_tokens) {
+            count_value = Some(value);
+            choose_object_tokens.truncate(for_each_idx);
+        }
     }
 
     let mut references_it = false;
@@ -399,6 +438,9 @@ pub(crate) fn parse_you_choose_objects_clause(
             continue;
         }
         idx += 1;
+    }
+    if count_value.is_some() {
+        count = ChoiceCount::dynamic_x();
     }
 
     if choose_words.is_empty() {
@@ -496,7 +538,7 @@ pub(crate) fn parse_you_choose_objects_clause(
         choose_filter.controller = Some(PlayerFilter::You);
     }
 
-    Ok(Some((chooser, choose_filter, count)))
+    Ok(Some((chooser, choose_filter, count, count_value)))
 }
 
 pub(crate) fn parse_you_choose_player_clause(

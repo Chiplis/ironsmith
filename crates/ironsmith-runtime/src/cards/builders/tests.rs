@@ -116,6 +116,54 @@ fn parse_clash_repeat_process_spell_effect() {
 }
 
 #[test]
+fn last_rites_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Last Rites");
+
+    let def = parse_oracle_card_definition("Last Rites");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = compiled_text_lines(&def).join(" ");
+
+    assert!(
+        spell_debug.contains("DiscardEffect")
+            && spell_debug.contains("any_number: true")
+            && spell_debug.contains("LookAtHandEffect")
+            && spell_debug.contains("ChooseObjectsEffect")
+            && spell_debug.contains("count_value: Some")
+            && spell_debug.contains("Count(")
+            && spell_debug.contains("discarded_this_way"),
+        "expected Last Rites to discard any number, reveal hand, choose a dynamic count, and discard chosen cards, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("Discard any number of cards. Target player reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards"),
+        "expected Last Rites oracle surface to be preserved, got {rendered}"
+    );
+}
+
+#[test]
+fn kodama_of_the_center_tree_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Kodama of the Center Tree");
+
+    let def = parse_oracle_card_definition("Kodama of the Center Tree");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control."
+        ) && rendered.contains(
+            "Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control."
+        ),
+        "expected Kodama compiled text to preserve CDA and dynamic soulshift surfaces, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("LessThanOrEqualExpr")
+            && ability_debug.contains("Count(ObjectFilter")
+            && ability_debug.contains("subtypes: [Spirit]"),
+        "expected Kodama soulshift target cap to count Spirits you control, got {ability_debug}"
+    );
+}
+
+#[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");
     let ability_debug = format!("{:#?}", def.abilities);

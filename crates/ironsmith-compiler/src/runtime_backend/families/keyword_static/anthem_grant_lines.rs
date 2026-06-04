@@ -5561,6 +5561,24 @@ fn nonstatic_keyword_action_as_granted_object_ability(
     action: KeywordAction,
 ) -> Option<(ParsedAbility, String)> {
     match action {
+        KeywordAction::Soulshift(amount) => {
+            let ability = crate::CardDefinitionBuilder::new(crate::CardId::from_raw(0), "Soulshift")
+                .soulshift(amount)
+                .build()
+                .abilities
+                .into_iter()
+                .next()?;
+            Some((parsed_ability_from_ability(ability), format!("Soulshift {amount}")))
+        }
+        KeywordAction::SoulshiftValue(value) => Some((
+            parsed_ability_from_ability(
+                crate::CardDefinitionBuilder::soulshift_triggered_ability_from_value(value.clone()),
+            ),
+            format!(
+                "Soulshift X, where X is {}",
+                crate::payload::describe_soulshift_value(&value)
+            ),
+        )),
         KeywordAction::Casualty(power) => {
             let mut creature_filter = ObjectFilter::creature().you_control();
             creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(

@@ -1068,11 +1068,6 @@ pub(crate) fn run_choose_objects(
                 || (effect.is_search && effect.search_mode == SearchSelectionMode::Optional);
             if optional_dynamic_choice {
                 (0, x.min(candidates.len()))
-            } else if x > candidates.len() && !effect.is_search {
-                return Err(ExecutionError::Impossible(format!(
-                    "Not enough candidates to choose dynamic-count objects ({x}, {} available)",
-                    candidates.len()
-                )));
             } else {
                 let bounded = x.min(candidates.len());
                 (bounded, bounded)

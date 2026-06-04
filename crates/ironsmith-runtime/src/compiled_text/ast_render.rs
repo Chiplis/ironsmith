@@ -1218,6 +1218,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": as long as "))
         && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || lower.starts_with("this creature's power and toughness ")
         || lower.starts_with("as this enters")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
@@ -1232,6 +1233,12 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": this creature gets ")
         || lower.contains(": this creature deals ")
         || lower.contains(": whenever this creature deals combat damage to a player");
+    if card.supertypes.contains(&Supertype::Legendary) && lower.starts_with("soulshift ") {
+        let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
+        if !source_name.is_empty() {
+            return format!("{source_name} has {}", lowercase_first(line));
+        }
+    }
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
         return line.to_string();
     }
