@@ -657,6 +657,23 @@ impl ReplacementEffect {
         }
     }
 
+    /// Create a new replacement effect using a boxed trait-based matcher.
+    pub fn with_boxed_matcher(
+        source: ObjectId,
+        controller: PlayerId,
+        matcher: Box<dyn ReplacementMatcher>,
+        replacement: ReplacementAction,
+    ) -> Self {
+        Self {
+            id: ReplacementEffectId(0),
+            source,
+            controller,
+            replacement,
+            priority_override: None,
+            matcher: Some(matcher),
+        }
+    }
+
     /// Set a trait-based matcher on this effect.
     pub fn with_trait_matcher<M: ReplacementMatcher + 'static>(mut self, matcher: M) -> Self {
         self.matcher = Some(Box::new(matcher));

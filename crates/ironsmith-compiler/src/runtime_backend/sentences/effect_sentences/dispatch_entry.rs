@@ -2102,7 +2102,6 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { target }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target }
-            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                 source: target,
@@ -2127,6 +2126,14 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. } => {
                 Some(target.clone())
             }
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                protected_target,
+                destination_target,
+                ..
+            } => protected_target
+                .as_ref()
+                .or(destination_target.as_ref())
+                .cloned(),
             _ => None,
         },
         _ => {
@@ -2875,10 +2882,6 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 target: effect_target,
                 ..
             }
-            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
-                target: effect_target,
-                ..
-            }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 target: effect_target,
                 ..
@@ -2915,6 +2918,18 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
             } => {
                 if should_replace_self_replacement_target(effect_target) {
                     *effect_target = target.clone();
+                }
+            }
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                protected_target,
+                destination_target,
+                ..
+            } => {
+                for effect_target in protected_target.iter_mut().chain(destination_target.iter_mut())
+                {
+                    if should_replace_self_replacement_target(effect_target) {
+                        *effect_target = target.clone();
+                    }
                 }
             }
             SubjectVerbActionAst::Pump {

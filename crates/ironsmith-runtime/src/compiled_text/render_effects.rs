@@ -36848,10 +36848,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(redirect_next) =
         effect.downcast_ref::<crate::effects::RedirectNextDamageToTargetEffect>()
     {
+        let protected_text = redirect_next
+            .protected_target
+            .as_ref()
+            .map(describe_choose_spec)
+            .unwrap_or_else(|| "this creature".to_string());
+        let destination_text = match redirect_next.destination {
+            crate::effects::RedirectNextDamageDestination::Controller => "you".to_string(),
+            crate::effects::RedirectNextDamageDestination::TargetObject => describe_choose_spec(
+                redirect_next
+                    .destination_target
+                    .as_ref()
+                    .expect("redirect-next damage destination target"),
+            ),
+        };
         return format!(
-            "The next {} damage that would be dealt to this creature this turn is dealt to {} instead",
+            "The next {} damage that would be dealt to {} this turn is dealt to {} instead",
             describe_value(&redirect_next.amount),
-            describe_choose_spec(&redirect_next.target)
+            protected_text,
+            destination_text
         );
     }
     if let Some(redirect_next_time) =

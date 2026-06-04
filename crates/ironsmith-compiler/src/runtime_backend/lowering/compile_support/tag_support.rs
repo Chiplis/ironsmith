@@ -124,7 +124,6 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::RegisterZoneReplacement { target, .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { target }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { source: target, .. }
-            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                 source: target,
@@ -144,6 +143,18 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. } => visit(target),
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                protected_target,
+                destination_target,
+                ..
+            } => {
+                if let Some(target) = protected_target {
+                    visit(target);
+                }
+                if let Some(target) = destination_target {
+                    visit(target);
+                }
+            }
             SubjectVerbActionAst::RetargetStackObject { target, mode, .. } => {
                 visit(target);
                 if let RetargetModeAst::OneToFixed { target: fixed } = mode {

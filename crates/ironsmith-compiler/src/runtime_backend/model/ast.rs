@@ -1425,7 +1425,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     RedirectNextDamageFromSourceToTarget {
         amount: Value,
-        target: TargetAst,
+        protected_target: Option<TargetAst>,
+        destination: RedirectNextTimeDamageDestinationAst,
+        destination_target: Option<TargetAst>,
     },
     RedirectNextTimeDamageToSource {
         source: PreventNextTimeDamageSourceAst,
@@ -2894,10 +2896,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("count", count)
                 .field("player", player)
                 .finish(),
-            Self::RedirectNextDamageFromSourceToTarget { amount, target } => f
+            Self::RedirectNextDamageFromSourceToTarget {
+                amount,
+                protected_target,
+                destination,
+                destination_target,
+            } => f
                 .debug_struct("RedirectNextDamageFromSourceToTarget")
                 .field("amount", amount)
-                .field("target", target)
+                .field("protected_target", protected_target)
+                .field("destination", destination)
+                .field("destination_target", destination_target)
                 .finish(),
             Self::RedirectNextTimeDamageToSource {
                 source,
@@ -4916,7 +4925,28 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount, target },
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                amount,
+                protected_target: None,
+                destination: RedirectNextTimeDamageDestinationAst::TargetObject,
+                destination_target: Some(target),
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_redirect_next_damage_to_controller(
+        amount: Value,
+        protected_target: TargetAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                amount,
+                protected_target: Some(protected_target),
+                destination: RedirectNextTimeDamageDestinationAst::Controller,
+                destination_target: None,
+            },
         )
     }
 

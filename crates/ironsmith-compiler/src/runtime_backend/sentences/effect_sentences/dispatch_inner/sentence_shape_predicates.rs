@@ -908,7 +908,6 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::GrantToTarget { target, .. }
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { target, .. }
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { target, .. }
-            | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
             | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
             | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                 source: target,
@@ -918,6 +917,18 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::DealDistributedDamage { target, .. }
             | SubjectVerbActionAst::Tap { target }
             | SubjectVerbActionAst::Untap { target } => bind_dynamic_target_count(target, replacement),
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                protected_target,
+                destination_target,
+                ..
+            } => {
+                if let Some(target) = protected_target {
+                    bind_dynamic_target_count(target, replacement);
+                }
+                if let Some(target) = destination_target {
+                    bind_dynamic_target_count(target, replacement);
+                }
+            }
             SubjectVerbActionAst::Fight {
                 creature1,
                 creature2,

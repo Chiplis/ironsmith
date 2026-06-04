@@ -3729,16 +3729,35 @@ impl<E> PreventNextTimeDamageEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum RedirectNextDamageDestination {
+    Controller,
+    TargetObject,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct RedirectNextDamageToTargetEffect {
-    pub target: ChooseSpec,
     pub amount: Option<Value>,
+    pub protected_target: Option<ChooseSpec>,
+    pub destination: RedirectNextDamageDestination,
+    pub destination_target: Option<ChooseSpec>,
 }
 
 impl RedirectNextDamageToTargetEffect {
     pub fn new(amount: impl Into<Value>, target: ChooseSpec) -> Self {
         Self {
-            target,
             amount: Some(amount.into()),
+            protected_target: None,
+            destination: RedirectNextDamageDestination::TargetObject,
+            destination_target: Some(target),
+        }
+    }
+
+    pub fn to_controller(amount: impl Into<Value>, protected_target: ChooseSpec) -> Self {
+        Self {
+            amount: Some(amount.into()),
+            protected_target: Some(protected_target),
+            destination: RedirectNextDamageDestination::Controller,
+            destination_target: None,
         }
     }
 }

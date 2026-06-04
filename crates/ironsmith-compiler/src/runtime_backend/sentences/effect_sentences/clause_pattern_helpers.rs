@@ -1,7 +1,8 @@
 use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, OwnedLexToken,
     PlayerAst, PreventNextTimeDamageSourceAst, PreventNextTimeDamageTargetAst,
-    RedirectNextTimeDamageDestinationAst, SubjectAst, TagKey, TargetAst, TextSpan, Verb,
+    RedirectNextTimeDamageDestinationAst, SubjectAst, SubjectVerbActionAst, TagKey, TargetAst,
+    TextSpan, Verb,
 };
 use crate::effect::{EventValueSpec, Until, Value};
 use crate::static_abilities::StaticAbilityId;
@@ -2394,12 +2395,11 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         &["this", "creature"],
         &["this", "permanent"],
     ]);
-    if !protects_source {
-        return Err(CardTextError::ParseError(format!(
-            "unsupported redirected-next-damage protected target (clause: '{}')",
-            clause_text
-        )));
-    }
+    let protected_target = if protects_source {
+        None
+    } else {
+        Some(parse_target_phrase(protected_clause.tokens())?)
+    };
 
     let tail_clause = clause
         .after_words(this_turn_idx + 2)
@@ -2419,11 +2419,31 @@ pub(crate) fn parse_redirect_next_damage_sentence(
             clause_text
         )));
     }
-    let target = parse_target_phrase(target_clause.tokens())?;
+    let effect = if target_clause.matches_any_words(&[&["you"]]) {
+        let protected_target = protected_target.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "missing redirected-next-damage protected target (clause: '{}')",
+                clause_text
+            ))
+        })?;
+        EffectAst::subject_verb_redirect_next_damage_to_controller(amount, protected_target)
+    } else {
+        let target = parse_target_phrase(target_clause.tokens())?;
+        let mut effect =
+            EffectAst::subject_verb_redirect_next_damage_from_source_to_target(amount, target);
+        if let EffectAst::SubjectVerb(subject_verb) = &mut effect {
+            if let SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                protected_target: effect_protected_target,
+                ..
+            } = &mut subject_verb.action
+            {
+                *effect_protected_target = protected_target;
+            }
+        }
+        effect
+    };
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_redirect_next_damage_from_source_to_target(amount, target),
-    ]))
+    Ok(Some(vec![effect]))
 }
 
 pub(crate) fn parse_can_block_additional_creature_this_turn_clause(
