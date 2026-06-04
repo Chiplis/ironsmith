@@ -12,6 +12,7 @@ use self::subject_verb_followups::{
 use super::super::activation_and_restrictions::{
     parse_choose_card_type_phrase_words, parse_mana_usage_restriction_sentence_lexed,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
+    parse_you_choose_objects_clause_with_count_value,
 };
 use super::super::effect_ast_traversal::{
     for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,

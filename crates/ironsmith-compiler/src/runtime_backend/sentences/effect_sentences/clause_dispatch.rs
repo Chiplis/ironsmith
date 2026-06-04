@@ -11,7 +11,8 @@ use super::super::activation_and_restrictions::{
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_may_cast_it_sentence, parse_single_word_keyword_action,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
-    parse_you_choose_player_clause, starts_with_target_indicator,
+    parse_you_choose_objects_clause_with_count_value, parse_you_choose_player_clause,
+    starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
@@ -1332,11 +1333,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if let Some((chooser, choose_filter, choose_count)) = parse_you_choose_objects_clause(tokens)? {
+    if let Some((chooser, choose_filter, choose_count, count_value)) =
+        parse_you_choose_objects_clause_with_count_value(tokens)?
+    {
         return Ok(EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
-            count_value: None,
+            count_value,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         });

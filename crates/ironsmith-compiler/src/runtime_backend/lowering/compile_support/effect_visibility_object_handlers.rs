@@ -203,6 +203,10 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
+            let count_value = count_value
+                .as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             let (mut effects, choices) = if let Some(zones) = cross_zone_choices {
                 compile_choose_objects_across_zones_with_subject(
                     subject,
@@ -327,6 +331,10 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
             let default_search =
                 slice_contains(zones.as_slice(), &Zone::Library) && !chooses_tagged_pool;
+            let count_value = count_value
+                .as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             let (effects, choices) = compile_choose_objects_across_zones_with_subject(
                 subject,
                 resolved_filter,

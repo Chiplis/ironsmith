@@ -1188,6 +1188,108 @@ fn choose_primary_zone(choose: &crate::effects::ChooseObjectsEffect) -> Option<Z
     choose.filter.zone.or(choose.zone)
 }
 
+fn object_filter_has_tag(filter: &ObjectFilter, tag: &crate::tag::TagKey) -> bool {
+    filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == *tag
+    })
+}
+
+fn choose_spec_player_filter(spec: &ChooseSpec) -> Option<PlayerFilter> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. } => choose_spec_player_filter(spec),
+        ChooseSpec::Target(inner) => {
+            Some(PlayerFilter::Target(Box::new(choose_spec_player_filter(inner)?)))
+        }
+        ChooseSpec::Player(filter) => Some(filter.clone()),
+        _ => None,
+    }
+}
+
+fn hand_choice_selection_from_it(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    let mut filter = choose.filter.clone();
+    filter.zone = None;
+    filter.owner = None;
+    filter.controller = None;
+    filter.tagged_constraints.clear();
+    let mut selection = if choose_primary_zone(choose) == Some(Zone::Hand)
+        && choose.filter.card_types.is_empty()
+        && choose.filter.excluded_card_types == vec![CardType::Land]
+    {
+        "nonland card".to_string()
+    } else if choose_primary_zone(choose) == Some(Zone::Hand)
+        && choose.filter.card_types.is_empty()
+        && choose.filter.excluded_card_types.is_empty()
+        && choose.filter.subtypes.is_empty()
+        && choose.filter.colors.is_none()
+        && choose.filter.mana_value.is_none()
+    {
+        "card".to_string()
+    } else {
+        filter.description()
+    };
+    if !selection.contains("card") {
+        selection.push_str(" card");
+    }
+    with_indefinite_article(&selection)
+}
+
+fn describe_discard_reveal_hand_choose_discard_chosen(effects: &[&Effect]) -> Option<String> {
+    let [discard_cost_effect, look_effect, choose_effect, discard_chosen_effect] = effects else {
+        return None;
+    };
+    let discard_cost = discard_cost_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    let discarded_tag = discard_cost.tag.as_ref()?;
+    if discard_cost.player != PlayerFilter::You
+        || discard_cost.count != Value::Fixed(0)
+        || !discard_cost.any_number
+        || discard_cost.random
+        || discard_cost.card_filter.is_some()
+    {
+        return None;
+    }
+
+    let look = look_effect.downcast_ref::<crate::effects::LookAtHandEffect>()?;
+    if !look.reveal {
+        return None;
+    }
+    let look_player = choose_spec_player_filter(&look.target)?;
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || !choose.count.is_dynamic_x()
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || choose.filter.owner.as_ref() != Some(&look_player)
+        || !matches!(
+            choose.count_value.as_ref(),
+            Some(Value::Count(filter)) if object_filter_has_tag(filter, discarded_tag)
+        )
+    {
+        return None;
+    }
+
+    let discard_chosen = discard_chosen_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+    if discard_chosen.random
+        || discard_chosen.any_number
+        || discard_chosen.player != look_player
+        || !matches!(&discard_chosen.count, Value::Count(filter) if object_filter_has_tag(filter, &choose.tag))
+        || !discard_chosen
+            .card_filter
+            .as_ref()
+            .is_some_and(|filter| object_filter_has_tag(filter, &choose.tag))
+    {
+        return None;
+    }
+
+    let revealer = describe_choose_spec(&look.target);
+    let reveal_verb = player_verb(&revealer, "reveal", "reveals");
+    let selection = hand_choice_selection_from_it(choose);
+    Some(format!(
+        "Discard any number of cards. {} {} their hand, then you choose {selection} from it for each card discarded this way. That player discards those cards",
+        capitalize_first(&revealer),
+        reveal_verb
+    ))
+}
+
 fn describe_reveal_hand_subset_choose_then_discard(effects: &[&Effect]) -> Option<String> {
     let [reveal_effect, choose_effect, discard_effect] = effects else {
         return None;
@@ -6685,32 +6787,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             .downcast_ref::<crate::effects::MoveToLibraryNthFromTopEffect>()
     }
 
-    fn hand_choice_selection_from_it(choose: &crate::effects::ChooseObjectsEffect) -> String {
-        let mut filter = choose.filter.clone();
-        filter.zone = None;
-        filter.owner = None;
-        filter.controller = None;
-        filter.tagged_constraints.clear();
-        let mut selection = if choose_primary_zone(choose) == Some(Zone::Hand)
-            && choose.filter.card_types.is_empty()
-            && choose.filter.excluded_card_types == vec![CardType::Land]
-        {
-            "nonland card".to_string()
-        } else if choose_primary_zone(choose) == Some(Zone::Hand)
-            && choose.filter.card_types.is_empty()
-            && choose.filter.excluded_card_types.is_empty()
-            && choose.filter.subtypes.is_empty()
-            && choose.filter.colors.is_none()
-            && choose.filter.mana_value.is_none()
-        {
-            "card".to_string()
-        } else {
-            filter.description()
-        };
-        if !selection.contains("card") {
-            selection.push_str(" card");
-        }
-        with_indefinite_article(&selection)
+    if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&raw_effects) {
+        return compact;
     }
 
     fn library_top_position_text(position: &crate::effect::Value) -> String {
@@ -7042,6 +7120,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
         return compact;
     }
@@ -16279,6 +16360,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     }
 
     let effect_refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&effect_refs) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_player_protection_from_everything_pair(&effect_refs) {
         return Some(compact);
     }

@@ -998,6 +998,75 @@ fn reprocess_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn last_rites_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Last Rites");
+
+    let def = parse_oracle_card_definition("Last Rites");
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert_eq!(def.name(), "Last Rites");
+    assert_eq!(def.card.card_types, vec![CardType::Sorcery]);
+    assert_eq!(
+        rendered,
+        "Discard any number of cards. Target player reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards."
+    );
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Last Rites should have spell effects")
+        .flattened_default_effects();
+    let [discard_cost_effect, reveal_effect, choose_effect, discard_chosen_effect] = effects else {
+        panic!("Last Rites should lower to discard/reveal/choose/discard effects, got {effects:#?}");
+    };
+    let discard_cost = discard_cost_effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .expect("Last Rites should start by discarding any number of your cards");
+    let reveal = reveal_effect
+        .downcast_ref::<crate::effects::LookAtHandEffect>()
+        .expect("Last Rites should reveal the target player's hand");
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("Last Rites should choose cards from the revealed hand");
+    let discard_chosen = discard_chosen_effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .expect("Last Rites should discard the chosen cards");
+
+    assert_eq!(discard_cost.player, PlayerFilter::You);
+    assert!(discard_cost.any_number);
+    assert_eq!(discard_cost.tag.as_ref().map(|tag| tag.as_str()), Some("discarded_this_way"));
+    assert_eq!(reveal.target, ChooseSpec::target_player());
+    assert!(reveal.reveal);
+    assert_eq!(choose.chooser, PlayerFilter::You);
+    assert_eq!(choose.filter.zone, Some(Zone::Hand));
+    assert_eq!(choose.filter.owner, Some(PlayerFilter::target_player()));
+    assert_eq!(choose.filter.excluded_card_types, vec![CardType::Land]);
+    assert!(choose.count.dynamic_x);
+    assert!(matches!(
+        choose.count_value.as_ref(),
+        Some(Value::Count(filter)) if filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "discarded_this_way"
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    ));
+    assert_eq!(discard_chosen.player, PlayerFilter::target_player());
+    assert!(matches!(
+        &discard_chosen.count,
+        Value::Count(filter) if filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == choose.tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    ));
+    assert!(discard_chosen.card_filter.as_ref().is_some_and(|filter| {
+        filter.owner == Some(PlayerFilter::target_player())
+            && filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == choose.tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+    }));
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

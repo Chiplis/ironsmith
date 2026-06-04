@@ -12722,6 +12722,190 @@ fn infernal_kirin_discards_only_cards_matching_triggering_spell_mana_value() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(27_376), "Last Rites")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Black,
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Discard any number of cards. Target player reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards.",
+        )
+        .expect("Last Rites should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn test_card_for_last_rites(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
+    fn stable_id_of(game: &GameState, id: ObjectId) -> crate::ids::StableId {
+        game.object(id).expect("object should exist").stable_id
+    }
+
+    fn current_id_of(
+        game: &GameState,
+        stable_id: crate::ids::StableId,
+        label: &str,
+    ) -> ObjectId {
+        game.find_object_by_stable_id(stable_id)
+            .unwrap_or_else(|| panic!("{label} should still exist"))
+    }
+
+    struct LastRitesDecisionMaker {
+        target: PlayerId,
+        discard_from_hand: Vec<ObjectId>,
+        choose_from_target: Vec<ObjectId>,
+        reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
+    }
+
+    impl DecisionMaker for LastRitesDecisionMaker {
+        fn decide_targets(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<Target> {
+            vec![Target::Player(self.target)]
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let legal_ids = ctx
+                .candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .collect::<Vec<_>>();
+            let scripted = if self
+                .discard_from_hand
+                .iter()
+                .any(|id| legal_ids.contains(id))
+            {
+                &self.discard_from_hand
+            } else {
+                &self.choose_from_target
+            };
+            scripted
+                .iter()
+                .copied()
+                .filter(|id| legal_ids.contains(id))
+                .collect()
+        }
+
+        fn view_cards(
+            &mut self,
+            _game: &GameState,
+            viewer: PlayerId,
+            cards: &[ObjectId],
+            ctx: &crate::decisions::context::ViewCardsContext,
+        ) {
+            self.reveal_calls
+                .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_keeps = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Keeps", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland_one = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Nonland One", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_nonland_two = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Nonland Two", vec![CardType::Creature]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_land = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+    let alice_discard_one_stable = stable_id_of(&game, alice_discard_one);
+    let alice_discard_two_stable = stable_id_of(&game, alice_discard_two);
+    let alice_keeps_stable = stable_id_of(&game, alice_keeps);
+    let bob_nonland_one_stable = stable_id_of(&game, bob_nonland_one);
+    let bob_nonland_two_stable = stable_id_of(&game, bob_nonland_two);
+    let bob_land_stable = stable_id_of(&game, bob_land);
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two],
+        choose_from_target: vec![bob_nonland_one, bob_nonland_two],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Last Rites should resolve");
+
+    assert_eq!(
+        dm.reveal_calls.len(),
+        game.players.len(),
+        "Last Rites should reveal the target player's hand publicly"
+    );
+    for (_viewer, subject, public, cards) in &dm.reveal_calls {
+        assert_eq!(*subject, bob);
+        assert!(*public);
+        assert!(cards.contains(&bob_nonland_one));
+        assert!(cards.contains(&bob_nonland_two));
+        assert!(cards.contains(&bob_land));
+    }
+
+    let alice_discard_one = current_id_of(&game, alice_discard_one_stable, "Alice Discard One");
+    let alice_discard_two = current_id_of(&game, alice_discard_two_stable, "Alice Discard Two");
+    let alice_keeps = current_id_of(&game, alice_keeps_stable, "Alice Keeps");
+    let bob_nonland_one = current_id_of(&game, bob_nonland_one_stable, "Bob Nonland One");
+    let bob_nonland_two = current_id_of(&game, bob_nonland_two_stable, "Bob Nonland Two");
+    let bob_land = current_id_of(&game, bob_land_stable, "Bob Land");
+
+    let alice_hand = &game.player(alice).expect("alice exists").hand;
+    assert!(!alice_hand.contains(&alice_discard_one));
+    assert!(!alice_hand.contains(&alice_discard_two));
+    assert!(alice_hand.contains(&alice_keeps));
+
+    let bob_hand = &game.player(bob).expect("bob exists").hand;
+    assert!(!bob_hand.contains(&bob_nonland_one));
+    assert!(!bob_hand.contains(&bob_nonland_two));
+    assert!(bob_hand.contains(&bob_land));
+
+    let alice_graveyard = &game.player(alice).expect("alice exists").graveyard;
+    assert!(alice_graveyard.contains(&alice_discard_one));
+    assert!(alice_graveyard.contains(&alice_discard_two));
+    let bob_graveyard = &game.player(bob).expect("bob exists").graveyard;
+    assert!(bob_graveyard.contains(&bob_nonland_one));
+    assert!(bob_graveyard.contains(&bob_nonland_two));
+    assert!(!bob_graveyard.contains(&bob_land));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn infernal_kirin_triggers_for_arcane_spell() {
     let mut game = setup_game();
