@@ -5562,7 +5562,103 @@ fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<Stri
     ))
 }
 
+fn describe_destroy_then_color_conditional(
+    destroy_effect: &Effect,
+    conditional_effect: &Effect,
+) -> Option<String> {
+    let tagged_destroy = destroy_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let destroy = tagged_destroy
+        .effect
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+    let crate::effect::Condition::TaggedObjectMatches(condition_tag, filter) = &conditional.condition
+    else {
+        return None;
+    };
+    if condition_tag != &tagged_destroy.tag {
+        return None;
+    }
+    let colors = filter.colors?;
+    let mut color_only = filter.clone();
+    color_only.colors = None;
+    if color_only != crate::target::ObjectFilter::default() {
+        return None;
+    }
+    let color_text = describe_filter_color_alternatives(colors);
+    if color_text.is_empty() {
+        return None;
+    }
+    let noun = destroyed_target_reference_noun(&destroy.spec)?;
+    let true_branch = lowercase_first(
+        describe_effect_list(&conditional.if_true)
+            .trim()
+            .trim_end_matches('.'),
+    );
+    if true_branch.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "{}. If that {noun} was {color_text}, {true_branch}",
+        describe_effect(destroy_effect).trim_end_matches('.')
+    ))
+}
+
+fn describe_filter_color_alternatives(colors: crate::color::ColorSet) -> String {
+    let mut names = Vec::new();
+    if colors.contains(crate::color::Color::White) {
+        names.push("white".to_string());
+    }
+    if colors.contains(crate::color::Color::Blue) {
+        names.push("blue".to_string());
+    }
+    if colors.contains(crate::color::Color::Black) {
+        names.push("black".to_string());
+    }
+    if colors.contains(crate::color::Color::Red) {
+        names.push("red".to_string());
+    }
+    if colors.contains(crate::color::Color::Green) {
+        names.push("green".to_string());
+    }
+    join_with_or(&names)
+}
+
+fn destroyed_target_reference_noun(spec: &ChooseSpec) -> Option<&'static str> {
+    let target = match spec.unhinted() {
+        ChooseSpec::Target(inner) => inner.unhinted(),
+        ChooseSpec::WithCount(inner, count) if count.is_single() => match inner.unhinted() {
+            ChooseSpec::Target(target) => target.unhinted(),
+            other => other,
+        },
+        _ => return None,
+    };
+    let ChooseSpec::Object(filter) = target else {
+        return None;
+    };
+    if filter.card_types.contains(&crate::types::CardType::Creature) {
+        Some("creature")
+    } else if filter.card_types.contains(&crate::types::CardType::Artifact) {
+        Some("artifact")
+    } else if filter.card_types.contains(&crate::types::CardType::Enchantment) {
+        Some("enchantment")
+    } else if filter.card_types.contains(&crate::types::CardType::Land) {
+        Some("land")
+    } else if filter.card_types.contains(&crate::types::CardType::Planeswalker) {
+        Some("planeswalker")
+    } else {
+        Some("permanent")
+    }
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let [first, second] = effects
+        && let Some(compact) = describe_destroy_then_color_conditional(first, second)
+    {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
