@@ -41912,6 +41912,35 @@ fn parse_windcrag_siege_full_text_compiles() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_barrensteppe_siege_full_text_compiles_and_renders_choice_bullets() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Barrensteppe Siege")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "As this enchantment enters, choose Abzan or Mardu.\n• Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control.\n• Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.",
+        )
+        .expect("Barrensteppe Siege should compile strictly");
+
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("As this enchantment enters, choose abzan or mardu."),
+        "expected named-option as-enters choice text, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("• Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control."),
+        "expected Abzan bullet trigger without redundant chosen-option condition, got:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("• Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice."),
+        "expected Mardu bullet trigger with compact controller-qualified death condition, got:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("chosen option"),
+        "choice bullet rendering should not repeat the structural chosen-option gate, got:\n{rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_as_long_as_its_enchanted_condition_line() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fledgling Osprey Variant")
         .card_types(vec![CardType::Creature])

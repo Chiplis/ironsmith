@@ -79,6 +79,9 @@ pub(super) fn try_parse_modal_bullet_block(
     idx: usize,
     line: &PreprocessedLine,
 ) -> Result<Option<(RewriteLineCst, usize)>, CardTextError> {
+    if is_bullet_line(line) {
+        return Ok(None);
+    }
     if is_named_option_as_enters_choice_header(line) {
         return Ok(None);
     }

@@ -975,6 +975,25 @@ fn labeled_choice_block_has_peer(items: &[PreprocessedItem], idx: usize) -> bool
     false
 }
 
+fn labeled_choice_block_has_named_option_header(items: &[PreprocessedItem], idx: usize) -> bool {
+    let mut probe = idx;
+    while probe > 0 {
+        probe -= 1;
+        match items.get(probe) {
+            Some(PreprocessedItem::Line(line)) if is_named_option_as_enters_choice_header(line) => {
+                return true;
+            }
+            Some(PreprocessedItem::Line(line)) if is_nonkeyword_choice_labeled_line(line) => {
+                continue;
+            }
+            Some(PreprocessedItem::Metadata(_)) => continue,
+            Some(PreprocessedItem::Line(_)) | None => break,
+        }
+    }
+
+    false
+}
+
 fn normalize_trailing_keyword_activation_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -1674,8 +1693,8 @@ mod tests {
         normalize_named_source_trigger_for_builder, normalize_statement_parse_groups_lexed,
         normalize_trailing_keyword_activation_sentence_lexed,
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
-        parse_statement_line_cst, parse_static_line_cst, parse_triggered_line_cst,
-        preprocess_document, probe_triggered_split, render_token_slice,
+        parse_statement_line_cst, parse_static_line_cst, parse_text_to_semantic_document,
+        parse_triggered_line_cst, preprocess_document, probe_triggered_split, render_token_slice,
         rewrite_keyword_dash_parse_tokens, rewrite_when_one_or_more_this_way_line,
         split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
         split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
@@ -2460,6 +2479,73 @@ mod tests {
     }
 
     #[test]
+    fn triggered_conditional_split_accepts_creature_died_under_your_control() {
+        let line = single_preprocessed_line(
+            "At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice",
+        );
+
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("Barrensteppe Siege Mardu trigger should parse");
+
+        assert_eq!(parsed.trigger_text, "the beginning of your end step");
+        assert!(
+            parsed.effect_text.contains("each opponent sacrifices a creature of their choice"),
+            "expected sacrifice-choice effect text, got {}",
+            parsed.effect_text
+        );
+        assert!(
+            matches!(
+                parsed.intervening_if,
+                Some(crate::cards::builders::PredicateAst::ValueComparison { .. })
+            ),
+            "expected controller-qualified death predicate, got {:?}",
+            parsed.intervening_if
+        );
+    }
+
+    #[test]
+    fn triggered_end_step_puts_counters_on_each_creature_you_control() {
+        let line = single_preprocessed_line(
+            "At the beginning of your end step, put a +1/+1 counter on each creature you control.",
+        );
+
+        let parsed = parse_triggered_line_cst(&line)
+            .expect("Barrensteppe Siege Abzan trigger should parse");
+
+        assert_eq!(parsed.trigger_text, "the beginning of your end step");
+        assert!(
+            parsed.effect_text.contains("put a +1/+1 counter on each creature you control"),
+            "expected counter effect text, got {}",
+            parsed.effect_text
+        );
+    }
+
+    #[test]
+    fn bullet_choice_labels_are_detected_as_choice_peers() {
+        let line = single_preprocessed_line(
+            "• Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.",
+        );
+
+        assert!(
+            super::is_nonkeyword_choice_labeled_line(&line),
+            "expected bullet-prefixed option label to be detected as a choice peer"
+        );
+    }
+
+    #[test]
+    fn barrensteppe_siege_choice_block_parses_both_bullet_options() {
+        let (semantic, _) = parse_text_to_semantic_document(
+            CardDefinitionBuilder::new(CardId::new(), "Barrensteppe Siege")
+                .card_types(vec![CardType::Enchantment]),
+            "As this enchantment enters, choose Abzan or Mardu.\n• Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control.\n• Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.".to_string(),
+            false,
+        )
+        .expect("Barrensteppe Siege choice block should parse");
+
+        assert_eq!(semantic.items.len(), 3);
+    }
+
+    #[test]
     fn triggered_presentation_label_is_derived_from_lexed_line_tokens() {
         let tokens = lex_line(
             "Mold Earth — Whenever one or more lands enter under an opponent's control without being played, draw a card.",
@@ -3188,7 +3274,8 @@ fn try_parse_labeled_line_dispatch(
     };
 
     let is_named_label = is_named_ability_label(label.as_str());
-    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx);
+    let preserve_as_choice_label = labeled_choice_block_has_peer(&preprocessed.items, idx)
+        && labeled_choice_block_has_named_option_header(&preprocessed.items, idx);
     if preserve_keyword_prefix_for_parse(label.as_str()) {
         return Ok(None);
     }

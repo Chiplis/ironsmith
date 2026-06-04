@@ -3537,6 +3537,13 @@ fn parse_object_death_this_turn_predicate(words: &[&str]) -> Option<PredicateAst
     match condition.event {
         crate::runtime_backend::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
             let count = comparison_to_strict_at_least_threshold(&condition.comparison)?;
+            if let Some(player) = condition.under_controller {
+                return Some(PredicateAst::ValueComparison {
+                    left: Value::CreaturesDiedThisTurnControlledBy(player),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(count as i32),
+                });
+            }
             if count <= 1 {
                 Some(PredicateAst::CreatureDiedThisTurn)
             } else {
@@ -8063,6 +8070,14 @@ mod tests {
             (
                 "If seven or more creatures died this turn",
                 PredicateAst::CreatureDiedThisTurnOrMore(7),
+            ),
+            (
+                "If a creature died under your control this turn",
+                PredicateAst::ValueComparison {
+                    left: Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                },
             ),
             (
                 "If a creature card was put into your graveyard from anywhere this turn",
