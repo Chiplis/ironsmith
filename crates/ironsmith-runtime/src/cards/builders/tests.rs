@@ -669,6 +669,10 @@ fn staff_of_the_storyteller_activation_removes_story_counter_and_draws() {
     );
     game.add_counters(staff, CounterType::Named("story"), 1)
         .expect("Staff should accept a story counter");
+    assert!(
+        crate::cost::can_pay_cost(&game, staff, alice, &activated.mana_cost).is_err(),
+        "Staff activation should not be payable without white mana even with a story counter"
+    );
     game.player_mut(alice)
         .expect("Alice should exist")
         .mana_pool
