@@ -690,6 +690,10 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
             counter_type.description(),
             pluralized_subject_text(filter)
         ),
+        AnthemCountExpression::DistinctCounterTypesAmong(filter) => format!(
+            "different kind of counter among {}",
+            pluralized_subject_text(filter)
+        ),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
         }
@@ -790,6 +794,10 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         AnthemCountExpression::CountersAmong(filter, counter_type) => Some(format!(
             "{} counter among {}",
             counter_type.description(),
+            pluralized_subject_text(filter)
+        )),
+        AnthemCountExpression::DistinctCounterTypesAmong(filter) => Some(format!(
+            "different kind of counter among {}",
             pluralized_subject_text(filter)
         )),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
@@ -1609,6 +1617,19 @@ pub(crate) fn resolve_anthem_count_expression(
             .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
             .map(|obj| obj.counters.get(counter_type).copied().unwrap_or(0) as i32)
             .sum(),
+        AnthemCountExpression::DistinctCounterTypesAmong(filter) => {
+            use std::collections::HashSet;
+
+            let mut seen = HashSet::new();
+            for obj in all_game_object_ids(game)
+                .into_iter()
+                .filter_map(|id| game.object(id))
+                .filter(|obj| filter.matches_non_recursive(obj, &filter_ctx, game))
+            {
+                seen.extend(obj.counters.keys().copied());
+            }
+            seen.len() as i32
+        }
         AnthemCountExpression::BasicLandTypesAmong(filter) => {
             use std::collections::HashSet;
 
@@ -2023,8 +2044,14 @@ impl StaticAbilityKind for Anthem {
         };
 
         if let Some(condition) = &self.condition {
+            let condition_text = describe_static_condition(condition);
+            if self.source_only
+                && let Some(rest) = condition_text.strip_prefix("as long as ")
+            {
+                return format!("As long as {rest}, {text}");
+            }
             text.push(' ');
-            text.push_str(&describe_static_condition(condition));
+            text.push_str(&condition_text);
         }
         text
     }

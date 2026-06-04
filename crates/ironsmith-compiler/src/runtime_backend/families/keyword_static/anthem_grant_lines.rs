@@ -3038,6 +3038,23 @@ pub(crate) fn parse_static_condition_clause(
 
         let filter_word_view = AnthemNormalizedWords::new(filter_tokens);
         let filter_words = filter_word_view.word_refs();
+        if filter_words.starts_with(&["different", "kinds", "of", "counters", "among"])
+            && let Some(among_filter_start) = filter_word_view.token_index_for_word_index(5)
+        {
+            let filter = parse_object_filter(&filter_tokens[among_filter_start..], false).map_err(
+                |_| {
+                    CardTextError::ParseError(format!(
+                        "unsupported distinct-counter-kind filter in static condition (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                },
+            )?;
+            return Ok(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::DistinctCounterTypesAmong(filter),
+                comparison,
+                display: Some(clause_words.join(" ")),
+            });
+        }
         if let Some(counter_word_idx) = COUNTER_OR_COUNTERS_WORD_PATTERN.find_word(&filter_words)
             && counter_word_idx > 0
             && filter_words

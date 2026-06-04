@@ -35870,6 +35870,187 @@ fn test_squee_the_immortal_not_castable_from_unlisted_zone() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn hundred_battle_veteran_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(72_617), "Hundred-Battle Veteran")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(4, 2))
+        .parse_text(
+            "As long as there are three or more different kinds of counters among creatures you control, this creature gets +2/+4.\nYou may cast this card from your graveyard. If you do, it enters with a finality counter on it.",
+        )
+        .expect("Hundred-Battle Veteran should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hundred_battle_veteran_counter_kind_threshold_buffs_only_at_three_kinds() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let veteran = hundred_battle_veteran_definition();
+    let veteran_id = game.create_object_from_definition(&veteran, alice, Zone::Battlefield);
+    let ally = create_creature(&mut game, "Counter Ally", alice, 1, 1);
+    let other_ally = create_creature(&mut game, "Other Counter Ally", alice, 1, 1);
+
+    game.add_counters(veteran_id, crate::object::CounterType::Finality, 1);
+    game.add_counters(ally, crate::object::CounterType::PlusOnePlusOne, 1);
+    let below = game
+        .calculated_characteristics(veteran_id)
+        .expect("Veteran characteristics below threshold");
+    assert_eq!(below.power, Some(4));
+    assert_eq!(below.toughness, Some(2));
+
+    game.add_counters(other_ally, crate::object::CounterType::Stun, 1);
+    let active = game
+        .calculated_characteristics(veteran_id)
+        .expect("Veteran characteristics at threshold");
+    assert_eq!(active.power, Some(6));
+    assert_eq!(active.toughness, Some(6));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hundred_battle_veteran_graveyard_cast_enters_with_finality_counter_and_exiles_on_death() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+
+    let veteran = hundred_battle_veteran_definition();
+    let graveyard_id = game.create_object_from_definition(&veteran, alice, Zone::Graveyard);
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Graveyard,
+                    casting_method: CastingMethod::PlayFrom { use_alternative: None, .. },
+                } if *spell_id == graveyard_id
+            )
+        })
+        .expect("Hundred-Battle Veteran should be castable from graveyard");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Hundred-Battle Veteran graveyard cast should complete");
+    resolve_stack_entry(&mut game).expect("Hundred-Battle Veteran should resolve");
+
+    let entered = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Hundred-Battle Veteran")
+        })
+        .expect("graveyard-cast Hundred-Battle Veteran should enter the battlefield");
+    assert_eq!(
+        game.counter_count(entered, crate::object::CounterType::Finality),
+        1,
+        "graveyard-cast Veteran should enter with one finality counter"
+    );
+
+    crate::events::processing::process_destroy(&mut game, entered, None, &mut dm);
+    assert!(
+        game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Hundred-Battle Veteran")
+        }),
+        "a Veteran with a finality counter should be exiled instead of dying"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hundred_battle_veteran_normal_cast_does_not_get_finality_counter() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 3);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Black, 1);
+
+    let veteran = hundred_battle_veteran_definition();
+    let hand_id = game.create_object_from_definition(&veteran, alice, Zone::Hand);
+    let cast_action = compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                LegalAction::CastSpell {
+                    spell_id,
+                    from_zone: Zone::Hand,
+                    casting_method: CastingMethod::Normal,
+                } if *spell_id == hand_id
+            )
+        })
+        .expect("Hundred-Battle Veteran should be normally castable from hand");
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = SelectFirstDecisionMaker;
+    apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(cast_action),
+        &mut dm,
+    )
+    .expect("Hundred-Battle Veteran normal cast should complete");
+    resolve_stack_entry(&mut game).expect("Hundred-Battle Veteran should resolve");
+
+    let entered = game
+        .battlefield
+        .iter()
+        .copied()
+        .find(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Hundred-Battle Veteran")
+        })
+        .expect("normal-cast Hundred-Battle Veteran should enter the battlefield");
+    assert_eq!(
+        game.counter_count(entered, crate::object::CounterType::Finality),
+        0,
+        "normal-cast Veteran should not enter with a finality counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn eelectrocute_definition() -> crate::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(72_615), "Eelectrocute")
         .mana_cost(ManaCost::from_pips(vec![

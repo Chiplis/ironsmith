@@ -3402,20 +3402,21 @@ fn apply_play_from_cast_this_way_grants(
         | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } => (*source, *zone),
         _ => return,
     };
-    let Some(source) = game.object(source_id) else {
+    let source = game.object(source_id).or_else(|| game.object(stack_id));
+    let Some(source) = source else {
         return;
     };
     let Some(mut spell_as_cast) = game.object(stack_id).cloned() else {
         return;
     };
     spell_as_cast.zone = zone;
-    let ctx = game.filter_context_for(caster, Some(source_id));
+    let ctx = game.filter_context_for(caster, Some(source.id));
     let mut granted = Vec::new();
     for ability in &source.abilities {
         let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
             continue;
         };
-        if !static_ability.is_active(game, source_id) {
+        if !static_ability.is_active(game, source.id) {
             continue;
         }
         let Some(spec) = static_ability.grant_spec() else {
@@ -3430,7 +3431,11 @@ fn apply_play_from_cast_this_way_grants(
         }
     }
     for ability in granted {
-        game.grant_temporary_static_ability_to_object_until_end_of_turn(stack_id, ability.id());
+        game.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+            stack_id,
+            ability.id(),
+            Some(ability),
+        );
     }
 }
 

@@ -2972,12 +2972,27 @@ impl GameState {
         object_id: ObjectId,
         ability: crate::static_abilities::StaticAbilityId,
     ) {
+        self.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+            object_id,
+            ability,
+            None,
+        );
+    }
+
+    pub fn grant_temporary_static_ability_payload_to_object_until_end_of_turn(
+        &mut self,
+        object_id: ObjectId,
+        ability: crate::static_abilities::StaticAbilityId,
+        ability_payload: Option<crate::static_abilities::StaticAbility>,
+    ) {
         let expires_end_of_turn = self.turn.turn_number;
         let Some(object) = self.object_mut(object_id) else {
             return;
         };
         if object.temporary_static_ability_grants.iter().any(|grant| {
-            grant.ability == ability && grant.expires_end_of_turn >= expires_end_of_turn
+            grant.ability == ability
+                && grant.ability_payload == ability_payload
+                && grant.expires_end_of_turn >= expires_end_of_turn
         }) {
             return;
         }
@@ -2985,6 +3000,7 @@ impl GameState {
             .temporary_static_ability_grants
             .push(crate::object::TemporaryStaticAbilityGrant {
                 ability,
+                ability_payload,
                 expires_end_of_turn,
             });
     }

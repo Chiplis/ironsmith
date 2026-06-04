@@ -794,6 +794,17 @@ where
                     ". If you cast {spell_text} this way, it gains haste until end of turn"
                 );
             }
+            if grants.len() == 1
+                && let Some(rest) = grants[0]
+                    .strip_prefix("Enters the battlefield with ")
+                    .or_else(|| grants[0].strip_prefix("enters the battlefield with "))
+            {
+                let spell_text = cast_this_way_spell_subject(&self.filter);
+                if self.filter == ObjectFilter::source() {
+                    return format!(". If you do, it enters with {rest}");
+                }
+                return format!(". If you cast {spell_text} this way, it enters with {rest}");
+            }
             format!(". Spells cast this way gain {}", grants.join(" and "))
         };
 
@@ -801,25 +812,37 @@ where
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::source()
         {
-            return format!("{may_prefix} cast this card from your graveyard");
+            return format!(
+                "{may_prefix} cast this card from your graveyard{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Exile
             && self.filter == ObjectFilter::source()
         {
-            return format!("{may_prefix} cast this card from exile");
+            return format!(
+                "{may_prefix} cast this card from exile{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
-            return format!("{may_prefix} play lands from your graveyard");
+            return format!(
+                "{may_prefix} play lands from your graveyard{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard
             && self.filter == ObjectFilter::default()
         {
-            return format!("{may_prefix} play lands and cast spells from your graveyard");
+            return format!(
+                "{may_prefix} play lands and cast spells from your graveyard{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Graveyard

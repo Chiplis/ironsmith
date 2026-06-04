@@ -68237,6 +68237,27 @@ fn esper_origins_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn hundred_battle_veteran_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Hundred-Battle Veteran");
+
+    let def = parse_oracle_card_definition("Hundred-Battle Veteran");
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
+    let debug = format!("{def:#?}");
+    assert_eq!(
+        rendered,
+        "As long as there are three or more different kinds of counters among creatures you control, this creature gets +2/+4.\nYou may cast this card from your graveyard. If you do, it enters with a finality counter on it.",
+        "Hundred-Battle Veteran should render its exact counter-threshold anthem and graveyard-cast finality clause"
+    );
+    assert!(
+        debug.contains("DistinctCounterTypesAmong")
+            && debug.contains("cast_this_way_grants")
+            && debug.contains("EnterWithCounters")
+            && debug.contains("Finality"),
+        "Hundred-Battle Veteran should structurally lower distinct counter kinds and cast-this-way finality counter grant, got {debug}"
+    );
+}
+
+#[test]
 fn esper_origins_graveyard_cast_condition_moves_source_with_finality_counter() {
     use crate::effects::{ExecutionContext, execute_effect};
     use crate::tests::test_helpers::setup_two_player_game;

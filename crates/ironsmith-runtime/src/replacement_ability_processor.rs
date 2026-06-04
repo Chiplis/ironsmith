@@ -140,6 +140,20 @@ pub fn generate_replacement_effects_from_abilities(game: &GameState) -> Vec<Repl
                     ));
                 }
             }
+
+            for grant in &object.temporary_static_ability_grants {
+                if grant.is_expired(game.turn.turn_number) {
+                    continue;
+                }
+                let Some(static_ability) = grant.materialize() else {
+                    continue;
+                };
+                if let Some(effect) =
+                    static_ability.generate_replacement_effect(object_id, controller)
+                {
+                    effects.push(effect);
+                }
+            }
         }
     }
 
