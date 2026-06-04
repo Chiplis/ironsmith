@@ -14832,6 +14832,41 @@ fn absolute_virtue_player_protection_from_opponents_parses_as_targeting_restrict
 }
 
 #[test]
+fn gaeas_revenge_source_filtered_targeting_restriction_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gaea's Revenge")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell can't be countered.\n\
+             Haste\n\
+             This creature can't be the target of nongreen spells or abilities from nongreen sources.",
+        )
+        .expect("Gaea's Revenge text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeCountered")
+            && debug.contains("Haste")
+            && debug.contains("BeTargetedFrom")
+            && debug.contains("excluded_colors"),
+        "expected uncounterable, haste, and nongreen source targeting restriction, got {debug}"
+    );
+}
+
+#[test]
+fn source_filtered_targeting_restriction_rejects_mismatched_spell_and_source_filters() {
+    let err = parse_error_message(
+        CardDefinitionBuilder::new(CardId::new(), "Mismatched Target Restriction")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "This creature can't be the target of nongreen spells or abilities from nonblue sources.",
+            ),
+    );
+    assert!(
+        err.contains("unsupported source-filtered target restriction tail"),
+        "expected mismatched spell/source qualifiers to remain unsupported, got {err}"
+    );
+}
+
+#[test]
 fn maddening_hex_damage_equal_to_die_result_binds_prior_roll() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Maddening Hex Variant")
         .parse_text(

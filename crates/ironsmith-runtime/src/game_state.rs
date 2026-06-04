@@ -671,6 +671,9 @@ pub struct CantEffectTracker {
     /// "can't be the target of spells or abilities"
     pub cant_be_targeted: HashSet<ObjectId>,
 
+    /// Permanents that can't be targeted by sources matching a filter.
+    pub cant_be_targeted_from: Vec<ObjectCantBeTargetedFrom>,
+
     /// Players that can't be targeted.
     pub cant_target_players: HashSet<PlayerId>,
 
@@ -693,6 +696,13 @@ pub struct CantEffectTracker {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerCantBeTargetedFrom {
     pub player: PlayerId,
+    pub source_filter: crate::target::ObjectFilter,
+    pub controller: PlayerId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectCantBeTargetedFrom {
+    pub object: ObjectId,
     pub source_filter: crate::target::ObjectFilter,
     pub controller: PlayerId,
 }
@@ -919,6 +929,8 @@ impl CantEffectTracker {
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
         self.cant_be_targeted.extend(other.cant_be_targeted);
+        self.cant_be_targeted_from
+            .extend(other.cant_be_targeted_from.clone());
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
@@ -964,6 +976,7 @@ impl CantEffectTracker {
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
         self.cant_be_targeted.clear();
+        self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
         self.cant_be_countered.clear();
@@ -1267,6 +1280,25 @@ impl CantEffectTracker {
     /// Check if a permanent is untargetable by the rules tracker.
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.cant_be_targeted.contains(&permanent)
+    }
+
+    pub fn can_target_object_from_source(
+        &self,
+        game: &GameState,
+        object: ObjectId,
+        source_id: ObjectId,
+    ) -> bool {
+        let Some(source) = game.object(source_id) else {
+            return true;
+        };
+
+        !self.cant_be_targeted_from.iter().any(|restriction| {
+            if restriction.object != object {
+                return false;
+            }
+            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
+            restriction.source_filter.matches(source, &filter_ctx, game)
+        })
     }
 
     /// Check if a player can be targeted.
@@ -3497,6 +3529,12 @@ impl GameState {
     /// Is this permanent untargetable (by shroud/hexproof-style effects)?
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.is_untargetable(permanent)
+    }
+
+    pub fn can_target_object_from_source(&self, object: ObjectId, source_id: ObjectId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_target_object_from_source(self, object, source_id)
     }
 
     /// Can this player be targeted?

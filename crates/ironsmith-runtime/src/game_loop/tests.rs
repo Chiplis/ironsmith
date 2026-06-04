@@ -50019,6 +50019,158 @@ fn giant_solifuge_keywords_apply_to_targeting_haste_and_trample() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn gaeas_revenge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(193_669), "Gaea's Revenge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(8, 5))
+        .parse_text(
+            "This spell can't be countered.\n\
+             Haste\n\
+             This creature can't be the target of nongreen spells or abilities from nongreen sources.",
+        )
+        .expect("Gaea's Revenge should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_instant_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_creature_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_strict_parser_and_compiled_text_regression() {
+    let def = gaeas_revenge_definition();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "Gaea's Revenge should render its uncounterable spell restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Haste"),
+        "Gaea's Revenge should render haste, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "This creature can't be the target of nongreen spells or abilities from nongreen sources."
+        ),
+        "Gaea's Revenge should render its nongreen source targeting restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_static_abilities_apply_to_countering_haste_and_targeting() {
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::targeting::{
+        TargetingInvalidReason, TargetingResult, can_target_object, compute_legal_targets,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let revenge = gaeas_revenge_definition();
+
+    let revenge_spell = game.create_object_from_definition(&revenge, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(revenge_spell, alice));
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_countered(revenge_spell),
+        "Gaea's Revenge should be uncounterable while it is a spell on the stack"
+    );
+
+    let revenge_id = game.create_object_from_definition(&revenge, alice, Zone::Battlefield);
+    game.set_summoning_sick(revenge_id);
+    game.refresh_continuous_state();
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(revenge_id).expect("Gaea's Revenge exists"),
+            &game,
+        ),
+        "haste should let Gaea's Revenge attack despite summoning sickness"
+    );
+
+    let red_spell =
+        colored_instant_definition("Nongreen Targeting Spell", crate::color::ColorSet::RED);
+    let red_spell_id = game.create_object_from_definition(&red_spell, bob, Zone::Stack);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, red_spell_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "an opponent's nongreen spell should not be able to target Gaea's Revenge"
+    );
+
+    let friendly_red_source = colored_creature_definition(
+        "Friendly Nongreen Ability Source",
+        crate::color::ColorSet::RED,
+    );
+    let friendly_red_source_id =
+        game.create_object_from_definition(&friendly_red_source, alice, Zone::Battlefield);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, friendly_red_source_id, alice),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "Gaea's Revenge should also reject its controller's nongreen ability sources"
+    );
+
+    let green_spell =
+        colored_instant_definition("Green Targeting Spell", crate::color::ColorSet::GREEN);
+    let green_spell_id = game.create_object_from_definition(&green_spell, bob, Zone::Stack);
+    assert!(
+        can_target_object(&game, revenge_id, green_spell_id, bob).is_legal(),
+        "a green spell should be able to target Gaea's Revenge"
+    );
+
+    let legal_targets_from_red = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(red_spell_id),
+    );
+    assert!(
+        !legal_targets_from_red.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should not appear in legal target lists for nongreen sources"
+    );
+
+    let legal_targets_from_green = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(green_spell_id),
+    );
+    assert!(
+        legal_targets_from_green.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should appear in legal target lists for green sources"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};

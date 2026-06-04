@@ -10679,6 +10679,13 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())
         }
+        crate::effect::Restriction::BeTargetedFrom(filter, source_filter) => {
+            format!(
+                "{} can't be targeted by {} sources",
+                filter.description(),
+                describe_hexproof_from_filter(source_filter)
+            )
+        }
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
