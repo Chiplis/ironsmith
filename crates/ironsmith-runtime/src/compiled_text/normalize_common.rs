@@ -12544,6 +12544,19 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             }
             if let (
                 Value::LifeTotal(player),
+                crate::effect::ValueComparisonOperator::Equal,
+                Value::Fixed(count),
+            ) = (left, operator, right)
+            {
+                let subject = describe_player_filter(player);
+                return format!(
+                    "{} {} exactly {count} life",
+                    subject,
+                    player_verb(&subject, "have", "has")
+                );
+            }
+            if let (
+                Value::LifeTotal(player),
                 crate::effect::ValueComparisonOperator::LessThanOrEqual,
                 Value::Fixed(count),
             ) = (left, operator, right)

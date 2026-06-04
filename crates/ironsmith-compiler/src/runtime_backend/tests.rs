@@ -1097,6 +1097,20 @@ fn rewrite_structure_modal_header_flag_scan_tracks_choose_both_control_card_type
 }
 
 #[test]
+fn rewrite_structure_modal_header_flag_scan_tracks_choose_both_exact_life_total() {
+    let tokens = lex_line(
+        "Choose one. If you have exactly 13 life, you may choose both instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify exact-life choose-both line");
+    let flags = super::grammar::structure::scan_modal_header_flags(&tokens);
+
+    assert!(!flags.commander_allows_both, "{flags:?}");
+    assert!(flags.choose_both_control_card_types.is_empty(), "{flags:?}");
+    assert_eq!(flags.choose_both_exact_life_total, Some(13), "{flags:?}");
+}
+
+#[test]
 fn rewrite_structure_modal_gate_scan_marks_remove_mode_only_without_word_view() {
     let tokens = lex_line(
         "Remove a +1/+1 counter from this creature. If you removed it this way,",

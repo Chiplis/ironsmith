@@ -155,6 +155,7 @@ pub(crate) fn rewrite_lower_parsed_modal(
         mode_must_be_unchosen_this_turn,
         commander_allows_both,
         choose_both_control_card_types,
+        choose_both_exact_life_total,
         trigger,
         activated,
         x_replacement,
@@ -270,6 +271,12 @@ pub(crate) fn rewrite_lower_parsed_modal(
 
     let choose_both_condition = if commander_allows_both {
         Some(crate::effect::Condition::YouControlCommander)
+    } else if let Some(life_total) = choose_both_exact_life_total {
+        Some(crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::LifeTotal(crate::target::PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(life_total),
+        })
     } else if choose_both_control_card_types.is_empty() {
         None
     } else {
