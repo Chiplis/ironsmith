@@ -5436,6 +5436,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_reveal_top_to_hand_then_lose_mana_value_effects(effects) {
         return compact;
     }
+    if let [for_players_effect, look_effect, grant_effect] = effects
+        && let Some(for_players) =
+            for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+        && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtObjectsEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(compact) =
+            describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
         return compact;
     }
@@ -15111,6 +15121,20 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             continue;
         }
         if idx + 2 < filtered.len()
+            && let Some(for_players) =
+                filtered[idx].downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let Some(look) = filtered[idx + 1]
+                .downcast_ref::<crate::effects::LookAtObjectsEffect>()
+            && let Some(grant) =
+                filtered[idx + 2].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) =
+                describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 2 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
             && let Some(conditional) =
@@ -16304,6 +16328,13 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
 
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
+    if compact_trimmed.starts_with("Exile the bottom card of ")
+        && compact_trimmed.contains("For as long as those cards remain exiled")
+    {
+        return Some(cleanup_decompiled_text(&lowercase_first(
+            compact_trimmed.trim_end_matches('.'),
+        )));
+    }
     if compact_trimmed
         == "Reveal the top card of your library and put that card into your hand. You lose life equal to that card's mana value"
     {
@@ -22386,6 +22417,32 @@ fn describe_for_players_choose_then_exile(
         return None;
     }
     let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if let Some(exile) = for_players.effects[1].downcast_ref::<crate::effects::ExileEffect>() {
+        if choose_primary_zone(choose) == Some(Zone::Library)
+            && choose.bottom_only
+            && !choose.top_only
+            && !choose.is_search
+            && choose.count.is_single()
+            && choose.chooser == PlayerFilter::IteratedPlayer
+            && choose.filter.zone == Some(Zone::Library)
+            && choose.filter.controller.is_none()
+            && choose.filter.owner.is_none()
+            && choose.filter.card_types.is_empty()
+            && choose.filter.tagged_constraints.is_empty()
+            && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+        {
+            let subject = match for_players.filter {
+                PlayerFilter::Any => "each player's",
+                PlayerFilter::Opponent => "each opponent's",
+                PlayerFilter::You => "your",
+                _ => return None,
+            };
+            let face_down = if exile.face_down { " face down" } else { "" };
+            return Some(format!(
+                "Exile the bottom card of {subject} library{face_down}"
+            ));
+        }
+    }
     let move_to_zone = for_players.effects[1].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
@@ -22410,6 +22467,54 @@ fn describe_for_players_choose_then_exile(
         .replace("that player controls", "they control");
     Some(format!(
         "{subject} {choose_verb} {selection} and {exile_verb} it"
+    ))
+}
+
+fn describe_for_players_bottom_library_exile_then_look_cast(
+    for_players: &crate::effects::ForPlayersEffect,
+    look: &crate::effects::LookAtObjectsEffect,
+    grant: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    let exile_clause = describe_for_players_choose_then_exile(for_players)?;
+    if !exile_clause.contains("the bottom card")
+        || look.viewer != PlayerFilter::You
+        || look.subject != PlayerFilter::You
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || grant.allow_land
+        || !grant.allow_any_color_for_cast
+    {
+        return None;
+    }
+    let look_tag = look.filter.tagged_constraints.iter().find_map(|constraint| {
+        (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+            .then_some(&constraint.tag)
+    })?;
+    if look.filter.zone != Some(Zone::Exile)
+        || look
+            .filter
+            .controller
+            .as_ref()
+            .is_some_and(|controller| *controller != PlayerFilter::You)
+        || look_tag != &grant.tag
+    {
+        return None;
+    }
+    let grant_filter = grant.filter.as_ref()?;
+    let is_permanent_spell_filter = grant_filter.card_types
+        == vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ];
+    if !is_permanent_spell_filter {
+        return None;
+    }
+
+    Some(format!(
+        "{exile_clause}. For as long as those cards remain exiled, you may look at them, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells"
     ))
 }
 

@@ -991,6 +991,12 @@ fn advance_reference_frame_for_effect(
             tag,
             player,
             ..
+        }
+        | EffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            tag,
+            player,
+            ..
         } => {
             let references_revealed_hand = filter.zone == Some(crate::zone::Zone::Hand)
                 && filter.owner.is_none()

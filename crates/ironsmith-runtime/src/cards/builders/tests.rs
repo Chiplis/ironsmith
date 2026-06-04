@@ -287,6 +287,185 @@ fn hydra_omnivore_runtime_has_no_extra_damage_without_other_opponents() {
     );
 }
 
+fn arvinox_the_mind_flail_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("Arvinox, the Mind Flail")
+        .expect("Arvinox oracle text should be present");
+    CardDefinitionBuilder::new(CardId::new(), "Arvinox, the Mind Flail")
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(9, 9))
+        .parse_text(oracle)
+        .expect("Arvinox should parse strictly")
+}
+
+#[test]
+fn arvinox_the_mind_flail_strict_parser_and_compiled_text_regression() {
+    let def = arvinox_the_mind_flail_definition();
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("isn't a creature unless you control three or more permanents you don't own"),
+        "expected unless static condition, got {rendered}"
+    );
+    assert!(
+        rendered.contains("exile the bottom card of each opponent's library face down"),
+        "expected bottom-card face-down exile, got {rendered}"
+    );
+    assert!(
+        rendered.contains("For as long as those cards remain exiled, you may look at them"),
+        "expected look permission for those exiled cards, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may cast permanent spells from among them"),
+        "expected permanent-spell cast permission, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you may spend mana as though it were mana of any color to cast those spells"),
+        "expected any-color mana permission, got {rendered}"
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("bottom_only: true"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(debug.contains("filter: Some"), "{debug}");
+}
+
+#[test]
+fn arvinox_the_mind_flail_creature_condition_counts_permanents_you_control_but_dont_own() {
+    let def = arvinox_the_mind_flail_definition();
+    let permanent = CardDefinitionBuilder::new(CardId::new(), "Borrowed Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let arvinox = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        !game.current_is_creature(arvinox),
+        "Arvinox should not be a creature before Alice controls three permanents she doesn't own"
+    );
+
+    for idx in 0..2 {
+        let borrowed = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
+        game.set_current_controller(borrowed, alice);
+        assert!(
+            !game.current_is_creature(arvinox),
+            "Arvinox should still not be a creature with only {} borrowed permanents",
+            idx + 1
+        );
+    }
+
+    let third = game.create_object_from_definition(&permanent, bob, Zone::Battlefield);
+    game.set_current_controller(third, alice);
+
+    assert!(
+        game.current_is_creature(arvinox),
+        "Arvinox should become a creature once Alice controls three permanents she doesn't own"
+    );
+}
+
+#[test]
+fn arvinox_the_mind_flail_exiles_bottom_cards_and_grants_only_permanent_spell_permission() {
+    let def = arvinox_the_mind_flail_definition();
+    let permanent = CardDefinitionBuilder::new(CardId::new(), "Bottom Permanent")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let instant = CardDefinitionBuilder::new(CardId::new(), "Bottom Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Top Filler")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let arvinox = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_bottom = game.create_object_from_definition(&permanent, bob, Zone::Library);
+    let bob_top = game.create_object_from_definition(&filler, bob, Zone::Library);
+    let charlie_bottom = game.create_object_from_definition(&instant, charlie, Zone::Library);
+    let charlie_top = game.create_object_from_definition(&filler, charlie, Zone::Library);
+    let bob_bottom_stable = game.object(bob_bottom).expect("bob bottom setup").stable_id;
+    let charlie_bottom_stable = game
+        .object(charlie_bottom)
+        .expect("charlie bottom setup")
+        .stable_id;
+    assert!(game.set_player_library_order_with_audit(
+        bob,
+        vec![bob_bottom, bob_top],
+        "Arvinox bottom-card regression setup",
+    ));
+    assert!(game.set_player_library_order_with_audit(
+        charlie,
+        vec![charlie_bottom, charlie_top],
+        "Arvinox bottom-card regression setup",
+    ));
+
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Arvinox should have an end-step triggered ability");
+    let mut ctx = crate::effects::ExecutionContext::new_default(arvinox, alice);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        arvinox,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Arvinox end-step trigger should resolve");
+
+    let bob_exiled = game
+        .find_object_by_stable_id(bob_bottom_stable)
+        .expect("bob bottom should still exist after exile");
+    let charlie_exiled = game
+        .find_object_by_stable_id(charlie_bottom_stable)
+        .expect("charlie bottom should still exist after exile");
+    assert_eq!(game.object(bob_exiled).expect("bob bottom").zone, Zone::Exile);
+    assert_eq!(game.object(bob_top).expect("bob top").zone, Zone::Library);
+    assert_eq!(
+        game.object(charlie_exiled).expect("charlie bottom").zone,
+        Zone::Exile
+    );
+    assert_eq!(
+        game.object(charlie_top).expect("charlie top").zone,
+        Zone::Library
+    );
+    assert!(game.is_face_down(bob_exiled));
+    assert!(game.is_face_down(charlie_exiled));
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            bob_exiled,
+            Zone::Exile,
+            alice,
+        ),
+        "Arvinox should grant Alice permission to cast exiled permanent spells"
+    );
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            charlie_exiled,
+            Zone::Exile,
+            alice,
+        ),
+        "Arvinox should not grant Alice permission to cast exiled nonpermanent spells"
+    );
+}
+
 #[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");

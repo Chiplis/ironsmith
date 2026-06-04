@@ -2365,6 +2365,7 @@ fn compile_subject_verb_effect(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2384,13 +2385,17 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter.clone(),
                 crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
                 *allow_land,
                 *allow_any_color_for_cast,
-            ))];
+            );
+            if let Some(filter) = filter.clone() {
+                grant_play = grant_play.with_filter(filter);
+            }
+            let mut effects = vec![Effect::new(grant_play)];
             if *without_paying_mana_cost {
                 effects.push(Effect::new(
                     crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(

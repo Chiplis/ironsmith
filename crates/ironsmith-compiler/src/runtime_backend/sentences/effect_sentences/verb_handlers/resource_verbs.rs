@@ -503,6 +503,7 @@ pub(crate) fn parse_look(
                 true,
                 false,
                 false,
+                None,
             ),
         );
     }

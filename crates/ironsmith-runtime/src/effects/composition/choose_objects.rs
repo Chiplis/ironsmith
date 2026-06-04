@@ -53,7 +53,7 @@ pub(crate) fn top_only_selection_limit(
     effect: &ChooseObjectsEffect,
     x_value: Option<u32>,
 ) -> usize {
-    if !effect.top_only {
+    if !effect.top_only && !effect.bottom_only {
         return usize::MAX;
     }
     if effect.count.dynamic_x {

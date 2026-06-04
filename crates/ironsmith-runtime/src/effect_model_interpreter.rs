@@ -1128,16 +1128,18 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
-        return Ok(Effect::new(
-            crate::effects::GrantPlayTaggedEffect::new(
-                payload.tag.clone(),
-                payload.player.clone(),
-                payload.duration,
-                payload.allow_land,
-                payload.allow_any_color_for_cast,
-            )
-            .while_on_top_of_library_if(payload.while_on_top_of_library),
-        ));
+        let mut grant = crate::effects::GrantPlayTaggedEffect::new(
+            payload.tag.clone(),
+            payload.player.clone(),
+            payload.duration,
+            payload.allow_land,
+            payload.allow_any_color_for_cast,
+        )
+        .while_on_top_of_library_if(payload.while_on_top_of_library);
+        if let Some(filter) = payload.filter.clone() {
+            grant = grant.with_filter(filter);
+        }
+        return Ok(Effect::new(grant));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::LocalRewriteEffect<M::Effect>>(&effect)
     {

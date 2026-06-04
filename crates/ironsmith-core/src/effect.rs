@@ -1701,6 +1701,7 @@ pub struct ChooseObjectsEffect {
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
     pub top_only: bool,
+    pub bottom_only: bool,
     pub replace_tagged_objects: bool,
 }
 
@@ -1724,6 +1725,7 @@ impl ChooseObjectsEffect {
             reveal: false,
             search_mode: SearchSelectionMode::Exact,
             top_only: false,
+            bottom_only: false,
             replace_tagged_objects: false,
         }
     }
@@ -1786,6 +1788,13 @@ impl ChooseObjectsEffect {
 
     pub fn top_only(mut self) -> Self {
         self.top_only = true;
+        self.bottom_only = false;
+        self
+    }
+
+    pub fn bottom_only(mut self) -> Self {
+        self.bottom_only = true;
+        self.top_only = false;
         self
     }
 
@@ -3817,6 +3826,7 @@ pub struct GrantPlayTaggedEffect {
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
+    pub filter: Option<ObjectFilter>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3834,11 +3844,17 @@ impl GrantPlayTaggedEffect {
             allow_land,
             allow_any_color_for_cast,
             while_on_top_of_library: false,
+            filter: None,
         }
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn with_filter(mut self, filter: ObjectFilter) -> Self {
+        self.filter = Some(filter);
         self
     }
 }

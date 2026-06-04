@@ -5488,6 +5488,59 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_look_then_permanent_spells() {
+    let tokens = lex_line(
+        "For as long as those cards remain exiled, you may look at them, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify plural while-exiled tagged permission");
+    let inner_tokens = lex_line(
+        "For as long as those cards remain exiled, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify inner plural while-exiled permission");
+    let inner = super::permission_helpers::parse_permission_clause_spec(&inner_tokens)
+        .expect("inner plural while-exiled permission spec should parse");
+    assert!(inner.is_some(), "inner permission spec returned None");
+    let inner_debug = format!("{:?}", inner.as_ref().unwrap());
+    let inner_effect = super::permission_helpers::parse_cast_or_play_tagged_clause(&inner_tokens)
+        .expect("inner plural while-exiled permission effect should parse");
+    let inner_no_suffix_tokens = lex_line(
+        "For as long as those cards remain exiled, you may cast permanent spells from among them",
+        0,
+    )
+    .expect("rewrite lexer should classify inner no-suffix permission");
+    let inner_no_suffix_effect = super::permission_helpers::parse_cast_or_play_tagged_clause(
+        &inner_no_suffix_tokens,
+    )
+    .expect("inner no-suffix permission effect should parse");
+    let inner_no_suffix_spec = super::permission_helpers::parse_permission_clause_spec(
+        &inner_no_suffix_tokens,
+    )
+    .expect("inner no-suffix spec should parse");
+    let inner_no_suffix_debug = format!("{:?}", inner_no_suffix_spec.as_ref());
+    assert!(
+        inner_no_suffix_effect.is_some(),
+        "inner no-suffix permission effect returned None for {inner_no_suffix_debug}"
+    );
+    assert!(
+        inner_effect.is_some(),
+        "inner permission effect returned None for {inner_debug}"
+    );
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("plural while-exiled tagged permission should parse")
+        .expect("plural while-exiled tagged permission should produce an effect");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtObjects"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedForAsLongAsExiled"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("Planeswalker"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_parse_while_exiled_owner_prefix() {
     let tokens = lex_line(
         "For as long as that card remains exiled, its owner may cast it without paying its mana cost",
@@ -5574,6 +5627,26 @@ fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
         "{debug}"
     );
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_down() -> Result<(), CardTextError>
+{
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bottom Library Exile")
+        .mana_cost(super::util::parse_scryfall_mana_cost("{3}{B}").unwrap())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Exile the bottom card of each opponent's library face down.")?;
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("filter: Opponent"), "{debug}");
+    assert!(debug.contains("zone: Some(\n                                                    Library"), "{debug}");
+    assert!(debug.contains("chooser: IteratedPlayer"), "{debug}");
+    assert!(debug.contains("top_only: false"), "{debug}");
+    assert!(debug.contains("bottom_only: true"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+
+    Ok(())
 }
 
 #[test]
