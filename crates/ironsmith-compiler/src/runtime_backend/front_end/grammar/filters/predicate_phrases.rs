@@ -1,4 +1,5 @@
 use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::super::super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::super::super::lexer::{LexedClause, OwnedLexToken, render_token_slice};
 use super::*;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
@@ -4126,7 +4127,8 @@ fn parse_no_spells_cast_last_turn_shape(tokens: &[OwnedLexToken]) -> Option<Pred
 }
 
 fn parse_this_spell_paid_named_label_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_this_spell_was_kicked_shape(tokens)
+    parse_this_spell_was_kicked_with_cost_shape(tokens)
+        .or_else(|| parse_this_spell_was_kicked_shape(tokens))
         .or_else(|| parse_this_spell_was_bargained_shape(tokens))
         .or_else(|| {
             parse_named_spell_label_action_shape(tokens, "Gift", &["was", "promised"], false)
@@ -4147,6 +4149,44 @@ fn parse_this_spell_paid_named_label_shape(tokens: &[OwnedLexToken]) -> Option<P
             parse_named_spell_label_action_shape(tokens, "Tribute", &["was", "not", "paid"], true)
         })
         .or_else(|| parse_behold_spell_label_shape(tokens))
+}
+
+fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let was_idx = tokens.iter().position(|token| token.is_word("was"))?;
+    if !tokens.get(was_idx + 1).is_some_and(|token| token.is_word("kicked"))
+        || !tokens.get(was_idx + 2).is_some_and(|token| token.is_word("with"))
+    {
+        return None;
+    }
+
+    if !is_kicked_source_clause(LexedClause::new(&tokens[..was_idx])) {
+        return None;
+    }
+
+    let mut cost_start = was_idx + 3;
+    if tokens
+        .get(cost_start)
+        .is_some_and(|token| token.is_word("its") || token.is_word("their"))
+    {
+        cost_start += 1;
+    }
+    let kicker_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(cost_start)
+        .find_map(|(idx, token)| token.is_word("kicker").then_some(idx))?;
+    if kicker_idx + 1 != tokens.len() || cost_start >= kicker_idx {
+        return None;
+    }
+
+    let parsed_cost = parse_activation_cost_tokens_rewrite(&tokens[cost_start..kicker_idx]).ok()?;
+    let lowered_cost = lower_activation_cost_cst(&parsed_cost).ok()?;
+    let cost_text = lowered_cost
+        .mana_cost()
+        .map(|cost| cost.to_oracle())
+        .unwrap_or_else(|| lowered_cost.display());
+    (!cost_text.is_empty())
+        .then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}")))
 }
 
 fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {

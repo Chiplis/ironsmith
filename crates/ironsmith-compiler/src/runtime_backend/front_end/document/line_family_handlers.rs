@@ -1189,9 +1189,79 @@ pub(super) fn run_freerunning_line_family(
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if let Some(split_lines) = split_same_line_and_or_kicker_keywords(ctx.line)? {
+        return Ok(Some(LineDispatchResult {
+            lines: split_lines,
+            next_idx: ctx.idx + 1,
+        }));
+    }
+
     Ok(parse_keyword_line_cst(ctx.line)?.map(|keyword_line| {
         LineDispatchResult::single(RewriteLineCst::Keyword(keyword_line), ctx.idx + 1)
     }))
+}
+
+fn split_same_line_and_or_kicker_keywords(
+    line: &PreprocessedLine,
+) -> Result<Option<Vec<RewriteLineCst>>, CardTextError> {
+    if !token_slice_first_is(&line.tokens, "kicker") {
+        return Ok(None);
+    }
+
+    let mut tail = line.tokens.get(1..).unwrap_or_default();
+    if matches!(
+        tail.first().map(|token| token.kind),
+        Some(TokenKind::Dash | TokenKind::EmDash)
+    ) {
+        tail = tail.get(1..).unwrap_or_default();
+    }
+
+    let reminder_start = tail
+        .windows(3)
+        .position(|window| token_slice_starts_with(window, &["you", "may", "pay"]))
+        .or_else(|| {
+            tail.windows(2)
+                .position(|window| token_slice_starts_with(window, &["you", "may"]))
+        })
+        .unwrap_or(tail.len());
+    let sentence_end = find_token_kind(tail, TokenKind::Period).unwrap_or(tail.len());
+    let paren_start = find_token_kind(tail, TokenKind::LParen).unwrap_or(tail.len());
+    let end = reminder_start.min(sentence_end).min(paren_start);
+    let cost_tokens = trim_lexed_commas(&tail[..end]);
+    let Some(and_or_idx) = cost_tokens.iter().position(|token| token.is_word("and/or")) else {
+        return Ok(None);
+    };
+
+    let branches = [
+        trim_lexed_commas(&cost_tokens[..and_or_idx]),
+        trim_lexed_commas(&cost_tokens[and_or_idx + 1..]),
+    ];
+    if branches.iter().any(|branch| branch.is_empty()) {
+        return Ok(None);
+    }
+
+    let mut lines = Vec::new();
+    for branch in branches {
+        let parsed_cost = parse_activation_cost_tokens_rewrite(branch)?;
+        let lowered_cost = lower_activation_cost_cst(&parsed_cost)?;
+        let cost_text = lowered_cost
+            .mana_cost()
+            .map(|cost| cost.to_oracle())
+            .unwrap_or_else(|| lowered_cost.display());
+        let label = format!("Kicker {cost_text}");
+        let raw = label.clone();
+        let tokens = lex_line(&raw, line.info.line_index)?;
+        let rewritten = rewrite_line_tokens(line, &tokens);
+        let mut keyword = parse_keyword_line_cst(&rewritten)?.ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "parser could not split same-line kicker cost '{raw}'"
+            ))
+        })?;
+        keyword.text = format!("__split_kicker_label:{label}");
+        lines.push(RewriteLineCst::Keyword(keyword));
+    }
+
+    Ok(Some(lines))
 }
 
 pub(super) fn run_additional_combat_after_this_phase_line_family(
