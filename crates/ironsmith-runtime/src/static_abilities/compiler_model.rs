@@ -166,6 +166,12 @@ impl StaticAbility {
                         .to_string(),
                 });
             }
+            Some(StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching) => {
+                return Err(StaticAbilityModelConversionError {
+                    detail: "filtered noncombat-damage prevention needs its object-filter payload"
+                        .to_string(),
+                });
+            }
             Some(StaticAbilityId::PreventAllDamageToSelfByCreatures) => {
                 Self::prevent_all_damage_to_self_by_creatures()
             }

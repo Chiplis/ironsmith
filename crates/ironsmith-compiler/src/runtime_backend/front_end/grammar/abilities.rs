@@ -3117,6 +3117,39 @@ pub(crate) fn is_prevent_all_noncombat_damage_to_other_creatures_you_control_lin
     )
 }
 
+pub(crate) fn is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    const PREVENT_ALL_NONCOMBAT_DAMAGE_TO_PREFIX: &[&str] = &[
+        "prevent",
+        "all",
+        "noncombat",
+        "damage",
+        "that",
+        "would",
+        "be",
+        "dealt",
+        "to",
+    ];
+    const PREVENT_ALL_NONCOMBAT_DAMAGE_TO_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(PREVENT_ALL_NONCOMBAT_DAMAGE_TO_PREFIX),
+        LexPattern::object("object", LexCaptureKind::OneOrMoreWords),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = PREVENT_ALL_NONCOMBAT_DAMAGE_TO_PATTERN.match_clause(clause) else {
+        return false;
+    };
+    let Some(object) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return false;
+    };
+    let object_words = object.word_refs();
+    !matches!(
+        object_words.as_slice(),
+        ["this", "creature"] | ["this", "permanent"] | ["it"]
+    ) && !object_words.iter().any(|word| *word == "turn")
+}
+
 pub(crate) fn is_prevent_all_combat_damage_to_matching_permanents_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {

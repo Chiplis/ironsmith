@@ -216,6 +216,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
     PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
+    PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
     RuleRestriction {
         restriction: Restriction,
         display: String,
@@ -929,6 +930,9 @@ where
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
             StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
+            StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter)
             }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
@@ -3448,6 +3452,13 @@ impl<
             id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
             label: "prevent all combat damage to permanents matching filter".into(),
             payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
+        }
+    }
+    pub fn prevent_all_noncombat_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching),
+            label: "prevent all noncombat damage to permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter),
         }
     }
     pub fn prevent_all_damage_to_self() -> Self {
