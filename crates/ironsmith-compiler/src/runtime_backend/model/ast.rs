@@ -224,7 +224,6 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         during_turn: PlayerFilter,
     },
-    PlayerLostGame(PlayerFilter),
     YouDrawCard,
     PlayerDrawsCard(PlayerFilter),
     PlayerDrawsCardNotDuringTurn {

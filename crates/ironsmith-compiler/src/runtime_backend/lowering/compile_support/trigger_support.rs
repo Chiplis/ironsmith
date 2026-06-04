@@ -161,7 +161,6 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             player,
             during_turn,
         } => Trigger::player_loses_life_during_turn(player, during_turn),
-        TriggerSpec::PlayerLostGame(player) => Trigger::player_lost_game(player),
         TriggerSpec::YouDrawCard => Trigger::you_draw_card(),
         TriggerSpec::PlayerDrawsCard(player) => Trigger::player_draws_card(player),
         TriggerSpec::PlayerDrawsCardNotDuringTurn {
