@@ -160,6 +160,8 @@ pub struct ManaExecutionContext {
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for mana produced by the source.
     pub mana_source_chosen_creature_type: Option<Subtype>,
+    /// Provenance marker for mana produced during this execution.
+    pub production_provenance: crate::events::mana::ManaProductionProvenance,
 }
 
 /// Ephemeral replacement effects scoped to the current resolution path.
@@ -455,6 +457,15 @@ impl<'a> ExecutionContext<'a> {
     /// Snapshot the source's chosen creature type for later mana spending checks.
     pub fn with_mana_source_chosen_creature_type(mut self, subtype: Option<Subtype>) -> Self {
         self.mana.mana_source_chosen_creature_type = subtype;
+        self
+    }
+
+    /// Mark how mana produced during this execution was generated.
+    pub fn with_mana_production_provenance(
+        mut self,
+        provenance: crate::events::mana::ManaProductionProvenance,
+    ) -> Self {
+        self.mana.production_provenance = provenance;
         self
     }
 

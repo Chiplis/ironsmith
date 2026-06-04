@@ -5488,6 +5488,59 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_mana_suffix
 }
 
 #[test]
+fn rewrite_lexed_permission_helpers_parse_while_exiled_look_then_permanent_spells() {
+    let tokens = lex_line(
+        "For as long as those cards remain exiled, you may look at them, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify plural while-exiled tagged permission");
+    let inner_tokens = lex_line(
+        "For as long as those cards remain exiled, you may cast permanent spells from among them, and you may spend mana as though it were mana of any color to cast those spells",
+        0,
+    )
+    .expect("rewrite lexer should classify inner plural while-exiled permission");
+    let inner = super::permission_helpers::parse_permission_clause_spec(&inner_tokens)
+        .expect("inner plural while-exiled permission spec should parse");
+    assert!(inner.is_some(), "inner permission spec returned None");
+    let inner_debug = format!("{:?}", inner.as_ref().unwrap());
+    let inner_effect = super::permission_helpers::parse_cast_or_play_tagged_clause(&inner_tokens)
+        .expect("inner plural while-exiled permission effect should parse");
+    let inner_no_suffix_tokens = lex_line(
+        "For as long as those cards remain exiled, you may cast permanent spells from among them",
+        0,
+    )
+    .expect("rewrite lexer should classify inner no-suffix permission");
+    let inner_no_suffix_effect = super::permission_helpers::parse_cast_or_play_tagged_clause(
+        &inner_no_suffix_tokens,
+    )
+    .expect("inner no-suffix permission effect should parse");
+    let inner_no_suffix_spec = super::permission_helpers::parse_permission_clause_spec(
+        &inner_no_suffix_tokens,
+    )
+    .expect("inner no-suffix spec should parse");
+    let inner_no_suffix_debug = format!("{:?}", inner_no_suffix_spec.as_ref());
+    assert!(
+        inner_no_suffix_effect.is_some(),
+        "inner no-suffix permission effect returned None for {inner_no_suffix_debug}"
+    );
+    assert!(
+        inner_effect.is_some(),
+        "inner permission effect returned None for {inner_debug}"
+    );
+
+    let parsed = super::permission_helpers::parse_cast_or_play_tagged_clause(&tokens)
+        .expect("plural while-exiled tagged permission should parse")
+        .expect("plural while-exiled tagged permission should produce an effect");
+    let debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtObjects"), "{debug}");
+    assert!(debug.contains("GrantPlayTaggedForAsLongAsExiled"), "{debug}");
+    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(debug.contains("Artifact"), "{debug}");
+    assert!(debug.contains("Planeswalker"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_permission_helpers_parse_while_exiled_owner_prefix() {
     let tokens = lex_line(
         "For as long as that card remains exiled, its owner may cast it without paying its mana cost",
@@ -5574,6 +5627,26 @@ fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
         "{debug}"
     );
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+}
+
+#[test]
+fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_down() -> Result<(), CardTextError>
+{
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bottom Library Exile")
+        .mana_cost(super::util::parse_scryfall_mana_cost("{3}{B}").unwrap())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Exile the bottom card of each opponent's library face down.")?;
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("filter: Opponent"), "{debug}");
+    assert!(debug.contains("zone: Some(\n                                                    Library"), "{debug}");
+    assert!(debug.contains("chooser: IteratedPlayer"), "{debug}");
+    assert!(debug.contains("top_only: false"), "{debug}");
+    assert!(debug.contains("bottom_only: true"), "{debug}");
+    assert!(debug.contains("face_down: true"), "{debug}");
+
+    Ok(())
 }
 
 #[test]
@@ -8257,6 +8330,36 @@ fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tables() {
         player,
         Some(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::ChoosePlayerAsEnters
+    ));
+}
+
+#[test]
+fn rewrite_keyword_static_as_enters_revealed_hand_card_name_choice() {
+    let tokens = lex_line(
+        "as this creature enters, each opponent reveals their hand. you choose the name of a nonland card revealed this way.",
+        0,
+    )
+    .expect("rewrite lexer should classify revealed-hand card-name choice");
+
+    let ability = super::keyword_static::parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+        &tokens,
+    )
+    .expect("revealed-hand card-name choice should parse");
+
+    assert!(matches!(
+        ability,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::ChooseCardNameAsEnters
+                && ability.display().contains("each opponent reveals their hand")
+                && ability.display().contains("nonland card revealed this way")
+                && matches!(
+                    &ability.payload,
+                    crate::static_abilities::StaticAbilityPayload::ChooseCardNameAsEnters {
+                        reveal_opponents_hands: true,
+                        require_nonland_from_revealed_opponents: true,
+                        ..
+                    }
+                )
     ));
 }
 
@@ -11204,6 +11307,19 @@ fn rewrite_rayami_nontoken_creature_would_die_with_blood_counter_static_replacem
 }
 
 #[test]
+fn rewrite_this_creature_would_die_static_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Self-Exiling Creature Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("If this creature would die, exile it instead.")
+        .expect("self death replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[test]
 fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
     let line = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells.";
     let tokens = lex_line(line, 0).expect("permission line should lex");
@@ -13772,6 +13888,40 @@ fn hordewing_skaab_parses_and_keeps_if_you_do_discard_followup() -> Result<(), C
 }
 
 #[test]
+fn night_shift_parses_die_adjustment_and_zombie_employee_token() -> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Night Shift of the Living Dead")
+        .card_types(vec![CardType::Enchantment]);
+    let text = "After you roll a die, you may pay 1 life. If you do, increase or decrease the result by 1. Do this only once each turn.\nWhenever you roll a 6, create a 2/2 black Zombie Employee creature token.";
+    let (definition, _) = parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("DieRollResultAdjustment"),
+        "expected lowered die-roll result adjustment static ability: {debug}"
+    );
+    assert!(
+        debug.contains("PlayerRollsResult") && debug.contains("CreateTokenEffect"),
+        "expected die-roll trigger to create a token: {debug}"
+    );
+    assert!(
+        debug.contains("Zombie") && debug.contains("Employee"),
+        "expected created token to keep both creature subtypes: {debug}"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn token_definition_keeps_multiple_creature_subtypes() {
+    let token = super::compile_support::token_definition_for(
+        "2/2 black Zombie Employee creature token",
+    )
+    .expect("Zombie Employee token should be recognized");
+
+    assert_eq!(token.card.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
+}
+
+#[test]
 fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spec() -> Result<(), CardTextError>
 {
     let def = CardDefinitionBuilder::new(CardId::new(), "Conditional Fight Variant")
@@ -14834,6 +14984,41 @@ fn absolute_virtue_player_protection_from_opponents_parses_as_targeting_restrict
             && debug.contains("You")
             && debug.contains("controller: Some(Opponent)"),
         "expected player targeting restriction from opponent-controlled sources, got {debug}"
+    );
+}
+
+#[test]
+fn gaeas_revenge_source_filtered_targeting_restriction_parses_strictly() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Gaea's Revenge")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "This spell can't be countered.\n\
+             Haste\n\
+             This creature can't be the target of nongreen spells or abilities from nongreen sources.",
+        )
+        .expect("Gaea's Revenge text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("BeCountered")
+            && debug.contains("Haste")
+            && debug.contains("BeTargetedFrom")
+            && debug.contains("excluded_colors"),
+        "expected uncounterable, haste, and nongreen source targeting restriction, got {debug}"
+    );
+}
+
+#[test]
+fn source_filtered_targeting_restriction_rejects_mismatched_spell_and_source_filters() {
+    let err = parse_error_message(
+        CardDefinitionBuilder::new(CardId::new(), "Mismatched Target Restriction")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "This creature can't be the target of nongreen spells or abilities from nonblue sources.",
+            ),
+    );
+    assert!(
+        err.contains("unsupported source-filtered target restriction tail"),
+        "expected mismatched spell/source qualifiers to remain unsupported, got {err}"
     );
 }
 

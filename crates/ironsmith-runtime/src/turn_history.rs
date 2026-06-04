@@ -42,6 +42,7 @@ pub struct TurnHistory {
     pub players_attacked_this_turn: HashSet<PlayerId>,
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
+    pub die_roll_result_adjustments_this_turn: HashSet<ObjectId>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -65,6 +66,7 @@ impl TurnHistory {
         self.players_attacked_this_turn.clear();
         self.players_tapped_land_for_mana_this_turn.clear();
         self.die_rolls_this_turn.clear();
+        self.die_roll_result_adjustments_this_turn.clear();
         self.creatures_attacked_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
@@ -749,6 +751,14 @@ impl TurnHistory {
             .entry(player)
             .or_default()
             .push(result);
+    }
+
+    pub fn record_die_roll_result_adjustment(&mut self, source: ObjectId) {
+        self.die_roll_result_adjustments_this_turn.insert(source);
+    }
+
+    pub fn die_roll_result_adjusted_this_turn(&self, source: ObjectId) -> bool {
+        self.die_roll_result_adjustments_this_turn.contains(&source)
     }
 
     pub fn player_rolled_result_this_turn(&self, player: PlayerId, result: u32) -> bool {

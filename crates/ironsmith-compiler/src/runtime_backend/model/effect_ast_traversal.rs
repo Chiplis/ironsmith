@@ -134,6 +134,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ManaRestricted { .. } => {}
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
+        EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}

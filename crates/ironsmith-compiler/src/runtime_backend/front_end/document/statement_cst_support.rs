@@ -4,6 +4,15 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 
 const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
+const DIE_ROLL_RESULT_ADJUSTMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["after", "you", "roll", "a", "die"];
+    contains_phrases & [
+        &["you", "may", "pay"],
+        &["if", "you", "do"],
+        &["increase", "or", "decrease", "the", "result", "by"],
+        &["do", "this", "only", "once", "each", "turn"],
+    ]
+);
 
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
@@ -28,6 +37,14 @@ pub(super) fn parse_statement_line_cst(
     let normalized = line.info.normalized.normalized.as_str();
     if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
         return Ok(None);
+    }
+    if DIE_ROLL_RESULT_ADJUSTMENT_PATTERN.matches_words(&token_word_refs(&line.tokens)) {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: vec![line.tokens.clone()],
+        }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))

@@ -191,6 +191,9 @@ pub enum ReplacementAction {
         count: u32,
     },
 
+    /// Replace the mana produced by a matching mana event.
+    ReplaceMana(Vec<crate::mana::ManaSymbol>),
+
     /// Skip (for "skip your draw step" etc.)
     Skip,
 

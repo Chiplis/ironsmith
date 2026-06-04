@@ -247,6 +247,36 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
+        EffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            count,
+            count_value,
+            player,
+            tag,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+            let mut resolved_filter = subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            resolved_filter.zone = Some(Zone::Library);
+            let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
+                resolved_filter,
+                *count,
+                chooser.clone(),
+                tag.clone(),
+            )
+            .with_count_value_opt(count_value.clone())
+            .in_zone(Zone::Library)
+            .bottom_only();
+            choose_effect.description = "Choose bottom library card".to_string();
+            let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            }
+            ctx.last_player_filter = Some(chooser);
+            (effects, subject.into_choices())
+        }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
             count,

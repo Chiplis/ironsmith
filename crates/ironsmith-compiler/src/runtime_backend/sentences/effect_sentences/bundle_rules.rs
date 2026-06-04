@@ -687,6 +687,7 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
+                    filter,
                     ..
                 },
             ..
@@ -696,6 +697,7 @@ fn parse_exile_top_library_then_play_bundle(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            filter,
         ),
         _ => return Ok(None),
     };

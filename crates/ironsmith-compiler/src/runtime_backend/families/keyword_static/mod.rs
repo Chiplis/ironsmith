@@ -2103,6 +2103,30 @@ fn simple_would_die_exile_player_filter(words: &[&str]) -> Option<PlayerFilter> 
         .find_map(|(phrase, player)| (*phrase == words).then(|| player.clone()))
 }
 
+fn simple_source_would_die_exile_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let source_type = match words {
+        ["if", "this", "creature", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Creature)
+        }
+        ["if", "this", "artifact", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Artifact)
+        }
+        ["if", "this", "enchantment", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Enchantment)
+        }
+        ["if", "this", "permanent", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "object", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "would", "die", "exile", "it", "instead"] => None,
+        _ => return None,
+    };
+
+    let filter = match source_type {
+        Some(card_type) => ObjectFilter::source().with_type(card_type),
+        None => ObjectFilter::source(),
+    };
+    Some(filter)
+}
+
 fn max_hand_size_subject_prefix(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     if MAX_HAND_SIZE_YOU_SUBJECT_PATTERN.matches_words(words) {
         Some((PlayerFilter::You, 1))
@@ -2704,6 +2728,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_revealed_hand_choose_nonland_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
@@ -4395,6 +4420,40 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
 
     Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
         "As {display_subject} enters, choose a card name."
+    ))))
+}
+
+pub(crate) fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 2 {
+        return Ok(None);
+    }
+
+    let first_words = parser_token_word_refs(sentences[0]);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&first_words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if first_words.get(idx..) != Some(&["each", "opponent", "reveals", "their", "hand"][..])
+    {
+        return Ok(None);
+    }
+
+    let second_words = parser_token_word_refs(sentences[1]);
+    if second_words
+        != [
+            "you", "choose", "the", "name", "of", "a", "nonland", "card", "revealed",
+            "this", "way",
+        ]
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::choose_revealed_hand_nonland_card_name_as_enters(format!(
+        "As {display_subject} enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."
     ))))
 }
 
@@ -10921,6 +10980,10 @@ pub(crate) fn parse_exile_would_die_instead_line(
                 StaticAbility::exile_would_die_instead_with_damage_source(victim, Some(damaged_by)),
             ));
         }
+    }
+
+    if let Some(filter) = simple_source_would_die_exile_filter(&words) {
+        return Ok(Some(StaticAbility::exile_would_die_instead(filter)));
     }
 
     let Some(player) = simple_would_die_exile_player_filter(&words) else {

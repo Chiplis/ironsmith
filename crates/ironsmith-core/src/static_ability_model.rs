@@ -212,6 +212,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         maximum: Value,
         display: String,
     },
+    DieRollResultAdjustment(DieRollResultAdjustment),
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
@@ -394,7 +395,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     NoteLifeTotalAsEnters(String),
-    ChooseCardNameAsEnters(String),
+    ChooseCardNameAsEnters {
+        display: String,
+        reveal_opponents_hands: bool,
+        require_nonland_from_revealed_opponents: bool,
+    },
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
@@ -564,6 +569,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         count: Value,
         subtypes: Vec<Subtype>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    pub player: PlayerFilter,
+    pub life_cost: u32,
+    pub amount: u32,
+    pub once_each_turn: bool,
+    pub display: String,
 }
 
 impl<T, E, C, Cond> StaticAbility<T, E, C, Cond>
@@ -908,6 +922,9 @@ where
             StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
             }
+            StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                StaticAbilityPayload::DieRollResultAdjustment(spec)
+            }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
                 let mut abilities = Vec::with_capacity(level.abilities.len());
@@ -1222,9 +1239,15 @@ where
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
-            StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbilityPayload::ChooseCardNameAsEnters(display)
-            }
+            StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            } => StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            },
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
             }
@@ -1773,6 +1796,27 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMaximum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
+        }
+    }
+
+    pub fn die_roll_result_adjustment(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost,
+                amount,
+                once_each_turn,
+                display,
+            }),
         }
     }
 
@@ -3294,7 +3338,23 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseCardNameAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseCardNameAsEnters(display),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: false,
+                require_nonland_from_revealed_opponents: false,
+            },
+        }
+    }
+    pub fn choose_revealed_hand_nonland_card_name_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: true,
+                require_nonland_from_revealed_opponents: true,
+            },
         }
     }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {

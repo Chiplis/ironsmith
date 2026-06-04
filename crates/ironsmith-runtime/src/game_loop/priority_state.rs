@@ -796,6 +796,8 @@ pub struct PendingManaAbility {
     pub mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
     /// Chosen creature type snapshot for restricted mana produced by the source.
     pub mana_source_chosen_creature_type: Option<crate::types::Subtype>,
+    /// How mana produced by this activation was generated.
+    pub mana_production_provenance: crate::events::mana::ManaProductionProvenance,
     /// True when undo should be blocked for this pending mana ability flow.
     /// This is set when either:
     /// - the root mana ability itself is not undo-safe, or

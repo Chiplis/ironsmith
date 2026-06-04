@@ -5,7 +5,7 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, DieRollResultAdjustmentSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
@@ -175,6 +175,52 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
 /// Daybound keyword static ability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Daybound;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    player: PlayerFilter,
+    life_cost: u32,
+    amount: u32,
+    once_each_turn: bool,
+    display: String,
+}
+
+impl DieRollResultAdjustment {
+    pub fn new(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            player,
+            life_cost,
+            amount,
+            once_each_turn,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DieRollResultAdjustment {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DieRollResultAdjustment
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        Some(DieRollResultAdjustmentSpec {
+            player: self.player.clone(),
+            life_cost: self.life_cost,
+            amount: self.amount,
+            once_each_turn: self.once_each_turn,
+        })
+    }
+}
 
 impl StaticAbilityKind for Daybound {
     fn id(&self) -> StaticAbilityId {
@@ -1632,11 +1678,22 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardNameAsEnters {
     pub display: String,
+    pub reveal_opponents_hands: bool,
+    pub require_nonland_from_revealed_opponents: bool,
 }
 
 impl ChooseCardNameAsEnters {
     pub fn new(display: String) -> Self {
-        Self { display }
+        Self::with_spec(display, ChooseCardNameAsEntersSpec::default())
+    }
+
+    pub fn with_spec(display: String, spec: ChooseCardNameAsEntersSpec) -> Self {
+        Self {
+            display,
+            reveal_opponents_hands: spec.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: spec
+                .require_nonland_from_revealed_opponents,
+        }
     }
 }
 
@@ -1650,7 +1707,10 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
-        Some(ChooseCardNameAsEntersSpec)
+        Some(ChooseCardNameAsEntersSpec {
+            reveal_opponents_hands: self.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: self.require_nonland_from_revealed_opponents,
+        })
     }
 }
 
@@ -5125,6 +5185,16 @@ impl ExileWouldDieInstead {
     }
 }
 
+fn is_simple_source_would_die_filter(filter: &ObjectFilter) -> bool {
+    if !filter.source || filter.card_types.len() > 1 {
+        return false;
+    }
+
+    let mut filter_without_type = filter.clone();
+    filter_without_type.card_types.clear();
+    filter_without_type == ObjectFilter::source()
+}
+
 impl StaticAbilityKind for ExileWouldDieInstead {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileWouldDieInstead
@@ -5177,6 +5247,13 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                     effects: self.follow_up_effects.clone(),
                 },
             ));
+        }
+
+        if is_simple_source_would_die_filter(&self.filter)
+            && self.exile_with_counters.is_empty()
+            && self.follow_up_effects.is_empty()
+        {
+            return Some(ReplacementEffect::exile_instead_of_dying(source, controller));
         }
 
         Some(ReplacementEffect::with_matcher(

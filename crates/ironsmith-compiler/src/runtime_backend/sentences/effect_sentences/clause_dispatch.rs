@@ -77,6 +77,49 @@ mod next_turn_cant;
 
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
 
+fn parse_mana_replacement_clause_words(words: &[&str]) -> Option<EffectAst> {
+    let [
+        "until",
+        "end",
+        "of",
+        "turn",
+        "if",
+        "you",
+        "tap",
+        "a",
+        "land",
+        "you",
+        "control",
+        "for",
+        "mana",
+        "it",
+        "produces",
+        mana_word,
+        "instead",
+        "of",
+        "any",
+        "other",
+        "type",
+    ] = words
+    else {
+        return None;
+    };
+    let replacement_mana = match *mana_word {
+        "w" => crate::mana::ManaSymbol::White,
+        "u" => crate::mana::ManaSymbol::Blue,
+        "b" => crate::mana::ManaSymbol::Black,
+        "r" => crate::mana::ManaSymbol::Red,
+        "g" => crate::mana::ManaSymbol::Green,
+        "c" => crate::mana::ManaSymbol::Colorless,
+        _ => return None,
+    };
+    Some(EffectAst::subject_verb_register_mana_replacement(
+        ObjectFilter::land().you_control(),
+        vec![replacement_mana],
+        crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+    ))
+}
+
 const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
 const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -1037,6 +1080,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
     if let Some(effect) = parse_additional_phase_sentence(tokens) {
+        return Ok(effect);
+    }
+    if let Some(effect) = parse_mana_replacement_clause_words(&clause_words) {
         return Ok(effect);
     }
     if is_mana_replacement_clause_words(&clause_words) {

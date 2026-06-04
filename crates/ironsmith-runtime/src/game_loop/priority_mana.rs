@@ -1986,9 +1986,22 @@ pub(super) fn execute_pending_mana_ability(
     drain_pending_trigger_events(game, trigger_queue);
 
     // Add fixed mana to player's pool
-    if !pending.mana_to_add.is_empty() {
+    let source_snapshot = game
+        .object(pending.source)
+        .map(|obj| ObjectSnapshot::from_object(obj, game));
+    let mana_to_add = crate::events::mana::apply_mana_replacements(
+        game,
+        pending.source,
+        pending.activator,
+        pending.activator,
+        pending.mana_to_add.clone(),
+        pending.mana_production_provenance,
+        source_snapshot.clone(),
+        decision_maker,
+    );
+    if !mana_to_add.is_empty() {
         if let Some(player_obj) = game.player_mut(pending.activator) {
-            for symbol in &pending.mana_to_add {
+            for symbol in &mana_to_add {
                 if pending.mana_usage_restrictions.is_empty() {
                     player_obj.mana_pool.add(*symbol, 1);
                 } else {
@@ -2001,16 +2014,14 @@ pub(super) fn execute_pending_mana_ability(
                 }
             }
         }
-        let snapshot = game
-            .object(pending.source)
-            .map(|obj| ObjectSnapshot::from_object(obj, game));
         let event = crate::events::ManaAddedEvent::new(
             pending.source,
             pending.activator,
             pending.activator,
-            pending.mana_to_add.clone(),
+            mana_to_add,
         )
-        .with_snapshot(snapshot)
+        .with_production_provenance(pending.mana_production_provenance)
+        .with_snapshot(source_snapshot.clone())
         .into_trigger_event();
         queue_triggers_from_event(game, trigger_queue, event, false);
     }
@@ -2020,7 +2031,11 @@ pub(super) fn execute_pending_mana_ability(
         let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
             .with_provenance(pending.provenance)
             .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
-            .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type);
+            .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
+            .with_mana_production_provenance(pending.mana_production_provenance);
+        if let Some(snapshot) = source_snapshot.clone() {
+            ctx = ctx.with_source_snapshot(snapshot);
+        }
         let emitted_events = crate::game_loop::execute_resolution_program(
             game,
             &mut ctx,

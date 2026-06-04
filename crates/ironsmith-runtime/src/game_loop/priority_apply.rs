@@ -958,6 +958,8 @@ pub fn apply_priority_response_with_dm(
                 let cost = crate::decision::calculate_effective_activation_total_cost(
                     game, player, *source, &base_cost,
                 );
+                let mana_production_provenance =
+                    crate::special_actions::mana_production_provenance_for_activation_cost(&cost);
 
                 // Separate mana costs from other costs
                 let mut mana_cost: Option<crate::mana::ManaCost> = None;
@@ -1010,6 +1012,19 @@ pub fn apply_priority_response_with_dm(
                     drain_pending_trigger_events(game, trigger_queue);
 
                     // Add fixed mana to player's pool
+                    let source_snapshot = game
+                        .object(*source)
+                        .map(|obj| ObjectSnapshot::from_object(obj, game));
+                    let mana_to_add = crate::events::mana::apply_mana_replacements(
+                        game,
+                        *source,
+                        player,
+                        player,
+                        mana_to_add.clone(),
+                        mana_production_provenance,
+                        source_snapshot.clone(),
+                        decision_maker,
+                    );
                     if !mana_to_add.is_empty() {
                         if let Some(player_obj) = game.player_mut(player) {
                             for symbol in &mana_to_add {
@@ -1028,16 +1043,14 @@ pub fn apply_priority_response_with_dm(
                                 }
                             }
                         }
-                        let snapshot = game
-                            .object(*source)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game));
                         let event = crate::events::ManaAddedEvent::new(
                             *source,
                             player,
                             player,
-                            mana_to_add.clone(),
+                            mana_to_add,
                         )
-                        .with_snapshot(snapshot)
+                        .with_production_provenance(mana_production_provenance)
+                        .with_snapshot(source_snapshot.clone())
                         .into_trigger_event();
                         queue_triggers_from_event(game, trigger_queue, event, false);
                     }
@@ -1049,7 +1062,11 @@ pub fn apply_priority_response_with_dm(
                             .with_mana_usage_restrictions(mana_usage_restrictions.clone())
                             .with_mana_source_chosen_creature_type(
                                 mana_source_chosen_creature_type,
-                            );
+                            )
+                            .with_mana_production_provenance(mana_production_provenance);
+                        if let Some(snapshot) = source_snapshot.clone() {
+                            ctx = ctx.with_source_snapshot(snapshot);
+                        }
                         if let Some(x) = x_value_from_costs {
                             ctx = ctx.with_x(x);
                         }
@@ -1098,6 +1115,7 @@ pub fn apply_priority_response_with_dm(
                         effects: effects_to_run,
                         mana_usage_restrictions,
                         mana_source_chosen_creature_type,
+                        mana_production_provenance,
                         undo_locked_by_mana: !mana_ability_is_undo_safe(
                             game,
                             *source,

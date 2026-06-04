@@ -894,19 +894,20 @@ impl RestrictionExt for Restriction {
             Restriction::CastSpellsMatching(filter, spell_filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
-                        if spell_filter.name.as_deref() == Some("{chosen name}")
-                            && let Some(source) = source
-                            && let Some(chosen_names) = game.chosen_named_option(source)
-                        {
-                            for chosen_name in chosen_names.lines().map(str::trim) {
-                                if !chosen_name.is_empty() {
-                                    let mut resolved_filter = spell_filter.clone();
-                                    resolved_filter.name = Some(chosen_name.to_string());
-                                    tracker.add_cant_cast_filter_from_source(
-                                        player.id,
-                                        resolved_filter,
-                                        Some(source),
-                                    );
+                        if spell_filter.name.as_deref() == Some("{chosen name}") {
+                            if let Some(source) = source
+                                && let Some(chosen_names) = game.chosen_named_option(source)
+                            {
+                                for chosen_name in chosen_names.lines().map(str::trim) {
+                                    if !chosen_name.is_empty() {
+                                        let mut resolved_filter = spell_filter.clone();
+                                        resolved_filter.name = Some(chosen_name.to_string());
+                                        tracker.add_cant_cast_filter_from_source(
+                                            player.id,
+                                            resolved_filter,
+                                            Some(source),
+                                        );
+                                    }
                                 }
                             }
                         } else {
@@ -1212,6 +1213,21 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_be_targeted.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::BeTargetedFrom(filter, source_filter) => {
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && filter.matches(obj, &ctx, game)
+                    {
+                        tracker.cant_be_targeted_from.push(
+                            crate::game_state::ObjectCantBeTargetedFrom {
+                                object: obj_id,
+                                source_filter: source_filter.clone(),
+                                controller,
+                            },
+                        );
                     }
                 }
             }

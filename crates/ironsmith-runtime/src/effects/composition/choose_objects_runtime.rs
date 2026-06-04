@@ -604,7 +604,7 @@ fn hidden_library_search_candidates(
         Box::new(player.library.iter().copied())
     };
     let mut candidates = Vec::new();
-    let limit = if effect.top_only {
+    let limit = if effect.top_only || effect.bottom_only {
         top_only_selection_limit(effect, ctx.x_value)
     } else {
         usize::MAX

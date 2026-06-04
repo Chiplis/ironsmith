@@ -936,6 +936,11 @@ pub(crate) enum SubjectVerbActionAst {
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterManaReplacement {
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    },
     RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -1126,6 +1131,7 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        filter: Option<ObjectFilter>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
@@ -2100,6 +2106,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
+            Self::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
+            } => f
+                .debug_struct("RegisterManaReplacement")
+                .field("source_filter", source_filter)
+                .field("replacement_mana", replacement_mana)
+                .field("mode", mode)
+                .finish(),
             Self::RegisterDamagedBySourceZoneReplacement {
                 filter,
                 from_zone,
@@ -2415,6 +2431,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                filter,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
@@ -2422,6 +2439,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("filter", filter)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
@@ -3453,6 +3471,13 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         tag: TagKey,
     },
+    ChooseObjectsBottomOfLibrary {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        count_value: Option<Value>,
+        player: PlayerAst,
+        tag: TagKey,
+    },
     ChooseObjectsAcrossZones {
         filter: ObjectFilter,
         count: ChoiceCount,
@@ -4103,6 +4128,7 @@ impl EffectAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        filter: Option<ObjectFilter>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4113,6 +4139,7 @@ impl EffectAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                filter,
             },
         )
     }
@@ -5303,6 +5330,22 @@ impl EffectAst {
                 player,
                 replacement_effects,
                 duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_mana_replacement(
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
             },
         )
     }

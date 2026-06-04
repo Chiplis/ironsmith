@@ -589,6 +589,8 @@ const SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause
             &["that", "creature", "attacked", "this", "turn"],
         ]
 );
+const YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const SOURCE_ENTERED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2892,6 +2894,9 @@ pub(crate) fn parse_static_condition_clause(
     }
     if SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceAttackedThisTurn);
+    }
+    if YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::AttackedThisTurn);
     }
     if SOURCE_ENTERED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         let mut filter = ObjectFilter::source();
@@ -6889,7 +6894,37 @@ pub(crate) fn parse_isnt_creature_line(
     } else {
         None
     };
-    let clause_tokens = clause_tokens_buf.as_deref().unwrap_or(tokens);
+    let mut clause_tokens_storage: Vec<OwnedLexToken> = Vec::new();
+    let mut clause_tokens = clause_tokens_buf.as_deref().unwrap_or(tokens);
+
+    let clause_words = crate::runtime_backend::token_word_refs(clause_tokens);
+    if let Some(unless_word_idx) = clause_words.iter().position(|word| *word == "unless") {
+        let unless_token_idx = token_index_for_word_index(clause_tokens, unless_word_idx)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map unless condition in isn't-a-creature clause (clause: '{}')",
+                    all_words.join(" ")
+                ))
+            })?;
+        let condition_tokens = trim_commas(&clause_tokens[unless_token_idx + 1..]);
+        if condition_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing condition after trailing 'unless' clause (clause: '{}')",
+                all_words.join(" ")
+            )));
+        }
+        let unless_condition = crate::ConditionExpr::Not(Box::new(parse_static_condition_clause(
+            &condition_tokens,
+        )?));
+        condition = Some(match condition {
+            Some(existing) => {
+                crate::ConditionExpr::And(Box::new(existing), Box::new(unless_condition))
+            }
+            None => unless_condition,
+        });
+        clause_tokens_storage.extend(trim_commas(&clause_tokens[..unless_token_idx]));
+        clause_tokens = &clause_tokens_storage;
+    }
 
     let clause_words = crate::runtime_backend::token_word_refs(clause_tokens);
     if clause_words.len() < 3 {

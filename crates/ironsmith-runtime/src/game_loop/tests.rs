@@ -7768,6 +7768,220 @@ impl DecisionMaker for CaptureRevealDecisionMaker {
     }
 }
 
+struct AlhammarretChoiceDecisionMaker {
+    name: &'static str,
+    view_calls: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+}
+
+impl AlhammarretChoiceDecisionMaker {
+    fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            view_calls: Vec::new(),
+        }
+    }
+}
+
+impl DecisionMaker for AlhammarretChoiceDecisionMaker {
+    fn decide_text(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        self.name.to_string()
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.view_calls
+            .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn alhammarret_high_arbiter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_201), "Alhammarret, High Arbiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(
+            "Flying\nAs Alhammarret enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way.\nYour opponents can't cast spells with the chosen name (as long as this creature is on the battlefield).",
+        )
+        .expect("Alhammarret should parse for runtime regression")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn named_spell_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn named_land_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_reveals_opponents_hand_and_blocks_chosen_nonland_name() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_202, "Lightning Bolt");
+    let giant_growth = named_spell_definition(91_203, "Giant Growth");
+    let forest = named_land_definition(91_204, "Forest");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    let bob_other = game.create_object_from_definition(&giant_growth, bob, Zone::Hand);
+    let bob_forest = game.create_object_from_definition(&forest, bob, Zone::Hand);
+    let alice_lightning = game.create_object_from_definition(&lightning, alice, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Lightning Bolt");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert_eq!(
+        game.chosen_named_option(result.new_id).map(str::to_string),
+        Some("Lightning Bolt".to_string()),
+        "Alhammarret should store the nonland name chosen from an opponent's revealed hand"
+    );
+    assert_eq!(dm.view_calls.len(), 2, "Bob's hand should be revealed to both players");
+    assert!(dm.view_calls.iter().all(|(_, subject, zone, public, cards)| {
+        *subject == bob
+            && *zone == Zone::Hand
+            && *public
+            && cards == &vec![bob_lightning, bob_other, bob_forest]
+    }));
+
+    let bob_filter_debug = format!(
+        "{:?}",
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+    );
+    let alice_filter_debug = format!(
+        "{:?}",
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(alice)
+    );
+    assert!(
+        bob_filter_debug.contains("Lightning Bolt") && !bob_filter_debug.contains("Giant Growth"),
+        "Alhammarret should add only a Bob-side cast prohibition for the chosen nonland name, got {bob_filter_debug}"
+    );
+    assert!(
+        alice_filter_debug == "None",
+        "Alhammarret should not restrict its controller, got {alice_filter_debug}"
+    );
+    game.move_object_by_effect(result.new_id, Zone::Graveyard)
+        .expect("Alhammarret should be movable off the battlefield");
+    game.update_cant_effects();
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "Alhammarret's chosen-name restriction should end when it leaves the battlefield"
+    );
+    assert!(
+        game.object(bob_lightning).is_some()
+            && game.object(bob_other).is_some()
+            && game.object(alice_lightning).is_some(),
+        "test spells should remain in hand while checking cast restrictions"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_rejects_revealed_land_name_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_205, "Lightning Bolt");
+    let forest = named_land_definition(91_206, "Forest");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    game.create_object_from_definition(&forest, bob, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Forest");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert!(
+        game.chosen_named_option(result.new_id).is_none(),
+        "Alhammarret should reject land names even when revealed"
+    );
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "without a valid nonland revealed choice, Alhammarret should not add a cast prohibition"
+    );
+    assert!(
+        game.object(bob_lightning).is_some(),
+        "Bob's Lightning Bolt should remain available in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_rejects_unrevealed_nonland_name_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_207, "Lightning Bolt");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Giant Growth");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert!(
+        game.chosen_named_option(result.new_id).is_none(),
+        "Alhammarret should reject nonland names that were not revealed from an opponent's hand"
+    );
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "without a revealed nonland choice, Alhammarret should not add a cast prohibition"
+    );
+    assert!(
+        game.object(bob_lightning).is_some(),
+        "Bob's Lightning Bolt should remain available in hand"
+    );
+}
+
 #[test]
 fn test_generate_damage_triggers_emits_life_loss_for_player_damage() {
     let mut game = setup_game();
@@ -50015,6 +50229,158 @@ fn giant_solifuge_keywords_apply_to_targeting_haste_and_trample() {
     assert_eq!(
         excess, 2,
         "trample should leave two excess damage over a 2-toughness blocker"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn gaeas_revenge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(193_669), "Gaea's Revenge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(8, 5))
+        .parse_text(
+            "This spell can't be countered.\n\
+             Haste\n\
+             This creature can't be the target of nongreen spells or abilities from nongreen sources.",
+        )
+        .expect("Gaea's Revenge should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_instant_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_creature_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_strict_parser_and_compiled_text_regression() {
+    let def = gaeas_revenge_definition();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "Gaea's Revenge should render its uncounterable spell restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Haste"),
+        "Gaea's Revenge should render haste, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "This creature can't be the target of nongreen spells or abilities from nongreen sources."
+        ),
+        "Gaea's Revenge should render its nongreen source targeting restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_static_abilities_apply_to_countering_haste_and_targeting() {
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::targeting::{
+        TargetingInvalidReason, TargetingResult, can_target_object, compute_legal_targets,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let revenge = gaeas_revenge_definition();
+
+    let revenge_spell = game.create_object_from_definition(&revenge, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(revenge_spell, alice));
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_countered(revenge_spell),
+        "Gaea's Revenge should be uncounterable while it is a spell on the stack"
+    );
+
+    let revenge_id = game.create_object_from_definition(&revenge, alice, Zone::Battlefield);
+    game.set_summoning_sick(revenge_id);
+    game.refresh_continuous_state();
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(revenge_id).expect("Gaea's Revenge exists"),
+            &game,
+        ),
+        "haste should let Gaea's Revenge attack despite summoning sickness"
+    );
+
+    let red_spell =
+        colored_instant_definition("Nongreen Targeting Spell", crate::color::ColorSet::RED);
+    let red_spell_id = game.create_object_from_definition(&red_spell, bob, Zone::Stack);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, red_spell_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "an opponent's nongreen spell should not be able to target Gaea's Revenge"
+    );
+
+    let friendly_red_source = colored_creature_definition(
+        "Friendly Nongreen Ability Source",
+        crate::color::ColorSet::RED,
+    );
+    let friendly_red_source_id =
+        game.create_object_from_definition(&friendly_red_source, alice, Zone::Battlefield);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, friendly_red_source_id, alice),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "Gaea's Revenge should also reject its controller's nongreen ability sources"
+    );
+
+    let green_spell =
+        colored_instant_definition("Green Targeting Spell", crate::color::ColorSet::GREEN);
+    let green_spell_id = game.create_object_from_definition(&green_spell, bob, Zone::Stack);
+    assert!(
+        can_target_object(&game, revenge_id, green_spell_id, bob).is_legal(),
+        "a green spell should be able to target Gaea's Revenge"
+    );
+
+    let legal_targets_from_red = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(red_spell_id),
+    );
+    assert!(
+        !legal_targets_from_red.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should not appear in legal target lists for nongreen sources"
+    );
+
+    let legal_targets_from_green = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(green_spell_id),
+    );
+    assert!(
+        legal_targets_from_green.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should appear in legal target lists for green sources"
     );
 }
 

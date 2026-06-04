@@ -1068,6 +1068,13 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     _ => "as long as that player hasn't cast a spell this turn".to_string(),
                 };
             }
+            if let crate::ConditionExpr::CountComparison { display, .. } = inner.as_ref() {
+                let condition_text = display
+                    .clone()
+                    .unwrap_or_else(|| describe_static_condition(inner).replacen("as long as ", "", 1))
+                    .replace(" dont ", " don't ");
+                return format!("unless {condition_text}");
+            }
             format!("as long as not ({})", describe_static_condition(inner))
         }
         crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count } => {
@@ -1162,7 +1169,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             display,
         } => {
             if let Some(display) = display {
-                return format!("as long as {display}");
+                return format!("as long as {}", display.replace(" dont ", " don't "));
             }
             format!(
                 "as long as there are {} {}",

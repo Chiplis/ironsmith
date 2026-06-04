@@ -204,6 +204,15 @@ const TARGETED_TEMPORARY_MODIFIER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_words & [&["get", "gets", "gain", "gains"]]
 );
 const IF_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["if", "instead"]);
+const DIE_ROLL_RESULT_ADJUSTMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["after", "you", "roll", "a", "die"];
+    contains_phrases & [
+        &["you", "may", "pay"],
+        &["if", "you", "do"],
+        &["increase", "or", "decrease", "the", "result", "by"],
+        &["do", "this", "only", "once", "each", "turn"],
+    ]
+);
 const CANT_CAST_PHRASES: &[&[&str]] = &[&["cant", "cast"], &["can't", "cast"]];
 const CANT_CAST_NEXT_TURN_PATTERN: ClauseShape<'static> = ClauseShape::new()
     .contains_any_phrases(&[CANT_CAST_PHRASES])
@@ -460,6 +469,9 @@ fn lower_rewrite_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
+        return Ok(vec![chunk]);
+    }
     if !parse_groups.is_empty() {
         if parse_groups.len() > 1
             && sentences_have_token_creation_followup_after_first(parse_groups)
@@ -478,6 +490,8 @@ fn lower_rewrite_statement_to_chunks_impl(
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
             if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
+                chunks.push(chunk);
+            } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(group_tokens) {
                 chunks.push(chunk);
             } else if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens)
             {
@@ -518,6 +532,8 @@ fn lower_rewrite_statement_to_chunks_impl(
             for sentence in sentence_tokens {
                 if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&sentence) {
                     chunks.push(chunk);
+                } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(&sentence) {
+                    chunks.push(chunk);
                 } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&sentence) {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&sentence)? {
@@ -535,6 +551,8 @@ fn lower_rewrite_statement_to_chunks_impl(
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
                 if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
+                    chunks.push(chunk);
+                } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(&group_tokens) {
                     chunks.push(chunk);
                 } else if let Some(chunk) =
                     parse_self_enters_with_x_counters_static_chunk(&group_tokens)
@@ -560,6 +578,43 @@ fn lower_rewrite_statement_to_chunks_impl(
         "rewrite statement lowering expected prepared parse tokens for '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
+    let words = token_word_refs(tokens);
+    if !DIE_ROLL_RESULT_ADJUSTMENT_PATTERN.matches_words(&words) {
+        return None;
+    }
+    let life_cost = words
+        .windows(3)
+        .find_map(|window| {
+            (window[0] == "pay" && window[2] == "life")
+                .then(|| window[1].parse::<u32>().ok())
+                .flatten()
+        })
+        .unwrap_or(1);
+    let amount = words
+        .windows(2)
+        .find_map(|window| {
+            (window[0] == "by")
+                .then(|| window[1].parse::<u32>().ok())
+                .flatten()
+        })
+        .unwrap_or(1);
+    let display = format!(
+        "After you roll a die, you may pay {life_cost} life. If you do, increase or decrease the result by {amount}. Do this only once each turn."
+    );
+    Some(LineAst::StaticAbilities(vec![
+        crate::cards::builders::StaticAbilityAst::Static(
+            StaticAbility::die_roll_result_adjustment(
+                PlayerFilter::You,
+                life_cost,
+                amount,
+                true,
+                display,
+            ),
+        ),
+    ]))
 }
 
 fn sentences_have_token_copy_followup_after_first<S: AsRef<[OwnedLexToken]>>(
