@@ -594,6 +594,8 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         52,
         PreDiagnostic,
         &[
+            LexRuleHeadHint::Single("all"),
+            LexRuleHeadHint::Single("each"),
             LexRuleHeadHint::Single("it"),
             LexRuleHeadHint::Single("that"),
         ],
