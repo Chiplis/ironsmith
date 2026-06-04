@@ -2102,6 +2102,30 @@ fn simple_would_die_exile_player_filter(words: &[&str]) -> Option<PlayerFilter> 
         .find_map(|(phrase, player)| (*phrase == words).then(|| player.clone()))
 }
 
+fn simple_source_would_die_exile_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let source_type = match words {
+        ["if", "this", "creature", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Creature)
+        }
+        ["if", "this", "artifact", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Artifact)
+        }
+        ["if", "this", "enchantment", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Enchantment)
+        }
+        ["if", "this", "permanent", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "object", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "would", "die", "exile", "it", "instead"] => None,
+        _ => return None,
+    };
+
+    let filter = match source_type {
+        Some(card_type) => ObjectFilter::source().with_type(card_type),
+        None => ObjectFilter::source(),
+    };
+    Some(filter)
+}
+
 fn max_hand_size_subject_prefix(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     if MAX_HAND_SIZE_YOU_SUBJECT_PATTERN.matches_words(words) {
         Some((PlayerFilter::You, 1))
@@ -10881,6 +10905,10 @@ pub(crate) fn parse_exile_would_die_instead_line(
                 StaticAbility::exile_would_die_instead_with_damage_source(victim, Some(damaged_by)),
             ));
         }
+    }
+
+    if let Some(filter) = simple_source_would_die_exile_filter(&words) {
+        return Ok(Some(StaticAbility::exile_would_die_instead(filter)));
     }
 
     let Some(player) = simple_would_die_exile_player_filter(&words) else {

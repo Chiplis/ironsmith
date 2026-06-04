@@ -11198,6 +11198,19 @@ fn rewrite_rayami_nontoken_creature_would_die_with_blood_counter_static_replacem
 }
 
 #[test]
+fn rewrite_this_creature_would_die_static_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Self-Exiling Creature Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text("If this creature would die, exile it instead.")
+        .expect("self death replacement should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(debug.contains("ExileWouldDieInstead"), "{debug}");
+    assert!(debug.contains("source: true"), "{debug}");
+    assert!(debug.contains("Creature"), "{debug}");
+}
+
+#[test]
 fn rewrite_exile_counter_cast_permission_with_mana_permission_static_line() {
     let line = "You may cast spells from among cards in exile your opponents own with ice counters on them, and you may spend mana from snow sources as though it were mana of any color to cast those spells.";
     let tokens = lex_line(line, 0).expect("permission line should lex");

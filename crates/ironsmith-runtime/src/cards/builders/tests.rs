@@ -24649,6 +24649,185 @@ fn burn_the_accursed_regression_uses_oracle_like_damage_and_die_replacement_text
 }
 
 #[test]
+fn gloomshrieker_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Gloomshrieker");
+    let def = parse_oracle_card_definition("Gloomshrieker");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        lower.contains("menace"),
+        "expected Gloomshrieker menace text, got {rendered}"
+    );
+    assert!(
+        lower.contains(
+            "when this creature enters, return target permanent card from your graveyard to your hand"
+        ),
+        "expected Gloomshrieker ETB return text, got {rendered}"
+    );
+    assert!(
+        lower.contains("if this creature would die, exile it instead"),
+        "expected self death replacement text, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("ExileWouldDieInstead")
+            && abilities_debug.contains("source: true")
+            && abilities_debug.contains("Creature"),
+        "expected source-scoped creature death replacement, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn gloomshrieker_enters_returns_target_permanent_card_from_your_graveyard_to_hand() {
+    let def = parse_oracle_card_definition("Gloomshrieker");
+    let nonpermanent = CardDefinitionBuilder::new(CardId::new(), "Gloomshrieker Test Instant")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let permanent = CardDefinitionBuilder::new(CardId::new(), "Gloomshrieker Test Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    game.create_object_from_definition(&nonpermanent, alice, Zone::Graveyard);
+    game.create_object_from_definition(&permanent, alice, Zone::Graveyard);
+    let gloom_in_hand = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let gloom_snapshot =
+        crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(gloom_in_hand)
+                .expect("Gloomshrieker should be in hand before entering"),
+            &game,
+        );
+    let gloom = game
+        .move_object_with_etb_processing(gloom_in_hand, Zone::Battlefield)
+        .expect("Gloomshrieker should enter")
+        .new_id;
+
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::ZoneChangeEvent::with_results(
+            gloom,
+            vec![gloom],
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(gloom_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let triggered = crate::triggers::check_triggers(&game, &event);
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in triggered.into_iter().filter(|entry| entry.source == gloom) {
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Gloomshrieker should trigger once when it enters"
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Gloomshrieker trigger should go on the stack with a legal target");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Gloomshrieker trigger should resolve");
+
+    let hand_names: Vec<String> = game
+        .objects_in_zone(Zone::Hand)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+    let graveyard_names: Vec<String> = game
+        .objects_in_zone(Zone::Graveyard)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+
+    assert!(
+        hand_names.iter().any(|name| name == "Gloomshrieker Test Artifact"),
+        "the permanent card target should move to hand, hand={hand_names:?}"
+    );
+    assert!(
+        graveyard_names
+            .iter()
+            .any(|name| name == "Gloomshrieker Test Instant"),
+        "the nonpermanent card should not be a legal target, graveyard={graveyard_names:?}"
+    );
+}
+
+#[test]
+fn gloomshrieker_death_replacement_exiles_only_gloomshrieker() {
+    let def = parse_oracle_card_definition("Gloomshrieker");
+    let decoy_def = CardDefinitionBuilder::new(CardId::new(), "Gloomshrieker Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let gloom = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let decoy = game.create_object_from_definition(&decoy_def, alice, Zone::Battlefield);
+    game.update_replacement_effects();
+
+    let decoy_destination = crate::events::processing::process_zone_change_with_event(
+        &mut game,
+        decoy,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::from_sba(),
+    )
+    .expect("decoy death should not be prevented");
+    assert_eq!(
+        decoy_destination,
+        Zone::Graveyard,
+        "Gloomshrieker's replacement must not affect other creatures"
+    );
+    game.move_object_by_sba(decoy, decoy_destination)
+        .expect("decoy should move to graveyard");
+
+    let gloom_destination = crate::events::processing::process_zone_change_with_event(
+        &mut game,
+        gloom,
+        Zone::Battlefield,
+        Zone::Graveyard,
+        crate::events::cause::EventCause::from_sba(),
+    )
+    .expect("Gloomshrieker death should not be prevented");
+    assert_eq!(
+        gloom_destination,
+        Zone::Exile,
+        "Gloomshrieker should be exiled instead of going to the graveyard"
+    );
+    game.move_object_by_sba(gloom, gloom_destination)
+        .expect("Gloomshrieker should move to exile");
+
+    let exile_names: Vec<String> = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+    let graveyard_names: Vec<String> = game
+        .objects_in_zone(Zone::Graveyard)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+
+    assert!(
+        exile_names.iter().any(|name| name == "Gloomshrieker"),
+        "Gloomshrieker should end in exile, exile={exile_names:?}"
+    );
+    assert!(
+        graveyard_names
+            .iter()
+            .any(|name| name == "Gloomshrieker Test Bear"),
+        "the decoy creature should end in the graveyard, graveyard={graveyard_names:?}"
+    );
+    assert!(
+        !graveyard_names.iter().any(|name| name == "Gloomshrieker"),
+        "Gloomshrieker should not be in the graveyard, graveyard={graveyard_names:?}"
+    );
+}
+
+#[test]
 fn moira_and_teshar_regression_keeps_leave_battlefield_instead_marker() {
     let def = parse_oracle_card_definition("Moira and Teshar");
     let rendered = unprocessed_compiled_lines(&def)

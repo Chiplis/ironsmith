@@ -5086,6 +5086,16 @@ impl ExileWouldDieInstead {
     }
 }
 
+fn is_simple_source_would_die_filter(filter: &ObjectFilter) -> bool {
+    if !filter.source || filter.card_types.len() > 1 {
+        return false;
+    }
+
+    let mut filter_without_type = filter.clone();
+    filter_without_type.card_types.clear();
+    filter_without_type == ObjectFilter::source()
+}
+
 impl StaticAbilityKind for ExileWouldDieInstead {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileWouldDieInstead
@@ -5138,6 +5148,13 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                     effects: self.follow_up_effects.clone(),
                 },
             ));
+        }
+
+        if is_simple_source_would_die_filter(&self.filter)
+            && self.exile_with_counters.is_empty()
+            && self.follow_up_effects.is_empty()
+        {
+            return Some(ReplacementEffect::exile_instead_of_dying(source, controller));
         }
 
         Some(ReplacementEffect::with_matcher(
