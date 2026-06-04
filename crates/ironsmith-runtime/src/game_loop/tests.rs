@@ -920,7 +920,7 @@ fn the_eternity_elevator_threshold_mana_counts_current_charge_counters() {
         .expect("The Eternity Elevator threshold mana ability should resolve");
 
     assert_eq!(
-        game.player(alice).expect("alice exists").mana_pool.green,
+        game.player(alice).expect("alice exists").mana_pool.white,
         23,
         "The Eternity Elevator should add X mana of one color where X is its charge counters"
     );

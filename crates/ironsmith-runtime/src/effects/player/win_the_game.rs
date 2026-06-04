@@ -4,9 +4,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::other::PlayerLostGameEvent;
 use crate::game_state::GameState;
-use crate::triggers::TriggerEvent;
 pub use ironsmith_core::WinTheGameEffect;
 
 /// Effect that causes a player to win the game.
@@ -40,17 +38,15 @@ impl EffectExecutor for WinTheGameEffect {
             return Ok(EffectOutcome::prevented());
         }
 
-        // Player wins - mark all other players as lost
-        let mut outcome = EffectOutcome::resolved();
-        for other_player in &mut game.players {
-            if other_player.id != player_id && other_player.is_in_game() {
-                other_player.has_lost = true;
-                outcome = outcome.with_event(TriggerEvent::new_with_provenance(
-                    PlayerLostGameEvent::new(other_player.id),
-                    ctx.provenance,
-                ));
-            }
+        let losing_players = game
+            .players
+            .iter()
+            .filter(|player| player.id != player_id && player.is_in_game())
+            .map(|player| player.id)
+            .collect::<Vec<_>>();
+        for other_player in losing_players {
+            game.mark_player_lost(other_player);
         }
-        Ok(outcome)
+        Ok(EffectOutcome::resolved())
     }
 }

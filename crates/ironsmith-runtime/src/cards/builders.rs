@@ -1217,50 +1217,64 @@ fn parse_type_line(
     raw: &str,
 ) -> Result<(Vec<Supertype>, Vec<CardType>, Vec<Subtype>), CardTextError> {
     let normalized = raw.replace('—', "-");
-    let (type_part, subtype_part) = normalized
-        .split_once('-')
-        .map_or((normalized.as_str(), ""), |(types, subtypes)| {
-            (types.trim(), subtypes.trim())
-        });
-
     let mut supertypes = Vec::new();
     let mut card_types = Vec::new();
-    for word in type_part.split_whitespace() {
-        let lower = word.to_ascii_lowercase();
-        match lower.as_str() {
-            "basic" => supertypes.push(Supertype::Basic),
-            "legendary" => supertypes.push(Supertype::Legendary),
-            "snow" => supertypes.push(Supertype::Snow),
-            "world" => supertypes.push(Supertype::World),
-            "land" => card_types.push(CardType::Land),
-            "creature" => card_types.push(CardType::Creature),
-            "artifact" => card_types.push(CardType::Artifact),
-            "enchantment" => card_types.push(CardType::Enchantment),
-            "planeswalker" => card_types.push(CardType::Planeswalker),
-            "instant" => card_types.push(CardType::Instant),
-            "sorcery" => card_types.push(CardType::Sorcery),
-            "battle" => card_types.push(CardType::Battle),
-            "kindred" | "tribal" => card_types.push(CardType::Kindred),
-            _ => {
+    let mut subtypes = Vec::new();
+
+    for face in normalized
+        .split("//")
+        .map(str::trim)
+        .filter(|face| !face.is_empty())
+    {
+        let (type_part, subtype_part) = face
+            .split_once('-')
+            .map_or((face, ""), |(types, subtypes)| {
+                (types.trim(), subtypes.trim())
+            });
+
+        for word in type_part.split_whitespace() {
+            let lower = word.to_ascii_lowercase();
+            match lower.as_str() {
+                "basic" => push_unique(&mut supertypes, Supertype::Basic),
+                "legendary" => push_unique(&mut supertypes, Supertype::Legendary),
+                "snow" => push_unique(&mut supertypes, Supertype::Snow),
+                "world" => push_unique(&mut supertypes, Supertype::World),
+                "land" => push_unique(&mut card_types, CardType::Land),
+                "creature" => push_unique(&mut card_types, CardType::Creature),
+                "artifact" => push_unique(&mut card_types, CardType::Artifact),
+                "enchantment" => push_unique(&mut card_types, CardType::Enchantment),
+                "planeswalker" => push_unique(&mut card_types, CardType::Planeswalker),
+                "instant" => push_unique(&mut card_types, CardType::Instant),
+                "sorcery" => push_unique(&mut card_types, CardType::Sorcery),
+                "battle" => push_unique(&mut card_types, CardType::Battle),
+                "kindred" | "tribal" => push_unique(&mut card_types, CardType::Kindred),
+                _ => {
+                    return Err(CardTextError::ParseError(format!(
+                        "unknown type word `{word}` in `{raw}`"
+                    )));
+                }
+            }
+        }
+
+        for word in subtype_part.split_whitespace() {
+            if let Some(subtype) = parse_subtype_word(word) {
+                push_unique(&mut subtypes, subtype);
+            } else {
                 return Err(CardTextError::ParseError(format!(
-                    "unknown type word `{word}` in `{raw}`"
+                    "unknown subtype word `{word}` in `{raw}`"
                 )));
             }
         }
     }
 
-    let mut subtypes = Vec::new();
-    for word in subtype_part.split_whitespace() {
-        if let Some(subtype) = parse_subtype_word(word) {
-            subtypes.push(subtype);
-        } else {
-            return Err(CardTextError::ParseError(format!(
-                "unknown subtype word `{word}` in `{raw}`"
-            )));
-        }
-    }
-
     Ok((supertypes, card_types, subtypes))
+}
+
+#[cfg(any(test, ironsmith_runtime_parser_tests))]
+fn push_unique<T: PartialEq>(values: &mut Vec<T>, value: T) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]
@@ -13695,7 +13709,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         );
         assert!(
             rendered.contains("while this source is tapped")
-                || rendered.contains("while this permanent is tapped"),
+                || rendered.contains("while this permanent is tapped")
+                || rendered.contains("for as long as this source remains tapped")
+                || rendered.contains("for as long as this permanent remains tapped"),
             "expected tapped-duration clause in compiled text, got {rendered}"
         );
     }

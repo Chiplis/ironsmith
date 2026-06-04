@@ -120,12 +120,13 @@ mod tests {
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice);
 
-        // No decision maker, should default to green
+        // new_default uses SelectFirstDecisionMaker, so unrestricted color
+        // choices take the first color in WUBRG order.
         let effect = AddManaOfAnyColorEffect::you(2);
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
-        assert_eq!(game.player(alice).unwrap().mana_pool.green, 2);
+        assert_eq!(game.player(alice).unwrap().mana_pool.white, 2);
     }
 
     #[test]
@@ -153,7 +154,7 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(3));
-        assert_eq!(game.player(alice).unwrap().mana_pool.green, 3); // Defaults to green
+        assert_eq!(game.player(alice).unwrap().mana_pool.white, 3);
     }
 
     #[test]
@@ -169,7 +170,7 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
         assert_eq!(game.player(alice).unwrap().mana_pool.green, 0);
-        assert_eq!(game.player(bob).unwrap().mana_pool.green, 2);
+        assert_eq!(game.player(bob).unwrap().mana_pool.white, 2);
     }
 
     #[test]

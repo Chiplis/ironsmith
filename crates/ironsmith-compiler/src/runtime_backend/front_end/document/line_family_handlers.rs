@@ -87,9 +87,7 @@ const PARTNER_PREFIX: &[&str] = &["partner"];
 const PARTNER_WITH_PREFIX: &[&str] = &["partner", "with"];
 const ESCAPES_WITH_PHRASE: &[&str] = &["escapes", "with"];
 const CREATURES_YOU_CONTROL_GET_PREFIX: &[&str] = &["creatures", "you", "control", "get"];
-const CHARACTER_SELECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["character", "select"]);
-const PARTNER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_PREFIX);
+const CHARACTER_SELECT_PREFIX: &[&str] = &["character", "select"];
 const PARTNER_WITH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_WITH_PREFIX);
 const CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix CREATURES_YOU_CONTROL_GET_PREFIX);
@@ -322,11 +320,6 @@ fn is_sticker_sheet_ticket_marker_line(ctx: &LineDispatchContext<'_>) -> bool {
 pub(super) fn run_triggered_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if line_starts_with_words(ctx.line, &["at", "the", "beginning", "of"])
-        && contains_token_word_sequence(&ctx.line.tokens, &["next", "end", "step"])
-    {
-        return Ok(None);
-    }
     try_parse_triggered_line_dispatch(ctx.preprocessed, ctx.idx, ctx.line, ctx.allow_unsupported)
 }
 
@@ -1079,28 +1072,32 @@ fn tokens_start_with_partner_variant_separator(tokens: &[OwnedLexToken]) -> bool
     if tokens.first().is_some_and(first_token_is_partner_variant) {
         return true;
     }
-    if CHARACTER_SELECT_PREFIX_PATTERN
-        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
-    {
+    let words = TokenWordView::new(tokens);
+    if words.starts_with(CHARACTER_SELECT_PREFIX) {
         return true;
     }
-    let token_words = crate::runtime_backend::token_word_refs(tokens);
-    if !PARTNER_PREFIX_PATTERN.matches_words(&token_words) {
+    if !words.starts_with(PARTNER_PREFIX) {
         return false;
     }
-    let words = TokenWordView::new(tokens);
     if words.len() > PARTNER_PREFIX.len()
         && words.get(PARTNER_PREFIX.len()) != Some("with")
         && words.token_index_for_word_index(0) == words.token_index_for_word_index(1)
     {
         return true;
     }
-    let Some(separator_idx) = words.token_index_after_words(PARTNER_PREFIX.len()) else {
+    let Some(separator_start_idx) = words.token_index_after_words(PARTNER_PREFIX.len()) else {
+        return false;
+    };
+    let Some(next_word_idx) = words.token_index_for_word_index(PARTNER_PREFIX.len()) else {
         return false;
     };
     tokens
-        .get(separator_idx)
-        .is_some_and(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        .get(separator_start_idx..next_word_idx)
+        .is_some_and(|between| {
+            between
+                .iter()
+                .any(|token| matches!(token.kind, TokenKind::Dash | TokenKind::EmDash))
+        })
 }
 
 fn first_token_is_partner_variant(token: &OwnedLexToken) -> bool {

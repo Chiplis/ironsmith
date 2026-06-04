@@ -5352,6 +5352,21 @@ fn describe_roll_die_with_numeric_result_table(effects: &[Effect]) -> Option<Str
         .effect
         .downcast_ref::<crate::effects::RollDieEffect>()?;
 
+    if let [roll_effect, branch_effect] = effects
+        && let Some(if_effect) = unwrap_if_effect(branch_effect)
+        && if_effect.condition == roll_with_id.id
+        && if_effect.else_.is_empty()
+        && let Some(condition) = describe_with_id_if_clause(roll_with_id, if_effect)
+    {
+        let branch = describe_effect_list(&if_effect.then);
+        return Some(format!(
+            "{}. {}, {}",
+            describe_effect(roll_effect).trim_end_matches('.'),
+            condition,
+            lowercase_first(branch.trim_end_matches('.'))
+        ));
+    }
+
     let mut lines = vec![describe_effect(&effects[0])];
     for effect in &effects[1..] {
         let if_effect = unwrap_if_effect(effect)?;
@@ -5364,6 +5379,47 @@ fn describe_roll_die_with_numeric_result_table(effects: &[Effect]) -> Option<Str
     }
 
     Some(lines.join("\n"))
+}
+
+fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<String> {
+    let [pump_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let pump_tag = wrapped_effect_tag(pump_effect)?;
+    let pump = unwrap_basic_tag_wrappers(pump_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let target_spec = pump.target_spec.as_ref()?;
+    if target_spec.is_target() {
+        return None;
+    }
+    let group_noun = match target_spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter)
+            if filter.card_types == [CardType::Creature] =>
+        {
+            "those creatures"
+        }
+        _ => return None,
+    };
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !matches!(
+        &conditional.condition,
+        Condition::Not(inner) if matches!(inner.as_ref(), Condition::YourTurn)
+    ) || !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+    {
+        return None;
+    }
+    let untap = unwrap_basic_tag_wrappers(&conditional.if_true[0])
+        .downcast_ref::<crate::effects::UntapEffect>()?;
+    if !choose_spec_references_tagged_object(&untap.target, pump_tag) {
+        return None;
+    }
+
+    Some(format!(
+        "{}. If it's not your turn, untap {group_noun}",
+        describe_effect(pump_effect).trim_end_matches('.')
+    ))
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
@@ -5381,6 +5437,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_group_pump_then_conditional_untap(effects) {
         return compact;
     }
     if let Some(compact) = describe_roll_die_with_numeric_result_table(effects) {
@@ -24697,16 +24756,19 @@ fn describe_put_counters_then_gain_suspend(effects: &[Effect]) -> Option<String>
     if put.counter_type != CounterType::Time || put.target_count.is_some() || put.distributed {
         return None;
     }
+    let ChooseSpec::Tagged(target_tag) = put.target.base() else {
+        return None;
+    };
 
     let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
     if !conditional.if_false.is_empty()
         || conditional.if_true.len() != 1
-        || !condition_is_tagged_object_without_suspend(&conditional.condition, &tagged_put.tag)
+        || !condition_is_tagged_object_without_suspend(&conditional.condition, target_tag)
     {
         return None;
     }
     let apply = conditional.if_true[0].downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    if !apply_grants_suspend_to_tag(apply, &tagged_put.tag) {
+    if !apply_grants_suspend_to_tag(apply, target_tag) {
         return None;
     }
 
@@ -32249,6 +32311,39 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 target = "this creature".to_string();
             } else if target == "it" {
                 target = "that creature".to_string();
+            }
+
+            if matches!(
+                with_source.source.base(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            ) && matches!(
+                deal_damage.amount.unhinted(),
+                Value::SourcePower | Value::SourceToughness
+            ) {
+                let stat = if matches!(deal_damage.amount.unhinted(), Value::SourceToughness) {
+                    "toughness"
+                } else {
+                    "power"
+                };
+                return format!(
+                    "This spell deals damage equal to the exiled card's {stat} to {target}"
+                );
+            }
+
+            if let Value::PowerOf(spec) | Value::ToughnessOf(spec) = deal_damage.amount.unhinted()
+                && matches!(
+                    spec.base(),
+                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                )
+            {
+                let stat = if matches!(deal_damage.amount.unhinted(), Value::ToughnessOf(_)) {
+                    "toughness"
+                } else {
+                    "power"
+                };
+                return format!(
+                    "This spell deals damage equal to the exiled card's {stat} to {target}"
+                );
             }
 
             if let Value::PowerOf(_) | Value::ToughnessOf(_) = &deal_damage.amount {

@@ -9,7 +9,7 @@ use crate::zone::Zone;
 use super::super::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
-use super::super::lexer::{LexedClause, OwnedLexToken};
+use super::super::lexer::{LexedClause, OwnedLexToken, TokenWordView};
 use super::super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
     comparison_to_strict_at_most_threshold, comparison_to_value_comparison_operator,
@@ -794,6 +794,9 @@ fn parse_subject_status_shape_without_copula(
     tokens: &[OwnedLexToken],
     state_words: &[&str],
 ) -> Option<SubjectStatusConditionAst> {
+    if let Some(parsed) = parse_subject_status_shape_without_copula_rightmost(tokens, state_words) {
+        return Some(parsed);
+    }
     let clause = LexedClause::new(tokens);
     let state_phrases: &[&[&str]] = &[
         &["attacking"],
@@ -812,6 +815,21 @@ fn parse_subject_status_shape_without_copula(
         LexPattern::new(&atoms).match_clause(clause)?,
         clause,
     )
+}
+
+fn parse_subject_status_shape_without_copula_rightmost(
+    tokens: &[OwnedLexToken],
+    state_words: &[&str],
+) -> Option<SubjectStatusConditionAst> {
+    let words = TokenWordView::new(tokens);
+    let state_word_idx = (1..words.len())
+        .rev()
+        .find(|idx| state_words.iter().any(|state| words.at_is(*idx, state)))?;
+    let subject_range = words.token_range_for_word_range(0, state_word_idx)?;
+    let state_range = words.token_range_for_word_range(state_word_idx, state_word_idx + 1)?;
+    let subject = parse_subject_status_subject_clause(LexedClause::new(&tokens[subject_range]))?;
+    let state = parse_subject_status_state_clause(LexedClause::new(&tokens[state_range]))?;
+    Some(SubjectStatusConditionAst { subject, state })
 }
 
 fn parse_subject_status_match(

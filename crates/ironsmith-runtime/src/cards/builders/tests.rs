@@ -39036,7 +39036,7 @@ fn sarulf_realm_eater_strict_parser_text_and_structure_regression() {
     let def = parse_oracle_card_definition("Sarulf, Realm Eater");
     let rendered = crate::compiled_text::compiled_text_lines(&def).join("\n");
     let ability_debug = format!("{:#?}", def.abilities);
-    let upkeep_text = "At the beginning of your upkeep, if this creature has one or more +1/+1 counters on it, you may remove all +1/+1 counters from it. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.";
+    let upkeep_text = "At the beginning of your upkeep, if Sarulf has one or more +1/+1 counters on it, you may remove all +1/+1 counters from it. If you do, exile each other nonland permanent with mana value less than or equal to the number of counters removed this way.";
 
     assert!(
         rendered.contains("Whenever a permanent an opponent controls is put into a graveyard from the battlefield, put a +1/+1 counter on Sarulf."),
@@ -43852,7 +43852,7 @@ fn archon_of_valors_reach_strict_parser_and_compiled_text_regression() {
     );
     assert!(
         abilities_debug.contains("CastSpellsMatching")
-            && abilities_debug.contains("chosen_creature_type: true"),
+            && abilities_debug.contains("chosen_card_type: true"),
         "Archon should lower the chosen-type cast ban structurally, got {abilities_debug}"
     );
     assert!(
@@ -48747,8 +48747,8 @@ fn blood_tyrant_strict_parser_text_and_structure_regression() {
     assert!(
         abilities_debug.contains("EffectMetric")
             && abilities_debug.contains("LifeLost")
-            && abilities_debug.contains("PlayerLostGameTrigger"),
-        "Blood Tyrant should lower to life-lost metrics and a player-lost-game trigger, got {abilities_debug}"
+            && abilities_debug.contains("PlayerLosesGameTrigger"),
+        "Blood Tyrant should lower to life-lost metrics and a player-loses-game trigger, got {abilities_debug}"
     );
 }
 
@@ -53521,7 +53521,7 @@ fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clause() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("whenever this creature attacks")
+        rendered.contains("whenever cloud attacks")
             && rendered.contains("draw a card for each equipped attacking creature you control")
             && rendered.contains("then if this has power 7 or greater")
             && rendered.contains("create two treasure tokens"),
@@ -58151,7 +58151,7 @@ fn dungeon_regression_cards_render_key_mechanics() {
     let adventurer_lines = unprocessed_compiled_lines(&adventurer).join(" ");
     assert!(
         adventurer_lines.contains("take the initiative")
-            && adventurer_lines.contains("completed dungeon"),
+            && adventurer_lines.contains("completed a dungeon"),
         "expected White Plume Adventurer to keep initiative and completion text, got {adventurer_lines}"
     );
 }
@@ -68126,7 +68126,7 @@ fn captain_america_first_avenger_strict_parser_and_compiled_text_regression() {
 
     assert!(
         rendered.contains("Throw...")
-            && rendered.contains("Unattach an Equipment from this creature")
+            && rendered.contains("Unattach an Equipment from Captain America")
             && rendered.contains("that Equipment's mana value")
             && rendered.contains("divided as you choose among one, two, or three targets")
             && rendered.contains("... Catch")

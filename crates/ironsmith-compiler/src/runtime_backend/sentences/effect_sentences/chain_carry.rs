@@ -1689,14 +1689,8 @@ fn trailing_if_predicate_supported(predicate: &PredicateAst) -> bool {
             | PredicateAst::PlayerHasCitysBlessing { .. }
             | PredicateAst::PlayerHasMoreCardsInHandThanYou { .. }
             | PredicateAst::PlayerHasCardTypesInGraveyardOrMore { .. }
+            | PredicateAst::ValueComparison { .. }
     ) || matches!(predicate, PredicateAst::TaggedMatches(tag, _) if tag.as_str() == ENCHANTED_TAG_NAME)
-        || matches!(
-            predicate,
-            PredicateAst::ValueComparison {
-                right: Value::LastNotedLifeTotal,
-                ..
-            }
-        )
 }
 
 pub(crate) fn is_beginning_of_end_step_words(words: &[&str]) -> bool {

@@ -1950,6 +1950,9 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     normalized = normalized
         .replace("If you completed a dungeon,", "If you completed dungeon,")
         .replace("if you completed a dungeon,", "if you completed dungeon,");
+    normalized = normalized
+        .replace("you've completed dungeon", "you've completed a dungeon")
+        .replace("you completed dungeon", "you completed a dungeon");
     normalized = normalized.replace(
         "Whenever this creature deals combat damage to a player, you search their library for a card. That player chooses a card name. Then if the tagged object 'searched' matches creature and not, you may put them onto the battlefield under your control. Target player shuffles.",
         "Whenever this creature deals combat damage to a player, search that player's library for a card, then that player chooses a card name. If you searched for a creature card that doesn't have that name, you may put it onto the battlefield under your control. Then that player shuffles.",
@@ -2395,6 +2398,9 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if lower_compact.starts_with(
         "whenever this creature attacks, for each opponent other than defending player, you may create a token that's a copy of this creature, tapped, attacking",
     ) && lower_compact.contains("exile at end of combat")
+        || lower_compact.starts_with(
+            "whenever this creature attacks, for each opponent other than defending player, you may create a tapped token that's a copy of this creature, attacking",
+        ) && lower_compact.contains("exile at end of combat")
     {
         return "Myriad".to_string();
     }
@@ -8357,8 +8363,24 @@ pub(crate) fn describe_value(value: &Value) -> String {
         }
         Value::SourcePower => "this source's power".to_string(),
         Value::SourceToughness => "this source's toughness".to_string(),
-        Value::PowerOf(spec) => format!("{} power", describe_possessive_choose_spec(spec)),
-        Value::ToughnessOf(spec) => format!("{} toughness", describe_possessive_choose_spec(spec)),
+        Value::PowerOf(spec) => {
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            {
+                "the exiled card's power".to_string()
+            } else {
+                format!("{} power", describe_possessive_choose_spec(spec))
+            }
+        }
+        Value::ToughnessOf(spec) => {
+            if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            {
+                "the exiled card's toughness".to_string()
+            } else {
+                format!("{} toughness", describe_possessive_choose_spec(spec))
+            }
+        }
         Value::ManaValueOf(spec) => {
             // For implicit off-battlefield references, oracle text usually prefers
             // "that card's mana value" over "its mana value".
@@ -11862,10 +11884,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         }
         Condition::SourceHasCounterAtLeast { counter_type, count } => {
             if *count == 1 {
-                format!(
-                    "this source has one or more {} counters on it",
-                    counter_type.description()
-                )
+                if *counter_type == crate::object::CounterType::Luck {
+                    format!(
+                        "this source has {} on it",
+                        with_indefinite_article(&format!("{} counter", counter_type.description()))
+                    )
+                } else {
+                    format!(
+                        "this source has one or more {} counters on it",
+                        counter_type.description()
+                    )
+                }
             } else {
                 format!(
                     "this source has {count} or more {} counters on it",

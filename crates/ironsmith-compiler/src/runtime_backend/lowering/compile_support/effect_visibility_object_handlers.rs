@@ -239,15 +239,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             if chooses_revealed_pool {
                 effects = mark_choose_effects_reveal(effects);
             }
-            let extends_existing_it_choice_set = ctx
-                .last_object_tag
-                .as_deref()
-                .is_some_and(|existing| existing == tag.as_str());
-            let choice_can_select_multiple = count.max.map_or(true, |max| max > 1)
-                || count.dynamic_x
-                || count.up_to_x
-                || extends_existing_it_choice_set;
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
             if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
                 ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
@@ -315,15 +307,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 *search_mode,
                 default_search,
             );
-            let extends_existing_it_choice_set = ctx
-                .last_object_tag
-                .as_deref()
-                .is_some_and(|existing| existing == tag.as_str());
-            let choice_can_select_multiple = count.max.map_or(true, |max| max > 1)
-                || count.dynamic_x
-                || count.up_to_x
-                || extends_existing_it_choice_set;
-            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG && choice_can_select_multiple;
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
             ctx.last_object_tag = Some(tag.as_str().to_string());
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)

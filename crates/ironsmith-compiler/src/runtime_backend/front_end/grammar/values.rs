@@ -712,6 +712,18 @@ pub(crate) fn parse_value_from_lexed(tokens: &[OwnedLexToken]) -> Option<(Value,
 }
 
 pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) -> Option<Value> {
+    fn canonical_add_mana_equal_amount_value(value: Value) -> Value {
+        match value {
+            Value::SourcePower => Value::PowerOf(Box::new(ChooseSpec::Source)),
+            Value::SourceToughness => Value::ToughnessOf(Box::new(ChooseSpec::Source)),
+            Value::Add(left, right) => Value::Add(
+                Box::new(canonical_add_mana_equal_amount_value(*left)),
+                Box::new(canonical_add_mana_equal_amount_value(*right)),
+            ),
+            other => other,
+        }
+    }
+
     let words_all = parser_token_word_refs(tokens);
     let equal_idx = EQUAL_TO_PATTERN.find_exact_window(&words_all, 2)?;
     let tail = &words_all[equal_idx + 2..];
@@ -824,8 +836,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
     };
 
     let parse_amount_segment = |segment: &[&str]| -> Option<Value> {
-        parse_value_expr_words(segment)
-            .and_then(|(value, used)| (used == segment.len()).then_some(value))
+        parse_mana_value_segment(segment)
+            .or_else(|| {
+                parse_value_expr_words(segment)
+                    .and_then(|(value, used)| (used == segment.len()).then_some(value))
+            })
             .or_else(|| parse_power_or_toughness_segment(segment))
             .or_else(|| {
                 if segment.len() == 1 {
@@ -834,7 +849,6 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
                     None
                 }
             })
-            .or_else(|| parse_mana_value_segment(segment))
     };
 
     if let Some(plus_idx) = find_index(tail, |word| PLUS_WORD_PATTERN.matches_word(word))
@@ -843,11 +857,14 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         && let Some(left) = parse_amount_segment(&tail[..plus_idx])
         && let Some(right) = parse_amount_segment(&tail[plus_idx + 1..])
     {
-        return Some(Value::Add(Box::new(left), Box::new(right)));
+        return Some(canonical_add_mana_equal_amount_value(Value::Add(
+            Box::new(left),
+            Box::new(right),
+        )));
     }
 
     if let Some(value) = parse_amount_segment(tail) {
-        return Some(value);
+        return Some(canonical_add_mana_equal_amount_value(value));
     }
 
     if is_source_power_segment(tail)

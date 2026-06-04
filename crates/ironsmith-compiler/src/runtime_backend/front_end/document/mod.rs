@@ -309,15 +309,12 @@ fn line_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
     if super::parser_support::looks_like_reflexive_followup_intro_lexed(tokens) {
         return false;
     }
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.starts_with(&["at", "the", "beginning", "of"])
-        && words
-            .windows(3)
-            .any(|window| window == ["next", "end", "step"])
-    {
-        return false;
-    }
     parse_trigger_intro_tokens(tokens).is_some()
+}
+
+fn labeled_body_starts_with_trigger_intro_tokens(tokens: &[OwnedLexToken]) -> bool {
+    split_label_prefix_lexed(tokens)
+        .is_some_and(|(_, _, body_tokens)| line_starts_with_trigger_intro_tokens(body_tokens))
 }
 
 fn is_if_you_do_exile_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -1732,6 +1729,24 @@ mod tests {
     }
 
     #[test]
+    fn split_label_prefix_lexed_handles_councils_dilemma_possessive_label() {
+        let tokens = lex_line(
+            "Council's dilemma — Whenever Tivit enters, each player votes for evidence or bribery.",
+            0,
+        )
+        .expect("rewrite lexer should classify possessive labeled line");
+
+        let (label, _, body_tokens) =
+            split_label_prefix_lexed(&tokens).expect("expected token label prefix split");
+
+        assert_eq!(label, "Council's dilemma");
+        assert_eq!(
+            render_token_slice(body_tokens),
+            "Whenever Tivit enters, each player votes for evidence or bribery."
+        );
+    }
+
+    #[test]
     fn tokens_after_non_keyword_label_prefix_reuses_chained_body_tokens() {
         let line = single_preprocessed_line(
             "Meteor Strikes — {2} — Double target creature's power and toughness until end of turn.",
@@ -2494,6 +2509,33 @@ mod tests {
     }
 
     #[test]
+    fn named_source_rewrite_normalizes_short_name_in_labeled_tivit_trigger_head() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tivit, Seller of Secrets");
+
+        let rewritten = normalize_named_source_trigger_for_builder(
+            &builder,
+            "Whenever Tivit enters the battlefield or deals combat damage to a player, starting with you, each player votes for evidence or bribery.",
+        )
+        .expect("expected named source rewrite to apply");
+
+        assert!(
+            rewritten.starts_with(
+                "whenever this permanent enters the battlefield or deals combat damage to a player,"
+            ),
+            "expected short source name to normalize, got {rewritten}"
+        );
+    }
+
+    #[test]
+    fn rewritten_tivit_vote_trigger_candidate_parses_as_triggered_cst() {
+        let line = single_preprocessed_line(
+            "Whenever this creature enters the battlefield or deals combat damage to a player, starting with you, each player votes for evidence or bribery. For each evidence vote, investigate. For each bribery vote, create a Treasure token. You may vote an additional time.",
+        );
+
+        parse_triggered_line_cst(&line).expect("rewritten Tivit trigger should parse as CST");
+    }
+
+    #[test]
     fn named_source_leaves_trigger_keeps_original_head_for_surface_rendering() {
         crate::runtime_backend::front_end::shared::util::with_source_reference_context(
             "Emrakul, the World Anew",
@@ -2924,11 +2966,32 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     let Some(rewritten) = normalize_named_source_trigger_for_builder(builder, text) else {
         return Ok(None);
     };
-    let rewritten_line = rewrite_line_normalized(line, rewritten.as_str())?;
-    match parse_triggered_line_cst(&rewritten_line) {
-        Ok(triggered) => Ok(Some(triggered)),
-        Err(_) => Ok(None),
+
+    let mut candidates = vec![rewritten];
+    if candidates[0].contains("this permanent") {
+        for subject in [
+            "this creature",
+            "this artifact",
+            "this enchantment",
+            "this land",
+            "this planeswalker",
+            "this battle",
+        ] {
+            let candidate = candidates[0].replace("this permanent", subject);
+            if candidate != candidates[0] {
+                candidates.push(candidate);
+            }
+        }
     }
+
+    for candidate in candidates {
+        let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
+        if let Ok(triggered) = parse_triggered_line_cst(&rewritten_line) {
+            return Ok(Some(triggered));
+        }
+    }
+
+    Ok(None)
 }
 
 fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {
@@ -3331,15 +3394,6 @@ fn try_parse_triggered_line_dispatch(
         return Ok(None);
     }
 
-    let words = crate::runtime_backend::token_word_refs(&line.tokens);
-    if words.starts_with(&["at", "the", "beginning", "of"])
-        && words
-            .windows(3)
-            .any(|window| window == ["next", "end", "step"])
-    {
-        return Ok(None);
-    }
-
     if should_parse_next_cast_trigger_line_as_spell_effect(preprocessed, &line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(line)?
     {
@@ -3370,6 +3424,10 @@ fn try_parse_triggered_line_dispatch(
                             &rewrite_when_one_or_more_this_way_line(&chunk_line),
                         )?
                     {
+                        lines.push(RewriteLineCst::Statement(statement));
+                        continue;
+                    }
+                    if let Some(statement) = parse_statement_line_cst(&chunk_line)? {
                         lines.push(RewriteLineCst::Statement(statement));
                         continue;
                     }
@@ -3757,6 +3815,7 @@ pub(crate) fn parse_document_cst(
                     continue;
                 }
                 if !line_starts_with_trigger_intro_tokens(&line.tokens)
+                    && !labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
                     && normalized_line_mentions_source_alias(
                         &preprocessed.builder,
                         line.info.normalized.normalized.as_str(),

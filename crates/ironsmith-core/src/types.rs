@@ -156,6 +156,7 @@ pub enum Subtype {
     Town,
 
     // Creature types (alphabetical, common ones)
+    Aetherborn,
     Advisor,
     Ally,
     Alien,
@@ -163,6 +164,7 @@ pub enum Subtype {
     Ape,
     Army,
     Archer,
+    Archon,
     Artificer,
     Assassin,
     Astartes,
@@ -185,6 +187,7 @@ pub enum Subtype {
     Construct,
     Crab,
     Crocodile,
+    Cyclops,
     Cyberman,
     Dalek,
     Dauthi,
@@ -210,11 +213,13 @@ pub enum Subtype {
     Elephant,
     Elk,
     Elf,
+    Eye,
     Faerie,
     Fish,
     Fox,
     Frog,
     Fungus,
+    Gamer,
     Gargoyle,
     Giant,
     Gnome,
@@ -227,9 +232,11 @@ pub enum Subtype {
     Gremlin,
     Germ,
     Griffin,
+    Guest,
     Hag,
     Halfling,
     Harpy,
+    Hellion,
     Hero,
     Hippo,
     Horror,
@@ -251,7 +258,9 @@ pub enum Subtype {
     Kobold,
     Kor,
     Kraken,
+    Leech,
     Leviathan,
+    Lhurgoyf,
     Lizard,
     Manticore,
     Mercenary,
@@ -281,6 +290,7 @@ pub enum Subtype {
     Ox,
     Oyster,
     Peasant,
+    Performer,
     Pest,
     Pegasus,
     Phyrexian,
@@ -293,6 +303,7 @@ pub enum Subtype {
     Raccoon,
     Rabbit,
     Rat,
+    Ranger,
     Reflection,
     Rebel,
     Rhino,
@@ -303,6 +314,7 @@ pub enum Subtype {
     Samurai,
     Satyr,
     Scarecrow,
+    Scientist,
     Scout,
     Servo,
     Serpent,
@@ -319,6 +331,7 @@ pub enum Subtype {
     Soldier,
     Sorcerer,
     Spacecraft,
+    Spellshaper,
     Sphinx,
     Specter,
     Spider,
@@ -341,7 +354,9 @@ pub enum Subtype {
     Trilobite,
     Troll,
     Turtle,
+    Tyranid,
     Unicorn,
+    Utrom,
     Vampire,
     Vedalken,
     Viashino,
@@ -383,6 +398,7 @@ pub enum Subtype {
     Aura,
     Background,
     Cartouche,
+    Case,
     Class,
     Curse,
     Room,
@@ -407,6 +423,7 @@ pub enum Subtype {
     Gideon,
     Jace,
     Karn,
+    Kaya,
     Liliana,
     Nissa,
     Sorin,
@@ -438,6 +455,7 @@ impl Subtype {
 
     pub const fn all_creature_types() -> &'static [Subtype] {
         &[
+            Subtype::Aetherborn,
             Subtype::Advisor,
             Subtype::Ally,
             Subtype::Alien,
@@ -445,6 +463,7 @@ impl Subtype {
             Subtype::Ape,
             Subtype::Army,
             Subtype::Archer,
+            Subtype::Archon,
             Subtype::Artificer,
             Subtype::Assassin,
             Subtype::Astartes,
@@ -467,6 +486,7 @@ impl Subtype {
             Subtype::Construct,
             Subtype::Crab,
             Subtype::Crocodile,
+            Subtype::Cyclops,
             Subtype::Cyberman,
             Subtype::Detective,
             Subtype::Doctor,
@@ -490,11 +510,13 @@ impl Subtype {
             Subtype::Elephant,
             Subtype::Elk,
             Subtype::Elf,
+            Subtype::Eye,
             Subtype::Faerie,
             Subtype::Fish,
             Subtype::Fox,
             Subtype::Frog,
             Subtype::Fungus,
+            Subtype::Gamer,
             Subtype::Gargoyle,
             Subtype::Giant,
             Subtype::Gnome,
@@ -507,9 +529,11 @@ impl Subtype {
             Subtype::Gremlin,
             Subtype::Germ,
             Subtype::Griffin,
+            Subtype::Guest,
             Subtype::Hag,
             Subtype::Halfling,
             Subtype::Harpy,
+            Subtype::Hellion,
             Subtype::Hero,
             Subtype::Hippo,
             Subtype::Horror,
@@ -531,7 +555,9 @@ impl Subtype {
             Subtype::Kobold,
             Subtype::Kor,
             Subtype::Kraken,
+            Subtype::Leech,
             Subtype::Leviathan,
+            Subtype::Lhurgoyf,
             Subtype::Lizard,
             Subtype::Manticore,
             Subtype::Mercenary,
@@ -560,6 +586,7 @@ impl Subtype {
             Subtype::Ox,
             Subtype::Oyster,
             Subtype::Peasant,
+            Subtype::Performer,
             Subtype::Pest,
             Subtype::Pegasus,
             Subtype::Phyrexian,
@@ -572,6 +599,7 @@ impl Subtype {
             Subtype::Raccoon,
             Subtype::Rabbit,
             Subtype::Rat,
+            Subtype::Ranger,
             Subtype::Reflection,
             Subtype::Rebel,
             Subtype::Rhino,
@@ -582,6 +610,7 @@ impl Subtype {
             Subtype::Samurai,
             Subtype::Satyr,
             Subtype::Scarecrow,
+            Subtype::Scientist,
             Subtype::Scout,
             Subtype::Servo,
             Subtype::Serpent,
@@ -597,6 +626,7 @@ impl Subtype {
             Subtype::Snake,
             Subtype::Soldier,
             Subtype::Sorcerer,
+            Subtype::Spellshaper,
             Subtype::Sphinx,
             Subtype::Specter,
             Subtype::Spider,
@@ -619,7 +649,9 @@ impl Subtype {
             Subtype::Trilobite,
             Subtype::Troll,
             Subtype::Turtle,
+            Subtype::Tyranid,
             Subtype::Unicorn,
+            Subtype::Utrom,
             Subtype::Vampire,
             Subtype::Vedalken,
             Subtype::Viashino,
@@ -667,6 +699,7 @@ impl Subtype {
             Subtype::Aura,
             Subtype::Background,
             Subtype::Cartouche,
+            Subtype::Case,
             Subtype::Class,
             Subtype::Curse,
             Subtype::Room,
@@ -697,6 +730,7 @@ impl Subtype {
             Subtype::Gideon,
             Subtype::Jace,
             Subtype::Karn,
+            Subtype::Kaya,
             Subtype::Liliana,
             Subtype::Nissa,
             Subtype::Sorin,
@@ -758,13 +792,15 @@ impl Subtype {
     pub fn is_creature_type(&self) -> bool {
         matches!(
             self,
-            Subtype::Advisor
+            Subtype::Aetherborn
+                | Subtype::Advisor
                 | Subtype::Ally
                 | Subtype::Alien
                 | Subtype::Angel
                 | Subtype::Ape
                 | Subtype::Army
                 | Subtype::Archer
+                | Subtype::Archon
                 | Subtype::Artificer
                 | Subtype::Assassin
                 | Subtype::Astartes
@@ -787,6 +823,7 @@ impl Subtype {
                 | Subtype::Construct
                 | Subtype::Crab
                 | Subtype::Crocodile
+                | Subtype::Cyclops
                 | Subtype::Cyberman
                 | Subtype::Detective
                 | Subtype::Doctor
@@ -810,11 +847,13 @@ impl Subtype {
                 | Subtype::Elephant
                 | Subtype::Elk
                 | Subtype::Elf
+                | Subtype::Eye
                 | Subtype::Faerie
                 | Subtype::Fish
                 | Subtype::Fox
                 | Subtype::Frog
                 | Subtype::Fungus
+                | Subtype::Gamer
                 | Subtype::Gargoyle
                 | Subtype::Giant
                 | Subtype::Gnome
@@ -827,9 +866,11 @@ impl Subtype {
                 | Subtype::Gremlin
                 | Subtype::Germ
                 | Subtype::Griffin
+                | Subtype::Guest
                 | Subtype::Hag
                 | Subtype::Halfling
                 | Subtype::Harpy
+                | Subtype::Hellion
                 | Subtype::Hero
                 | Subtype::Hippo
                 | Subtype::Horror
@@ -851,7 +892,9 @@ impl Subtype {
                 | Subtype::Kobold
                 | Subtype::Kor
                 | Subtype::Kraken
+                | Subtype::Leech
                 | Subtype::Leviathan
+                | Subtype::Lhurgoyf
                 | Subtype::Lizard
                 | Subtype::Manticore
                 | Subtype::Mercenary
@@ -880,6 +923,7 @@ impl Subtype {
                 | Subtype::Ox
                 | Subtype::Oyster
                 | Subtype::Peasant
+                | Subtype::Performer
                 | Subtype::Pest
                 | Subtype::Pegasus
                 | Subtype::Phyrexian
@@ -892,6 +936,7 @@ impl Subtype {
                 | Subtype::Raccoon
                 | Subtype::Rabbit
                 | Subtype::Rat
+                | Subtype::Ranger
                 | Subtype::Reflection
                 | Subtype::Rebel
                 | Subtype::Rhino
@@ -902,6 +947,7 @@ impl Subtype {
                 | Subtype::Samurai
                 | Subtype::Satyr
                 | Subtype::Scarecrow
+                | Subtype::Scientist
                 | Subtype::Scout
                 | Subtype::Servo
                 | Subtype::Serpent
@@ -917,6 +963,7 @@ impl Subtype {
                 | Subtype::Snake
                 | Subtype::Soldier
                 | Subtype::Sorcerer
+                | Subtype::Spellshaper
                 | Subtype::Sphinx
                 | Subtype::Specter
                 | Subtype::Spider
@@ -939,7 +986,9 @@ impl Subtype {
                 | Subtype::Trilobite
                 | Subtype::Troll
                 | Subtype::Turtle
+                | Subtype::Tyranid
                 | Subtype::Unicorn
+                | Subtype::Utrom
                 | Subtype::Vampire
                 | Subtype::Vedalken
                 | Subtype::Viashino
@@ -989,6 +1038,7 @@ impl Subtype {
             Subtype::Aura
                 | Subtype::Background
                 | Subtype::Cartouche
+                | Subtype::Case
                 | Subtype::Class
                 | Subtype::Curse
                 | Subtype::Room
@@ -1018,6 +1068,7 @@ impl Subtype {
                 | Subtype::Gideon
                 | Subtype::Jace
                 | Subtype::Karn
+                | Subtype::Kaya
                 | Subtype::Liliana
                 | Subtype::Nissa
                 | Subtype::Sorin

@@ -14,6 +14,7 @@ use super::super::activation_and_restrictions::{
     parse_you_choose_player_clause, starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     keyword_action_to_static_ability, parse_ability_line, parse_pt_modifier,
     parse_pt_modifier_values,
@@ -913,6 +914,16 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
+
+    if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens)
+        && let Ok(base_effect) = parse_effect_clause(trailing_if.leading_tokens)
+    {
+        return Ok(EffectAst::Conditional {
+            predicate: trailing_if.predicate,
+            if_true: vec![base_effect],
+            if_false: Vec::new(),
+        });
+    }
 
     if clause_may_contain_cast_or_play_permission(tokens) {
         if let Some(spec) = parse_may_cast_it_sentence(tokens) {

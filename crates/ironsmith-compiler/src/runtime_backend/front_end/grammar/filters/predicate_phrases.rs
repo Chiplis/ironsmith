@@ -283,10 +283,23 @@ fn is_source_reference_clause(clause: LexedClause<'_>) -> bool {
             &["it"],
             &["its"],
             &["this"],
+            &["this", "artifact"],
+            &["this", "artifacts"],
             &["this", "card"],
+            &["this", "cards"],
             &["this", "creature"],
+            &["this", "creatures"],
+            &["this", "enchantment"],
+            &["this", "enchantments"],
+            &["this", "land"],
+            &["this", "lands"],
             &["this", "permanent"],
+            &["this", "permanents"],
+            &["this", "spell"],
+            &["this", "spells"],
+            &["this", "source"],
             &["this", "object"],
+            &["this", "objects"],
         ],
     )
 }
@@ -298,6 +311,10 @@ fn is_source_reference_words(words: &[&str]) -> bool {
 
 fn is_source_state_subject_words(words: &[&str]) -> bool {
     is_source_reference_words(words)
+}
+
+fn is_explicit_source_state_subject_words(words: &[&str]) -> bool {
+    !matches!(words, ["it"] | ["its"]) && is_source_reference_words(words)
 }
 
 fn is_source_card_reference_clause(clause: LexedClause<'_>) -> bool {
@@ -482,7 +499,8 @@ fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
     let descriptor_words = descriptor_clause.word_refs();
     let filter = parse_object_filter(descriptor_clause.tokens(), false)
         .ok()
-        .or_else(|| parse_color_only_object_filter_words(&descriptor_words))?;
+        .or_else(|| parse_color_only_object_filter_words(&descriptor_words))
+        .or_else(|| parse_identity_descriptor_filter_words(&descriptor_words))?;
     if !object_filter_has_identity(&filter) {
         return None;
     }
@@ -492,6 +510,17 @@ fn parse_source_identity_predicate(words: &[&str]) -> Option<PredicateAst> {
     } else {
         predicate
     })
+}
+
+fn parse_identity_descriptor_filter_words(words: &[&str]) -> Option<ObjectFilter> {
+    let [word] = words else {
+        return None;
+    };
+    if let Some(card_type) = parse_card_type(word).filter(|card_type| is_permanent_type(*card_type))
+    {
+        return Some(ObjectFilter::default().with_type(card_type));
+    }
+    parse_subtype_flexible(word).map(|subtype| ObjectFilter::default().with_subtype(subtype))
 }
 
 fn parse_source_identity_descriptor_clause<'a>(
@@ -720,7 +749,7 @@ fn parse_source_possessive_power_threshold_shape(tokens: &[OwnedLexToken]) -> Op
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_state_subject_words(&source_clause.word_refs()) {
+    if !is_explicit_source_state_subject_words(&source_clause.word_refs()) {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
@@ -737,7 +766,7 @@ fn parse_source_has_power_threshold_shape(tokens: &[OwnedLexToken]) -> Option<Pr
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let source_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    if !is_source_state_subject_words(&source_clause.word_refs()) {
+    if !is_explicit_source_state_subject_words(&source_clause.word_refs()) {
         return None;
     }
     let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
@@ -969,6 +998,16 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     let count = comparison_to_at_least_threshold(&comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
+    if clause_matches_phrase(source_clause, &["it"]) {
+        return Some(PredicateAst::ValueComparison {
+            left: Value::CountersOn(
+                Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                Some(counter_type),
+            ),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(count as i32),
+        });
+    }
     Some(PredicateAst::SourceHasCounterAtLeast {
         counter_type,
         count,
@@ -2478,53 +2517,61 @@ fn parse_single_card_type_card_descriptor(words: &[&str]) -> Option<ObjectFilter
 }
 
 fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
-    let atoms = [
-        LexPattern::object("left", LexCaptureKind::UntilLastPhrase(&["or"])),
-        LexPattern::word("or"),
-        LexPattern::modifier("right", LexCaptureKind::Rest),
-    ];
-    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
+    let Some(last_or_idx) = filtered
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(idx, word)| OR_WORD_PATTERN.matches_word(word).then_some(idx))
+    else {
         return Ok(None);
     };
-    let left_clause = matched
-        .capture_clause("left", clause)
-        .ok_or_else(|| CardTextError::ParseError("missing left or-predicate".to_string()))?;
-    let right_clause = matched
-        .capture_clause("right", clause)
-        .ok_or_else(|| CardTextError::ParseError("missing right or-predicate".to_string()))?;
-    let left_words = left_clause.word_refs();
-    let right_words = right_clause.word_refs();
-    if left_words.is_empty()
-        || right_words.is_empty()
-        || right_words
-            .first()
-            .is_some_and(|word| OR_COMPARISON_TAIL_WORD_PATTERN.matches_word(word))
-    {
-        return Ok(None);
+
+    for or_idx in (0..=last_or_idx).rev() {
+        if !OR_WORD_PATTERN.matches_word(filtered[or_idx]) {
+            continue;
+        }
+        let left_words = &filtered[..or_idx];
+        let right_words = &filtered[or_idx + 1..];
+        if left_words.is_empty()
+            || right_words.is_empty()
+            || right_words
+                .first()
+                .is_some_and(|word| OR_COMPARISON_TAIL_WORD_PATTERN.matches_word(word))
+        {
+            continue;
+        }
+
+        let left_tokens = predicate_tokens_from_words(left_words);
+        let Ok(left) = parse_predicate(&left_tokens) else {
+            continue;
+        };
+
+        let right_tokens = predicate_tokens_from_words(right_words);
+        let right = match parse_predicate(&right_tokens) {
+            Ok(predicate) => predicate,
+            Err(original_err) => {
+                let Some(reference_prefix) = predicate_reference_prefix(left_words) else {
+                    continue;
+                };
+                if predicate_words_start_with_reference(right_words) {
+                    continue;
+                }
+                let prefixed_words = reference_prefix
+                    .iter()
+                    .copied()
+                    .chain(right_words.iter().copied())
+                    .collect::<Vec<_>>();
+                let prefixed_tokens = predicate_tokens_from_words(&prefixed_words);
+                match parse_predicate(&prefixed_tokens) {
+                    Ok(predicate) => predicate,
+                    Err(_) => return Err(original_err),
+                }
+            }
+        };
+        return Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))));
     }
 
-    let left = parse_predicate(left_clause.tokens())?;
-    let right = match parse_predicate(right_clause.tokens()) {
-        Ok(predicate) => predicate,
-        Err(original_err) => {
-            let Some(reference_prefix) = predicate_reference_prefix(left_words.as_slice()) else {
-                return Err(original_err);
-            };
-            if predicate_words_start_with_reference(right_words.as_slice()) {
-                return Err(original_err);
-            }
-            let prefixed_words = reference_prefix
-                .iter()
-                .copied()
-                .chain(right_words.iter().copied())
-                .collect::<Vec<_>>();
-            let prefixed_tokens = predicate_tokens_from_words(&prefixed_words);
-            parse_predicate(&prefixed_tokens).map_err(|_| original_err)?
-        }
-    };
-    Ok(Some(PredicateAst::Or(Box::new(left), Box::new(right))))
+    Ok(None)
 }
 
 fn parse_attacking_you_own_control_predicate(
@@ -5366,7 +5413,9 @@ fn parse_named_object_filter_name_tail(tokens: &[OwnedLexToken]) -> Option<Strin
     let name = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
     let name_words = name.word_refs();
     let name_end = find_name_clause_end(name_words.as_slice(), 0);
-    let name = name_words.get(..name_end)?.join(" ");
+    let name = render_token_slice(name.between_words_trimmed(0, name_end).tokens())
+        .trim()
+        .to_ascii_lowercase();
     (!name.is_empty()).then_some(name)
 }
 
@@ -5700,6 +5749,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_tagged_state_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_source_simple_state_predicate(&filtered) {
         return Ok(predicate);
     }
@@ -5905,10 +5958,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     } else {
         None
     };
-
-    if let Some(predicate) = parse_tagged_state_predicate(&filtered) {
-        return Ok(predicate);
-    }
 
     let is_it = demonstrative_reference_len == Some(1);
     let has_card = demonstrative_reference_len
@@ -6769,6 +6818,28 @@ mod tests {
                 }),
                 Box::new(PredicateAst::PlayerIsMonarch {
                     player: PlayerAst::You,
+                }),
+            )
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_source_counter_or_cards_in_hand_uses_capture_parser()
+    -> Result<(), CardTextError> {
+        let tokens = lex_line(
+            "If there are twenty or more counters on it or you have twenty or more cards in hand",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Or(
+                Box::new(PredicateAst::SourceHasCountersAtLeast(20)),
+                Box::new(PredicateAst::PlayerCardsInHandOrMore {
+                    player: PlayerAst::You,
+                    count: 20,
                 }),
             )
         );

@@ -1014,7 +1014,8 @@ fn non_turn_conditional_untap_line_family_uses_token_sentence_split() {
     for required in [
         "non_turn_conditional_untap_first_sentence_tokens(ctx.line)",
         "TokenWordView::new(&line.tokens)",
-        "words.ends_with(NON_TURN_UNTAP_SUFFIX)",
+        "NON_TURN_UNTAP_SUFFIX_PATTERN",
+        "matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))",
         "words.token_index_for_word_index(suffix_word_idx)",
         "token.kind == TokenKind::Period",
         "tokens_without_terminal_period(prefix_tokens)",
@@ -1961,8 +1962,8 @@ fn enters_tapped_unless_control_conditions_use_shared_capture_parser() {
     let content = read_repo_file(&root, relative);
     let quantity_parser = function_source(
         &content,
-        "fn parse_enters_tapped_unless_control_quantity_condition",
-        "fn parse_legacy_enters_tapped_unless_control_quantity_static_ability",
+        "fn parse_enters_tapped_unless_control_quantity_static_ability",
+        "fn parse_enters_tapped_unless_a_player_has_13_or_less_life_condition",
     );
     let line_parser = function_source(
         &content,
@@ -3367,8 +3368,8 @@ fn preprocess_line_prefix_matching_uses_tokens_not_raw_text() {
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
-        "fn line_starts_with_words",
         "fn split_parse_line_variants",
+        "fn parse_metadata_line",
     );
     let actual = non_test_raw_text_check_literals(helper)
         .into_iter()
@@ -3444,7 +3445,7 @@ fn enchantment_parenthetical_preprocess_uses_tokens_not_raw_text() {
     let helper = function_source(
         &content,
         "fn strip_parenthetical_segments",
-        "fn line_starts_with_words",
+        "fn split_parse_line_variants",
     );
     let actual = non_test_raw_text_check_literals(helper)
         .into_iter()
@@ -3629,21 +3630,22 @@ fn line_lowering_self_replacement_recognizers_use_tokens() {
         "fn lower_additional_cost_chunk",
     );
     assert!(
-        leading_conditional_helper.contains("token_slice_starts_with(tokens, &[\"if\"])"),
-        "{relative} should classify leading conditional self-replacement followups from tokens"
+        leading_conditional_helper.contains("IF_PREFIX_PATTERN.matches_words")
+            && leading_conditional_helper.contains("parser_token_word_refs(tokens)"),
+        "{relative} should classify leading conditional self-replacement followups through token clause shapes"
     );
 
     for helper in [
         "fn tokens_mention_morbid_search_to_battlefield_replacement",
         "fn tokens_mention_bargained_return_to_battlefield_replacement",
         "fn tokens_mention_kicked_count_override_replacement",
-        "fn tokens_mention_kicked_multi_zone_search_to_battlefield_replacement",
+        "fn tokens_mention_kicked_multi_zone_to_battlefield_followup",
         "fn tokens_mention_clash_win_top_replacement",
     ] {
         let source = function_source(&content, helper, "\n}\n\n");
         assert!(
-            source.contains("contains_token_word_sequence(tokens,"),
-            "{relative} should implement {helper} with token phrase checks"
+            source.contains(".matches_words(") && source.contains("parser_token_word_refs(tokens)"),
+            "{relative} should implement {helper} with token-backed clause shapes"
         );
         for forbidden in [
             "text_contains_word_phrase",
@@ -3663,6 +3665,7 @@ fn line_lowering_self_replacement_recognizers_use_tokens() {
         "text_mentions_bargained_return_to_battlefield_replacement(normalized_line)",
         "text_mentions_kicked_count_override_replacement(normalized_line)",
         "text_mentions_kicked_multi_zone_search_to_battlefield_replacement(normalized_line)",
+        "text_mentions_kicked_multi_zone_to_battlefield_followup(normalized_line)",
         "text_mentions_clash_win_top_replacement(normalized_line)",
         "text_starts_with_if(normalized_line.as_str())",
     ] {
@@ -3734,9 +3737,9 @@ fn combat_death_blocked_damage_special_case_uses_tokens() {
         "fn tokens_start_with_partner_dash_label",
     );
     assert!(
-        block_first_strike_helper.contains("token_slice_starts_with(tokens,")
-            && block_first_strike_helper.contains("token_slice_ends_with(tokens,"),
-        "{lower_mod_relative} should classify blocks/becomes-blocked first-strike lines through token shape helpers"
+        block_first_strike_helper.contains("BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PATTERN")
+            && block_first_strike_helper.contains("matches_words(&token_word_refs(tokens))"),
+        "{lower_mod_relative} should classify blocks/becomes-blocked first-strike lines through token clause shapes"
     );
     for forbidden in [
         "lex_line(",
@@ -4268,10 +4271,10 @@ fn parser_semantic_keyword_action_probe_skip_uses_parse_tokens() {
         "#[cfg(test)]",
     );
     assert!(
-        skip_helper.contains("token_slice_ends_with(tokens, suffix)")
-            && skip_helper.contains("token_slice_starts_with(tokens, &[\"this\"])")
-            && skip_helper.contains("token_slice_starts_with(tokens, &[\"it\"])"),
-        "{relative} should classify unqualified can't-be-blocked probe skips through token slices"
+        skip_helper.contains("CANT_BE_BLOCKED_LINE_PATTERN.matches_words(&words)")
+            && skip_helper.contains("THIS_OR_IT_PREFIX_PATTERN.matches_words(&words)")
+            && skip_helper.contains("token_word_refs(tokens)"),
+        "{relative} should classify unqualified can't-be-blocked probe skips through token clause shapes"
     );
 
     for forbidden in [
@@ -4350,8 +4353,9 @@ fn self_enters_counter_static_parser_uses_token_shapes_for_adamant_branch() {
         "fn revealed_cards_total_mana_value_x_value_tokens",
     );
     assert!(
-        variable_prefix_helper.contains("token_slice_starts_with(tokens, prefix)"),
-        "{relative} should classify variable ETB counter prefixes through token slices"
+        variable_prefix_helper
+            .contains("SELF_X_COUNTER_ETB_PATTERN.matches_words(&token_word_refs(tokens))"),
+        "{relative} should classify variable ETB counter prefixes through token clause shapes"
     );
     let revealed_value_helper = function_source(
         &content,
@@ -4359,9 +4363,10 @@ fn self_enters_counter_static_parser_uses_token_shapes_for_adamant_branch() {
         "fn single_plus_one_counter_enters_static_chunk",
     );
     assert!(
-        revealed_value_helper.contains("contains_token_word_sequence(tokens, phrase)")
+        revealed_value_helper.contains("REVEALED_CARDS_TOTAL_MANA_VALUE_X_PATTERN")
+            && revealed_value_helper.contains("matches_words(&token_word_refs(tokens))")
             && revealed_value_helper.contains("Value::TotalManaValue"),
-        "{relative} should classify revealed-card total mana value with token phrases"
+        "{relative} should classify revealed-card total mana value with token clause shapes"
     );
     for forbidden in [
         "normalized.split_once(',')",
@@ -4394,7 +4399,9 @@ fn full_party_triggered_special_case_uses_token_tail_split() {
 
     assert!(
         helper.contains("full_parse_tokens_contain_full_party_instead(full_parse_tokens)")
-            && helper.contains("contains_token_word_sequence(effect_parse_tokens"),
+            && helper.contains(
+                "FULL_PARTY_CONDITION_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+            ),
         "{relative} should detect full-party effect tails from parse tokens"
     );
     let classifier = function_source(
@@ -4403,14 +4410,14 @@ fn full_party_triggered_special_case_uses_token_tail_split() {
         "fn looks_like_combined_spell_and_activation_tax",
     );
     assert!(
-        classifier.contains("contains_token_word_sequence(tokens, IF_YOU_HAVE_FULL_PARTY_PHRASE)")
-            && classifier
-                .contains("contains_token_word_sequence(tokens, UNTIL_END_OF_TURN_INSTEAD_PHRASE)"),
-        "{relative} should classify full-party replacement triggers from full parse tokens"
+        classifier.contains("FULL_PARTY_INSTEAD_PATTERN.matches_words(&token_word_refs(tokens))"),
+        "{relative} should classify full-party replacement triggers from full parse tokens through clause shapes"
     );
     assert!(
-        helper.contains("contains_token_word_sequence(effect_parse_tokens"),
-        "{relative} should detect full-party effect tails from effect parse tokens"
+        helper.contains(
+            "FULL_PARTY_CONDITION_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+        ),
+        "{relative} should detect full-party effect tails from effect parse tokens through clause shapes"
     );
     assert!(
         helper.contains("split_once_at_comma_tokens(full_parse_tokens)"),
@@ -4441,9 +4448,9 @@ fn direct_trigger_fast_path_guards_use_full_parse_tokens() {
     );
     assert!(
         helper.contains("split_triggered_conditional_clause_lexed(tokens")
-            && helper.contains("contains_token_word_sequence(tokens, IF_YOU_DO_PHRASE)")
-            && helper.contains("contains_token_word_sequence(tokens, phrase)"),
-        "{relative} should classify direct-trigger fast-path blockers from full parse tokens"
+            && helper.contains("IF_YOU_DO_PATTERN.matches_words(&token_word_refs(tokens))")
+            && helper.contains("IF_YOU_DONT_PATTERN.matches_words(&token_word_refs(tokens))"),
+        "{relative} should classify direct-trigger fast-path blockers from full parse tokens through clause shapes"
     );
 
     let fast_path = function_source(
@@ -4456,7 +4463,9 @@ fn direct_trigger_fast_path_guards_use_full_parse_tokens() {
             .contains("full_parse_tokens_have_triggered_intervening_if_clause(full_parse_tokens)")
             && fast_path.contains("full_parse_tokens_contain_if_you_do(full_parse_tokens)")
             && fast_path.contains("full_parse_tokens_contain_if_you_dont(full_parse_tokens)")
-            && fast_path.contains("token_slice_starts_with(effect_parse_tokens, &[\"if\"])"),
+            && fast_path.contains(
+                "EFFECT_STARTS_IF_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+            ),
         "{relative} should feed full parse tokens into direct-trigger fast-path guards"
     );
     for forbidden in [

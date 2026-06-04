@@ -9574,6 +9574,42 @@ fn rewrite_lexed_triggered_line_supports_tivit_vote_trigger_body() {
 }
 
 #[test]
+fn rewrite_document_normalizes_labeled_named_tivit_vote_trigger() {
+    let text = "Mana cost: {3}{W}{U}{B}\n\
+         Type: Legendary Creature — Sphinx Rogue\n\
+         Power/Toughness: 6/6\n\
+         Flying, ward {3}\n\
+         Council's dilemma — Whenever Tivit enters the battlefield or deals combat \
+         damage to a player, starting with you, each player votes for evidence or \
+         bribery. For each evidence vote, investigate. For each bribery vote, create \
+         a Treasure token. You may vote an additional time.";
+    let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tivit, Seller of Secrets")
+        .card_types(vec![CardType::Creature]);
+    let (semantic, _) = parse_text_to_semantic_document(builder.clone(), text.to_string(), false)
+        .expect("Tivit semantic document should parse");
+    assert!(
+        semantic
+            .items
+            .iter()
+            .any(|item| matches!(item, RewriteSemanticItem::Triggered(_))),
+        "expected labeled named-source Tivit vote trigger semantic item, got {:?}",
+        semantic.items
+    );
+
+    let def = builder
+        .parse_text(text)
+        .expect("Tivit definition text should parse");
+
+    assert!(
+        def.abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Triggered(_))),
+        "expected labeled named-source Tivit vote trigger to parse, got {:?}",
+        def.abilities
+    );
+}
+
+#[test]
 fn rewrite_lexed_vote_start_sentence_supports_object_votes() {
     let tokens = lex_line(
         "Starting with you, each player votes for a nonland permanent you don't control.",

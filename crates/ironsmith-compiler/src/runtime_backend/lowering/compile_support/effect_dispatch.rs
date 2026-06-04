@@ -2745,7 +2745,7 @@ fn compile_subject_verb_effect(
                     choices,
                 ));
             }
-            if *zone == Zone::Hand
+            if *zone != Zone::Battlefield
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
                 && filter.tagged_constraints.iter().any(|constraint| {
@@ -2753,6 +2753,16 @@ fn compile_subject_verb_effect(
                 })
             {
                 spec = ChooseSpec::All(filter.clone());
+            }
+            if *zone != Zone::Battlefield
+                && matches!(
+                    spec.base(),
+                    ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                )
+            {
+                spec = ChooseSpec::All(
+                    ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+                );
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
@@ -6081,15 +6091,26 @@ fn compile_subject_verb_effect(
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let chooser = subject.clone_player_filter();
             let target_prelude = subject.target_prelude();
-            let resolved_filter = match subject.bind_sacrifice_filter(filter, ctx) {
-                Ok(resolved) => resolved,
-                Err(_)
-                    if filter.tagged_constraints.len() == 1
-                        && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
-                {
-                    ObjectFilter::source()
+            let refs = current_reference_env(ctx);
+            let bare_it_with_source_antecedent = refs.has_source_object_antecedent()
+                && refs
+                    .known_last_object_tag()
+                    .is_none_or(|tag| tag.as_str() == IT_TAG && !refs.last_it_choice_is_set)
+                && object_filter_as_tagged_reference(filter)
+                    .is_some_and(|tag| tag.as_str() == IT_TAG);
+            let resolved_filter = if bare_it_with_source_antecedent {
+                ObjectFilter::source()
+            } else {
+                match subject.bind_sacrifice_filter(filter, ctx) {
+                    Ok(resolved) => resolved,
+                    Err(_)
+                        if filter.tagged_constraints.len() == 1
+                            && filter.tagged_constraints[0].tag.as_str() == IT_TAG =>
+                    {
+                        ObjectFilter::source()
+                    }
+                    Err(err) => return Err(err),
                 }
-                Err(err) => return Err(err),
             };
             if resolved_filter.source {
                 if *count != 1 {

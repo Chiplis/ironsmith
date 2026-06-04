@@ -14,6 +14,7 @@ use crate::ids::CardId;
 /// a Treasure token. You may vote an additional time.
 pub fn tivit_seller_of_secrets() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Tivit, Seller of Secrets")
+        .card_types(vec![crate::types::CardType::Creature])
         .parse_text(
             "Mana cost: {3}{W}{U}{B}\n\
              Type: Legendary Creature — Sphinx Rogue\n\

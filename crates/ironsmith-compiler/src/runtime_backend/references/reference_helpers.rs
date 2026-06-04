@@ -431,6 +431,8 @@ pub(crate) fn object_filter_as_tagged_reference(filter: &ObjectFilter) -> Option
 
     let mut bare = filter.clone();
     bare.tagged_constraints.clear();
+    bare.zone = None;
+    bare.token = false;
     if bare == ObjectFilter::default() {
         Some(constraint.tag.clone())
     } else {

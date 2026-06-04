@@ -1344,7 +1344,7 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls
         return Ok(None);
     };
 
-    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(parsed.subject_tokens);
     let subject = first_spell_each_turn_subject(&subject_words)
         .map(Ok)
         .unwrap_or_else(|| parse_anthem_subject(parsed.subject_tokens))?;
@@ -1930,7 +1930,7 @@ pub(crate) fn parse_each_creature_cant_be_blocked_by_more_than_line(
         return Ok(None);
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(parsed.subject_tokens);
     if !EACH_CREATURE_SUBJECT_PREFIX_PATTERN.matches_words(&subject_words) {
         return Ok(None);
     }
@@ -1981,7 +1981,7 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
         return Ok(None);
     };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(parsed.subject_tokens);
     if !EACH_CREATURE_SUBJECT_PREFIX_PATTERN.matches_words(&subject_words) {
         return Ok(None);
     };
@@ -2634,7 +2634,7 @@ fn parse_shared_suffix_and_subject_filter(tokens: &[OwnedLexToken]) -> Option<Ob
 pub(crate) fn parse_anthem_subject(
     tokens: &[OwnedLexToken],
 ) -> Result<AnthemSubjectAst, CardTextError> {
-    let subject_words = crate::runtime_backend::token_word_refs(tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     if let Some(subject) = first_spell_each_turn_subject_tokens(tokens)? {
         return Ok(subject);
     }
@@ -7447,7 +7447,7 @@ fn cant_be_blocked_by_more_than_clause_captures_subject_and_threshold() {
     .expect("line should lex");
     let parsed = parse_cant_be_blocked_by_more_than_clause(&tokens)
         .expect("max-blockers clause should parse");
-    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(parsed.subject_tokens);
     let (minimum_blockers, used) = parse_greater_than_or_equal_quantity_prefix(
         parsed.blocker_threshold_tokens,
         false,
@@ -7459,7 +7459,9 @@ fn cant_be_blocked_by_more_than_clause_captures_subject_and_threshold() {
 
     assert_eq!(
         subject_words.as_slice(),
-        &["each", "creature", "you", "control", "with", "+1/+1", "counter", "on", "it"]
+        &[
+            "each", "creature", "you", "control", "with", "a", "+1/+1", "counter", "on", "it"
+        ]
     );
     assert_eq!(minimum_blockers, 2);
     assert_eq!(used, parsed.blocker_threshold_tokens.len());
@@ -7474,7 +7476,7 @@ fn can_block_additional_creature_clause_captures_subject_and_count() {
     .expect("line should lex");
     let parsed = parse_can_block_additional_creature_clause(&tokens)
         .expect("additional-blocker clause should parse");
-    let subject_words = crate::runtime_backend::token_word_refs(parsed.subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(parsed.subject_tokens);
     let (count, used) = parse_number(parsed.additional_count_tokens)
         .expect("captured additional blocker count should parse");
 

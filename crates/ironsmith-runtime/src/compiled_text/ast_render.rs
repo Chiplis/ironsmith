@@ -426,6 +426,9 @@ pub(super) fn describe_resolution_program(
     if let Some(rendered) = describe_spell_mastery_reanimation_program(program) {
         return rendered;
     }
+    if let Some(rendered) = describe_group_pump_then_conditional_untap_program(program) {
+        return rendered;
+    }
 
     let mut rendered_segments = Vec::new();
     for segment in &program.segments {
@@ -454,6 +457,62 @@ pub(super) fn describe_resolution_program(
         }
     }
     rendered_segments.join(". ")
+}
+
+fn describe_group_pump_then_conditional_untap_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let [pump_segment, untap_segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !pump_segment.self_replacements.is_empty()
+        || !untap_segment.self_replacements.is_empty()
+        || pump_segment.default_effects.len() != 1
+        || untap_segment.default_effects.len() != 1
+    {
+        return None;
+    }
+
+    let tagged_pump =
+        pump_segment.default_effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let pump = tagged_pump
+        .effect
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let crate::continuous::EffectTarget::Filter(pump_filter) = &pump.target else {
+        return None;
+    };
+    if pump_filter.card_types != [CardType::Creature] {
+        return None;
+    }
+
+    let conditional =
+        untap_segment.default_effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !matches!(
+        &conditional.condition,
+        Condition::Not(inner) if matches!(inner.as_ref(), Condition::YourTurn)
+    ) || !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+    {
+        return None;
+    }
+    let tagged_untap = conditional.if_true[0].downcast_ref::<crate::effects::TaggedEffect>()?;
+    let untap = tagged_untap
+        .effect
+        .downcast_ref::<crate::effects::UntapEffect>()?;
+    let ChooseSpec::Object(untap_filter) = untap.target.base() else {
+        return None;
+    };
+    if !untap_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == tagged_pump.tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+
+    Some(format!(
+        "{}. If it's not your turn, untap those creatures",
+        describe_effect_list(&pump_segment.default_effects).trim_end_matches('.')
+    ))
 }
 
 pub(super) fn describe_mana_ability_resolution_program(
@@ -841,6 +900,13 @@ fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text
     {
         replacement = replacement.replacen("target creature", "that creature", 1);
     }
+    let default_lower = default_text.to_ascii_lowercase();
+    if default_lower.contains("counter target")
+        && default_lower.contains("spell unless")
+        && replacement == "counter those spells"
+    {
+        replacement = "counter that spell".to_string();
+    }
     replacement
 }
 
@@ -1159,6 +1225,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.starts_with("whenever this creature attacks")
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
+        || lower.starts_with("whenever this or another ")
         || lower.contains(" this creature deals ")
         || lower.contains(", this creature deals ")
         || lower.contains(": this creature gets ")
@@ -1173,19 +1240,57 @@ pub(super) fn substitute_legendary_source_reference(
         return line.to_string();
     }
 
-    let substituted = line
-        .replace("This creature", source_name)
-        .replace("this creature", source_name)
-        .replace("This land", source_name)
-        .replace("this land", source_name)
-        .replace("This artifact", source_name)
-        .replace("this artifact", source_name);
+    let line = line
+        .strip_prefix("Whenever this or another ")
+        .map(|rest| format!("Whenever {source_name} or another {rest}"))
+        .unwrap_or_else(|| line.to_string());
+
+    let substituted = [
+        ("This creature", source_name),
+        ("this creature", source_name),
+        ("This land", source_name),
+        ("this land", source_name),
+        ("This artifact", source_name),
+        ("this artifact", source_name),
+    ]
+    .into_iter()
+    .fold(line, |line, (from, to)| {
+        replace_outside_quotes(&line, from, to)
+    });
     let lower_source_name = source_name.to_ascii_lowercase();
     if lower_source_name != source_name {
-        substituted.replace(&lower_source_name, source_name)
+        replace_outside_quotes(&substituted, &lower_source_name, source_name)
     } else {
         substituted
     }
+}
+
+fn replace_outside_quotes(input: &str, from: &str, to: &str) -> String {
+    if from.is_empty() {
+        return input.to_string();
+    }
+
+    let mut output = String::with_capacity(input.len());
+    let mut in_quote = false;
+    let mut index = 0;
+    while index < input.len() {
+        let ch = input[index..]
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        if ch == '"' {
+            in_quote = !in_quote;
+            output.push(ch);
+            index += ch.len_utf8();
+        } else if !in_quote && input[index..].starts_with(from) {
+            output.push_str(to);
+            index += from.len();
+        } else {
+            output.push(ch);
+            index += ch.len_utf8();
+        }
+    }
+    output
 }
 
 fn capitalize_first_ascii(s: &str) -> String {

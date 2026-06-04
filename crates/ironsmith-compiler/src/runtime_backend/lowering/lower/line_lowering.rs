@@ -52,9 +52,8 @@ const KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN: ClauseShape<'static> = ClauseSh
         PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE,
         PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE,
     ]);
-const KICKED_MULTI_ZONE_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[
-        SEARCH_LIBRARY_OR_GRAVEYARD_FOR_DOCTORS_PHRASE,
+const KICKED_MULTI_ZONE_TO_BATTLEFIELD_FOLLOWUP_PATTERN: ClauseShape<'static> = ClauseShape::new()
+    .contains_phrases(&[
         IF_THIS_SPELL_WAS_KICKED_PHRASE,
         PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE,
     ]);
@@ -594,20 +593,24 @@ fn kicked_count_override_self_replacement_program(
 
 fn kicked_multi_zone_search_to_battlefield_program(
     compiled: &[crate::effect::Effect],
-    normalized_tokens: &[OwnedLexToken],
+    _normalized_tokens: &[OwnedLexToken],
 ) -> Option<crate::resolution::ResolutionProgram> {
-    if !tokens_mention_kicked_multi_zone_search_to_battlefield_replacement(normalized_tokens) {
-        return None;
-    }
     let [choose, reveal, move_to_hand, shuffle, conditional] = compiled else {
         return None;
     };
+    let choose_search = choose.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose_search.is_search
+        || choose_primary_zone_for_kicked_multi_zone_search(choose_search) != Some(Zone::Library)
+        || !choose_search.additional_zones.contains(&Zone::Graveyard)
+    {
+        return None;
+    }
     let conditional = conditional.downcast_ref::<crate::effects::ConditionalEffect>()?;
     if conditional.condition != crate::effect::Condition::ThisSpellWasKicked {
         return None;
     }
 
-    let searched_tag = crate::TagKey::from("searched_multi_zone");
+    let searched_tag = choose_search.tag.clone();
     let default_effects = vec![
         choose.clone(),
         reveal.clone(),
@@ -633,6 +636,143 @@ fn kicked_multi_zone_search_to_battlefield_program(
             replacement_effects,
         ));
     Some(program)
+}
+
+fn rewrite_tagged_hand_move_to_battlefield(
+    effect: &crate::effect::Effect,
+    tag: &crate::TagKey,
+) -> (crate::effect::Effect, bool) {
+    if let Some(move_effect) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && move_effect.target == ChooseSpec::Tagged(tag.clone())
+        && move_effect.zone == Zone::Hand
+    {
+        let mut replacement = move_effect.clone();
+        replacement.zone = Zone::Battlefield;
+        return (crate::effect::Effect::new(replacement), true);
+    }
+
+    if let Some(for_each) =
+        effect.downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+    {
+        let mut changed = false;
+        let effects = for_each
+            .effects
+            .iter()
+            .map(|child| {
+                let (rewritten, child_changed) =
+                    rewrite_tagged_hand_move_to_battlefield(child, tag);
+                changed |= child_changed;
+                rewritten
+            })
+            .collect::<Vec<_>>();
+        if changed {
+            return (
+                crate::effect::Effect::for_each_tagged(for_each.tag.clone(), effects),
+                true,
+            );
+        }
+    }
+
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        let (rewritten, changed) = rewrite_tagged_hand_move_to_battlefield(&tagged.effect, tag);
+        if changed {
+            return (
+                crate::effect::Effect::new(crate::effects::TaggedEffect::new(
+                    tagged.tag.clone(),
+                    rewritten,
+                )),
+                true,
+            );
+        }
+    }
+
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut changed = false;
+        let effects = sequence
+            .effects
+            .iter()
+            .map(|child| {
+                let (rewritten, child_changed) =
+                    rewrite_tagged_hand_move_to_battlefield(child, tag);
+                changed |= child_changed;
+                rewritten
+            })
+            .collect::<Vec<_>>();
+        if changed {
+            return (
+                crate::effect::Effect::new(crate::effects::SequenceEffect::new(effects)),
+                true,
+            );
+        }
+    }
+
+    (effect.clone(), false)
+}
+
+fn attach_kicked_multi_zone_search_to_battlefield_replacement(
+    builder: &mut CardDefinitionBuilder,
+    compiled: &[crate::effect::Effect],
+    normalized_tokens: &[OwnedLexToken],
+) -> bool {
+    if !tokens_mention_kicked_multi_zone_to_battlefield_followup(normalized_tokens) {
+        return false;
+    }
+    let [conditional] = compiled else {
+        return false;
+    };
+    let Some(conditional) = conditional.downcast_ref::<crate::effects::ConditionalEffect>() else {
+        return false;
+    };
+    if conditional.condition != crate::effect::Condition::ThisSpellWasKicked {
+        return false;
+    }
+    let Some(existing) = builder.spell_effect.as_mut() else {
+        return false;
+    };
+    let Some(segment) = existing.last_segment_mut() else {
+        return false;
+    };
+    let Some(choose) = segment
+        .default_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+    else {
+        return false;
+    };
+    if !choose.is_search
+        || choose_primary_zone_for_kicked_multi_zone_search(choose) != Some(Zone::Library)
+        || !choose.additional_zones.contains(&Zone::Graveyard)
+    {
+        return false;
+    }
+
+    let tag = choose.tag.clone();
+    let mut changed = false;
+    let replacement_effects = segment
+        .default_effects
+        .iter()
+        .map(|effect| {
+            let (rewritten, effect_changed) = rewrite_tagged_hand_move_to_battlefield(effect, &tag);
+            changed |= effect_changed;
+            rewritten
+        })
+        .collect::<Vec<_>>();
+    if !changed {
+        return false;
+    }
+    segment
+        .self_replacements
+        .push(crate::resolution::SelfReplacementBranch::new(
+            conditional.condition.clone(),
+            replacement_effects,
+        ));
+    true
+}
+
+fn choose_primary_zone_for_kicked_multi_zone_search(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> Option<Zone> {
+    choose.zone
 }
 
 fn clash_win_optional_top_replacement_program(
@@ -697,15 +837,23 @@ fn tokens_mention_kicked_count_override_replacement(tokens: &[OwnedLexToken]) ->
     KICKED_COUNT_OVERRIDE_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
-fn tokens_mention_kicked_multi_zone_search_to_battlefield_replacement(
-    tokens: &[OwnedLexToken],
-) -> bool {
-    KICKED_MULTI_ZONE_SEARCH_TO_BATTLEFIELD_REPLACEMENT_PATTERN
-        .matches_words(&parser_token_word_refs(tokens))
+fn tokens_mention_kicked_multi_zone_to_battlefield_followup(tokens: &[OwnedLexToken]) -> bool {
+    KICKED_MULTI_ZONE_TO_BATTLEFIELD_FOLLOWUP_PATTERN.matches_words(&parser_token_word_refs(tokens))
 }
 
 fn tokens_mention_clash_win_top_replacement(tokens: &[OwnedLexToken]) -> bool {
-    CLASH_WIN_TOP_REPLACEMENT_PATTERN.matches_words(&parser_token_word_refs(tokens))
+    let words = parser_token_word_refs(tokens);
+    if CLASH_WIN_TOP_REPLACEMENT_PATTERN.matches_words(&words) {
+        return true;
+    }
+
+    ClauseShape::new()
+        .contains_phrases(&[CLASH_WITH_AN_OPPONENT_PHRASE, IF_YOU_WIN_PHRASE])
+        .contains_words(&["top", "library", "instead"])
+        .matches_words(&words)
+        && words
+            .iter()
+            .any(|word| matches!(*word, "owner" | "owners" | "owner's"))
 }
 
 pub(super) fn rewrite_apply_line_ast(
@@ -1178,6 +1326,13 @@ fn lower_statement_chunk(
         kicked_multi_zone_search_to_battlefield_program(&compiled, &normalized_tokens)
     {
         builder.spell_effect = Some(program);
+        return Ok(builder);
+    }
+    if attach_kicked_multi_zone_search_to_battlefield_replacement(
+        &mut builder,
+        &compiled,
+        &normalized_tokens,
+    ) {
         return Ok(builder);
     }
     if let Some(program) = clash_win_optional_top_replacement_program(&compiled, &normalized_tokens)

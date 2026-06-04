@@ -898,10 +898,7 @@ fn apply_single_sba_with_snapshots(
             if lost_now {
                 game.queue_trigger_event(
                     crate::provenance::ProvNodeId::default(),
-                    crate::triggers::TriggerEvent::new_with_provenance(
-                        crate::events::other::PlayerLostGameEvent::new(player),
-                        crate::provenance::ProvNodeId::default(),
-                    ),
+                    crate::events::Event::player_loses_game(player).into_raw(),
                 );
             }
         }

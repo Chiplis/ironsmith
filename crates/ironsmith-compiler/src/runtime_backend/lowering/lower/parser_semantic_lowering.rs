@@ -243,6 +243,29 @@ const ATTACK_ACTION_PATTERN: ClauseShape<'static> =
 const WHEN_IT_ENTERS_PATTERN: ClauseShape<'static> =
     ClauseShape::new().contains_phrases(&[WHEN_IT_ENTERS_PHRASE]);
 const PARTNER_WITH_PATTERN: ClauseShape<'static> = ClauseShape::new().prefix(PARTNER_WITH_PREFIX);
+const NEXT_DRAW_REPLACEMENT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["the", "next", "time"],
+            &["would", "draw"],
+            &["this", "turn"],
+            &["instead"],
+        ]
+);
+const ITERATED_PLAYER_WOULD_DRAW_PHRASES: &[&[&str]] = &[
+    &["they", "would", "draw"],
+    &["that", "player", "would", "draw"],
+];
+const ITERATED_PLAYER_WOULD_DRAW_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[ITERATED_PLAYER_WOULD_DRAW_PHRASES]);
+const YOU_WOULD_DRAW_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["you", "would", "draw"]]);
+const OPPONENT_WOULD_DRAW_PHRASES: &[&[&str]] = &[
+    &["an", "opponent", "would", "draw"],
+    &["opponent", "would", "draw"],
+];
+const OPPONENT_WOULD_DRAW_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[OPPONENT_WOULD_DRAW_PHRASES]);
 
 fn parse_effect_sentences_from_text(
     text: &str,
@@ -302,23 +325,19 @@ fn triggered_line_source_text(line: &RewriteTriggeredLine) -> String {
     }
 }
 
-fn next_draw_replacement_player_filter(text: &str) -> Option<PlayerFilter> {
-    let text = text.to_ascii_lowercase();
-    if !text.contains("the next time")
-        || !text.contains("would draw")
-        || !text.contains("this turn")
-        || !text.contains("instead")
-    {
+fn next_draw_replacement_player_filter_tokens(tokens: &[OwnedLexToken]) -> Option<PlayerFilter> {
+    let words = token_word_refs(tokens);
+    if !NEXT_DRAW_REPLACEMENT_MARKER_PATTERN.matches_words(&words) {
         return None;
     }
 
-    if text.contains("they would draw") || text.contains("that player would draw") {
+    if ITERATED_PLAYER_WOULD_DRAW_PATTERN.matches_words(&words) {
         return Some(PlayerFilter::IteratedPlayer);
     }
-    if text.contains("you would draw") {
+    if YOU_WOULD_DRAW_PATTERN.matches_words(&words) {
         return Some(PlayerFilter::You);
     }
-    if text.contains("an opponent would draw") || text.contains("opponent would draw") {
+    if OPPONENT_WOULD_DRAW_PATTERN.matches_words(&words) {
         return Some(PlayerFilter::Opponent);
     }
 
@@ -326,10 +345,10 @@ fn next_draw_replacement_player_filter(text: &str) -> Option<PlayerFilter> {
 }
 
 fn wrap_future_draw_replacement_effects(
-    full_text: &str,
+    full_parse_tokens: &[OwnedLexToken],
     effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
-    let Some(player) = next_draw_replacement_player_filter(full_text) else {
+    let Some(player) = next_draw_replacement_player_filter_tokens(full_parse_tokens) else {
         return effects;
     };
     if effects.is_empty() {
@@ -995,7 +1014,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
             .collect::<Vec<_>>();
         let trigger_effect_tokens = join_sentences_with_period(&trigger_effect_sentences);
         let effects = wrap_future_draw_replacement_effects(
-            line.full_text.as_str(),
+            full_parse_tokens,
             parse_effect_sentences_lexed(&trigger_effect_tokens)?,
         );
         if !effects.is_empty() {
@@ -1040,7 +1059,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
         let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens)
-            .map(|effects| wrap_future_draw_replacement_effects(line.full_text.as_str(), effects));
+            .map(|effects| wrap_future_draw_replacement_effects(full_parse_tokens, effects));
         if let (Ok(trigger), Ok(effects)) = (direct_trigger, direct_effects)
             && !effects.is_empty()
         {
@@ -2384,7 +2403,7 @@ fn try_lower_partner_with_tokens(
 }
 
 fn partner_with_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
-    if !PARTNER_WITH_PATTERN.matches_words(&token_word_refs(tokens)) {
+    if !PARTNER_WITH_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
         return None;
     }
 

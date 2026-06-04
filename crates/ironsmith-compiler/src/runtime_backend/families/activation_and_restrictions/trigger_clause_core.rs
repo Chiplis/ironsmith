@@ -3523,7 +3523,7 @@ pub(crate) fn parse_trigger_clause_lexed(
     if LOSE_GAME_TRIGGER_SUFFIX.matches_words(&words) {
         let subject = &words[..words.len().saturating_sub(3)];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {
-            return Ok(TriggerSpec::PlayerLostGame(player));
+            return Ok(TriggerSpec::PlayerLosesGame(player));
         }
     }
 

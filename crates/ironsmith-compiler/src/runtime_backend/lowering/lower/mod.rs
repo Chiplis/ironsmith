@@ -201,19 +201,6 @@ const PUT_TWO_OF_THOSE_CARDS_INTO_YOUR_HAND_INSTEAD_PHRASE: &[&str] = &[
 ];
 const PUT_ONE_OF_THOSE_CARDS_INTO_YOUR_HAND_PHRASE: &[&str] =
     &["put", "one", "of", "those", "cards", "into", "your", "hand"];
-const SEARCH_LIBRARY_OR_GRAVEYARD_FOR_DOCTORS_PHRASE: &[&str] = &[
-    "search",
-    "your",
-    "library",
-    "and/or",
-    "graveyard",
-    "for",
-    "up",
-    "to",
-    "five",
-    "doctor",
-    "cards",
-];
 const IF_THIS_SPELL_WAS_KICKED_PHRASE: &[&str] = &["if", "this", "spell", "was", "kicked"];
 const PUT_THOSE_CARDS_ONTO_BATTLEFIELD_INSTEAD_OF_HAND_PHRASE: &[&str] = &[
     "put",

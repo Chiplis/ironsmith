@@ -1041,6 +1041,7 @@ fn advance_reference_frame_for_effect(
                 )));
             }
             frame.last_object_tag = Some(chosen_tag);
+            frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1097,6 +1098,7 @@ fn advance_reference_frame_for_effect(
                 )));
             }
             frame.last_object_tag = Some(chosen_tag);
+            frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects }

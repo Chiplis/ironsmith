@@ -717,11 +717,15 @@ fn parse_effect_sentence_lexed_inner(
         && sentence_words
             .windows(3)
             .any(|window| window == ["next", "end", "step"])
-        && let Some(effects) = parse_sentence_delayed_next_step_unless_pays(
-            SubjectVerbPrimitiveClause::new(tokens),
-        )?
     {
-        return Ok(effects);
+        if let Some(effects) =
+            parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
+        {
+            return Ok(effects);
+        }
+        if let Some(effects) = parse_delayed_until_next_end_step_sentence(tokens)? {
+            return Ok(effects);
+        }
     }
     if let Some(effects) = parse_it_is_aura_enchantment_sentence(sentence_words.as_slice()) {
         return Ok(effects);

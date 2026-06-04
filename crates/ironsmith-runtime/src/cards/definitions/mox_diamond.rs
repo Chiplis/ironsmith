@@ -130,9 +130,9 @@ mod tests {
         let effect = AddManaOfAnyColorEffect::you(1);
         let result = EffectExecutor::execute(&effect, &mut game, &mut ctx).unwrap();
 
-        // Should produce 1 mana (defaults to green without decision maker)
+        // Should produce 1 mana (SelectFirstDecisionMaker chooses the first WUBRG color)
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
-        assert_eq!(game.player(alice).unwrap().mana_pool.green, 1);
+        assert_eq!(game.player(alice).unwrap().mana_pool.white, 1);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

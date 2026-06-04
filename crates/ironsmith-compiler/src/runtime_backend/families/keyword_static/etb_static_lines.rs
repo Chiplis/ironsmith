@@ -33,7 +33,7 @@ const ETB_SOURCE_TAIL_NOUN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["permanent"],
         ]
 );
-const ETB_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
+const ETB_OR_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
 const ETB_UNLESS_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["unless"]);
 const ETB_TAPPED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["tapped"]);
 const ETB_UNTAPPED_MARKER_PATTERN: ClauseShape<'static> =
@@ -67,8 +67,15 @@ const ETB_LAND_REVEAL_TRAILING_TAPPED_PATTERN: ClauseShape<'static> = clause_sha
             &["it", "enter", "the", "battlefield", "tapped"],
         ]
 );
-const ETB_ENTERS_TAPPED_PHRASE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["enters", "tapped"], &["enter", "tapped"]]]);
+const ETB_ENTERS_TAPPED_PHRASE_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_any_phrases
+        & [&[
+            &["enters", "tapped"],
+            &["enter", "tapped"],
+            &["enters", "the", "battlefield", "tapped"],
+            &["enter", "the", "battlefield", "tapped"],
+        ]]
+);
 const ETB_CONTROL_OWN_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["control"], &["controls"], &["own"], &["owns"]]);
 const ETB_FIRST_THREE_TURNS_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -568,9 +575,22 @@ fn parse_enters_with_counters_clause_tokens<'a>(
         LexPattern::capture("with", LexCaptureKind::OneOf(&["with"])),
         LexPattern::object("counter_clause", LexCaptureKind::Rest),
     ]);
+    const WITH_PHRASE: &[&str] = &["with"];
+    const ENTRY_MODIFIER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "subject",
+            LexCaptureKind::UntilAnyPhrase(ETB_ENTERS_OR_ESCAPES_PHRASES),
+        ),
+        LexPattern::action("action", LexCaptureKind::OneOf(ACTION_WORDS)),
+        LexPattern::modifier("entry_modifier", LexCaptureKind::UntilPhrase(WITH_PHRASE)),
+        LexPattern::capture("with", LexCaptureKind::OneOf(&["with"])),
+        LexPattern::object("counter_clause", LexCaptureKind::Rest),
+    ]);
 
     let clause = LexedClause::new(tokens);
-    let matched = PATTERN.match_clause(clause)?;
+    let matched = PATTERN
+        .match_clause(clause)
+        .or_else(|| ENTRY_MODIFIER_PATTERN.match_clause(clause))?;
     let subject = matched
         .capture_clause_by_role(LexCaptureRole::Subject, clause)?
         .trimmed();
@@ -3150,7 +3170,8 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
             clause_words.join(" ")
         )));
     }
-    let reveal_filter = parse_object_filter(&reveal_filter_tokens, false)?;
+    let mut reveal_filter = parse_object_filter(&reveal_filter_tokens, false)?;
+    reveal_filter.zone = None;
     let reveal_condition = crate::ConditionExpr::YouHaveCardInHandMatching(reveal_filter);
 
     // Pattern A: "... If you don't, this land enters tapped."
@@ -3185,7 +3206,7 @@ pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
 
     let mut condition = reveal_condition;
     if let Some(condition_clause) = condition_clause
-        && ETB_OR_WORD_PATTERN.matches_words(&condition_clause.word_refs())
+        && ETB_OR_MARKER_PATTERN.matches_words(&condition_clause.word_refs())
     {
         let Some(parsed_condition) =
             parse_revealed_this_way_or_control_condition(condition_clause.tokens())
@@ -3233,7 +3254,8 @@ fn parse_revealed_this_way_or_control_condition(
     if reveal_filter_tokens.is_empty() {
         return None;
     }
-    let reveal_filter = parse_object_filter(&reveal_filter_tokens, false).ok()?;
+    let mut reveal_filter = parse_object_filter(&reveal_filter_tokens, false).ok()?;
+    reveal_filter.zone = None;
 
     let control_clause = matched.capture_clause_by_role(
         LexCaptureRole::Condition,
