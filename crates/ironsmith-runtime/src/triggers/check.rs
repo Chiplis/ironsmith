@@ -11,7 +11,8 @@ use std::rc::Rc;
 use crate::Effect;
 use crate::ability::{AbilityKind, TriggeredAbility};
 use crate::continuous::ContinuousEffect;
-use crate::filter::ObjectFilter;
+use crate::effect::Value;
+use crate::filter::{Comparison, ObjectFilter};
 use crate::filter::ObjectRef;
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId, StableId};
@@ -41,6 +42,200 @@ fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) ->
         .downcast::<crate::events::other::BecameMonstrousEvent>()
         .map(|event| event.n)
         .or(fallback)
+}
+
+fn is_dynamic_soulshift_trigger(trigger_ability: &TriggeredAbility) -> bool {
+    trigger_ability.presentation_label.as_deref() == Some("keyword:soulshift X")
+}
+
+fn soulshift_value_from_choose_spec(spec: &ChooseSpec) -> Option<&Value> {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => soulshift_value_from_choose_spec(spec),
+        ChooseSpec::Object(filter) => match filter.mana_value.as_ref()? {
+            Comparison::LessThanOrEqualExpr(value) => Some(value.as_ref()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn count_filter_from_trigger_lki(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    controller: PlayerId,
+    source: ObjectId,
+    filter: &ObjectFilter,
+) -> i32 {
+    let filter_ctx = game.filter_context_for(controller, Some(source));
+    let mut seen = HashSet::new();
+    let mut count = 0i32;
+
+    for object in game.objects_in_deterministic_order() {
+        if filter.matches(object, &filter_ctx, game) {
+            seen.insert(object.stable_id);
+            count += 1;
+        }
+    }
+
+    if let Some(zone_change) = trigger_event.downcast::<crate::events::zones::ZoneChangeEvent>() {
+        for snapshot in zone_change.snapshots() {
+            if !seen.insert(snapshot.stable_id) {
+                continue;
+            }
+            if filter.matches_snapshot(snapshot, &filter_ctx, game) {
+                count += 1;
+            }
+        }
+    } else if let Some(snapshot) = trigger_event.snapshot()
+        && seen.insert(snapshot.stable_id)
+        && filter.matches_snapshot(snapshot, &filter_ctx, game)
+    {
+        count += 1;
+    }
+
+    count
+}
+
+fn resolve_soulshift_trigger_lki_value(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    controller: PlayerId,
+    source: ObjectId,
+    value: &Value,
+) -> Option<i32> {
+    match value {
+        Value::SurfaceHinted { value, .. } => {
+            resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, value)
+        }
+        Value::Fixed(value) => Some(*value),
+        Value::Add(left, right) => Some(
+            resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, left)?
+                + resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, right)?,
+        ),
+        Value::Scaled(value, multiplier) => {
+            resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, value)
+                .map(|value| value * *multiplier)
+        }
+        Value::DividedRoundedDown(value, divisor) if *divisor != 0 => {
+            resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, value)
+                .map(|value| value.div_euclid(*divisor))
+        }
+        Value::Min(left, right) => Some(
+            resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, left)?.min(
+                resolve_soulshift_trigger_lki_value(game, trigger_event, controller, source, right)?,
+            ),
+        ),
+        Value::Count(filter) => Some(count_filter_from_trigger_lki(
+            game,
+            trigger_event,
+            controller,
+            source,
+            filter,
+        )),
+        Value::CountScaled(filter, multiplier) => Some(
+            count_filter_from_trigger_lki(game, trigger_event, controller, source, filter)
+                * *multiplier,
+        ),
+        _ => None,
+    }
+}
+
+fn captured_dynamic_soulshift_x_value(
+    game: &GameState,
+    trigger_event: &TriggerEvent,
+    controller: PlayerId,
+    source: ObjectId,
+    trigger_ability: &TriggeredAbility,
+) -> Option<u32> {
+    if !is_dynamic_soulshift_trigger(trigger_ability) {
+        return None;
+    }
+
+    let value = trigger_ability
+        .choices
+        .iter()
+        .find_map(soulshift_value_from_choose_spec)?;
+    let resolved = resolve_soulshift_trigger_lki_value(
+        game,
+        trigger_event,
+        controller,
+        source,
+        value,
+    )?;
+    u32::try_from(resolved.max(0)).ok()
+}
+
+fn freeze_soulshift_object_filter(mut filter: ObjectFilter, x_value: u32) -> ObjectFilter {
+    if matches!(filter.mana_value, Some(Comparison::LessThanOrEqualExpr(_))) {
+        filter.mana_value = Some(Comparison::LessThanOrEqual(x_value as i32));
+    }
+    filter
+}
+
+fn freeze_soulshift_choose_spec(spec: &ChooseSpec, x_value: u32) -> ChooseSpec {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, hints } => ChooseSpec::SurfaceHinted {
+            spec: Box::new(freeze_soulshift_choose_spec(spec, x_value)),
+            hints: hints.clone(),
+        },
+        ChooseSpec::Target(spec) => {
+            ChooseSpec::Target(Box::new(freeze_soulshift_choose_spec(spec, x_value)))
+        }
+        ChooseSpec::WithCount(spec, count) => ChooseSpec::WithCount(
+            Box::new(freeze_soulshift_choose_spec(spec, x_value)),
+            count.clone(),
+        ),
+        ChooseSpec::WithCountValue(spec, count, value) => ChooseSpec::WithCountValue(
+            Box::new(freeze_soulshift_choose_spec(spec, x_value)),
+            count.clone(),
+            value.clone(),
+        ),
+        ChooseSpec::Object(filter) => {
+            ChooseSpec::Object(freeze_soulshift_object_filter(filter.clone(), x_value))
+        }
+        _ => spec.clone(),
+    }
+}
+
+fn freeze_soulshift_effect(effect: Effect, x_value: u32) -> Effect {
+    if let Some(return_effect) = effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>() {
+        let mut return_effect = return_effect.clone();
+        return_effect.target = freeze_soulshift_choose_spec(&return_effect.target, x_value);
+        return Effect::new(return_effect);
+    }
+    effect
+}
+
+fn queued_triggered_ability(
+    trigger_ability: &TriggeredAbility,
+    dynamic_soulshift_x: Option<u32>,
+) -> TriggeredAbility {
+    let (effects, choices) = if let Some(x_value) = dynamic_soulshift_x {
+        let effects = trigger_ability
+            .effects
+            .clone()
+            .try_map_effects(|effect| Ok::<Effect, ()>(freeze_soulshift_effect(effect, x_value)))
+            .expect("freezing soulshift effects should be infallible");
+        let choices = trigger_ability
+            .choices
+            .iter()
+            .map(|choice| freeze_soulshift_choose_spec(choice, x_value))
+            .collect();
+        (effects, choices)
+    } else {
+        (trigger_ability.effects.clone(), trigger_ability.choices.clone())
+    };
+
+    TriggeredAbility {
+        trigger: trigger_ability.trigger.clone(),
+        effects,
+        choices,
+        intervening_if: trigger_ability.intervening_if.clone(),
+        presentation_label: None,
+    }
 }
 
 /// Stable, structural identity for a trigger definition.
@@ -1054,18 +1249,20 @@ pub(crate) fn check_triggers_with_view(
                         continue;
                     }
 
+                    let dynamic_soulshift_x = captured_dynamic_soulshift_x_value(
+                        game,
+                        trigger_event,
+                        snapshot.controller,
+                        snapshot.object_id,
+                        trigger_ability,
+                    );
                     let entry = TriggeredAbilityEntry {
                         source: snapshot.object_id,
                         controller: snapshot.controller,
-                        x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                        x_value: dynamic_soulshift_x
+                            .or_else(|| trigger_entry_x_value(trigger_event, snapshot.x_value)),
                         event_value_amount,
-                        ability: TriggeredAbility {
-                            trigger: trigger_ability.trigger.clone(),
-                            effects: trigger_ability.effects.clone(),
-                            choices: trigger_ability.choices.clone(),
-                            intervening_if: trigger_ability.intervening_if.clone(),
-                            presentation_label: None,
-                        },
+                        ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                         triggering_event: trigger_event.clone(),
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
@@ -1126,18 +1323,20 @@ pub(crate) fn check_triggers_with_view(
                     continue;
                 }
 
+                let dynamic_soulshift_x = captured_dynamic_soulshift_x_value(
+                    game,
+                    trigger_event,
+                    snapshot.controller,
+                    snapshot.object_id,
+                    trigger_ability,
+                );
                 let entry = TriggeredAbilityEntry {
                     source: snapshot.object_id,
                     controller: snapshot.controller,
-                    x_value: trigger_entry_x_value(trigger_event, snapshot.x_value),
+                    x_value: dynamic_soulshift_x
+                        .or_else(|| trigger_entry_x_value(trigger_event, snapshot.x_value)),
                     event_value_amount,
-                    ability: TriggeredAbility {
-                        trigger: trigger_ability.trigger.clone(),
-                        effects: trigger_ability.effects.clone(),
-                        choices: trigger_ability.choices.clone(),
-                        intervening_if: trigger_ability.intervening_if.clone(),
-                        presentation_label: None,
-                    },
+                    ability: queued_triggered_ability(trigger_ability, dynamic_soulshift_x),
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
                     source_name: snapshot.name.clone(),

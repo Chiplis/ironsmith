@@ -12609,25 +12609,6 @@ fn spirit_card_with_mana_value(name: &str, mana_value: u8) -> crate::card::Card 
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn kodama_soulshift_effect(def: &crate::cards::CardDefinition) -> &Effect {
-    let triggered = def
-        .abilities
-        .iter()
-        .find_map(|ability| match &ability.kind {
-            AbilityKind::Triggered(triggered) => Some(triggered),
-            _ => None,
-        })
-        .expect("Kodama should have soulshift as a triggered ability");
-
-    triggered
-        .effects
-        .segments
-        .first()
-        .and_then(|segment| segment.default_effects.first())
-        .expect("Kodama soulshift should return a graveyard target")
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
 fn player_zone_contains_named(game: &GameState, player: PlayerId, zone: Zone, name: &str) -> bool {
     let object_ids = match zone {
         Zone::Hand => &game.player(player).expect("player exists").hand,
@@ -12642,17 +12623,19 @@ fn player_zone_contains_named(game: &GameState, player: PlayerId, zone: Zone, na
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn kodama_of_the_center_tree_soulshift_returns_spirit_with_mana_value_at_most_spirits_controlled() {
+fn kodama_of_the_center_tree_dynamic_soulshift_counts_itself_when_dying() {
     let def = kodama_of_the_center_tree_definition();
     let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
     let alice = PlayerId::from_index(0);
-    let kodama = game.create_object_from_definition(&def, alice, Zone::Graveyard);
-    game.create_object_from_card(
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_spirit_one = game.create_object_from_card(
         &spirit_card_with_mana_value("Battlefield Spirit One", 1),
         alice,
         Zone::Battlefield,
     );
-    game.create_object_from_card(
+    let other_spirit_two = game.create_object_from_card(
         &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
         alice,
         Zone::Battlefield,
@@ -12663,20 +12646,27 @@ fn kodama_of_the_center_tree_soulshift_returns_spirit_with_mana_value_at_most_sp
         Zone::Graveyard,
     );
 
-    let mut ctx = crate::effects::ExecutionContext::new_default(kodama, alice).with_targets(vec![
-        crate::effects::ResolvedTarget::Object(target),
-    ]);
-    let outcome = crate::effects::execute_effect(
-        &mut game,
-        kodama_soulshift_effect(&def),
-        &mut ctx,
-    )
-    .expect("Kodama soulshift effect should execute");
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
 
-    assert!(outcome.status.is_success(), "expected success, got {outcome:?}");
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        entry.targets.contains(&Target::Object(target)),
+        "two other Spirits plus dying Kodama should make a mana value 3 Spirit a legal soulshift target"
+    );
+
+    game.move_object_by_effect(other_spirit_one, Zone::Graveyard);
+    game.move_object_by_effect(other_spirit_two, Zone::Graveyard);
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Kodama soulshift should resolve");
+
     assert!(
         player_zone_contains_named(&game, alice, Zone::Hand, "Returned Spirit"),
-        "soulshift should move the legal Spirit card to hand"
+        "soulshift should use the pre-death value instead of drifting with later battlefield changes"
     );
     assert!(
         !player_zone_contains_named(&game, alice, Zone::Graveyard, "Returned Spirit"),
@@ -12686,18 +12676,15 @@ fn kodama_of_the_center_tree_soulshift_returns_spirit_with_mana_value_at_most_sp
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn kodama_of_the_center_tree_soulshift_rejects_spirit_above_dynamic_mana_value_cap() {
+fn kodama_of_the_center_tree_dynamic_soulshift_rejects_above_predeath_count() {
     let def = kodama_of_the_center_tree_definition();
     let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
     let alice = PlayerId::from_index(0);
-    let kodama = game.create_object_from_definition(&def, alice, Zone::Graveyard);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     game.create_object_from_card(
-        &spirit_card_with_mana_value("Battlefield Spirit One", 1),
-        alice,
-        Zone::Battlefield,
-    );
-    game.create_object_from_card(
-        &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
+        &spirit_card_with_mana_value("Battlefield Spirit", 1),
         alice,
         Zone::Battlefield,
     );
@@ -12707,17 +12694,18 @@ fn kodama_of_the_center_tree_soulshift_rejects_spirit_above_dynamic_mana_value_c
         Zone::Graveyard,
     );
 
-    let mut ctx = crate::effects::ExecutionContext::new_default(kodama, alice).with_targets(vec![
-        crate::effects::ResolvedTarget::Object(target),
-    ]);
-    let outcome = crate::effects::execute_effect(
-        &mut game,
-        kodama_soulshift_effect(&def),
-        &mut ctx,
-    )
-    .expect("Kodama soulshift effect should execute");
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
 
-    assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack even when choosing no target");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        !entry.targets.contains(&Target::Object(target)),
+        "one other Spirit plus dying Kodama should cap soulshift at mana value 2"
+    );
     assert!(
         player_zone_contains_named(&game, alice, Zone::Graveyard, "Too Large Spirit"),
         "over-cap Spirit should stay in the graveyard"

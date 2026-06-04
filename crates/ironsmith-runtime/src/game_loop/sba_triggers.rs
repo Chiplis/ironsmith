@@ -834,7 +834,7 @@ fn target_requirements_from_explicit_choices(
                 &resolved_target_spec,
                 trigger.controller,
                 Some(trigger.source),
-                None,
+                entry.source_snapshot.as_ref(),
                 tagged_objects_ref,
                 entry.defending_player,
                 attacking_player,
