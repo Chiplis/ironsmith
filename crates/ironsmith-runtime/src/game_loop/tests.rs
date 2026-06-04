@@ -30472,9 +30472,9 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
         .card_types(vec![CardType::Instant])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
         .build();
-    game.create_object_from_card(&exiled_land, bob, Zone::Library);
-    game.create_object_from_card(&exiled_spell, bob, Zone::Library);
     game.create_object_from_card(&library_spare, bob, Zone::Library);
+    game.create_object_from_card(&exiled_spell, bob, Zone::Library);
+    game.create_object_from_card(&exiled_land, bob, Zone::Library);
 
     let noncreature_event = TriggerEvent::new_with_provenance(
         crate::events::permanents::SacrificeEvent::new(noncreature_id, Some(rakdos_id))
@@ -30520,6 +30520,8 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
             ),
         crate::provenance::ProvNodeId::default(),
     );
+    game.move_object_by_effect(sacrificed_id, Zone::Graveyard)
+        .expect("sacrificed creature should move to the graveyard");
     let matching_triggers: Vec<_> = crate::triggers::check_triggers(&game, &sacrifice_event)
         .into_iter()
         .filter(|entry| entry.source == rakdos_id)
@@ -30538,12 +30540,29 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
             _ => None,
         })
         .expect("Rakdos should have a sacrifice trigger");
+    let effects = triggered.effects.flattened_default_effects();
+    let target_requirements = super::targeting::extract_target_requirements(
+        &game,
+        &effects,
+        alice,
+        Some(rakdos_id),
+    );
+    assert_eq!(
+        target_requirements.len(),
+        1,
+        "Rakdos trigger should require exactly one target player"
+    );
     let mut ctx = ExecutionContext::new_default(rakdos_id, alice)
         .with_triggering_event(sacrifice_event)
-        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
-    for effect in triggered.effects.flattened_default_effects() {
-        crate::effects::execute_effect(&mut game, effect, &mut ctx)
-            .unwrap_or_else(|err| panic!("Rakdos trigger effect should resolve: {effect:?}: {err:?}"));
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_requirements[0].spec.clone(),
+            range: 0..1,
+        }]);
+    for effect in effects {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx).unwrap_or_else(|err| {
+            panic!("Rakdos trigger effect should resolve: {effect:?}: {err:?}")
+        });
     }
 
     assert_eq!(
