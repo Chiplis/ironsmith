@@ -37,6 +37,11 @@ const SIDED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sided"]
 const DIE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["die"], &["dice"]]);
 const CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const LIBRARY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["library"]);
+const HALF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["half"]);
+const ROUNDED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["rounded"]);
+const UP_OR_DOWN_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["up"], &["down"]]);
 const FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["for", "each"], &["each"]]);
 const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
@@ -440,6 +445,44 @@ pub(crate) fn parse_mill(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    fn parse_half_library_count(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
+        let words = tokens
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, token)| token.as_word().map(|word| (idx, word)))
+            .collect::<Vec<_>>();
+        let [(half_idx, half), (_, owner), (_, library), (_, rounded), (last_idx, direction)] =
+            words.as_slice()
+        else {
+            return None;
+        };
+        if *half_idx != 0
+            || !HALF_WORD_PATTERN.matches_word(half)
+            || !LIBRARY_WORD_PATTERN.matches_word(library)
+            || !ROUNDED_WORD_PATTERN.matches_word(rounded)
+            || !UP_OR_DOWN_WORD_PATTERN.matches_word(direction)
+        {
+            return None;
+        }
+
+        let player = match *owner {
+            "your" => PlayerFilter::You,
+            "their" | "that" => PlayerFilter::IteratedPlayer,
+            _ => return None,
+        };
+        let library_count = Value::CardsInLibrary(player);
+        let count = if *direction == "up" {
+            Value::HalfRoundedDown(Box::new(Value::Add(
+                Box::new(library_count),
+                Box::new(Value::Fixed(1)),
+            )))
+        } else {
+            Value::HalfRoundedDown(Box::new(library_count))
+        };
+
+        Some((count, last_idx + 1))
+    }
+
     fn parse_trailing_for_each_count(tokens: &[OwnedLexToken]) -> Option<Value> {
         let mut words = crate::runtime_backend::token_word_refs(tokens);
         if words
@@ -495,7 +538,11 @@ pub(crate) fn parse_mill(
         .is_some_and(|word| CARD_OR_CARDS_PATTERN.matches_word(word));
 
     let (mut count, used) =
-        if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, THAT_MANY_PREFIXES) {
+        if let Some((count, used)) = parse_half_library_count(tokens) {
+            (count, used)
+        } else if let Some((prefix, _)) =
+            grammar::words_match_any_prefix(tokens, THAT_MANY_PREFIXES)
+        {
             (Value::EventValue(EventValueSpec::Amount), prefix.len())
         } else if starts_with_card_keyword {
             if let Some((count, used_after_cards)) = parse_value(&tokens[1..]) {
@@ -555,7 +602,7 @@ pub(crate) fn parse_mill(
                 "missing card keyword".to_string(),
             ));
         }
-        let trailing_count_tokens = &rest[1..];
+        let trailing_count_tokens = if rest.is_empty() { rest } else { &rest[1..] };
         let trailing_words: Vec<&str> = trailing_count_tokens
             .iter()
             .filter_map(OwnedLexToken::as_word)

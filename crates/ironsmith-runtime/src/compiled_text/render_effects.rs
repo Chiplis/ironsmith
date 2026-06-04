@@ -2737,6 +2737,10 @@ fn describe_for_players_simple_iterated_action(
     let [effect] = for_players.effects.as_slice() else {
         return None;
     };
+    let effect = effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| tagged.effect.as_ref())
+        .unwrap_or(effect);
     let subject = describe_for_players_subject(&for_players.filter)?;
     let subject_lower = lowercase_first(subject);
     let verb = |you: &'static str, other: &'static str| {
@@ -2774,6 +2778,19 @@ fn describe_for_players_simple_iterated_action(
             "{subject} {} {}",
             verb("draw", "draws"),
             describe_card_count(&draw.count)
+        ));
+    }
+    if let Some(mill) = effect.downcast_ref::<crate::effects::MillEffect>()
+        && mill.player == PlayerFilter::IteratedPlayer
+    {
+        let count_text = if subject == "You" {
+            describe_card_count(&mill.count).replace("that player's library", "your library")
+        } else {
+            describe_card_count(&mill.count).replace("that player's library", "their library")
+        };
+        return Some(format!(
+            "{subject} {} {count_text}",
+            verb("mill", "mills")
         ));
     }
     if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>()

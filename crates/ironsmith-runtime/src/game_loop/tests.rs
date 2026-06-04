@@ -43374,6 +43374,54 @@ fn put_spell_contortion_on_stack(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn maddening_cacophony_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_307), "Maddening Cacophony")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {3}{U}\n\
+             Each opponent mills eight cards. If this spell was kicked, instead each opponent mills half their library, rounded up.",
+        )
+        .expect("Maddening Cacophony should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_maddening_cacophony_library_cards(
+    game: &mut GameState,
+    owner: PlayerId,
+    prefix: &str,
+    count: usize,
+) {
+    for idx in 0..count {
+        let card = CardBuilder::new(CardId::new(), format!("{prefix} {idx}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_maddening_cacophony_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    kicked: bool,
+) -> ObjectId {
+    let def = maddening_cacophony_definition();
+    let source = game.create_object_from_definition(&def, controller, Zone::Stack);
+    let mut entry = StackEntry::new(source, controller);
+    if kicked {
+        let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+        paid.pay_times(0, 1);
+        entry = entry.with_optional_costs_paid(paid);
+    }
+    game.push_to_stack(entry);
+    source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn put_frightful_delusion_on_stack(
     game: &mut GameState,
     controller: PlayerId,
@@ -43585,6 +43633,84 @@ fn test_strength_of_the_tajuru_puts_x_counters_on_each_kicked_target() {
     assert_eq!(
         untargeted_counters, 0,
         "Strength of the Tajuru should affect only its chosen targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn maddening_cacophony_unpaid_kicker_mills_eight_from_each_opponent() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    add_maddening_cacophony_library_cards(&mut game, alice, "Alice Library", 10);
+    add_maddening_cacophony_library_cards(&mut game, bob, "Bob Library", 10);
+    add_maddening_cacophony_library_cards(&mut game, charlie, "Charlie Library", 12);
+    put_maddening_cacophony_on_stack(&mut game, alice, false);
+
+    resolve_stack_entry(&mut game).expect("Maddening Cacophony should resolve without kicker");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").library.len(),
+        10,
+        "Maddening Cacophony should not mill its controller"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").graveyard.len(),
+        8,
+        "unpaid Maddening Cacophony should mill Bob eight cards"
+    );
+    assert_eq!(
+        game.player(charlie)
+            .expect("Charlie exists")
+            .graveyard
+            .len(),
+        8,
+        "unpaid Maddening Cacophony should mill Charlie eight cards"
+    );
+    assert_eq!(game.player(bob).expect("Bob exists").library.len(), 2);
+    assert_eq!(
+        game.player(charlie).expect("Charlie exists").library.len(),
+        4
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn maddening_cacophony_paid_kicker_mills_half_each_opponents_library_rounded_up() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    add_maddening_cacophony_library_cards(&mut game, alice, "Alice Library", 10);
+    add_maddening_cacophony_library_cards(&mut game, bob, "Bob Library", 9);
+    add_maddening_cacophony_library_cards(&mut game, charlie, "Charlie Library", 10);
+    put_maddening_cacophony_on_stack(&mut game, alice, true);
+
+    resolve_stack_entry(&mut game).expect("kicked Maddening Cacophony should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").library.len(),
+        10,
+        "kicked Maddening Cacophony should not mill its controller"
+    );
+    assert_eq!(
+        game.player(bob).expect("Bob exists").graveyard.len(),
+        5,
+        "kicked Maddening Cacophony should mill half Bob's odd library rounded up"
+    );
+    assert_eq!(
+        game.player(charlie)
+            .expect("Charlie exists")
+            .graveyard
+            .len(),
+        5,
+        "kicked Maddening Cacophony should mill half Charlie's even library"
+    );
+    assert_eq!(game.player(bob).expect("Bob exists").library.len(), 4);
+    assert_eq!(
+        game.player(charlie).expect("Charlie exists").library.len(),
+        5
     );
 }
 

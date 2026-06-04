@@ -6187,6 +6187,21 @@ pub(super) fn strip_parenthetical_segments(text: &str) -> String {
 }
 
 pub(super) fn describe_card_count(value: &Value) -> String {
+    fn half_library_count(value: &Value) -> Option<(PlayerFilter, &'static str)> {
+        let Value::HalfRoundedDown(inner) = value else {
+            return None;
+        };
+        match inner.as_ref() {
+            Value::CardsInLibrary(player) => Some((player.clone(), "down")),
+            Value::Add(left, right) => match (left.as_ref(), right.as_ref()) {
+                (Value::CardsInLibrary(player), Value::Fixed(1))
+                | (Value::Fixed(1), Value::CardsInLibrary(player)) => Some((player.clone(), "up")),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
     match value {
         Value::Fixed(1) => "a card".to_string(),
         Value::Fixed(n) => {
@@ -6201,6 +6216,10 @@ pub(super) fn describe_card_count(value: &Value) -> String {
         Value::CardTypesAmong(_) | Value::CardTypesInGraveyard(_) => {
             format!("X cards, where X is {}", describe_value(value))
         }
+        value if let Some((player, direction)) = half_library_count(value) => format!(
+            "half {} library, rounded {direction}",
+            describe_possessive_player_filter(&player)
+        ),
         value if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference) => {
             "cards equal to the difference".to_string()
         }

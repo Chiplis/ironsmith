@@ -61479,6 +61479,44 @@ fn parse_burst_lightning_kicker_instead_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_maddening_cacophony_strict_and_renders_kicked_mill_override() {
+    let def = parse_oracle_card_definition("Maddening Cacophony");
+
+    assert_eq!(def.name(), "Maddening Cacophony");
+    assert_eq!(def.optional_costs.len(), 1);
+    assert_eq!(def.optional_costs[0].label, "Kicker");
+
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Maddening Cacophony should have spell effects");
+    assert_eq!(program.segments.len(), 1);
+    assert_eq!(program.segments[0].self_replacements.len(), 1);
+
+    let debug = format!("{:#?}", program);
+    assert!(
+        debug.contains("ThisSpellWasKicked")
+            && debug.contains("MillEffect")
+            && debug.contains("CardsInLibrary")
+            && debug.contains("HalfRoundedDown"),
+        "expected Maddening Cacophony to model kicked half-library mill structurally, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Each opponent mills eight cards"),
+        "expected default mill clause in rendered text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If this spell was kicked, each opponent mills half their library, rounded up instead"
+        ),
+        "expected kicked replacement mill clause in rendered text, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_geistblast_graveyard_copy_activation_renders_cleanly() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Geistblast")
         .card_types(vec![CardType::Instant])

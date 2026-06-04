@@ -1107,7 +1107,8 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
         Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)
-        | Value::HalfStartingLifeTotalRoundedDown(player) => {
+        | Value::HalfStartingLifeTotalRoundedDown(player)
+        | Value::CardsInLibrary(player) => {
             if matches!(player, PlayerFilter::IteratedPlayer)
                 && !matches!(player_filter, PlayerFilter::IteratedPlayer)
             {
