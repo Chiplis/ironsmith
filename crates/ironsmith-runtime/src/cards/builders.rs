@@ -9111,6 +9111,40 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn parse_myrkuls_edict_strict_d20_table_and_greatest_power_branch() {
+        let def = CardDefinitionBuilder::new(CardId::new(), "Myrkul's Edict")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Roll a d20.\n\
+                 1—9 | Choose an opponent. That player sacrifices a creature of their choice.\n\
+                 10—19 | Each opponent sacrifices a creature of their choice.\n\
+                 20 | Each opponent sacrifices a creature with the greatest power among creatures that player controls.",
+            )
+            .expect("Myrkul's Edict should parse strictly");
+
+        let rendered = unprocessed_compiled_lines(&def).join("\n");
+        assert!(
+            rendered.contains("Roll a d20"),
+            "expected Myrkul's Edict to render the d20 roll, got {rendered}"
+        );
+        assert!(
+            rendered.contains("1—9 |") && rendered.contains("10—19 |") && rendered.contains("20 |"),
+            "expected Myrkul's Edict to render all d20 result rows, got {rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "Each opponent sacrifices a creature with the greatest power among creatures that player controls"
+            ),
+            "expected Myrkul's Edict to preserve the greatest-power sacrifice branch, got {rendered}"
+        );
+        assert!(
+            !rendered.contains("effect #") && !rendered.contains("dynamic value"),
+            "Myrkul's Edict should not expose raw effect ids or dynamic-value wording, got {rendered}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn parse_unless_controller_pays_life_keeps_unless_branch() {
         let def = CardDefinitionBuilder::new(CardId::new(), "Unless Life Variant")
             .card_types(vec![CardType::Creature])

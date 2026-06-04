@@ -958,6 +958,12 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::GreatestPower(filter) => game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| filter.matches(object, ctx, game))
+            .filter_map(|object| game.calculated_power(object.id).or_else(|| object.power()))
+            .max(),
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)

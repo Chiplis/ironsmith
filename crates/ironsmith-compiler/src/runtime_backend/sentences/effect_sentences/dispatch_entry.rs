@@ -18,6 +18,7 @@ use super::super::effect_ast_traversal::{
 };
 use super::super::grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::structure::split_leading_result_prefix_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word_sequence, lex_line,
@@ -928,6 +929,44 @@ fn try_merge_otherwise_into_previous_conditional(
     true
 }
 
+fn try_append_to_previous_numeric_result_branch(
+    effects: &mut [EffectAst],
+    sentence_effects: &[EffectAst],
+    sentence_tokens: &[OwnedLexToken],
+    result_branch_line: Option<usize>,
+) -> bool {
+    if sentence_effects.is_empty()
+        || split_leading_result_prefix_lexed(sentence_tokens).is_some()
+        || result_branch_line != sentence_tokens.first().map(|token| token.span.line)
+    {
+        return false;
+    }
+    let Some(EffectAst::IfResult {
+        predicate: IfResultPredicate::Value(_),
+        effects: branch_effects,
+    }) = effects.last_mut() else {
+        return false;
+    };
+    branch_effects.extend(sentence_effects.iter().cloned());
+    true
+}
+
+fn numeric_result_branch_line(
+    sentence_effects: &[EffectAst],
+    sentence_tokens: &[OwnedLexToken],
+) -> Option<usize> {
+    if split_leading_result_prefix_lexed(sentence_tokens).is_none() {
+        return None;
+    }
+    match sentence_effects {
+        [EffectAst::IfResult {
+            predicate: IfResultPredicate::Value(_),
+            ..
+        }] => sentence_tokens.first().map(|token| token.span.line),
+        _ => None,
+    }
+}
+
 fn maybe_append_trailing_that_much_life_loss(
     sentence_effects: &mut Vec<EffectAst>,
     sentence_tokens: &[OwnedLexToken],
@@ -1117,6 +1156,7 @@ fn parse_effect_sentences_from_sentence_inputs(
     let mut sentence_idx = 0usize;
     let mut carried_context: Option<CarryContext> = None;
     let mut carried_where_x: Option<Value> = None;
+    let mut last_numeric_result_branch_line: Option<usize> = None;
 
     while sentence_idx < sentences.len() {
         let sentence = sentences[sentence_idx].lowered();
@@ -1345,7 +1385,19 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        if try_append_to_previous_numeric_result_branch(
+            &mut effects,
+            &sentence_effects,
+            &sentence_tokens,
+            last_numeric_result_branch_line,
+        ) {
+            sentence_idx += parse_plan.consumed_sentences;
+            continue;
+        }
+
         parse_trace::event(format!("effects: {}", summarize_effects(&sentence_effects)));
+        last_numeric_result_branch_line =
+            numeric_result_branch_line(&sentence_effects, &sentence_tokens);
         if let Some(where_value) = sentence_where_x {
             carried_where_x = Some(where_value);
         }

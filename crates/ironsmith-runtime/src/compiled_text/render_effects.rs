@@ -22542,6 +22542,10 @@ pub(super) fn describe_for_players_choose_then_sacrifice(
     {
         chosen = rest.to_string();
     }
+    if let Some(chosen) = describe_greatest_power_choice_filter(&choose.filter) {
+        let chosen = with_indefinite_article(&chosen);
+        return Some(format!("{subject} {verb} {chosen}"));
+    }
     let chosen = with_indefinite_article(&chosen);
     Some(format!("{subject} {verb} {chosen} of {possessive} choice"))
 }
@@ -22994,6 +22998,12 @@ pub(super) fn describe_choose_then_sacrifice(
         if refers_to_created_token {
             return Some(format!("{player} {verb} that token"));
         }
+        if let Some(chosen) = describe_greatest_power_choice_filter(&choose.filter) {
+            return Some(format!(
+                "{player} {verb} {}",
+                with_indefinite_article(&chosen)
+            ));
+        }
         if let Some(rest) = chosen.strip_prefix(&format!("{player}'s ")) {
             let chosen_kind = with_indefinite_article(rest);
             return Some(format!("{player} {verb} {chosen_kind} of their choice"));
@@ -23006,6 +23016,34 @@ pub(super) fn describe_choose_then_sacrifice(
         let chosen = pluralize_noun_phrase(&chosen);
         Some(format!("{player} {verb} {count_text} {chosen}"))
     }
+}
+
+fn describe_greatest_power_choice_filter(filter: &ObjectFilter) -> Option<String> {
+    let Some(crate::filter::Comparison::EqualExpr(value)) = filter.power.as_ref() else {
+        return None;
+    };
+    let Value::GreatestPower(among_filter) = value.as_ref() else {
+        return None;
+    };
+    if filter.card_types != [CardType::Creature]
+        || among_filter.card_types != [CardType::Creature]
+        || filter.controller != among_filter.controller
+    {
+        return None;
+    }
+    let among = match filter.controller.as_ref() {
+        Some(PlayerFilter::You) => "among creatures you control".to_string(),
+        Some(PlayerFilter::Opponent) => "among creatures an opponent controls".to_string(),
+        Some(PlayerFilter::NotYou) => "among creatures your opponents control".to_string(),
+        Some(PlayerFilter::IteratedPlayer) => "among creatures that player controls".to_string(),
+        Some(PlayerFilter::TaggedPlayer(_)) => "among creatures that player controls".to_string(),
+        Some(controller) => format!(
+            "among creatures {} controls",
+            describe_player_filter(controller)
+        ),
+        None => "among creatures on the battlefield".to_string(),
+    };
+    Some(format!("creature with the greatest power {among}"))
 }
 
 fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
@@ -23037,6 +23075,9 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
         let description = sacrifice.filter.description();
         if sacrifice.filter.token && filter_is_tagged_it(sacrifice.filter) {
             return format!("{player} {verb} that token");
+        }
+        if let Some(chosen) = describe_greatest_power_choice_filter(sacrifice.filter) {
+            return format!("{player} {verb} {}", with_indefinite_article(&chosen));
         }
         if matches!(
             sacrifice.player,

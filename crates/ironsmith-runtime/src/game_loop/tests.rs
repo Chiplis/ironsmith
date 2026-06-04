@@ -194,6 +194,139 @@ fn component_pouch_d20_branches_put_one_or_two_component_counters_runtime() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn myrkuls_edict_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(563_018), "Myrkul's Edict")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Roll a d20.\n\
+             1—9 | Choose an opponent. That player sacrifices a creature of their choice.\n\
+             10—19 | Each opponent sacrifices a creature of their choice.\n\
+             20 | Each opponent sacrifices a creature with the greatest power among creatures that player controls.",
+        )
+        .expect("Myrkul's Edict should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_myrkul_edict_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, power))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_myrkuls_edict(game: &mut GameState, roll: u32) {
+    let def = myrkuls_edict_definition();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.force_next_die_roll(roll);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_decision_maker(&mut dm);
+    for effect in def
+        .spell_effect
+        .as_ref()
+        .expect("Myrkul's Edict should have spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Myrkul's Edict effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn myrkul_edict_zone_contains(game: &GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone)
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .any(|object| object.name == name)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_low_roll_only_chosen_opponent_sacrifices() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Bear", bob, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Bear", charlie, 2);
+
+    resolve_myrkuls_edict(&mut game, 7);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Bear"),
+        "1-9 should make the chosen opponent sacrifice a creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Charlie Bear"),
+        "1-9 should not make each opponent sacrifice"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_middle_roll_each_opponent_sacrifices_one_creature() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Bear", bob, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Bear", charlie, 2);
+
+    resolve_myrkuls_edict(&mut game, 15);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Bear"),
+        "10-19 should make Bob sacrifice a creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Charlie Bear"),
+        "10-19 should make Charlie sacrifice a creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_twenty_sacrifices_only_each_opponents_greatest_power_creature() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Small", bob, 1);
+    create_myrkul_edict_creature(&mut game, "Bob Large", bob, 5);
+    create_myrkul_edict_creature(&mut game, "Charlie Small", charlie, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Large", charlie, 4);
+
+    resolve_myrkuls_edict(&mut game, 20);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Large"),
+        "20 should make Bob sacrifice a greatest-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Charlie Large"),
+        "20 should make Charlie sacrifice a greatest-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Bob Small"),
+        "20 should not allow Bob to sacrifice a lower-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Charlie Small"),
+        "20 should not allow Charlie to sacrifice a lower-power creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn reprocess_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(646_813), "Reprocess")
         .mana_cost(ManaCost::from_pips(vec![
