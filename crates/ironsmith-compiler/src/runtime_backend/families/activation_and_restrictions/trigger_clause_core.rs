@@ -3696,6 +3696,9 @@ pub(crate) fn parse_trigger_clause_lexed(
             {
                 return Ok(TriggerSpec::PlayerRollsResult { player, result });
             }
+            if result_words == ["die"] || result_words == ["dice"] {
+                return Ok(TriggerSpec::PlayerRollsDie { player });
+            }
         }
     }
 

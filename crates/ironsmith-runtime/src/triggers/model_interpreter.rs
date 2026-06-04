@@ -251,6 +251,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerRollsResult { player, result } => {
             crate::triggers::Trigger::player_rolls_result(player, result)
         }
+        TriggerKind::PlayerRollsDie { player } => {
+            crate::triggers::Trigger::player_rolls_die(player)
+        }
         TriggerKind::AbilityActivatedQualified {
             activator,
             filter,

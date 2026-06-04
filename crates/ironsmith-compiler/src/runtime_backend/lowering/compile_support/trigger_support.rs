@@ -139,6 +139,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerRollsResult { player, result } => {
             Trigger::player_rolls_result(player, result)
         }
+        TriggerSpec::PlayerRollsDie { player } => Trigger::player_rolls_die(player),
         TriggerSpec::AbilityActivated {
             activator,
             filter,
@@ -505,6 +506,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerShufflesLibrary { .. }
         | TriggerSpec::PlayerTapsForMana { .. }
         | TriggerSpec::PlayerRollsResult { .. }
+        | TriggerSpec::PlayerRollsDie { .. }
         | TriggerSpec::PlayerSacrifices { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
@@ -579,6 +581,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerShufflesLibrary { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerTapsForMana { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerRollsResult { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::PlayerRollsDie { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::ThisDealsDamageToPlayer { .. }

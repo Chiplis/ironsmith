@@ -819,6 +819,11 @@ impl Trigger {
         Self::new(PlayerRollsResultTrigger::new(player, result))
     }
 
+    /// Create a "whenever [player] rolls a die" trigger.
+    pub fn player_rolls_die(player: PlayerFilter) -> Self {
+        Self::new(PlayerRollsDieTrigger::new(player))
+    }
+
     /// Create a "whenever mana is added to [player]'s mana pool" trigger.
     pub fn mana_added(player: PlayerFilter) -> Self {
         Self::new(ManaAddedTrigger::new(player))

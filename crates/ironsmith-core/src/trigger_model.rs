@@ -171,6 +171,9 @@ pub enum TriggerKind {
         player: PlayerFilter,
         result: u32,
     },
+    PlayerRollsDie {
+        player: PlayerFilter,
+    },
     AbilityActivatedQualified {
         activator: PlayerFilter,
         filter: ObjectFilter,
@@ -719,6 +722,9 @@ impl Trigger {
             "player_rolls_result",
             TriggerKind::PlayerRollsResult { player, result },
         )
+    }
+    pub fn player_rolls_die(player: PlayerFilter) -> Self {
+        Self::typed("player_rolls_die", TriggerKind::PlayerRollsDie { player })
     }
     pub fn ability_activated_qualified(
         activator: PlayerFilter,
