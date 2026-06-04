@@ -326,6 +326,11 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerSacrifices { player, filter } => {
             crate::triggers::Trigger::player_sacrifices(player, filter)
         }
+        TriggerKind::TokensCreated {
+            player,
+            filter,
+            one_or_more,
+        } => crate::triggers::Trigger::tokens_created(player, filter, one_or_more),
         TriggerKind::Dies { filter } => crate::triggers::Trigger::dies(filter),
         TriggerKind::PutIntoGraveyard { filter } => {
             crate::triggers::Trigger::put_into_graveyard(filter)

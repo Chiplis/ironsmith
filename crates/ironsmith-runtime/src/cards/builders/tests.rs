@@ -337,6 +337,267 @@ fn consulate_surveillance_prevents_damage_from_chosen_source_only() {
 }
 
 #[test]
+fn staff_of_the_storyteller_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Staff of the Storyteller");
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let oracle = oracle_text_by_name()
+        .get("Staff of the Storyteller")
+        .expect("Staff of the Storyteller oracle text")
+        .clone();
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            &oracle,
+            &compiled,
+            crate::semantic_compare::report_embedding_config(),
+        );
+
+    assert!(
+        ability_debug.contains("TokensCreated")
+            && ability_debug.contains("PutCountersEffect")
+            && ability_debug.contains("story")
+            && ability_debug.contains("RemoveCountersEffect")
+            && ability_debug.contains("DrawCardsEffect"),
+        "Staff should structurally keep token-created trigger, story counter, and draw activation, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "Whenever you create one or more creature tokens, put a story counter on this artifact."
+        ) && rendered.contains("{W}, {T}, Remove a story counter from this artifact: Draw a card."),
+        "expected Staff compiled text to preserve token-created trigger and activation, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Staff semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_enters_token_adds_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let enters = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            staff,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, staff, &enters),
+        1,
+        "Staff should trigger once when it enters"
+    );
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let staff_token_triggers = trigger_queue
+        .entries
+        .iter()
+        .filter(|entry| entry.source == staff)
+        .count();
+    assert_eq!(
+        staff_token_triggers, 1,
+        "Staff should trigger once from the Spirit creature token it created"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Staff token-created trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Staff token-created trigger should resolve");
+
+    let spirit_tokens = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id))
+        .filter(|object| {
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.subtypes.contains(&Subtype::Spirit)
+                && game.controller_of(object) == alice
+        })
+        .count();
+    assert_eq!(spirit_tokens, 1, "Staff should create one Spirit token");
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        1,
+        "Staff should get a story counter from creating a creature token"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_noncreature_token_does_not_add_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let clue = CardDefinitionBuilder::new(CardId::new(), "Clue")
+        .token()
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let effect = crate::effect::Effect::new(CreateTokenEffect::you(clue, 1));
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice);
+
+    crate::effects::execute_effect(&mut game, &effect, &mut ctx)
+        .expect("creating a Clue token should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        "Staff should not trigger from creating a noncreature token"
+    );
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        0,
+        "noncreature tokens should not add story counters"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_multiple_creature_tokens_add_one_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let soldier = CardDefinitionBuilder::new(CardId::new(), "Soldier")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Soldier])
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let effect = crate::effect::Effect::new(CreateTokenEffect::you(soldier, 2));
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice);
+
+    crate::effects::execute_effect(&mut game, &effect, &mut ctx)
+        .expect("creating two Soldier tokens should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    let staff_trigger_count = trigger_queue
+        .entries
+        .iter()
+        .filter(|entry| entry.source == staff)
+        .count();
+    assert_eq!(
+        staff_trigger_count, 1,
+        "one-or-more token-created trigger should fire once for a batch of creature tokens"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Staff token-created trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Staff token-created trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        1,
+        "creating multiple creature tokens in one event should add one story counter"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_opponent_creature_token_does_not_add_story_counter() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let soldier = CardDefinitionBuilder::new(CardId::new(), "Soldier")
+        .token()
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Soldier])
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let effect = crate::effect::Effect::new(CreateTokenEffect::new(
+        soldier,
+        1,
+        PlayerFilter::Opponent,
+    ));
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice);
+
+    crate::effects::execute_effect(&mut game, &effect, &mut ctx)
+        .expect("creating an opponent Soldier token should resolve");
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+
+    assert!(
+        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        "Staff should not trigger from creature tokens created by an opponent"
+    );
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        0,
+        "opponent-created creature tokens should not add story counters"
+    );
+}
+
+#[test]
+fn staff_of_the_storyteller_activation_removes_story_counter_and_draws() {
+    let def = parse_oracle_card_definition("Staff of the Storyteller");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Staff should have a draw activated ability");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let top_card = CardDefinitionBuilder::new(CardId::new(), "Staff Drawn Card")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+    game.create_object_from_definition(&top_card, alice, Zone::Library);
+    game.remove_summoning_sickness(staff);
+
+    assert!(
+        crate::cost::can_pay_cost(&game, staff, alice, &activated.mana_cost).is_err(),
+        "Staff activation should not be payable without a story counter"
+    );
+    game.add_counters(staff, CounterType::Named("story"), 1)
+        .expect("Staff should accept a story counter");
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::White, 1);
+    crate::cost::can_pay_cost(&game, staff, alice, &activated.mana_cost)
+        .expect("Staff activation should be payable with white mana, tap, and a story counter");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        staff,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Staff activation cost should be paid");
+
+    assert!(game.is_tapped(staff), "activation cost should tap Staff");
+    assert_eq!(
+        game.counter_count(staff, CounterType::Named("story")),
+        0,
+        "activation cost should remove the story counter"
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Staff draw effect should resolve");
+    }
+
+    let hand_cards = game
+        .objects_in_zone(Zone::Hand)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| object.name == "Staff Drawn Card")
+        .count();
+    assert_eq!(hand_cards, 1, "Staff activation should draw one card");
+}
+
+#[test]
 fn hydra_omnivore_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Hydra Omnivore");
 

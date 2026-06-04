@@ -55,6 +55,7 @@ pub mod other;
 pub mod phase_step;
 pub mod special;
 pub mod spell_ability;
+pub mod tokens;
 pub mod zone_changes;
 
 // Re-export core types
@@ -78,6 +79,7 @@ pub use other::*;
 pub use phase_step::*;
 pub use special::*;
 pub use spell_ability::*;
+pub use tokens::*;
 pub use zone_changes::*;
 
 use crate::events::EventKind;
@@ -982,6 +984,11 @@ impl Trigger {
     /// Create a "when a player sacrifices [filter]" trigger.
     pub fn player_sacrifices(player: PlayerFilter, filter: ObjectFilter) -> Self {
         Self::new(PlayerSacrificesTrigger::new(player, filter))
+    }
+
+    /// Create a "whenever [player] creates [tokens]" trigger.
+    pub fn tokens_created(player: PlayerFilter, filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::new(TokensCreatedTrigger::new(player, filter, one_or_more))
     }
 
     /// Create a "at the beginning of each player's turn" trigger.

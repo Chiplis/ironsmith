@@ -15066,6 +15066,29 @@ fn parse_trigger_clause_supports_one_or_more_energy_player_gain() {
 }
 
 #[test]
+fn parse_trigger_clause_supports_one_or_more_creature_tokens_created_by_you() {
+    let tokens = lex_line("you create one or more creature tokens", 0)
+        .expect("rewrite lexer should tokenize one-or-more token-created trigger clause");
+    let parsed =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &tokens,
+        );
+    let Ok(crate::cards::builders::TriggerSpec::TokensCreated {
+        player,
+        filter,
+        one_or_more,
+    }) = parsed
+    else {
+        panic!("expected token-created trigger, got {parsed:?}");
+    };
+
+    assert_eq!(player, crate::target::PlayerFilter::You);
+    assert!(one_or_more, "expected one-or-more count mode");
+    assert!(filter.token, "expected creature tokens to keep token filter");
+    assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+}
+
+#[test]
 fn clown_car_parses_roll_x_six_sided_dice_with_odd_even_result_clauses() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Clown Car")
         .parse_text(
