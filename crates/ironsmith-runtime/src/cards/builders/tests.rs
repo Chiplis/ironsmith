@@ -23043,6 +23043,44 @@ fn deep_water_replaces_mana_from_land_you_control_until_end_of_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn deep_water_preserves_amount_from_multi_mana_land() {
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string()],
+        20,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let deep_water_id = game.create_object_from_definition(
+        &deep_water_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
+
+    let land_id = create_deep_water_test_land_with_mana(
+        &mut game,
+        alice,
+        "Deep Water Multi-Mana Test Land",
+        vec![ManaSymbol::Black, ManaSymbol::Colorless],
+    );
+    crate::special_actions::perform_activate_mana_ability(&mut game, alice, land_id, 0, &mut dm)
+        .expect("multi-mana land ability should activate");
+
+    let pool = &game.player(alice).expect("alice").mana_pool;
+    assert_eq!(
+        pool.blue, 2,
+        "Deep Water should preserve the amount of mana while making it all blue"
+    );
+    assert_eq!(pool.black, 0, "the original black mana should not be produced");
+    assert_eq!(
+        pool.colorless, 0,
+        "the original colorless mana should not be produced"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn deep_water_mana_replacement_expires_at_cleanup() {
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(
@@ -23199,6 +23237,16 @@ fn create_deep_water_test_land(
     controller: PlayerId,
     name: &str,
 ) -> ObjectId {
+    create_deep_water_test_land_with_mana(game, controller, name, vec![ManaSymbol::Black])
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_deep_water_test_land_with_mana(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+    mana: Vec<ManaSymbol>,
+) -> ObjectId {
     let land = crate::card::CardBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Land])
         .build();
@@ -23208,7 +23256,7 @@ fn create_deep_water_test_land(
         .abilities
         .push(crate::ability::Ability::mana(
             crate::cost::TotalCost::from_cost(crate::costs::Cost::tap()),
-            vec![ManaSymbol::Black],
+            mana,
         ));
     land_id
 }

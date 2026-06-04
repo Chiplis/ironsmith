@@ -199,7 +199,12 @@ pub(super) fn apply_trait_replacement(
             let Some(mana_event) = downcast_event::<ManaAddedEvent>(event.inner()) else {
                 return TraitApplyResult::Unchanged(event);
             };
-            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(mana.clone())))
+            let replacement_mana = if mana.len() == 1 {
+                vec![mana[0].clone(); mana_event.mana.len()]
+            } else {
+                mana.clone()
+            };
+            TraitApplyResult::Modified(event.rewrap(mana_event.clone().with_mana(replacement_mana)))
         }
 
         ReplacementAction::EnterAsCopy {
