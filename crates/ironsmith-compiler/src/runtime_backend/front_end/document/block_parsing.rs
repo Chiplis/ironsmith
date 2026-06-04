@@ -79,6 +79,10 @@ pub(super) fn try_parse_modal_bullet_block(
     idx: usize,
     line: &PreprocessedLine,
 ) -> Result<Option<(RewriteLineCst, usize)>, CardTextError> {
+    if is_named_option_as_enters_choice_header(line) {
+        return Ok(None);
+    }
+
     let mut bullet_modes = Vec::new();
     let mut probe_idx = idx + 1;
     while let Some(PreprocessedItem::Line(next_line)) = preprocessed.items.get(probe_idx) {

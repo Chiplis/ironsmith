@@ -215,6 +215,41 @@ fn is_bullet_line(line: &PreprocessedLine) -> bool {
             .is_some_and(|token| token.kind == TokenKind::Number)
 }
 
+fn strip_choice_bullet_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    if tokens
+        .first()
+        .is_some_and(|token| matches!(token.kind, TokenKind::Bullet | TokenKind::Dash))
+    {
+        tokens.get(1..).unwrap_or_default()
+    } else {
+        tokens
+    }
+}
+
+fn is_named_option_as_enters_choice_header(line: &PreprocessedLine) -> bool {
+    let words = token_word_refs(&line.tokens);
+    let Some(as_idx) = words.iter().position(|word| *word == "as") else {
+        return false;
+    };
+    let Some(enters_idx) = words
+        .iter()
+        .enumerate()
+        .skip(as_idx + 1)
+        .find_map(|(idx, word)| (*word == "enters").then_some(idx))
+    else {
+        return false;
+    };
+    let Some(choose_idx) = words
+        .iter()
+        .enumerate()
+        .skip(enters_idx + 1)
+        .find_map(|(idx, word)| (*word == "choose").then_some(idx))
+    else {
+        return false;
+    };
+    words.iter().skip(choose_idx + 1).any(|word| *word == "or")
+}
+
 fn starts_with_pawprint_modal_label(tokens: &[OwnedLexToken]) -> bool {
     let mut seen_pawprint = false;
     let mut idx = 0;
@@ -856,10 +891,12 @@ fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) ->
 }
 
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
-    split_label_prefix_lexed(&line.tokens).is_some_and(|(label, _, _)| {
+    split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens)).is_some_and(
+        |(label, _, _)| {
         !preserve_keyword_prefix_for_parse(label.as_str())
             && !is_named_ability_label(label.as_str())
-    })
+        },
+    )
 }
 
 fn trigger_presentation_label(label: &str) -> String {
@@ -3845,8 +3882,16 @@ pub(crate) fn parse_document_cst(
                 {
                     return Err(err);
                 }
-                let dispatch =
-                    dispatch_standard_line_cst(preprocessed, idx, line, allow_unsupported)?;
+                let dispatch = if is_bullet_line(line)
+                    && split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens))
+                        .is_some()
+                {
+                    let stripped_line =
+                        rewrite_line_tokens(line, strip_choice_bullet_prefix_tokens(&line.tokens));
+                    dispatch_standard_line_cst(preprocessed, idx, &stripped_line, allow_unsupported)?
+                } else {
+                    dispatch_standard_line_cst(preprocessed, idx, line, allow_unsupported)?
+                };
                 for cst in &dispatch.lines {
                     trace_cst_line(cst);
                 }
