@@ -1067,6 +1067,47 @@ fn last_rites_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn discard_reveal_choose_discard_bundle_preserves_target_opponent() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Opponent Last Rites Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Discard any number of cards. Target opponent reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards.",
+        )
+        .expect("target-opponent discard/reveal/choose/discard bundle should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Discard any number of cards. Target opponent reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards."
+    );
+
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("variant should have spell effects")
+        .flattened_default_effects();
+    let [discard_cost_effect, reveal_effect, choose_effect, discard_chosen_effect] = effects else {
+        panic!("variant should lower to discard/reveal/choose/discard effects, got {effects:#?}");
+    };
+    let discard_cost = discard_cost_effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .expect("variant should start by discarding any number of your cards");
+    let reveal = reveal_effect
+        .downcast_ref::<crate::effects::LookAtHandEffect>()
+        .expect("variant should reveal the target opponent's hand");
+    let choose = choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("variant should choose cards from the revealed hand");
+    let discard_chosen = discard_chosen_effect
+        .downcast_ref::<crate::effects::DiscardEffect>()
+        .expect("variant should discard the chosen cards");
+
+    assert_eq!(discard_cost.player, PlayerFilter::You);
+    assert_eq!(reveal.target, ChooseSpec::target_opponent());
+    assert_eq!(choose.filter.owner, Some(PlayerFilter::target_opponent()));
+    assert_eq!(discard_chosen.player, PlayerFilter::target_opponent());
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

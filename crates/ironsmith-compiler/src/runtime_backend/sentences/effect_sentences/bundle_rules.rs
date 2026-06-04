@@ -1275,9 +1275,15 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
         return Ok(None);
     };
     let reveal_tokens = trim_commas(&second[..then_idx]);
-    if !TARGET_PLAYER_REVEALS_HAND_PATTERN.matches_words(&parser_token_word_refs(&reveal_tokens)) {
+    let reveal_words = parser_token_word_refs(&reveal_tokens);
+    if !TARGET_PLAYER_REVEALS_HAND_PATTERN.matches_words(&reveal_words) {
         return Ok(None);
     }
+    let revealed_player = match reveal_words.as_slice() {
+        ["target", "player", "reveals", "their", "hand"] => PlayerAst::Target,
+        ["target", "opponent", "reveals", "their", "hand"] => PlayerAst::TargetOpponent,
+        _ => return Ok(None),
+    };
     let choose_tokens = trim_commas(&second[then_idx + 1..]);
     let Some((chooser, choose_filter, choose_count, count_value)) =
         parse_you_choose_objects_clause_with_count_value(&choose_tokens)?
@@ -1299,7 +1305,7 @@ fn parse_discard_reveal_choose_discard_chosen_bundle(
             None,
             Some(discarded_tag),
         ),
-        EffectAst::subject_verb_reveal_hand(PlayerAst::Target),
+        EffectAst::subject_verb_reveal_hand(revealed_player),
         EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
