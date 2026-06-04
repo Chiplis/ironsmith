@@ -497,7 +497,10 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
             ..
         }) => (Some(amount.clone()), target.clone(), duration.clone()),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::PreventAllDamageToTarget { target, duration },
+            action:
+                SubjectVerbActionAst::PreventAllDamageToTarget {
+                    target, duration, ..
+                },
             ..
         }) => (None, target.clone(), duration.clone()),
         _ => return Ok(None),

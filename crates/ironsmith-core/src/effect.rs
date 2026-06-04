@@ -5406,6 +5406,8 @@ pub struct PreventAllDamageEffect {
     pub target: PreventionTarget,
     /// What kinds of damage this shield prevents.
     pub damage_filter: DamageFilter,
+    /// Whether the source is chosen as the effect resolves.
+    pub source_of_your_choice: bool,
     pub until: Until,
 }
 
@@ -5415,8 +5417,15 @@ impl PreventAllDamageEffect {
         Self {
             target,
             damage_filter,
+            source_of_your_choice: false,
             until,
         }
+    }
+
+    /// Restrict this prevention shield to a source chosen as the effect resolves.
+    pub fn with_source_of_your_choice(mut self) -> Self {
+        self.source_of_your_choice = true;
+        self
     }
 
     /// Prevent all damage to everything.

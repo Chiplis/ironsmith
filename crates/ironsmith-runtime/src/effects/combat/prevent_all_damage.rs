@@ -37,13 +37,58 @@ impl EffectExecutor for PreventAllDamageEffect {
             return Ok(EffectOutcome::prevented());
         }
 
+        let mut damage_filter = self.damage_filter.clone();
+        if self.source_of_your_choice {
+            let mut candidates = Vec::new();
+            candidates.extend(game.stack.iter().map(|entry| entry.object_id));
+            candidates.extend(game.battlefield.iter().copied());
+            candidates.sort_by_key(|id| id.0);
+            candidates.dedup();
+
+            if candidates.is_empty() {
+                return Ok(EffectOutcome::resolved());
+            }
+
+            let selectable = candidates
+                .iter()
+                .copied()
+                .map(|id| {
+                    let name = game
+                        .object(id)
+                        .map(|object| object.name.clone())
+                        .unwrap_or_else(|| format!("object {}", id.0));
+                    crate::decisions::context::SelectableObject::new(id, name)
+                })
+                .collect::<Vec<_>>();
+            let select_ctx = crate::decisions::context::SelectObjectsContext::new(
+                ctx.controller,
+                Some(ctx.source),
+                "Choose a source",
+                selectable,
+                1,
+                Some(1),
+            );
+            let chosen_source = ctx
+                .decision_maker
+                .decide_objects(game, &select_ctx)
+                .into_iter()
+                .find(|id| candidates.contains(id));
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(chosen_source) = chosen_source else {
+                return Ok(EffectOutcome::count(0));
+            };
+            damage_filter.from_specific_source = Some(chosen_source);
+        }
+
         register_prevention_shield(
             game,
             ctx,
             self.target.clone(),
             None,
             self.until.clone(),
-            self.damage_filter.clone(),
+            damage_filter,
             Vec::new(),
             Vec::new(),
             Vec::new(),

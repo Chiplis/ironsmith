@@ -1729,6 +1729,22 @@ pub(crate) fn parse_prevent_all_damage_clause(
         }
 
         let target = parse_target_phrase(target_clause.tokens())?;
+        if CLAUSE_SOURCE_OF_YOUR_CHOICE_MARKER_PATTERN.matches(source_clause) {
+            let target_words = target_clause.word_refs();
+            if !matches!(target_words.as_slice(), ["you"]) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported prevent-all damage source choice target (clause: '{}')",
+                    clause_text
+                )));
+            }
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_damage_to_target_with_source_choice(
+                    target,
+                    Until::EndOfTurn,
+                    true,
+                ),
+            ));
+        }
         let source_filter_target = parse_target_phrase(source_clause.tokens())?;
         let TargetAst::Object(source_filter, _, _) = source_filter_target else {
             return Err(CardTextError::ParseError(format!(
