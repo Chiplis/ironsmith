@@ -12743,76 +12743,80 @@ fn test_card_for_last_rites(name: &str, card_types: Vec<CardType>) -> crate::car
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_stable_id_of(game: &GameState, id: ObjectId) -> crate::ids::StableId {
+    game.object(id).expect("object should exist").stable_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_current_id_of(
+    game: &GameState,
+    stable_id: crate::ids::StableId,
+    label: &str,
+) -> ObjectId {
+    game.find_object_by_stable_id(stable_id)
+        .unwrap_or_else(|| panic!("{label} should still exist"))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct LastRitesDecisionMaker {
+    target: PlayerId,
+    discard_from_hand: Vec<ObjectId>,
+    choose_from_target: Vec<ObjectId>,
+    reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for LastRitesDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        vec![Target::Player(self.target)]
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let legal_ids = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        let scripted = if self
+            .discard_from_hand
+            .iter()
+            .any(|id| legal_ids.contains(id))
+        {
+            &self.discard_from_hand
+        } else {
+            &self.choose_from_target
+        };
+        scripted
+            .iter()
+            .copied()
+            .filter(|id| legal_ids.contains(id))
+            .collect()
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.reveal_calls
+            .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
-    fn stable_id_of(game: &GameState, id: ObjectId) -> crate::ids::StableId {
-        game.object(id).expect("object should exist").stable_id
-    }
-
-    fn current_id_of(
-        game: &GameState,
-        stable_id: crate::ids::StableId,
-        label: &str,
-    ) -> ObjectId {
-        game.find_object_by_stable_id(stable_id)
-            .unwrap_or_else(|| panic!("{label} should still exist"))
-    }
-
-    struct LastRitesDecisionMaker {
-        target: PlayerId,
-        discard_from_hand: Vec<ObjectId>,
-        choose_from_target: Vec<ObjectId>,
-        reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
-    }
-
-    impl DecisionMaker for LastRitesDecisionMaker {
-        fn decide_targets(
-            &mut self,
-            _game: &GameState,
-            _ctx: &crate::decisions::context::TargetsContext,
-        ) -> Vec<Target> {
-            vec![Target::Player(self.target)]
-        }
-
-        fn decide_objects(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::SelectObjectsContext,
-        ) -> Vec<ObjectId> {
-            let legal_ids = ctx
-                .candidates
-                .iter()
-                .filter(|candidate| candidate.legal)
-                .map(|candidate| candidate.id)
-                .collect::<Vec<_>>();
-            let scripted = if self
-                .discard_from_hand
-                .iter()
-                .any(|id| legal_ids.contains(id))
-            {
-                &self.discard_from_hand
-            } else {
-                &self.choose_from_target
-            };
-            scripted
-                .iter()
-                .copied()
-                .filter(|id| legal_ids.contains(id))
-                .collect()
-        }
-
-        fn view_cards(
-            &mut self,
-            _game: &GameState,
-            viewer: PlayerId,
-            cards: &[ObjectId],
-            ctx: &crate::decisions::context::ViewCardsContext,
-        ) {
-            self.reveal_calls
-                .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
-        }
-    }
-
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
@@ -12847,12 +12851,12 @@ fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
         bob,
         Zone::Hand,
     );
-    let alice_discard_one_stable = stable_id_of(&game, alice_discard_one);
-    let alice_discard_two_stable = stable_id_of(&game, alice_discard_two);
-    let alice_keeps_stable = stable_id_of(&game, alice_keeps);
-    let bob_nonland_one_stable = stable_id_of(&game, bob_nonland_one);
-    let bob_nonland_two_stable = stable_id_of(&game, bob_nonland_two);
-    let bob_land_stable = stable_id_of(&game, bob_land);
+    let alice_discard_one_stable = last_rites_stable_id_of(&game, alice_discard_one);
+    let alice_discard_two_stable = last_rites_stable_id_of(&game, alice_discard_two);
+    let alice_keeps_stable = last_rites_stable_id_of(&game, alice_keeps);
+    let bob_nonland_one_stable = last_rites_stable_id_of(&game, bob_nonland_one);
+    let bob_nonland_two_stable = last_rites_stable_id_of(&game, bob_nonland_two);
+    let bob_land_stable = last_rites_stable_id_of(&game, bob_land);
 
     let last_rites = last_rites_definition();
     let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
@@ -12879,12 +12883,16 @@ fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
         assert!(cards.contains(&bob_land));
     }
 
-    let alice_discard_one = current_id_of(&game, alice_discard_one_stable, "Alice Discard One");
-    let alice_discard_two = current_id_of(&game, alice_discard_two_stable, "Alice Discard Two");
-    let alice_keeps = current_id_of(&game, alice_keeps_stable, "Alice Keeps");
-    let bob_nonland_one = current_id_of(&game, bob_nonland_one_stable, "Bob Nonland One");
-    let bob_nonland_two = current_id_of(&game, bob_nonland_two_stable, "Bob Nonland Two");
-    let bob_land = current_id_of(&game, bob_land_stable, "Bob Land");
+    let alice_discard_one =
+        last_rites_current_id_of(&game, alice_discard_one_stable, "Alice Discard One");
+    let alice_discard_two =
+        last_rites_current_id_of(&game, alice_discard_two_stable, "Alice Discard Two");
+    let alice_keeps = last_rites_current_id_of(&game, alice_keeps_stable, "Alice Keeps");
+    let bob_nonland_one =
+        last_rites_current_id_of(&game, bob_nonland_one_stable, "Bob Nonland One");
+    let bob_nonland_two =
+        last_rites_current_id_of(&game, bob_nonland_two_stable, "Bob Nonland Two");
+    let bob_land = last_rites_current_id_of(&game, bob_land_stable, "Bob Land");
 
     let alice_hand = &game.player(alice).expect("alice exists").hand;
     assert!(!alice_hand.contains(&alice_discard_one));
@@ -12903,6 +12911,140 @@ fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
     assert!(bob_graveyard.contains(&bob_nonland_one));
     assert!(bob_graveyard.contains(&bob_nonland_two));
     assert!(!bob_graveyard.contains(&bob_land));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_available_nonlands_when_more_cards_were_discarded() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_three = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard Three", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Only Nonland", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_land = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_nonland_stable = last_rites_stable_id_of(&game, bob_nonland);
+    let bob_land_stable = last_rites_stable_id_of(&game, bob_land);
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two, alice_discard_three],
+        choose_from_target: vec![bob_nonland],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Last Rites should resolve even when fewer nonlands are available");
+
+    let bob_nonland = last_rites_current_id_of(&game, bob_nonland_stable, "Bob Only Nonland");
+    let bob_land = last_rites_current_id_of(&game, bob_land_stable, "Bob Land");
+    let bob_hand = &game.player(bob).expect("bob exists").hand;
+    assert!(!bob_hand.contains(&bob_nonland));
+    assert!(bob_hand.contains(&bob_land));
+    let bob_graveyard = &game.player(bob).expect("bob exists").graveyard;
+    assert!(bob_graveyard.contains(&bob_nonland));
+    assert!(!bob_graveyard.contains(&bob_land));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_zero_discard_leaves_target_hand_intact() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_card = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Keeps", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Nonland", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let alice_card_stable = last_rites_stable_id_of(&game, alice_card);
+    let bob_nonland_stable = last_rites_stable_id_of(&game, bob_nonland);
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: Vec::new(),
+        choose_from_target: vec![bob_nonland],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Last Rites should resolve");
+
+    let alice_card = last_rites_current_id_of(&game, alice_card_stable, "Alice Keeps");
+    let bob_nonland = last_rites_current_id_of(&game, bob_nonland_stable, "Bob Nonland");
+    assert!(game.player(alice).expect("alice exists").hand.contains(&alice_card));
+    assert!(game.player(bob).expect("bob exists").hand.contains(&bob_nonland));
+    assert!(game.player(bob).expect("bob exists").graveyard.is_empty());
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_no_target_nonlands_discards_none_from_target() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard = game.create_object_from_card(
+        &test_card_for_last_rites("Alice Discard", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_land = game.create_object_from_card(
+        &test_card_for_last_rites("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_land_stable = last_rites_stable_id_of(&game, bob_land);
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard],
+        choose_from_target: Vec::new(),
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Last Rites should resolve with no target nonlands");
+
+    let bob_land = last_rites_current_id_of(&game, bob_land_stable, "Bob Land");
+    assert!(game.player(bob).expect("bob exists").hand.contains(&bob_land));
+    assert!(game.player(bob).expect("bob exists").graveyard.is_empty());
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
