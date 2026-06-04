@@ -1200,9 +1200,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbility::choose_card_name_as_enters(display.clone())
-            }
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            } => StaticAbility::choose_card_name_as_enters_with_spec(
+                display.clone(),
+                super::ChooseCardNameAsEntersSpec {
+                    reveal_opponents_hands: *reveal_opponents_hands,
+                    require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+                },
+            ),
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbility::choose_creature_type_as_enters(display.clone())
             }
@@ -1926,11 +1934,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {
-        matches!(
-            self.payload(),
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(_)
-        )
-        .then_some(super::ChooseCardNameAsEntersSpec)
+        let ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
+            reveal_opponents_hands,
+            require_nonland_from_revealed_opponents,
+            ..
+        } = self.payload()
+        else {
+            return None;
+        };
+        Some(super::ChooseCardNameAsEntersSpec {
+            reveal_opponents_hands: *reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+        })
     }
 
     fn basic_land_type_choice_as_enters(&self) -> Option<super::ChooseBasicLandTypeAsEntersSpec> {

@@ -8261,6 +8261,36 @@ fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tables() {
 }
 
 #[test]
+fn rewrite_keyword_static_as_enters_revealed_hand_card_name_choice() {
+    let tokens = lex_line(
+        "as this creature enters, each opponent reveals their hand. you choose the name of a nonland card revealed this way.",
+        0,
+    )
+    .expect("rewrite lexer should classify revealed-hand card-name choice");
+
+    let ability = super::keyword_static::parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+        &tokens,
+    )
+    .expect("revealed-hand card-name choice should parse");
+
+    assert!(matches!(
+        ability,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::ChooseCardNameAsEnters
+                && ability.display().contains("each opponent reveals their hand")
+                && ability.display().contains("nonland card revealed this way")
+                && matches!(
+                    &ability.payload,
+                    crate::static_abilities::StaticAbilityPayload::ChooseCardNameAsEnters {
+                        reveal_opponents_hands: true,
+                        require_nonland_from_revealed_opponents: true,
+                        ..
+                    }
+                )
+    ));
+}
+
+#[test]
 fn rewrite_grammar_exile_to_countered_exile_instead_of_graveyard_splitter_matches_static_shape() {
     let tokens = lex_line(
         "If a creature would be put into an opponent's graveyard from anywhere, exile it instead with a stun counter on it.",

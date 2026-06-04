@@ -43835,6 +43835,53 @@ fn academic_probation_strict_parser_text_and_structure_regression() {
 }
 
 #[test]
+fn alhammarret_high_arbiter_strict_parser_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("Alhammarret, High Arbiter");
+
+    let def = parse_oracle_card_definition("Alhammarret, High Arbiter");
+    let abilities_debug = format!("{:#?}", def.abilities);
+    let compiled = unprocessed_compiled_lines(&def);
+    let rendered = compiled.join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let oracle = oracle_text_by_name()
+        .get("Alhammarret, High Arbiter")
+        .expect("Alhammarret oracle text");
+    let (_oracle_cov, _compiled_cov, similarity, _delta, mismatch) =
+        crate::semantic_compare::compare_semantics_scored(
+            oracle,
+            &compiled,
+            Some(crate::semantic_compare::EmbeddingConfig {
+                dims: 384,
+                mismatch_threshold: 0.99,
+            }),
+        );
+
+    assert!(
+        abilities_debug.contains("ChooseCardNameAsEnters")
+            && abilities_debug.contains("reveal_opponents_hands: true")
+            && abilities_debug.contains("require_nonland_from_revealed_opponents: true")
+            && abilities_debug.contains("RuleRestriction")
+            && abilities_debug.contains("CastSpellsMatching")
+            && abilities_debug.contains("{chosen name}"),
+        "Alhammarret should lower to an as-enters card-name choice and chosen-name cast restriction, got {abilities_debug}"
+    );
+    assert!(
+        def.spell_effect.is_none(),
+        "Alhammarret's as-enters choice should not lower into a resolving spell effect"
+    );
+    assert!(
+        rendered_lower.contains("each opponent reveals their hand")
+            && rendered_lower.contains("you choose the name of a nonland card revealed this way")
+            && rendered_lower.contains("opponents can't cast spells with the chosen name"),
+        "Alhammarret compiled text should preserve reveal-hand and chosen-name restriction clauses, got {rendered}"
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Alhammarret semantic comparison to clear target, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[test]
 fn archon_of_valors_reach_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Archon of Valor's Reach");
     let abilities_debug = format!("{:#?}", def.abilities);

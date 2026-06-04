@@ -1218,6 +1218,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": as long as "))
         && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
+        || lower.starts_with("as this enters")
         || conditional_static_self_surface
         || lower.contains("if this land has ")
         || lower.contains("if this creature has one or more ")
@@ -1244,6 +1245,14 @@ pub(super) fn substitute_legendary_source_reference(
         .strip_prefix("Whenever this or another ")
         .map(|rest| format!("Whenever {source_name} or another {rest}"))
         .unwrap_or_else(|| line.to_string());
+
+    let line = if let Some(rest) = line.strip_prefix("As this enters") {
+        format!("As {source_name} enters{rest}")
+    } else if let Some(rest) = line.strip_prefix("as this enters") {
+        format!("As {source_name} enters{rest}")
+    } else {
+        line
+    };
 
     let substituted = [
         ("This creature", source_name),

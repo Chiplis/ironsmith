@@ -4779,7 +4779,32 @@ impl GameState {
                             self.set_chosen_player(new_id, options[chosen_idx]);
                         }
                     }
-                    if static_ability.card_name_choice_as_enters().is_some() {
+                    if let Some(spec) = static_ability.card_name_choice_as_enters() {
+                        if spec.reveal_opponents_hands {
+                            let opponent_ids = self
+                                .players
+                                .iter()
+                                .filter(|player| player.is_in_game() && player.id != controller)
+                                .map(|player| player.id)
+                                .collect::<Vec<_>>();
+                            for opponent_id in opponent_ids {
+                                let cards = self
+                                    .player(opponent_id)
+                                    .map(|player| player.hand.clone())
+                                    .unwrap_or_default();
+                                for viewer_idx in 0..self.players.len() {
+                                    let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+                                    let mut view_ctx = crate::decisions::context::ViewCardsContext::look_at_hand(
+                                        viewer,
+                                        opponent_id,
+                                        Some(new_id),
+                                    );
+                                    view_ctx.description = "Reveal that player's hand".to_string();
+                                    view_ctx.public = true;
+                                    decision_maker.view_cards(self, viewer, &cards, &view_ctx);
+                                }
+                            }
+                        }
                         let choice_ctx = crate::decisions::context::TextInputContext::new(
                             controller,
                             Some(new_id),
@@ -4801,6 +4826,20 @@ impl GameState {
                             .get(chosen_name)
                             .map(|definition| definition.name().to_string())
                             .unwrap_or_else(|| chosen_name.to_string());
+                        if spec.require_nonland_from_revealed_opponents
+                            && !self
+                                .players
+                                .iter()
+                                .filter(|player| player.is_in_game() && player.id != controller)
+                                .flat_map(|player| player.hand.iter().copied())
+                                .filter_map(|object_id| self.object(object_id))
+                                .any(|object| {
+                                    !object.is_land()
+                                        && object.name.eq_ignore_ascii_case(&canonical_name)
+                                })
+                        {
+                            continue;
+                        }
                         self.set_chosen_named_option(new_id, canonical_name);
                     }
                     if let Some(spec) = static_ability.named_option_choice_as_enters() {

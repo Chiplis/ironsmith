@@ -393,7 +393,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     NoteLifeTotalAsEnters(String),
-    ChooseCardNameAsEnters(String),
+    ChooseCardNameAsEnters {
+        display: String,
+        reveal_opponents_hands: bool,
+        require_nonland_from_revealed_opponents: bool,
+    },
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
@@ -1218,9 +1222,15 @@ where
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
-            StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbilityPayload::ChooseCardNameAsEnters(display)
-            }
+            StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            } => StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            },
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
             }
@@ -3290,7 +3300,23 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseCardNameAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseCardNameAsEnters(display),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: false,
+                require_nonland_from_revealed_opponents: false,
+            },
+        }
+    }
+    pub fn choose_revealed_hand_nonland_card_name_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: true,
+                require_nonland_from_revealed_opponents: true,
+            },
         }
     }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {

@@ -2703,6 +2703,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_revealed_hand_choose_nonland_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
@@ -4391,6 +4392,40 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
 
     Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
         "As {display_subject} enters, choose a card name."
+    ))))
+}
+
+pub(crate) fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 2 {
+        return Ok(None);
+    }
+
+    let first_words = parser_token_word_refs(sentences[0]);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&first_words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if first_words.get(idx..) != Some(&["each", "opponent", "reveals", "their", "hand"][..])
+    {
+        return Ok(None);
+    }
+
+    let second_words = parser_token_word_refs(sentences[1]);
+    if second_words
+        != [
+            "you", "choose", "the", "name", "of", "a", "nonland", "card", "revealed",
+            "this", "way",
+        ]
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::choose_revealed_hand_nonland_card_name_as_enters(format!(
+        "As {display_subject} enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."
     ))))
 }
 

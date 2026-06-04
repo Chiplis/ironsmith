@@ -1631,11 +1631,22 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardNameAsEnters {
     pub display: String,
+    pub reveal_opponents_hands: bool,
+    pub require_nonland_from_revealed_opponents: bool,
 }
 
 impl ChooseCardNameAsEnters {
     pub fn new(display: String) -> Self {
-        Self { display }
+        Self::with_spec(display, ChooseCardNameAsEntersSpec::default())
+    }
+
+    pub fn with_spec(display: String, spec: ChooseCardNameAsEntersSpec) -> Self {
+        Self {
+            display,
+            reveal_opponents_hands: spec.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: spec
+                .require_nonland_from_revealed_opponents,
+        }
     }
 }
 
@@ -1649,7 +1660,10 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
-        Some(ChooseCardNameAsEntersSpec)
+        Some(ChooseCardNameAsEntersSpec {
+            reveal_opponents_hands: self.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: self.require_nonland_from_revealed_opponents,
+        })
     }
 }
 

@@ -981,7 +981,10 @@ pub struct NoteLifeTotalAsEntersSpec;
 
 /// Spec for "as this enters, choose a card name" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ChooseCardNameAsEntersSpec;
+pub struct ChooseCardNameAsEntersSpec {
+    pub reveal_opponents_hands: bool,
+    pub require_nonland_from_revealed_opponents: bool,
+}
 
 /// Spec for "as this enters, choose a basic land type" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2722,6 +2725,23 @@ impl StaticAbility {
 
     pub fn choose_card_name_as_enters(display: String) -> Self {
         Self::new(ChooseCardNameAsEnters::new(display))
+    }
+
+    pub fn choose_card_name_as_enters_with_spec(
+        display: String,
+        spec: ChooseCardNameAsEntersSpec,
+    ) -> Self {
+        Self::new(ChooseCardNameAsEnters::with_spec(display, spec))
+    }
+
+    pub fn choose_revealed_hand_nonland_card_name_as_enters(display: String) -> Self {
+        Self::choose_card_name_as_enters_with_spec(
+            display,
+            ChooseCardNameAsEntersSpec {
+                reveal_opponents_hands: true,
+                require_nonland_from_revealed_opponents: true,
+            },
+        )
     }
 
     pub fn choose_basic_land_type_as_enters(display: String) -> Self {
