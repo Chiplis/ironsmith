@@ -1228,6 +1228,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.starts_with("whenever this creature deals combat damage to a player")
         || lower.starts_with("whenever this creature or another ")
         || lower.starts_with("whenever this or another ")
+        || lower.starts_with("this creature can't be the target ")
         || lower.contains(" this creature deals ")
         || lower.contains(", this creature deals ")
         || lower.contains(": this creature gets ")

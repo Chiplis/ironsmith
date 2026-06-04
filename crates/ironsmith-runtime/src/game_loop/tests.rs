@@ -50982,6 +50982,23 @@ fn gaeas_revenge_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn bartel_runeaxe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1_648), "Bartel Runeaxe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(6, 5))
+        .parse_text("Vigilance\nBartel Runeaxe can't be the target of Aura spells.")
+        .expect("Bartel Runeaxe should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn colored_instant_definition(
     name: &str,
     colors: crate::color::ColorSet,
@@ -51111,6 +51128,116 @@ fn gaeas_revenge_static_abilities_apply_to_countering_haste_and_targeting() {
     assert!(
         legal_targets_from_green.contains(&Target::Object(revenge_id)),
         "Gaea's Revenge should appear in legal target lists for green sources"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bartel_runeaxe_strict_parser_and_compiled_text_regression() {
+    let def = bartel_runeaxe_definition();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Vigilance"),
+        "Bartel Runeaxe should render vigilance, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Bartel Runeaxe can't be the target of Aura spells."),
+        "Bartel Runeaxe should render its Aura-spell targeting restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bartel_runeaxe_blocks_aura_spell_targets_but_not_other_spells_and_has_vigilance() {
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::targeting::{
+        TargetingInvalidReason, TargetingResult, can_target_object, compute_legal_targets,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let bartel = bartel_runeaxe_definition();
+    let bartel_id = game.create_object_from_definition(&bartel, alice, Zone::Battlefield);
+    game.update_cant_effects();
+
+    let aura_spell = CardDefinitionBuilder::new(CardId::new(), "Targeting Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let aura_spell_id = game.create_object_from_definition(&aura_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(aura_spell_id, bob));
+    assert!(
+        matches!(
+            can_target_object(&game, bartel_id, aura_spell_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "an opponent's Aura spell should not be able to target Bartel Runeaxe"
+    );
+
+    let friendly_aura_spell_id =
+        game.create_object_from_definition(&aura_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(friendly_aura_spell_id, alice));
+    assert!(
+        matches!(
+            can_target_object(&game, bartel_id, friendly_aura_spell_id, alice),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "Bartel Runeaxe's Aura-spell restriction should not depend on controller"
+    );
+
+    let non_aura_spell = CardDefinitionBuilder::new(CardId::new(), "Targeting Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let non_aura_spell_id = game.create_object_from_definition(&non_aura_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(non_aura_spell_id, bob));
+    assert!(
+        can_target_object(&game, bartel_id, non_aura_spell_id, bob).is_legal(),
+        "a non-Aura spell should be able to target Bartel Runeaxe"
+    );
+
+    let legal_targets_from_aura = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(aura_spell_id),
+    );
+    assert!(
+        !legal_targets_from_aura.contains(&Target::Object(bartel_id)),
+        "Bartel Runeaxe should not appear in legal target lists for Aura spells"
+    );
+
+    let legal_targets_from_non_aura = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(non_aura_spell_id),
+    );
+    assert!(
+        legal_targets_from_non_aura.contains(&Target::Object(bartel_id)),
+        "Bartel Runeaxe should appear in legal target lists for non-Aura spells"
+    );
+
+    game.remove_summoning_sickness(bartel_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: bartel_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Bartel Runeaxe should be able to attack");
+    assert!(
+        !game.is_tapped(bartel_id),
+        "vigilance should keep Bartel Runeaxe untapped as it attacks"
     );
 }
 

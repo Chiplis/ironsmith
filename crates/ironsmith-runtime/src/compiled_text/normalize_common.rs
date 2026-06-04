@@ -10695,6 +10695,13 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", filter.description())
         }
         crate::effect::Restriction::BeTargetedFrom(filter, source_filter) => {
+            if let Some(source_description) = describe_spell_targeting_source_filter(source_filter) {
+                return format!(
+                    "{} can't be the target of {}",
+                    filter.description(),
+                    source_description
+                );
+            }
             let source_description = describe_hexproof_from_filter(source_filter);
             format!(
                 "{} can't be the target of {} spells or abilities from {} sources",
@@ -10733,6 +10740,33 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't attack or block alone", filter.description())
         }
     }
+}
+
+fn describe_spell_targeting_source_filter(source_filter: &ObjectFilter) -> Option<String> {
+    if source_filter.zone != Some(Zone::Stack)
+        || source_filter.stack_kind != Some(StackObjectKind::Spell)
+    {
+        return None;
+    }
+
+    let mut rest = source_filter.clone();
+    rest.zone = None;
+    rest.stack_kind = None;
+    if rest.subtypes == [crate::types::Subtype::Aura]
+        && (rest.card_types.is_empty()
+            || rest.card_types == [crate::types::CardType::Enchantment])
+    {
+        rest.subtypes.clear();
+        rest.card_types.clear();
+        if rest == ObjectFilter::default() {
+            return Some("Aura spells".to_string());
+        }
+    }
+
+    let description = source_filter.description();
+    description
+        .strip_suffix(" spell")
+        .map(|description| format!("{description} spells"))
 }
 
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
