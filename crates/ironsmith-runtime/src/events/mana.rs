@@ -11,6 +11,13 @@ use crate::mana::ManaSymbol;
 use crate::snapshot::ObjectSnapshot;
 use crate::target::ObjectFilter;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ManaProductionProvenance {
+    #[default]
+    Unknown,
+    TappedSourceForMana,
+}
+
 /// Mana was added to a player's mana pool.
 #[derive(Debug, Clone)]
 pub struct ManaAddedEvent {
@@ -24,6 +31,8 @@ pub struct ManaAddedEvent {
     pub mana: Vec<ManaSymbol>,
     /// Last-known snapshot of the source when the mana was added.
     pub snapshot: Option<ObjectSnapshot>,
+    /// How this mana was produced, when relevant to replacement effects.
+    pub provenance: ManaProductionProvenance,
 }
 
 impl ManaAddedEvent {
@@ -39,11 +48,17 @@ impl ManaAddedEvent {
             player,
             mana,
             snapshot: None,
+            provenance: ManaProductionProvenance::Unknown,
         }
     }
 
     pub fn with_snapshot(mut self, snapshot: Option<ObjectSnapshot>) -> Self {
         self.snapshot = snapshot;
+        self
+    }
+
+    pub fn with_production_provenance(mut self, provenance: ManaProductionProvenance) -> Self {
+        self.provenance = provenance;
         self
     }
 
@@ -72,6 +87,7 @@ pub(crate) fn apply_mana_replacements(
     controller: PlayerId,
     player: PlayerId,
     mana: Vec<ManaSymbol>,
+    production_provenance: ManaProductionProvenance,
     snapshot: Option<ObjectSnapshot>,
     decision_maker: &mut (impl crate::decision::DecisionMaker + ?Sized),
 ) -> Vec<ManaSymbol> {
@@ -80,7 +96,9 @@ pub(crate) fn apply_mana_replacements(
     }
 
     let event = crate::events::Event::new_with_provenance(
-        ManaAddedEvent::new(source, controller, player, mana.clone()).with_snapshot(snapshot),
+        ManaAddedEvent::new(source, controller, player, mana.clone())
+            .with_production_provenance(production_provenance)
+            .with_snapshot(snapshot),
         crate::provenance::ProvNodeId::default(),
     );
     let applied_effects = std::collections::HashSet::new();
@@ -108,11 +126,22 @@ pub mod matchers {
     #[derive(Debug, Clone, PartialEq)]
     pub struct ManaProducedBySourceMatcher {
         source_filter: ObjectFilter,
+        required_provenance: Option<ManaProductionProvenance>,
     }
 
     impl ManaProducedBySourceMatcher {
         pub fn new(source_filter: ObjectFilter) -> Self {
-            Self { source_filter }
+            Self {
+                source_filter,
+                required_provenance: None,
+            }
+        }
+
+        pub fn tapped_source_for_mana(source_filter: ObjectFilter) -> Self {
+            Self {
+                source_filter,
+                required_provenance: Some(ManaProductionProvenance::TappedSourceForMana),
+            }
         }
     }
 
@@ -125,6 +154,11 @@ pub mod matchers {
                 return false;
             };
             if mana_event.mana.is_empty() {
+                return false;
+            }
+            if let Some(required) = self.required_provenance
+                && mana_event.provenance != required
+            {
                 return false;
             }
 

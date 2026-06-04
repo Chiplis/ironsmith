@@ -14,7 +14,7 @@ impl EffectExecutor for RegisterManaReplacementEffect {
         let replacement = ReplacementEffect::with_matcher(
             ctx.source,
             ctx.controller,
-            crate::events::mana::matchers::ManaProducedBySourceMatcher::new(
+            crate::events::mana::matchers::ManaProducedBySourceMatcher::tapped_source_for_mana(
                 self.source_filter.clone(),
             ),
             ReplacementAction::ReplaceMana(self.replacement_mana.clone()),

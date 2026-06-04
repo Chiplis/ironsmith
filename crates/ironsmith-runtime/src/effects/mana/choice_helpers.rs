@@ -39,12 +39,11 @@ pub(crate) fn mana_added_outcome_with_value(
     if mana.is_empty() {
         outcome
     } else {
-        outcome.with_event(ManaAddedEvent::trigger_event(
-            ctx.source,
-            ctx.controller,
-            player_id,
-            mana,
-        ))
+        outcome.with_event(
+            ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
+                .with_production_provenance(ctx.mana.production_provenance)
+                .into_trigger_event(),
+        )
     }
 }
 
@@ -163,6 +162,7 @@ where
         ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
+        ctx.mana.production_provenance,
         ctx.source_snapshot.clone(),
         &mut *ctx.decision_maker,
     )
@@ -176,6 +176,7 @@ fn credit_mana_symbols_with_context<I>(
     controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
+    production_provenance: crate::events::mana::ManaProductionProvenance,
     source_snapshot: Option<ObjectSnapshot>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Vec<ManaSymbol>
@@ -194,6 +195,7 @@ where
         controller,
         player_id,
         mana,
+        production_provenance,
         snapshot,
         decision_maker,
     );
@@ -230,6 +232,7 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
         ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
+        ctx.mana.production_provenance,
         ctx.source_snapshot.clone(),
         &mut *ctx.decision_maker,
     )
@@ -244,6 +247,7 @@ fn credit_repeated_mana_symbol_with_context(
     controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
+    production_provenance: crate::events::mana::ManaProductionProvenance,
     source_snapshot: Option<ObjectSnapshot>,
     decision_maker: &mut dyn crate::decision::DecisionMaker,
 ) -> Vec<ManaSymbol> {
@@ -255,6 +259,7 @@ fn credit_repeated_mana_symbol_with_context(
         controller,
         restrictions,
         source_chosen_creature_type,
+        production_provenance,
         source_snapshot,
         decision_maker,
     )

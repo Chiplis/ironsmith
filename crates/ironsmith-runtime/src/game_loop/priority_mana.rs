@@ -1995,6 +1995,7 @@ pub(super) fn execute_pending_mana_ability(
         pending.activator,
         pending.activator,
         pending.mana_to_add.clone(),
+        pending.mana_production_provenance,
         source_snapshot.clone(),
         decision_maker,
     );
@@ -2019,6 +2020,7 @@ pub(super) fn execute_pending_mana_ability(
             pending.activator,
             mana_to_add,
         )
+        .with_production_provenance(pending.mana_production_provenance)
         .with_snapshot(source_snapshot.clone())
         .into_trigger_event();
         queue_triggers_from_event(game, trigger_queue, event, false);
@@ -2029,7 +2031,8 @@ pub(super) fn execute_pending_mana_ability(
         let mut ctx = ExecutionContext::new(pending.source, pending.activator, decision_maker)
             .with_provenance(pending.provenance)
             .with_mana_usage_restrictions(pending.mana_usage_restrictions.clone())
-            .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type);
+            .with_mana_source_chosen_creature_type(pending.mana_source_chosen_creature_type)
+            .with_mana_production_provenance(pending.mana_production_provenance);
         if let Some(snapshot) = source_snapshot.clone() {
             ctx = ctx.with_source_snapshot(snapshot);
         }
