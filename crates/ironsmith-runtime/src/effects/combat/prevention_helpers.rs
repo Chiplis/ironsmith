@@ -2,8 +2,62 @@ use crate::effect::{Effect, Until};
 use crate::effects::helpers::{resolve_objects_from_spec, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::game_state::{GameState, TargetAssignment};
+use crate::ids::ObjectId;
 use crate::prevention::{DamageFilter, PreventionShield, PreventionShieldId, PreventionTarget};
 use crate::target::ChooseSpec;
+
+pub enum SourceChoiceSelection {
+    Chosen(ObjectId),
+    NoAvailableSource,
+    NoChoiceMade,
+}
+
+/// Choose a damage source as an effect resolves for "a source of your choice" shields.
+pub fn choose_source_of_your_choice(
+    game: &GameState,
+    ctx: &mut ExecutionContext,
+) -> SourceChoiceSelection {
+    let mut candidates = Vec::new();
+    candidates.extend(game.stack.iter().map(|entry| entry.object_id));
+    candidates.extend(game.battlefield.iter().copied());
+    candidates.sort_by_key(|id| id.0);
+    candidates.dedup();
+
+    if candidates.is_empty() {
+        return SourceChoiceSelection::NoAvailableSource;
+    }
+
+    let selectable = candidates
+        .iter()
+        .copied()
+        .map(|id| {
+            let name = game
+                .object(id)
+                .map(|object| object.name.clone())
+                .unwrap_or_else(|| format!("object {}", id.0));
+            crate::decisions::context::SelectableObject::new(id, name)
+        })
+        .collect::<Vec<_>>();
+    let select_ctx = crate::decisions::context::SelectObjectsContext::new(
+        ctx.controller,
+        Some(ctx.source),
+        "Choose a source",
+        selectable,
+        1,
+        Some(1),
+    );
+    let chosen_source = ctx
+        .decision_maker
+        .decide_objects(game, &select_ctx)
+        .into_iter()
+        .find(|id| candidates.contains(id));
+    if ctx.decision_maker.awaiting_choice() {
+        return SourceChoiceSelection::NoChoiceMade;
+    }
+    chosen_source
+        .map(SourceChoiceSelection::Chosen)
+        .unwrap_or(SourceChoiceSelection::NoChoiceMade)
+}
 
 /// Resolve a [`ChooseSpec`] into a [`PreventionTarget`] for prevention effects.
 pub fn resolve_prevention_target_from_spec(
