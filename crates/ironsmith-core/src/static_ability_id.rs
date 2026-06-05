@@ -247,6 +247,7 @@ pub enum StaticAbilityId {
     AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
     DuplicateMatchingTriggeredAbilities,
+    DungeonRoomTriggerDuplication,
     SuppressMatchingTriggeredAbilities,
     DoubleDamageFromSourcesYouControlOfChosenType,
     StartingLifeBonus,
@@ -515,6 +516,7 @@ impl StaticAbilityId {
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger
             | DuplicateMatchingTriggeredAbilities
+            | DungeonRoomTriggerDuplication
             | SuppressMatchingTriggeredAbilities
             | DoubleDamageFromSourcesYouControlOfChosenType
             | StartingLifeBonus

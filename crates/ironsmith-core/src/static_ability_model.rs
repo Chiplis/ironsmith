@@ -1886,6 +1886,10 @@ impl<
         Self::identified(StaticAbilityId::RuleFallbackText, text)
     }
 
+    pub fn dungeon_room_trigger_duplication(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DungeonRoomTriggerDuplication, text)
+    }
+
     fn known_keyword_marker(text: &str) -> Option<Self> {
         let normalized = text.trim().trim_end_matches('.').to_ascii_lowercase();
         if normalized.ends_with(" can't be blocked") || normalized.ends_with(" cant be blocked") {

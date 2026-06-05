@@ -3169,6 +3169,36 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
     }
 }
 
+/// "Room abilities of dungeons you own trigger an additional time."
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DungeonRoomTriggerDuplication {
+    pub display: String,
+    pub copies: usize,
+}
+
+impl DungeonRoomTriggerDuplication {
+    pub fn new(display: impl Into<String>) -> Self {
+        Self {
+            display: display.into(),
+            copies: 1,
+        }
+    }
+}
+
+impl StaticAbilityKind for DungeonRoomTriggerDuplication {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DungeonRoomTriggerDuplication
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn dungeon_room_trigger_duplication_copies(&self) -> Option<usize> {
+        Some(self.copies)
+    }
+}
+
 /// "If [matching event] would cause [matching source] to trigger, it doesn't."
 #[derive(Debug, Clone, PartialEq)]
 pub struct SuppressMatchingTriggeredAbilities {

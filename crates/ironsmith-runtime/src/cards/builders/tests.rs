@@ -37753,6 +37753,39 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn dungeon_delver_strictly_grants_room_trigger_duplication_to_commanders() {
+    let def = parse_oracle_card_definition("Dungeon Delver");
+    assert!(
+        def.spell_effect.is_none(),
+        "Dungeon Delver should not compile as a spell effect: {:?}",
+        def.spell_effect
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GrantAbility")
+            && abilities_debug.contains("is_commander: true")
+            && abilities_debug.contains("DungeonRoomTriggerDuplication"),
+        "expected Dungeon Delver to grant room trigger duplication to commander creatures, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dungeon_delver_compiled_text_preserves_room_trigger_duplication_clause() {
+    let def = parse_oracle_card_definition("Dungeon Delver");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\""
+        ),
+        "expected Dungeon Delver compiled text to render its granted room ability, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_ward_discard_multiple_card_types_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Ward Typed Discard Variant")
         .parse_text("Ward—Discard an enchantment, instant, or sorcery card.")

@@ -9,7 +9,7 @@ use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError};
-use crate::events::{KeywordActionEvent, KeywordActionKind};
+use crate::events::{DungeonRoomEnteredEvent, KeywordActionEvent, KeywordActionKind};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
@@ -125,7 +125,10 @@ pub(crate) fn advance_player_dungeon(
         ActiveDungeonProgress::new(dungeon_name.clone(), room_name.clone()),
     );
 
-    let mut outcome = EffectOutcome::resolved();
+    let mut outcome = EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+        DungeonRoomEnteredEvent::new(player_id, dungeon_name.clone(), room_name.clone()),
+        ctx.provenance,
+    ));
     let next_rooms = next_room_names(&dungeon_name, &room_name)
         .ok_or_else(|| ExecutionError::Impossible(format!("unknown room {room_name}")))?;
     if next_rooms.is_empty() {
@@ -209,8 +212,10 @@ mod tests {
 
         assert!(game.active_dungeon(alice).is_none());
         assert!(game.has_completed_named_dungeon(alice, "Lost Mine of Phandelver"));
-        let completion = final_outcome.events[0]
-            .downcast::<KeywordActionEvent>()
+        let completion = final_outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<KeywordActionEvent>())
             .expect("expected dungeon completion event");
         assert_eq!(completion.action, KeywordActionKind::CompleteDungeon);
         assert_eq!(completion.player, alice);

@@ -274,6 +274,7 @@ impl StaticAbilityKind for ExertAttack {
                     triggering_event: exert_event,
                     source_stable_id: source_object.stable_id,
                     source_name: source_object.name.clone(),
+                    is_dungeon_room_ability: false,
                     source_snapshot: None,
                     tagged_objects: Default::default(),
                     trigger_identity: crate::triggers::compute_trigger_identity(linked_trigger),
