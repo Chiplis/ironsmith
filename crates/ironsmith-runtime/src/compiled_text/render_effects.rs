@@ -38950,6 +38950,17 @@ fn describe_mana_usage_restriction(
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            spell_filter,
+            ability_source_filter,
+        } => {
+            let spell_text =
+                describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
+            let source_text = describe_mana_usage_ability_source_filter(ability_source_filter)?;
+            Some(format!(
+                "Spend this mana only to cast {spell_text} or activate an ability of {source_text}"
+            ))
+        }
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }
@@ -39034,6 +39045,46 @@ fn describe_mana_usage_spell_filter_target_with_options(
         "a"
     };
     Some(format!("{article} {described}"))
+}
+
+fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -> Option<String> {
+    let mut remainder = filter.clone();
+    remainder.card_types.clear();
+    remainder.subtypes.clear();
+    remainder.supertypes.clear();
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut descriptors = Vec::new();
+    descriptors.extend(
+        filter
+            .supertypes
+            .iter()
+            .map(|supertype| supertype.to_string()),
+    );
+    descriptors.extend(
+        filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string()),
+    );
+    descriptors.extend(filter.subtypes.iter().map(|subtype| subtype.to_string()));
+
+    if descriptors.is_empty() {
+        return Some("a source".to_string());
+    }
+
+    let described = join_with_or(&descriptors);
+    let article = if matches!(
+        described.chars().next().map(|ch| ch.to_ascii_lowercase()),
+        Some('a' | 'e' | 'i' | 'o' | 'u')
+    ) {
+        "an"
+    } else {
+        "a"
+    };
+    Some(format!("{article} {described} source"))
 }
 
 fn describe_special_mana_usage_spell_filter_target(
