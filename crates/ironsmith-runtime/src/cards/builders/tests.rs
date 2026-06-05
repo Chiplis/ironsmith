@@ -66719,6 +66719,17 @@ fn disciple_of_perdition_modal_choice(def: &CardDefinition) -> &ChooseModeEffect
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn disciple_of_perdition_exile_effect(
+    effect: &crate::effect::Effect,
+) -> Option<&crate::effects::ExileEffect> {
+    effect.downcast_ref::<crate::effects::ExileEffect>().or_else(|| {
+        effect
+            .downcast_ref::<TaggedEffect>()
+            .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn disciple_of_perdition_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Disciple of Perdition");
@@ -66743,6 +66754,22 @@ fn disciple_of_perdition_strict_parser_and_compiled_text_regression() {
             right: crate::effect::Value::Fixed(13),
         },
         "expected exact 13 life condition, got {conditional:?}"
+    );
+
+    let modal = disciple_of_perdition_modal_choice(&def);
+    let exile = modal.modes[1]
+        .effects
+        .iter()
+        .find_map(disciple_of_perdition_exile_effect)
+        .expect("Disciple graveyard mode should contain a graveyard exile effect");
+    let ChooseSpec::All(filter) = &exile.spec else {
+        panic!("Disciple should exile all cards in the targeted opponent's graveyard, got {exile:?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(
+        filter.owner,
+        Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
+        "Disciple should model target opponent's graveyard as all graveyard cards owned by the targeted opponent, got {filter:?}"
     );
 }
 
@@ -66795,8 +66822,21 @@ fn disciple_of_perdition_runtime_modes_apply_draw_life_loss_and_graveyard_exile(
         alice,
         Zone::Library,
     );
-    let graveyard_card = game.create_object_from_definition(
-        &CardDefinitionBuilder::new(CardId::from_raw(91_602), "Disciple Graveyard Card").build(),
+    let alice_graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_602), "Disciple Alice Graveyard Card")
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let _bob_graveyard_card_one = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_603), "Disciple Bob Graveyard Card One")
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let _bob_graveyard_card_two = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_604), "Disciple Bob Graveyard Card Two")
+            .build(),
         bob,
         Zone::Graveyard,
     );
@@ -66815,7 +66855,7 @@ fn disciple_of_perdition_runtime_modes_apply_draw_life_loss_and_graveyard_exile(
     );
 
     let mut exile_ctx = crate::effects::ExecutionContext::new_default(source, alice)
-        .with_targets(vec![crate::effects::ResolvedTarget::Object(graveyard_card)]);
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
     for effect in &modal.modes[1].effects {
         crate::effects::execute_effect(&mut game, effect, &mut exile_ctx)
             .expect("Disciple graveyard-exile mode should resolve");
@@ -66825,12 +66865,33 @@ fn disciple_of_perdition_runtime_modes_apply_draw_life_loss_and_graveyard_exile(
     assert_eq!(
         game.player(bob).expect("bob").graveyard.len(),
         0,
-        "the second mode should empty the targeted opponent graveyard card"
+        "the second mode should empty the targeted opponent's whole graveyard"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice").graveyard.len(),
+        1,
+        "the second mode should not exile a non-targeted player's graveyard"
     );
     assert_eq!(
         game.objects_in_zone(Zone::Exile).len(),
-        1,
-        "the second mode should exile the targeted opponent graveyard card"
+        2,
+        "the second mode should exile each card in the targeted opponent's graveyard"
+    );
+    assert_eq!(
+        game.object(alice_graveyard_card)
+            .expect("alice graveyard card")
+            .zone,
+        Zone::Graveyard
+    );
+    let exile_names: Vec<_> = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        exile_names.contains(&"Disciple Bob Graveyard Card One".to_string())
+            && exile_names.contains(&"Disciple Bob Graveyard Card Two".to_string()),
+        "the second mode should exile both cards from Bob's graveyard, got {exile_names:?}"
     );
 }
 

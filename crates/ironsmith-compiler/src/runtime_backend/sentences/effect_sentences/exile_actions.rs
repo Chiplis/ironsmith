@@ -30,14 +30,16 @@ const EXILE_GRAVEYARD_OWNER_TARGET_PLAYER_PATTERN: ClauseShape<'static> = clause
     prefix_any
         & [
             &["target", "player", "graveyard"],
-            &["target", "players", "graveyard"]
+            &["target", "players", "graveyard"],
+            &["target", "player's", "graveyard"]
         ]
 );
 const EXILE_GRAVEYARD_OWNER_TARGET_OPPONENT_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
             &["target", "opponent", "graveyard"],
-            &["target", "opponents", "graveyard"]
+            &["target", "opponents", "graveyard"],
+            &["target", "opponent's", "graveyard"]
         ]
 );
 const EXILE_GRAVEYARD_OWNER_ITS_CONTROLLER_PATTERN: ClauseShape<'static> = clause_shape!(
