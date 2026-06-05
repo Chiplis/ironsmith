@@ -722,6 +722,7 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
         crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
             ..
         } => true,
+        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => true,
         crate::ability::ManaUsageRestriction::ActivateAbility => true,
     }
 }
@@ -773,6 +774,7 @@ fn restriction_bonus_applies_to_payment_source(
         crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
             ..
         } => false,
+        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => false,
         crate::ability::ManaUsageRestriction::ActivateAbility => false,
     }
 }
@@ -850,8 +852,21 @@ pub(super) fn payment_source_matches_restriction(
                     Some(source_obj.id),
                 )
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+            spell_filter,
+        } => {
+            cast_spell_filter_matches_payment_source(game, unit, spell_filter, Some(source_obj.id))
+                || matches_allowed_turn_face_up_payment_source(game, source_obj.id)
+        }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
+}
+
+fn matches_allowed_turn_face_up_payment_source(game: &GameState, source_id: ObjectId) -> bool {
+    let Some(source_obj) = game.object(source_id) else {
+        return false;
+    };
+    source_obj.zone == Zone::Battlefield && game.is_face_down(source_id)
 }
 
 pub(super) fn restricted_unit_is_payable(
@@ -992,6 +1007,9 @@ pub(super) fn apply_spent_mana_bonuses(
             crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
                 ..
             } => continue,
+            crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { .. } => {
+                continue;
+            }
             crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 

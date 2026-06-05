@@ -39044,6 +39044,15 @@ fn describe_mana_usage_restriction(
                 "Spend this mana only to cast {spell_text} or activate an ability of {source_text}"
             ))
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+            spell_filter,
+        } => {
+            let spell_text =
+                describe_mana_usage_spell_filter_target_with_options(spell_filter, false)?;
+            Some(format!(
+                "Spend this mana only to cast {spell_text}, unlock a door, or turn a permanent face up"
+            ))
+        }
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }

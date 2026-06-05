@@ -57103,6 +57103,178 @@ fn jasmine_dragon_tea_shop_strict_parser_compiled_text_and_model_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn creeping_peeper_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Creeping Peeper");
+    let def = parse_oracle_card_definition("Creeping Peeper");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "spend this mana only to cast an enchantment spell, unlock a door, or turn a permanent face up",
+        ),
+        "expected Creeping Peeper compiled text to preserve the full restricted-mana clause, got {rendered}"
+    );
+
+    let mana_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated
+                .mana_usage_restrictions
+                .iter()
+                .any(|restriction| {
+                    matches!(
+                        restriction,
+                        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                            ..
+                        }
+                    )
+                })
+                .then_some(activated)
+        })
+        .expect("Creeping Peeper should have a restricted mana ability");
+
+    let has_enchantment_unlock_turn_up_restriction = mana_activated
+        .mana_usage_restrictions
+        .iter()
+        .any(|restriction| {
+            matches!(
+                restriction,
+                crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                    spell_filter,
+                } if spell_filter.card_types == vec![CardType::Enchantment]
+            )
+        });
+    assert!(
+        has_enchantment_unlock_turn_up_restriction,
+        "Creeping Peeper mana should be restricted to enchantment spells, unlocking doors, or turning permanents face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn creeping_peeper_restricted_mana_runtime_branches() {
+    let def = parse_oracle_card_definition("Creeping Peeper");
+    let restriction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .mana_usage_restrictions
+                .iter()
+                .find(|restriction| {
+                    matches!(
+                        restriction,
+                        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                            ..
+                        }
+                    )
+                })
+                .cloned(),
+            _ => None,
+        })
+        .expect("Creeping Peeper should carry its special mana usage restriction");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let peeper_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            symbol: ManaSymbol::Blue,
+            source: peeper_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction.clone()],
+        });
+
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+    let enchantment_spell = CardDefinitionBuilder::new(CardId::new(), "Enchantment Spell")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let enchantment_spell_id =
+        game.create_object_from_definition(&enchantment_spell, alice, Zone::Stack);
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(enchantment_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Creeping Peeper mana should pay for enchantment spells"
+    );
+
+    let instant_spell = CardDefinitionBuilder::new(CardId::new(), "Instant Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_spell_id = game.create_object_from_definition(&instant_spell, alice, Zone::Stack);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(instant_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Creeping Peeper mana should not pay for non-enchantment spells"
+    );
+
+    let ability_source = CardDefinitionBuilder::new(CardId::new(), "Ordinary Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{U}: You gain 1 life.")
+        .expect("ordinary ability source should parse");
+    let ability_source_id =
+        game.create_object_from_definition(&ability_source, alice, Zone::Battlefield);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(ability_source_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::ActivateAbility,
+        ),
+        "Creeping Peeper mana should not pay for unrelated activated abilities"
+    );
+
+    let face_up_probe = CardDefinitionBuilder::new(CardId::new(), "Face-Up Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let face_up_probe_id =
+        game.create_object_from_definition(&face_up_probe, alice, Zone::Battlefield);
+    game.object_mut(face_up_probe_id)
+        .expect("face-up probe should exist")
+        .abilities
+        .push(Ability::static_ability(
+            crate::static_abilities::StaticAbility::morph(crate::cost::TotalCost::mana(
+                blue_cost.clone(),
+            )),
+        ));
+    game.set_face_down(face_up_probe_id);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::TurnFaceUp {
+            permanent_id: face_up_probe_id,
+            method: crate::special_actions::TurnFaceUpMethod::TurnFaceUpAbility,
+        },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("Creeping Peeper mana should pay to turn a permanent face up");
+    assert!(
+        !game.is_face_down(face_up_probe_id),
+        "turn-face-up special action should leave the permanent face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn jasmine_dragon_tea_shop_token_activation_creates_white_ally() {
     let def = parse_oracle_card_definition("Jasmine Dragon Tea Shop");
     let token_activated = def

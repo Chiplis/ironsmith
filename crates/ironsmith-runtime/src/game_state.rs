@@ -25,7 +25,7 @@ use crate::events::{Event, EventKind, KeywordActionKind};
 use crate::filter::PlayerFilterExt;
 use crate::ids::{ObjectId, PlayerId, StableId, reset_runtime_id_counters};
 use crate::object::{AttachmentTarget, AuraAttachmentFilter, Object};
-use crate::player::Player;
+use crate::player::{ManaPool, Player};
 use crate::prevention::PreventionEffectManager;
 use crate::provenance::{ProvNodeId, ProvenanceGraph, ProvenanceNodeKind};
 use crate::replacement::{ReplacementEffectId, ReplacementEffectManager};
@@ -6742,6 +6742,249 @@ impl GameState {
         )
     }
 
+    fn cast_spell_mana_rule_matches_payment_source(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        card_types: &[CardType],
+        subtype_requirement: &Option<crate::ability::ManaUsageSubtypeRequirement>,
+        payment_source: Option<ObjectId>,
+    ) -> bool {
+        let Some(source_id) = payment_source else {
+            return false;
+        };
+        let Some(source_obj) = self.object(source_id) else {
+            return false;
+        };
+        if source_obj.zone != Zone::Stack {
+            return false;
+        }
+        if !card_types
+            .iter()
+            .all(|card_type| self.current_has_card_type(source_obj.id, *card_type))
+        {
+            return false;
+        }
+
+        let required_subtype = match subtype_requirement {
+            Some(crate::ability::ManaUsageSubtypeRequirement::Exact(subtype)) => Some(*subtype),
+            Some(crate::ability::ManaUsageSubtypeRequirement::ChosenTypeOfSource) => {
+                unit.source_chosen_creature_type
+            }
+            None => None,
+        };
+        required_subtype.is_none_or(|subtype| self.current_has_subtype(source_obj.id, subtype))
+    }
+
+    fn cast_spell_filter_matches_payment_source(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        filter: &crate::target::ObjectFilter,
+        payment_source: Option<ObjectId>,
+    ) -> bool {
+        let Some(source_id) = payment_source else {
+            return false;
+        };
+        let Some(source_obj) = self.object(source_id) else {
+            return false;
+        };
+        if source_obj.zone != Zone::Stack {
+            return false;
+        }
+
+        let Some(mana_source) = self.object(unit.source) else {
+            return false;
+        };
+        let filter_ctx =
+            self.filter_context_for(self.controller_of(mana_source), Some(unit.source));
+        filter.matches(source_obj, &filter_ctx, self)
+    }
+
+    fn activate_ability_source_filter_matches_payment_source(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        filter: &crate::target::ObjectFilter,
+        payment_source: Option<ObjectId>,
+    ) -> bool {
+        let Some(source_id) = payment_source else {
+            return false;
+        };
+        let Some(source_obj) = self.object(source_id) else {
+            return false;
+        };
+        if source_obj.zone == Zone::Stack {
+            return false;
+        }
+
+        let Some(mana_source) = self.object(unit.source) else {
+            return false;
+        };
+        let filter_ctx =
+            self.filter_context_for(self.controller_of(mana_source), Some(unit.source));
+        filter.matches(source_obj, &filter_ctx, self)
+    }
+
+    fn restricted_mana_unit_is_payable_for_reason(
+        &self,
+        unit: &crate::ability::RestrictedManaUnit,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+    ) -> bool {
+        unit.restrictions.iter().all(|restriction| match restriction {
+            crate::ability::ManaUsageRestriction::CastSpell {
+                card_types,
+                subtype_requirement,
+                restrict_to_matching_spell,
+                ..
+            } => {
+                !*restrict_to_matching_spell
+                    || (reason == crate::costs::PaymentReason::CastSpell
+                        && self.cast_spell_mana_rule_matches_payment_source(
+                            unit,
+                            card_types,
+                            subtype_requirement,
+                            payment_source,
+                        ))
+            }
+            crate::ability::ManaUsageRestriction::CastSpellMatching {
+                filter,
+                restrict_to_matching_spell,
+                ..
+            } => {
+                !*restrict_to_matching_spell
+                    || (reason == crate::costs::PaymentReason::CastSpell
+                        && self.cast_spell_filter_matches_payment_source(
+                            unit,
+                            filter,
+                            payment_source,
+                        ))
+            }
+            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                spell_filter,
+                ability_source_filter,
+            } => {
+                (reason == crate::costs::PaymentReason::CastSpell
+                    && self.cast_spell_filter_matches_payment_source(
+                        unit,
+                        spell_filter,
+                        payment_source,
+                    ))
+                    || (matches!(
+                        reason,
+                        crate::costs::PaymentReason::ActivateAbility
+                            | crate::costs::PaymentReason::ActivateManaAbility
+                    ) && self.activate_ability_source_filter_matches_payment_source(
+                        unit,
+                        ability_source_filter,
+                        payment_source,
+                    ))
+            }
+            crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                spell_filter,
+            } => {
+                (reason == crate::costs::PaymentReason::CastSpell
+                    && self.cast_spell_filter_matches_payment_source(
+                        unit,
+                        spell_filter,
+                        payment_source,
+                    ))
+                    || (reason == crate::costs::PaymentReason::TurnFaceUp
+                        && payment_source.is_some_and(|source_id| {
+                            self.object(source_id)
+                                .is_some_and(|source_obj| source_obj.zone == Zone::Battlefield)
+                                && self.is_face_down(source_id)
+                        }))
+            }
+            crate::ability::ManaUsageRestriction::ActivateAbility => {
+                matches!(
+                    reason,
+                    crate::costs::PaymentReason::ActivateAbility
+                        | crate::costs::PaymentReason::ActivateManaAbility
+                ) && payment_source.is_some_and(|source_id| {
+                    self.object(source_id)
+                        .is_some_and(|source_obj| source_obj.zone != Zone::Stack)
+                })
+            }
+        })
+    }
+
+    fn remove_unpayable_restricted_mana_from_pool(
+        &self,
+        pool: &mut ManaPool,
+        payer: PlayerId,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+    ) -> Vec<crate::mana::ManaSymbol> {
+        let Some(player) = self.player(payer) else {
+            return Vec::new();
+        };
+        let mut removed = Vec::new();
+        for unit in &player.restricted_mana {
+            if self.restricted_mana_unit_is_payable_for_reason(unit, payment_source, reason) {
+                continue;
+            }
+            if pool.remove(unit.symbol, 1) {
+                removed.push(unit.symbol);
+            }
+        }
+        removed
+    }
+
+    fn restricted_mana_indices_spent(
+        &self,
+        payer: PlayerId,
+        before: &ManaPool,
+        after: &ManaPool,
+        payment_source: Option<ObjectId>,
+        reason: crate::costs::PaymentReason,
+    ) -> Vec<usize> {
+        let Some(player) = self.player(payer) else {
+            return Vec::new();
+        };
+        let symbols = [
+            crate::mana::ManaSymbol::White,
+            crate::mana::ManaSymbol::Blue,
+            crate::mana::ManaSymbol::Black,
+            crate::mana::ManaSymbol::Red,
+            crate::mana::ManaSymbol::Green,
+            crate::mana::ManaSymbol::Colorless,
+        ];
+        let mut indices = Vec::new();
+        for symbol in symbols {
+            let spent = before.amount(symbol).saturating_sub(after.amount(symbol));
+            if spent == 0 {
+                continue;
+            }
+            let restricted_total = player
+                .restricted_mana
+                .iter()
+                .filter(|unit| unit.symbol == symbol)
+                .count() as u32;
+            let unrestricted_total = before.amount(symbol).saturating_sub(restricted_total);
+            let mut restricted_to_remove = spent.saturating_sub(unrestricted_total);
+            if restricted_to_remove == 0 {
+                continue;
+            }
+            for (idx, unit) in player.restricted_mana.iter().enumerate() {
+                if unit.symbol == symbol
+                    && self.restricted_mana_unit_is_payable_for_reason(
+                        unit,
+                        payment_source,
+                        reason,
+                    )
+                {
+                    indices.push(idx);
+                    restricted_to_remove -= 1;
+                    if restricted_to_remove == 0 {
+                        break;
+                    }
+                }
+            }
+        }
+        indices.sort_unstable();
+        indices.dedup();
+        indices
+    }
+
     /// Check if a player can pay a mana cost for a specific reason.
     pub fn can_pay_mana_cost_with_reason(
         &self,
@@ -6765,6 +7008,7 @@ impl GameState {
         } else {
             player.mana_pool.clone()
         };
+        self.remove_unpayable_restricted_mana_from_pool(&mut preview_pool, payer, source, reason);
         let (can_pay, life_to_pay) = preview_pool
             .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
                 cost,
@@ -6841,27 +7085,51 @@ impl GameState {
             }
             return true;
         }
-        let (paid, life_to_pay) = {
-            let Some(player) = self.player_mut(payer) else {
+        let (paid, life_to_pay, payment_pool, spent_restricted) = {
+            let Some(before_pool) = self.player(payer).map(|player| player.mana_pool.clone()) else {
                 return false;
             };
-            player
-                .mana_pool
-                .try_pay_tracking_life_with_mana_spend_policy_and_black_life(
-                    cost,
-                    x_value,
-                    &mana_spend_policy,
-                    allow_black_life,
-                )
+            let mut payment_pool = before_pool.clone();
+            let removed_unpayable = self.remove_unpayable_restricted_mana_from_pool(
+                &mut payment_pool,
+                payer,
+                source,
+                reason,
+            );
+            let result = payment_pool.try_pay_tracking_life_with_mana_spend_policy_and_black_life(
+                cost,
+                x_value,
+                &mana_spend_policy,
+                allow_black_life,
+            );
+            for symbol in removed_unpayable {
+                payment_pool.add(symbol, 1);
+            }
+            let spent_restricted = if result.0 {
+                let spent_restricted = self.restricted_mana_indices_spent(
+                    payer,
+                    &before_pool,
+                    &payment_pool,
+                    source,
+                    reason,
+                );
+                spent_restricted
+            } else {
+                Vec::new()
+            };
+            (result.0, result.1, payment_pool, spent_restricted)
         };
         if !paid {
             return false;
         }
         if !self.can_pay_life_with_reason(payer, life_to_pay, reason) {
-            if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {
-                player.mana_pool = original_pool;
-            }
             return false;
+        }
+        if let Some(player) = self.player_mut(payer) {
+            player.mana_pool = payment_pool;
+            for idx in spent_restricted.into_iter().rev() {
+                player.restricted_mana.remove(idx);
+            }
         }
         if life_to_pay > 0 && !self.pay_life(payer, life_to_pay) {
             if let (Some(original_pool), Some(player)) = (original_pool, self.player_mut(payer)) {

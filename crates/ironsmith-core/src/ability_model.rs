@@ -42,6 +42,9 @@ pub enum ManaUsageRestriction {
         spell_filter: ObjectFilter,
         ability_source_filter: ObjectFilter,
     },
+    CastSpellOrUnlockDoorOrTurnFaceUp {
+        spell_filter: ObjectFilter,
+    },
     ActivateAbility,
 }
 
