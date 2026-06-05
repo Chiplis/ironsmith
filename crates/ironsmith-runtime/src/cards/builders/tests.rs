@@ -1329,6 +1329,186 @@ fn nicol_bolas_dragon_god_copies_only_other_planeswalkers_loyalty_abilities() {
     );
 }
 
+fn nicol_bolas_plus_one_effects(def: &CardDefinition) -> Vec<Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.is_loyalty_ability() && {
+                    let debug = format!("{:?}", activated.effects);
+                    debug.contains("ChooseObjectsEffect")
+                        && debug.contains("zone: Some(Hand)")
+                        && debug.contains("additional_zones: [Battlefield]")
+                        && debug.contains("MoveToZoneEffect")
+                        && debug.contains("zone: Exile")
+                } =>
+            {
+                Some(
+                    activated
+                        .effects
+                        .flattened_default_effects()
+                        .into_iter()
+                        .cloned()
+                        .collect(),
+                )
+            }
+            _ => None,
+        })
+        .expect("Nicol Bolas should have a +1 draw and each-opponent exile loyalty ability")
+}
+
+fn nicol_bolas_test_card(name: &str, card_types: Vec<CardType>) -> CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+fn nicol_bolas_has_object_named_in_zone(
+    game: &crate::game_state::GameState,
+    name: &str,
+    zone: Zone,
+) -> bool {
+    game.objects_in_zone(zone).into_iter().any(|id| {
+        game.object(id)
+            .is_some_and(|object| object.name == name)
+    })
+}
+
+#[test]
+fn nicol_bolas_dragon_god_plus_one_each_opponent_exiles_own_hand_card_or_permanent() {
+    struct ChooseExpectedOpponentObjects {
+        bob_choice: ObjectId,
+        charlie_choice: ObjectId,
+        prompts: Vec<PlayerId>,
+    }
+
+    impl crate::decision::DecisionMaker for ChooseExpectedOpponentObjects {
+        fn decide_objects(
+            &mut self,
+            game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            let choice = match ctx.player.index() {
+                1 => self.bob_choice,
+                2 => self.charlie_choice,
+                _ => panic!("Nicol Bolas +1 should prompt only opponents, got {ctx:?}"),
+            };
+
+            assert_eq!(ctx.min, 1, "each opponent should choose exactly one object");
+            assert_eq!(ctx.max, Some(1), "each opponent should choose exactly one object");
+            for candidate in &ctx.candidates {
+                assert!(candidate.legal, "all surfaced candidates should be legal");
+                let object = game
+                    .object(candidate.id)
+                    .expect("choice candidate should exist");
+                assert!(
+                    (object.zone == Zone::Hand && object.owner == ctx.player)
+                        || (object.zone == Zone::Battlefield
+                            && game.controller_of(object) == ctx.player),
+                    "Nicol Bolas +1 candidates must be from the chooser's hand or permanents they control, got {object:#?} for {ctx:?}"
+                );
+            }
+            assert!(
+                ctx.candidates.iter().any(|candidate| candidate.id == choice),
+                "expected chosen object to be among candidates for {ctx:?}"
+            );
+            self.prompts.push(ctx.player);
+            vec![choice]
+        }
+    }
+
+    let nicol = parse_oracle_card_definition("Nicol Bolas, Dragon-God");
+    let plus_one_effects = nicol_bolas_plus_one_effects(&nicol);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let source = game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
+    let alice_hand = game.create_object_from_definition(
+        &nicol_bolas_test_card("Alice Hand Card", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_permanent = game.create_object_from_definition(
+        &nicol_bolas_test_card("Alice Permanent", vec![CardType::Artifact]),
+        alice,
+        Zone::Battlefield,
+    );
+    game.create_object_from_definition(
+        &nicol_bolas_test_card("Alice Draw Card", vec![CardType::Instant]),
+        alice,
+        Zone::Library,
+    );
+    let bob_hand = game.create_object_from_definition(
+        &nicol_bolas_test_card("Bob Hand Card", vec![CardType::Sorcery]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_permanent = game.create_object_from_definition(
+        &nicol_bolas_test_card("Bob Permanent", vec![CardType::Artifact]),
+        bob,
+        Zone::Battlefield,
+    );
+    let charlie_hand = game.create_object_from_definition(
+        &nicol_bolas_test_card("Charlie Hand Card", vec![CardType::Sorcery]),
+        charlie,
+        Zone::Hand,
+    );
+    let charlie_permanent = game.create_object_from_definition(
+        &nicol_bolas_test_card("Charlie Permanent", vec![CardType::Artifact]),
+        charlie,
+        Zone::Battlefield,
+    );
+
+    let mut dm = ChooseExpectedOpponentObjects {
+        bob_choice: bob_hand,
+        charlie_choice: charlie_permanent,
+        prompts: Vec::new(),
+    };
+    {
+        let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
+        for effect in &plus_one_effects {
+            crate::effects::execute_effect(&mut game, effect, &mut ctx)
+                .expect("Nicol Bolas +1 should resolve");
+        }
+    }
+
+    assert_eq!(dm.prompts, vec![bob, charlie]);
+    assert!(
+        nicol_bolas_has_object_named_in_zone(&game, "Bob Hand Card", Zone::Exile),
+        "Bob's chosen hand card should move to exile"
+    );
+    assert!(
+        nicol_bolas_has_object_named_in_zone(&game, "Charlie Permanent", Zone::Exile),
+        "Charlie's chosen permanent should move to exile"
+    );
+    assert_eq!(
+        game.object(bob_permanent).expect("bob permanent").zone,
+        Zone::Battlefield,
+        "Bob should exile exactly one object"
+    );
+    assert_eq!(
+        game.object(charlie_hand).expect("charlie hand card").zone,
+        Zone::Hand,
+        "Charlie should exile exactly one object"
+    );
+    assert_eq!(
+        game.object(alice_hand).expect("alice hand card").zone,
+        Zone::Hand,
+        "Nicol Bolas's controller should not choose or exile a card"
+    );
+    assert_eq!(
+        game.object(alice_permanent)
+            .expect("alice permanent")
+            .zone,
+        Zone::Battlefield,
+        "Nicol Bolas's controller should not choose or exile a permanent"
+    );
+}
+
 fn nicol_bolas_minus_eight_effects(def: &CardDefinition) -> Vec<Effect> {
     def.abilities
         .iter()
@@ -1402,6 +1582,34 @@ fn nicol_bolas_dragon_god_minus_eight_respects_legendary_creature_or_planeswalke
     assert!(
         !protected_game.player(bob).expect("bob exists").has_lost,
         "opponent with a legendary creature should not lose the game"
+    );
+
+    let legendary_planeswalker = CardDefinitionBuilder::new(CardId::new(), "Bolas Test Legendwalker")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .build();
+    let mut planeswalker_protected_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let planeswalker_protected_source =
+        planeswalker_protected_game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
+    planeswalker_protected_game.create_object_from_definition(
+        &legendary_planeswalker,
+        bob,
+        Zone::Battlefield,
+    );
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(planeswalker_protected_source, alice, &mut dm);
+    for effect in &minus_eight_effects {
+        crate::effects::execute_effect(&mut planeswalker_protected_game, effect, &mut ctx)
+            .expect("Nicol Bolas -8 should resolve");
+    }
+    assert!(
+        !planeswalker_protected_game
+            .player(bob)
+            .expect("bob exists")
+            .has_lost,
+        "opponent with a legendary planeswalker should not lose the game"
     );
 }
 
