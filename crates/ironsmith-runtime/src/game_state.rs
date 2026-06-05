@@ -1726,6 +1726,8 @@ pub struct StackEntry {
     pub targets: Vec<Target>,
     pub target_assignments: Vec<TargetAssignment>,
     pub x_value: Option<u32>,
+    /// For activated abilities, whether the activation cost contained X.
+    pub activation_cost_has_x: bool,
     /// For triggered/activated abilities, the effects to execute.
     /// For spells, this is None and effects come from the spell itself.
     pub ability_effects: Option<crate::resolution::ResolutionProgram>,
@@ -1813,6 +1815,7 @@ impl StackEntry {
             targets: Vec::new(),
             target_assignments: Vec::new(),
             x_value: None,
+            activation_cost_has_x: false,
             ability_effects: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
@@ -1852,6 +1855,7 @@ impl StackEntry {
             targets: Vec::new(),
             target_assignments: Vec::new(),
             x_value: None,
+            activation_cost_has_x: false,
             ability_effects: Some(effects.into()),
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,
@@ -1901,6 +1905,11 @@ impl StackEntry {
 
     pub fn with_x(mut self, x: u32) -> Self {
         self.x_value = Some(x);
+        self
+    }
+
+    pub fn with_activation_cost_has_x(mut self, has_x: bool) -> Self {
+        self.activation_cost_has_x = has_x;
         self
     }
 

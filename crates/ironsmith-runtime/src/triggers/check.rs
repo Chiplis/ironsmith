@@ -41,6 +41,11 @@ fn trigger_entry_x_value(trigger_event: &TriggerEvent, fallback: Option<u32>) ->
     trigger_event
         .downcast::<crate::events::other::BecameMonstrousEvent>()
         .map(|event| event.n)
+        .or_else(|| {
+            trigger_event
+                .downcast::<crate::events::spells::AbilityActivatedEvent>()
+                .and_then(|event| event.x_value)
+        })
         .or(fallback)
 }
 
@@ -2417,8 +2422,9 @@ mod tests {
     use crate::events::cause::EventCause;
     use crate::events::combat::{AttackEventTarget, CreatureAttackedEvent, CreatureBlockedEvent};
     use crate::events::other::BecameMonstrousEvent;
-    use crate::events::spells::{BecomesTargetedEvent, SpellCastEvent};
+    use crate::events::spells::{AbilityActivatedEvent, BecomesTargetedEvent, SpellCastEvent};
     use crate::ids::{CardId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
     use crate::types::{CardType, Subtype};
@@ -2445,6 +2451,169 @@ mod tests {
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn unbound_flourishing_like_definition() -> crate::cards::CardDefinition {
+        let mut permanent_x_spell = ObjectFilter::permanent_card();
+        permanent_x_spell.zone = Some(Zone::Stack);
+        permanent_x_spell.has_x_in_cost = true;
+        let mut instant_or_sorcery_x_spell = ObjectFilter::instant_or_sorcery();
+        instant_or_sorcery_x_spell.has_x_in_cost = true;
+        let mut activated_ability_with_x = ObjectFilter::default();
+        activated_ability_with_x.has_x_in_cost = true;
+
+        CardDefinitionBuilder::new(CardId::from_raw(88101), "Unbound Flourishing")
+            .card_types(vec![CardType::Enchantment])
+            .with_trigger(
+                Trigger::spell_cast(Some(permanent_x_spell), PlayerFilter::You),
+                Vec::new(),
+            )
+            .with_trigger(
+                Trigger::either(
+                    Trigger::spell_cast(Some(instant_or_sorcery_x_spell), PlayerFilter::You),
+                    Trigger::ability_activated_qualified(
+                        PlayerFilter::You,
+                        activated_ability_with_x,
+                        false,
+                        false,
+                    ),
+                ),
+                Vec::new(),
+            )
+            .build()
+    }
+
+    fn stack_spell(
+        game: &mut GameState,
+        controller: PlayerId,
+        name: &str,
+        card_type: CardType,
+        has_x_cost: bool,
+        x_value: Option<u32>,
+    ) -> crate::ids::ObjectId {
+        let mana_cost = if has_x_cost {
+            ManaCost::from_pips(vec![vec![ManaSymbol::X]])
+        } else {
+            ManaCost::from_pips(vec![vec![ManaSymbol::Green]])
+        };
+        let card = CardBuilder::new(CardId::new(), name)
+            .mana_cost(mana_cost)
+            .card_types(vec![card_type])
+            .build();
+        let spell = game.create_object_from_card(&card, controller, Zone::Stack);
+        game.object_mut(spell).expect("spell object exists").x_value = x_value;
+        let mut entry = crate::game_state::StackEntry::new(spell, controller);
+        entry.x_value = x_value;
+        game.push_to_stack(entry);
+        spell
+    }
+
+    #[test]
+    fn unbound_flourishing_permanent_spell_trigger_requires_x_and_captures_value() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let unbound = unbound_flourishing_like_definition();
+        game.create_object_from_definition(&unbound, alice, Zone::Battlefield);
+        let hydra = stack_spell(
+            &mut game,
+            alice,
+            "Hydra Spell",
+            CardType::Creature,
+            true,
+            Some(3),
+        );
+
+        let triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(hydra, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+
+        assert_eq!(triggered.len(), 1, "expected permanent X spell trigger");
+        assert_eq!(triggered[0].source_name, "Unbound Flourishing");
+    }
+
+    #[test]
+    fn unbound_flourishing_copy_trigger_matches_x_spell_and_x_ability_only() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let unbound = unbound_flourishing_like_definition();
+        let source = game.create_object_from_definition(&unbound, alice, Zone::Battlefield);
+        let x_sorcery = stack_spell(
+            &mut game,
+            alice,
+            "X Sorcery",
+            CardType::Sorcery,
+            true,
+            Some(4),
+        );
+        let plain_sorcery = stack_spell(
+            &mut game,
+            alice,
+            "Plain Sorcery",
+            CardType::Sorcery,
+            false,
+            None,
+        );
+
+        let x_spell_triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(x_sorcery, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert_eq!(x_spell_triggered.len(), 1, "expected X sorcery trigger");
+
+        let plain_spell_triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                SpellCastEvent::new(plain_sorcery, alice, Zone::Hand),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert!(
+            plain_spell_triggered.is_empty(),
+            "plain sorcery should not satisfy X-cost trigger"
+        );
+
+        let x_ability_triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                AbilityActivatedEvent::new(source, alice, false)
+                    .with_activation_cost_has_x(true)
+                    .with_x_value(Some(2)),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert_eq!(x_ability_triggered.len(), 1, "expected X ability trigger");
+        assert_eq!(x_ability_triggered[0].x_value, Some(2));
+
+        let plain_ability_triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                AbilityActivatedEvent::new(source, alice, false),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert!(
+            plain_ability_triggered.is_empty(),
+            "ability without X value should not satisfy X-cost trigger"
+        );
+
+        let x_value_without_x_cost_triggered = check_triggers(
+            &game,
+            &TriggerEvent::new_with_provenance(
+                AbilityActivatedEvent::new(source, alice, false).with_x_value(Some(2)),
+                crate::provenance::ProvNodeId::default(),
+            ),
+        );
+        assert!(
+            x_value_without_x_cost_triggered.is_empty(),
+            "an X value alone should not satisfy activation-cost X trigger"
+        );
     }
 
     #[test]

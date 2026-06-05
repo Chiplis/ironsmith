@@ -117,6 +117,7 @@ pub(crate) fn create_stack_copy_from_object(
     copy_entry.targets = targets_override.unwrap_or_else(|| original_entry.targets.clone());
     copy_entry.target_assignments = original_entry.target_assignments.clone();
     copy_entry.x_value = original_entry.x_value;
+    copy_entry.activation_cost_has_x = original_entry.activation_cost_has_x;
     copy_entry.ability_effects = original_entry.ability_effects.clone();
     copy_entry.is_ability = original_entry.is_ability;
     copy_entry.casting_method = original_entry.casting_method.clone();

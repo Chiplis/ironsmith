@@ -18,6 +18,10 @@ pub struct AbilityActivatedEvent {
     pub is_mana_ability: bool,
     /// Whether this was a loyalty ability.
     pub is_loyalty_ability: bool,
+    /// Whether the activated ability's activation cost contained X.
+    pub activation_cost_has_x: bool,
+    /// Chosen X value for abilities whose activation cost contained X.
+    pub x_value: Option<u32>,
     /// Last-known snapshot of the source at activation time.
     pub snapshot: Option<ObjectSnapshot>,
 }
@@ -30,6 +34,8 @@ impl AbilityActivatedEvent {
             activator,
             is_mana_ability,
             is_loyalty_ability: false,
+            activation_cost_has_x: false,
+            x_value: None,
             snapshot: None,
         }
     }
@@ -37,6 +43,16 @@ impl AbilityActivatedEvent {
     /// Mark whether the activated ability was a loyalty ability.
     pub fn with_loyalty_ability(mut self, is_loyalty_ability: bool) -> Self {
         self.is_loyalty_ability = is_loyalty_ability;
+        self
+    }
+
+    pub fn with_x_value(mut self, x_value: Option<u32>) -> Self {
+        self.x_value = x_value;
+        self
+    }
+
+    pub fn with_activation_cost_has_x(mut self, activation_cost_has_x: bool) -> Self {
+        self.activation_cost_has_x = activation_cost_has_x;
         self
     }
 

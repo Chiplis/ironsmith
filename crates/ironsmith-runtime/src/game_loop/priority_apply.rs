@@ -843,11 +843,12 @@ pub fn apply_priority_response_with_dm(
             // Check if the activation has a modal effect or any cost references X.
             let has_modal =
                 extract_modal_spec_from_program(game, &effects, player, *source).is_some();
-            let has_x = mana_cost_to_pay
+            let activation_cost_has_x = mana_cost_to_pay
                 .as_ref()
                 .map(|c| c.has_x())
                 .unwrap_or(false)
                 || activation_cost_steps_reference_x(&remaining_cost_steps);
+            let has_x = activation_cost_has_x;
 
             // Check for hybrid/Phyrexian pips requiring announcement (per MTG rule 601.2b via 602.2b)
             let pips_to_announce = mana_cost_to_pay
@@ -899,6 +900,7 @@ pub fn apply_priority_response_with_dm(
                     source_snapshot,
                     source_name,
                     None,
+                    activation_cost_has_x,
                     mana_usage_restrictions,
                     mana_source_chosen_creature_type,
                     pips_to_announce,
@@ -913,6 +915,7 @@ pub fn apply_priority_response_with_dm(
 
                 let entry = StackEntry::ability(*source, player, effects.to_vec())
                     .with_ability_index(*ability_index)
+                    .with_activation_cost_has_x(activation_cost_has_x)
                     .with_source_info(source_stable_id, source_name)
                     .with_source_snapshot(source_snapshot)
                     .with_mana_usage_restrictions(

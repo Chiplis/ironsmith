@@ -1561,6 +1561,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    if matches!(clause_words.as_slice(), ["double", "the", "value", "of", "x"]) {
+        return Ok(EffectAst::subject_verb_scale_x_value(
+            TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(tokens)),
+            2,
+        ));
+    }
+
     if ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN
         .matches_words(&clause_words)
     {

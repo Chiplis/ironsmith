@@ -77,14 +77,19 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         if self.loyalty_only && !e.is_loyalty_ability {
             return false;
         }
+        if self.filter.has_x_in_cost && !e.activation_cost_has_x {
+            return false;
+        }
         if !self.activator.matches_player(e.activator, &ctx.filter_ctx) {
             return false;
         }
 
+        let mut source_filter = self.filter.clone();
+        source_filter.has_x_in_cost = false;
         if let Some(obj) = ctx.game.object(e.source) {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+            source_filter.matches(obj, &ctx.filter_ctx, ctx.game)
         } else if let Some(snapshot) = e.snapshot.as_ref() {
-            self.filter
+            source_filter
                 .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
         } else {
             false
@@ -101,7 +106,11 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         } else {
             "an ability"
         };
-        if self.filter == ObjectFilter::default() {
+        if self.filter.has_x_in_cost {
+            format!(
+                "Whenever {subject} {verb} {ability} with an activation cost that contains {{X}}"
+            )
+        } else if self.filter == ObjectFilter::default() {
             format!("Whenever {subject} {verb} {ability}")
         } else {
             format!(

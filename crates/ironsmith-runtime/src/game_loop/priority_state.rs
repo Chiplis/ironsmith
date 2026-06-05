@@ -696,6 +696,8 @@ pub struct PendingActivation {
     pub source_name: String,
     /// The chosen X value for abilities with X in cost.
     pub x_value: Option<usize>,
+    /// Whether the activated ability's activation cost contained X.
+    pub activation_cost_has_x: bool,
     /// Pre-chosen modes for modal activated abilities.
     /// Set during activation and used during resolution.
     pub chosen_modes: Option<Vec<usize>>,
@@ -733,6 +735,7 @@ impl PendingActivation {
         source_snapshot: ObjectSnapshot,
         source_name: String,
         x_value: Option<usize>,
+        activation_cost_has_x: bool,
         mana_usage_restrictions: Vec<crate::ability::ManaUsageRestriction>,
         mana_source_chosen_creature_type: Option<crate::types::Subtype>,
         pending_hybrid_pips: Vec<(usize, Vec<crate::mana::ManaSymbol>)>,
@@ -760,6 +763,7 @@ impl PendingActivation {
             source_snapshot,
             source_name,
             x_value,
+            activation_cost_has_x,
             chosen_modes: None,
             mana_usage_restrictions,
             mana_source_chosen_creature_type,

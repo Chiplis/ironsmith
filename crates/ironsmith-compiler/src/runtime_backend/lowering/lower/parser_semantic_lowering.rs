@@ -1176,6 +1176,84 @@ fn combat_death_blocked_damage_amount_lexed(
     Some(amount_words.join(" "))
 }
 
+fn contains_ordered_word_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    words.windows(phrase.len()).any(|window| {
+        window.iter().zip(phrase.iter()).all(|(actual, expected)| {
+            actual.replace(['\'', '’'], "") == *expected
+        })
+    })
+}
+
+fn lower_spell_or_activated_ability_x_cost_trigger(
+    full_parse_tokens: &[OwnedLexToken],
+    trigger_parse_tokens: &[OwnedLexToken],
+    effect_parse_tokens: &[OwnedLexToken],
+    max_triggers_per_turn: Option<u32>,
+) -> Result<Option<LineAst>, CardTextError> {
+    let trigger_words = token_word_refs(trigger_parse_tokens);
+    if !contains_ordered_word_phrase(
+        &trigger_words,
+        &[
+            "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate",
+            "an", "ability",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    let full_words = token_word_refs(full_parse_tokens);
+    if !contains_ordered_word_phrase(
+        &full_words,
+        &[
+            "that",
+            "spells",
+            "mana",
+            "cost",
+            "or",
+            "that",
+            "abilitys",
+            "activation",
+            "cost",
+            "contains",
+        ],
+    ) {
+        return Ok(None);
+    }
+
+    let effect_words = token_word_refs(effect_parse_tokens);
+    if !contains_ordered_word_phrase(
+        &effect_words,
+        &["copy", "that", "spell", "or", "ability"],
+    ) {
+        return Ok(None);
+    }
+
+    let mut spell_filter = ObjectFilter::instant_or_sorcery();
+    spell_filter.has_x_in_cost = true;
+    let mut ability_filter = ObjectFilter::default();
+    ability_filter.has_x_in_cost = true;
+    Ok(Some(LineAst::Triggered {
+        trigger: TriggerSpec::Either(
+            Box::new(TriggerSpec::SpellCast {
+                filter: Some(spell_filter),
+                caster: PlayerFilter::You,
+                during_turn: None,
+                min_spells_this_turn: None,
+                exact_spells_this_turn: None,
+                from_not_hand: false,
+            }),
+            Box::new(TriggerSpec::AbilityActivated {
+                activator: PlayerFilter::You,
+                filter: ability_filter,
+                non_mana_only: false,
+                loyalty_only: false,
+            }),
+        ),
+        effects: parse_effect_sentences_lexed(effect_parse_tokens)?,
+        max_triggers_per_turn,
+    }))
+}
+
 pub(super) fn infer_rewrite_triggered_functional_zones(
     trigger: &TriggerSpec,
     normalized_line: &str,
@@ -1244,6 +1322,15 @@ pub(crate) fn lower_special_rewrite_triggered_chunk(
             effects,
             max_triggers_per_turn: line.max_triggers_per_turn,
         }));
+    }
+
+    if let Some(chunk) = lower_spell_or_activated_ability_x_cost_trigger(
+        full_parse_tokens,
+        trigger_parse_tokens,
+        effect_parse_tokens,
+        line.max_triggers_per_turn,
+    )? {
+        return Ok(Some(chunk));
     }
 
     if tokens_match_blocks_or_blocked_first_strike(full_parse_tokens) {

@@ -2144,6 +2144,11 @@ impl Effect {
         Self::new(ChooseNewTargetsEffect::may_for_player(from_effect, chooser))
     }
 
+    /// Create an effect that scales the X value of a spell or ability on the stack.
+    pub fn scale_x_value(target: ChooseSpec, multiplier: u32) -> Self {
+        Self::new(crate::effects::ScaleXValueEffect::new(target, multiplier))
+    }
+
     /// Create a "create N tokens" effect.
     pub fn create_tokens(token: crate::cards::CardDefinition, count: impl Into<Value>) -> Self {
         use crate::effects::CreateTokenEffect;

@@ -2589,6 +2589,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::SwitchPowerToughness { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+            | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }

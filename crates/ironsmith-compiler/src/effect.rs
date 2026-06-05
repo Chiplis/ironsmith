@@ -1689,6 +1689,10 @@ impl Effect {
         ))
     }
 
+    pub fn scale_x_value(target: crate::target::ChooseSpec, multiplier: u32) -> Self {
+        Self::new(crate::effects::ScaleXValueEffect::new(target, multiplier))
+    }
+
     pub fn conditional_only(condition: Condition, if_true: Vec<Effect>) -> Self {
         Self::conditional(condition, if_true, Vec::new())
     }

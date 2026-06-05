@@ -138,6 +138,18 @@ pub type ApplyContinuousEffect = ironsmith_core::ApplyContinuousEffect<
 pub type GrantNextSpellAbilityEffect =
     ironsmith_core::GrantNextSpellAbilityEffect<crate::static_abilities::StaticAbility>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScaleXValueEffect {
+    pub target: crate::target::ChooseSpec,
+    pub multiplier: u32,
+}
+
+impl ScaleXValueEffect {
+    pub fn new(target: crate::target::ChooseSpec, multiplier: u32) -> Self {
+        Self { target, multiplier }
+    }
+}
+
 pub mod cards {
     #[derive(Debug, Clone, PartialEq)]
     pub struct ImprintFromHandEffect {

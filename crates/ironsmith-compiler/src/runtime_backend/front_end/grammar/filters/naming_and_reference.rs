@@ -117,6 +117,15 @@ const POWER_TOUGHNESS_STICKER_ON_IT_PATTERN: ClauseShape<'static> = clause_shape
             &["power", "and", "toughness", "sticker", "on", "it"],
         ]
 );
+const X_IN_MANA_COST_WITH_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["mana", "cost", "that", "contains", "x"],
+            &["mana", "cost", "contains", "x"],
+            &["mana", "costs", "that", "contain", "x"],
+            &["mana", "costs", "contain", "x"],
+        ]
+);
 const ODD_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_phrases & [&[&["odd", "mana", "value"], &["odd", "mana", "values"]]]
 );
@@ -757,6 +766,15 @@ pub(super) fn try_apply_with_clause_tail(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
+    if X_IN_MANA_COST_WITH_TAIL_PATTERN.matches_words(words) {
+        filter.has_x_in_cost = true;
+        return Some(if words.get(2).is_some_and(|word| *word == "that") {
+            5
+        } else {
+            4
+        });
+    }
+
     if POWER_TOUGHNESS_STICKER_ON_IT_PATTERN.matches_words(words) {
         *filter = filter
             .clone()

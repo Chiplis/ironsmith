@@ -646,6 +646,13 @@ const CLAUSE_THAT_SPELL_TARGET_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "spell"]);
 const CLAUSE_THAT_ABILITY_TARGET_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "ability"]);
+const CLAUSE_THAT_SPELL_OR_ABILITY_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["that", "spell", "or", "ability"],
+            &["that", "ability", "or", "spell"],
+        ]
+);
 const CLAUSE_TAGGED_COPY_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -1143,6 +1150,8 @@ pub(crate) fn parse_copy_spell_clause(
         let target_words = LexedClause::new(copy_target_tail).word_refs();
         let target = if CLAUSE_THIS_SPELL_TARGET_PATTERN.matches_words(&target_words) {
             TargetAst::Source(None)
+        } else if CLAUSE_THAT_SPELL_OR_ABILITY_TARGET_PATTERN.matches_words(&target_words) {
+            TargetAst::Tagged(TagKey::from("triggering"), None)
         } else if CLAUSE_THAT_SPELL_TARGET_PATTERN.matches_words(&target_words) {
             TargetAst::Tagged(TagKey::from("triggering"), None)
         } else if CLAUSE_THAT_ABILITY_TARGET_PATTERN.matches_words(&target_words) {
@@ -1229,8 +1238,12 @@ pub(crate) fn parse_copy_spell_clause(
     let target_words = copy_target_clause.word_refs();
     let target = if CLAUSE_THIS_SPELL_TARGET_PATTERN.matches_words(&target_words) {
         TargetAst::Source(None)
+    } else if CLAUSE_THAT_SPELL_OR_ABILITY_TARGET_PATTERN.matches_words(&target_words) {
+        TargetAst::Tagged(TagKey::from("triggering"), None)
     } else if CLAUSE_THAT_SPELL_TARGET_PATTERN.matches_words(&target_words) {
         TargetAst::Tagged(TagKey::from("triggering"), None)
+    } else if CLAUSE_THAT_ABILITY_TARGET_PATTERN.matches_words(&target_words) {
+        TargetAst::Tagged(TagKey::from("triggering_source"), None)
     } else if CLAUSE_TAGGED_COPY_TARGET_PATTERN.matches_words(&target_words) {
         TargetAst::Tagged(TagKey::from(IT_TAG), None)
     } else {

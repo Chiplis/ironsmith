@@ -882,6 +882,59 @@ pub(crate) fn parse_triggered_line_lexed(
         0
     };
 
+    let normalized_token_words: Vec<String> = token_words
+        .iter()
+        .map(|word| word.replace(['\'', '’'], ""))
+        .collect();
+    let contains_ordered_phrase = |phrase: &[&str]| -> bool {
+        normalized_token_words
+            .windows(phrase.len())
+            .any(|window| window == phrase)
+    };
+    if contains_ordered_phrase(&[
+        "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate", "an",
+        "ability",
+    ]) && contains_ordered_phrase(&[
+        "that",
+        "spells",
+        "mana",
+        "cost",
+        "or",
+        "that",
+        "abilitys",
+        "activation",
+        "cost",
+        "contains",
+    ]) && let Some(copy_word_idx) = normalized_token_words.windows(5).position(|window| {
+        window == ["copy", "that", "spell", "or", "ability"]
+    }) && let Some(effect_start) = TokenWordView::new(tokens).token_index_for_word_index(copy_word_idx)
+    {
+        let mut spell_filter = ObjectFilter::instant_or_sorcery();
+        spell_filter.has_x_in_cost = true;
+        let mut ability_filter = ObjectFilter::default();
+        ability_filter.has_x_in_cost = true;
+        return Ok(LineAst::Triggered {
+            trigger: TriggerSpec::Either(
+                Box::new(TriggerSpec::SpellCast {
+                    filter: Some(spell_filter),
+                    caster: PlayerFilter::You,
+                    during_turn: None,
+                    min_spells_this_turn: None,
+                    exact_spells_this_turn: None,
+                    from_not_hand: false,
+                }),
+                Box::new(TriggerSpec::AbilityActivated {
+                    activator: PlayerFilter::You,
+                    filter: ability_filter,
+                    non_mana_only: false,
+                    loyalty_only: false,
+                }),
+            ),
+            effects: parse_effect_sentences_lexed(&tokens[effect_start..])?,
+            max_triggers_per_turn: None,
+        });
+    }
+
     if start_idx < tokens.len() {
         let trigger_body = &tokens[start_idx..];
         let trigger_body_view = TokenWordView::new(trigger_body);

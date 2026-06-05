@@ -303,6 +303,16 @@ fn join_with_or(parts: &[String]) -> String {
 }
 
 fn describe_spell_filter(filter: &ObjectFilter) -> String {
+    if filter.has_x_in_cost {
+        let mut base_filter = filter.clone();
+        base_filter.has_x_in_cost = false;
+        let mut base = describe_spell_filter(&base_filter);
+        if !base.contains("{X}") {
+            base.push_str(" with a mana cost that contains {X}");
+        }
+        return base;
+    }
+
     if filter.targets_player.is_some() || filter.targets_object.is_some() {
         let mut base_filter = filter.clone();
         let targets_player = base_filter.targets_player.take();
