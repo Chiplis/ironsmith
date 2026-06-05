@@ -50611,6 +50611,127 @@ fn blood_tyrant_does_not_treat_life_loss_as_losing_the_game() {
     );
 }
 
+fn sulfuric_vortex_game() -> (crate::game_state::GameState, PlayerId, PlayerId, ObjectId) {
+    let def = parse_oracle_card_definition("Sulfuric Vortex");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let vortex_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    (game, alice, bob, vortex_id)
+}
+
+fn sulfuric_vortex_triggered_ability(
+    def: &CardDefinition,
+) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Sulfuric Vortex should have an upkeep triggered ability")
+}
+
+#[test]
+fn sulfuric_vortex_oracle_parses_strictly_and_renders_life_replacement() {
+    assert_oracle_card_parses_strict("Sulfuric Vortex");
+    let def = parse_oracle_card_definition("Sulfuric Vortex");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        "At the beginning of each player's upkeep, this enchantment deals 2 damage to that player.\nIf a player would gain life, that player gains no life instead."
+    );
+    assert!(
+        ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("RuleRestriction")
+            && ability_debug.contains("GainLife"),
+        "Sulfuric Vortex should lower to an upkeep trigger plus a structural gain-life restriction, got {ability_debug}"
+    );
+}
+
+#[test]
+fn sulfuric_vortex_prevents_life_gain_for_each_player_while_on_battlefield() {
+    let (mut game, alice, bob, vortex_id) = sulfuric_vortex_game();
+    game.update_cant_effects();
+
+    let mut alice_ctx = crate::effects::ExecutionContext::new_default(vortex_id, alice);
+    let alice_outcome = GainLifeEffect::you(3)
+        .execute(&mut game, &mut alice_ctx)
+        .expect("Alice life gain should resolve to no life gained");
+    assert_eq!(game.life_total(alice), 20, "Alice should gain no life");
+    assert_eq!(alice_outcome.as_count(), Some(0));
+    assert!(
+        alice_outcome.events.is_empty(),
+        "prevented life gain should not emit a life-gain trigger event"
+    );
+
+    let mut bob_ctx = crate::effects::ExecutionContext::new_default(vortex_id, bob);
+    let bob_outcome = GainLifeEffect::you(4)
+        .execute(&mut game, &mut bob_ctx)
+        .expect("Bob life gain should resolve to no life gained");
+    assert_eq!(game.life_total(bob), 20, "Bob should gain no life");
+    assert_eq!(bob_outcome.as_count(), Some(0));
+    assert!(
+        bob_outcome.events.is_empty(),
+        "prevented opponent life gain should not emit a life-gain trigger event"
+    );
+}
+
+#[test]
+fn sulfuric_vortex_life_gain_restriction_ends_when_enchantment_leaves() {
+    let (mut game, alice, _bob, vortex_id) = sulfuric_vortex_game();
+    game.update_cant_effects();
+    let moved_vortex_id = game
+        .move_object(
+            vortex_id,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+        )
+        .expect("Sulfuric Vortex should move to graveyard");
+    game.update_cant_effects();
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(moved_vortex_id, alice);
+    let outcome = GainLifeEffect::you(3)
+        .execute(&mut game, &mut ctx)
+        .expect("life gain should work after Sulfuric Vortex leaves");
+    assert_eq!(game.life_total(alice), 23);
+    assert_eq!(outcome.as_count(), Some(3));
+    assert!(
+        !outcome.events.is_empty(),
+        "actual life gain should emit a life-gain trigger event"
+    );
+}
+
+#[test]
+fn sulfuric_vortex_upkeep_trigger_damages_that_player() {
+    let def = parse_oracle_card_definition("Sulfuric Vortex");
+    let triggered = sulfuric_vortex_triggered_ability(&def);
+    let (mut game, alice, bob, vortex_id) = sulfuric_vortex_game();
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    let ctx = crate::triggers::TriggerContext::for_source(vortex_id, alice, &game);
+    let controller_upkeep = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let opponent_upkeep = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert!(
+        triggered.trigger.matches(&controller_upkeep, &ctx)
+            && triggered.trigger.matches(&opponent_upkeep, &ctx),
+        "Sulfuric Vortex should trigger at each player's upkeep"
+    );
+    assert_eq!(resolve_triggers_for_source(&mut game, vortex_id, &opponent_upkeep), 1);
+    assert_eq!(game.life_total(alice), 20, "controller should not be damaged on Bob's upkeep");
+    assert_eq!(game.life_total(bob), 18, "that upkeep player should be dealt 2 damage");
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn mistmeadow_skulk_strict_parser_text_structure_and_runtime_regression() {
