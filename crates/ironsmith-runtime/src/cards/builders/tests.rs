@@ -5146,6 +5146,193 @@ fn summoners_grimoire_job_select_creates_hero_and_attaches_equipment() {
     );
 }
 
+struct SummonersGrimoireAttackDecisionMaker {
+    chosen_card: ObjectId,
+}
+
+impl crate::decision::DecisionMaker for SummonersGrimoireAttackDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &crate::game_state::GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == self.chosen_card && candidate.legal)
+        {
+            vec![self.chosen_card]
+        } else {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+fn resolve_summoners_grimoire_attack_trigger(
+    game: &mut crate::game_state::GameState,
+    equipped_creature: ObjectId,
+    chosen_card: ObjectId,
+) {
+    let bob = PlayerId::from_index(1);
+    game.combat = Some(crate::combat_state::CombatState {
+        attackers: vec![crate::combat_state::AttackerInfo {
+            creature: equipped_creature,
+            target: crate::combat_state::AttackTarget::Player(bob),
+        }],
+        ..crate::combat_state::CombatState::default()
+    });
+    let event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::combat::CreatureAttackedEvent::new(
+            equipped_creature,
+            crate::triggers::AttackEventTarget::Player(bob),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut matching_count = 0;
+    for entry in crate::triggers::check_triggers(game, &event)
+        .into_iter()
+        .filter(|entry| entry.source == equipped_creature)
+    {
+        matching_count += 1;
+        trigger_queue.add(entry);
+    }
+    assert_eq!(
+        matching_count, 1,
+        "Summoner's Grimoire should grant the equipped creature one attack trigger"
+    );
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Summoner's Grimoire attack trigger should go on the stack");
+    let mut dm = SummonersGrimoireAttackDecisionMaker { chosen_card };
+    crate::game_loop::resolve_stack_entry_with(game, &mut dm)
+        .expect("Summoner's Grimoire attack trigger should resolve");
+}
+
+fn summoners_grimoire_attached_game(
+    hand_card_types: Vec<CardType>,
+) -> (crate::game_state::GameState, PlayerId, ObjectId, ObjectId) {
+    let grimoire_def = parse_oracle_card_definition("Summoner's Grimoire");
+    let equipped_def = CardDefinitionBuilder::new(CardId::new(), "Equipped Adept")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let hand_def = CardDefinitionBuilder::new(CardId::new(), "Hand Summon")
+        .card_types(hand_card_types)
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let grimoire = game.create_object_from_definition(&grimoire_def, alice, Zone::Battlefield);
+    let equipped_creature =
+        game.create_object_from_definition(&equipped_def, alice, Zone::Battlefield);
+    let hand_card = game.create_object_from_definition(&hand_def, alice, Zone::Hand);
+    assert!(
+        game.attach_object_to_target(
+            grimoire,
+            crate::object::AttachmentTarget::Object(equipped_creature)
+        ),
+        "Summoner's Grimoire should attach to the test creature"
+    );
+
+    (game, alice, equipped_creature, hand_card)
+}
+
+#[test]
+fn summoners_grimoire_attack_trigger_puts_enchantment_creature_tapped_and_attacking() {
+    let (mut game, alice, equipped_creature, hand_card) = summoners_grimoire_attached_game(vec![
+        CardType::Enchantment,
+        CardType::Creature,
+    ]);
+    let hand_card_stable_id = game
+        .object(hand_card)
+        .expect("chosen card should exist in hand")
+        .stable_id;
+
+    resolve_summoners_grimoire_attack_trigger(&mut game, equipped_creature, hand_card);
+    let moved_card = game
+        .find_object_by_stable_id(hand_card_stable_id)
+        .expect("chosen enchantment creature card should still be tracked after moving zones");
+
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice should exist")
+            .hand
+            .contains(&hand_card),
+        "chosen enchantment creature card should leave Alice's hand"
+    );
+    assert!(
+        game.battlefield.contains(&moved_card),
+        "chosen enchantment creature card should move to the battlefield"
+    );
+    assert!(
+        game.is_tapped(moved_card),
+        "chosen enchantment creature card should enter tapped"
+    );
+    let combat = game.combat.as_ref().expect("combat should remain active");
+    assert!(
+        combat
+            .attackers
+            .iter()
+            .any(|attacker| attacker.creature == moved_card),
+        "chosen enchantment creature card should enter attacking"
+    );
+}
+
+#[test]
+fn summoners_grimoire_attack_trigger_puts_non_enchantment_creature_normally() {
+    let (mut game, alice, equipped_creature, hand_card) =
+        summoners_grimoire_attached_game(vec![CardType::Creature]);
+    let hand_card_stable_id = game
+        .object(hand_card)
+        .expect("chosen card should exist in hand")
+        .stable_id;
+
+    resolve_summoners_grimoire_attack_trigger(&mut game, equipped_creature, hand_card);
+    let moved_card = game
+        .find_object_by_stable_id(hand_card_stable_id)
+        .expect("chosen creature card should still be tracked after moving zones");
+
+    assert!(
+        !game
+            .player(alice)
+            .expect("Alice should exist")
+            .hand
+            .contains(&hand_card),
+        "chosen creature card should leave Alice's hand"
+    );
+    assert!(
+        game.battlefield.contains(&moved_card),
+        "chosen creature card should move to the battlefield"
+    );
+    assert!(
+        !game.is_tapped(moved_card),
+        "non-enchantment creature card should not enter tapped"
+    );
+    let combat = game.combat.as_ref().expect("combat should remain active");
+    assert!(
+        !combat
+            .attackers
+            .iter()
+            .any(|attacker| attacker.creature == moved_card),
+        "non-enchantment creature card should not enter attacking"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn shiny_impetus_buffs_and_goads_enchanted_creature_away_from_aura_controller() {
