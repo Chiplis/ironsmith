@@ -38,6 +38,57 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+fn will_kenrith_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(567_555), "Will Kenrith")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .parse_text(
+            "+2: Until your next turn, up to two target creatures each have base power and toughness 0/3 and lose all abilities.\n\
+             -2: Target player draws two cards. Until your next turn, instant, sorcery, and planeswalker spells that player casts cost {2} less to cast.\n\
+             -8: Target player gets an emblem with \"Whenever you cast an instant or sorcery spell, copy it. You may choose new targets for the copy.\"\n\
+             Partner with Rowan Kenrith\n\
+             Will Kenrith can be your commander.",
+        )
+        .expect("Will Kenrith should parse for runtime tests")
+}
+
+fn resolve_will_kenrith_loyalty_ability(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    cost_markers: &[&str],
+    targets: Vec<crate::effects::ResolvedTarget>,
+) {
+    let def = will_kenrith_definition();
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                let cost_debug = format!("{:?}", activated.mana_cost);
+                cost_markers
+                    .iter()
+                    .all(|marker| cost_debug.contains(marker))
+                    .then_some(activated)
+            }
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("Will Kenrith should have loyalty ability matching {cost_markers:?}"));
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(targets);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Will Kenrith loyalty ability effect should resolve");
+    }
+}
+
 fn component_pouch_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(900_071), "Component Pouch")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
@@ -40199,6 +40250,266 @@ fn commander_liara_portyr_runtime_has_no_reduction_without_attacked_players() {
         game.exile.len(),
         exile_before,
         "without attacked players, Commander Liara Portyr should leave exile unchanged"
+    );
+}
+
+#[test]
+fn will_kenrith_plus_two_sets_base_pt_and_removes_abilities_until_next_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let will_def = will_kenrith_definition();
+    let will = game.create_object_from_definition(&will_def, alice, Zone::Battlefield);
+
+    let creature_with_keywords = |name: &str, power: i32, toughness: i32| {
+        CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .parse_text("Flying\nTrample")
+            .expect("keyword creature should parse")
+    };
+    let first = game.create_object_from_definition(
+        &creature_with_keywords("Will Kenrith First Target", 4, 4),
+        bob,
+        Zone::Battlefield,
+    );
+    let second = game.create_object_from_definition(
+        &creature_with_keywords("Will Kenrith Second Target", 6, 6),
+        bob,
+        Zone::Battlefield,
+    );
+    let untouched = game.create_object_from_definition(
+        &creature_with_keywords("Will Kenrith Untouched Creature", 5, 5),
+        bob,
+        Zone::Battlefield,
+    );
+
+    resolve_will_kenrith_loyalty_ability(
+        &mut game,
+        will,
+        alice,
+        &["PutCountersEffect"],
+        vec![
+            crate::effects::ResolvedTarget::Object(first),
+            crate::effects::ResolvedTarget::Object(second),
+        ],
+    );
+
+    for target in [first, second] {
+        let characteristics = game
+            .calculated_characteristics(target)
+            .expect("targeted creature should have calculated characteristics");
+        assert_eq!(
+            (characteristics.power, characteristics.toughness),
+            (Some(0), Some(3)),
+            "Will Kenrith +2 should set each targeted creature's base power/toughness to 0/3"
+        );
+        assert!(
+            !game.object_has_ability(target, &StaticAbility::flying())
+                && !game.object_has_ability(target, &StaticAbility::trample()),
+            "Will Kenrith +2 should remove all abilities from each targeted creature"
+        );
+    }
+
+    assert_eq!(
+        (game.calculated_power(untouched), game.calculated_toughness(untouched)),
+        (Some(5), Some(5)),
+        "Will Kenrith +2 should not affect creatures beyond the two selected targets"
+    );
+    assert!(
+        game.object_has_ability(untouched, &StaticAbility::flying())
+            && game.object_has_ability(untouched, &StaticAbility::trample()),
+        "unselected creature should keep its abilities"
+    );
+
+    game.turn.turn_number += 1;
+    game.turn.active_player = bob;
+    assert_eq!(
+        (game.calculated_power(first), game.calculated_toughness(first)),
+        (Some(0), Some(3)),
+        "Will Kenrith +2 should last through other players' turns"
+    );
+
+    game.turn.turn_number += 1;
+    game.turn.active_player = alice;
+    assert_eq!(
+        (game.calculated_power(first), game.calculated_toughness(first)),
+        (Some(4), Some(4)),
+        "Will Kenrith +2 should expire when Will's controller reaches their next turn"
+    );
+    assert!(
+        game.object_has_ability(first, &StaticAbility::flying())
+            && game.object_has_ability(first, &StaticAbility::trample()),
+        "targeted creature should regain printed abilities after Will Kenrith +2 expires"
+    );
+}
+
+#[test]
+fn will_kenrith_minus_two_draws_and_reduces_only_target_players_matching_spells_until_next_turn() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let will_def = will_kenrith_definition();
+    let will = game.create_object_from_definition(&will_def, alice, Zone::Battlefield);
+
+    for idx in 0..2 {
+        let draw_card = CardDefinitionBuilder::new(
+            CardId::new(),
+            format!("Will Kenrith Bob Draw Probe {idx}"),
+        )
+        .card_types(vec![CardType::Instant])
+        .build();
+        game.create_object_from_definition(&draw_card, bob, Zone::Library);
+    }
+    let bob_hand_before = game.player(bob).expect("bob exists").hand.len();
+
+    resolve_will_kenrith_loyalty_ability(
+        &mut game,
+        will,
+        alice,
+        &["RemoveCountersEffect", "Fixed(2)"],
+        vec![crate::effects::ResolvedTarget::Player(bob)],
+    );
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").hand.len(),
+        bob_hand_before + 2,
+        "Will Kenrith -2 should make the targeted player draw two cards"
+    );
+
+    let costed_spell = |name: &str, card_type: CardType| {
+        let mut builder = CardDefinitionBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+            .card_types(vec![card_type]);
+        if card_type == CardType::Creature {
+            builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+        }
+        if card_type == CardType::Planeswalker {
+            builder = builder.loyalty(3);
+        }
+        builder.build()
+    };
+    let bob_instant = game.create_object_from_definition(
+        &costed_spell("Will Kenrith Bob Instant Probe", CardType::Instant),
+        bob,
+        Zone::Hand,
+    );
+    let bob_sorcery = game.create_object_from_definition(
+        &costed_spell("Will Kenrith Bob Sorcery Probe", CardType::Sorcery),
+        bob,
+        Zone::Hand,
+    );
+    let bob_planeswalker = game.create_object_from_definition(
+        &costed_spell(
+            "Will Kenrith Bob Planeswalker Probe",
+            CardType::Planeswalker,
+        ),
+        bob,
+        Zone::Hand,
+    );
+    let bob_creature = game.create_object_from_definition(
+        &costed_spell("Will Kenrith Bob Creature Probe", CardType::Creature),
+        bob,
+        Zone::Hand,
+    );
+    let alice_instant = game.create_object_from_definition(
+        &costed_spell("Will Kenrith Alice Instant Probe", CardType::Instant),
+        alice,
+        Zone::Hand,
+    );
+
+    for (spell_id, expected, message) in [
+        (bob_instant, "{2}", "target player's instant should be reduced"),
+        (bob_sorcery, "{2}", "target player's sorcery should be reduced"),
+        (
+            bob_planeswalker,
+            "{2}",
+            "target player's planeswalker should be reduced",
+        ),
+        (bob_creature, "{4}", "target player's creature should not be reduced"),
+        (
+            alice_instant,
+            "{4}",
+            "non-target player's instant should not be reduced",
+        ),
+    ] {
+        let spell = game.object(spell_id).expect("spell exists");
+        let caster = game.controller_of(spell);
+        let cost = crate::decision::calculate_effective_mana_cost(
+            &game,
+            caster,
+            spell,
+            spell.mana_cost.as_ref().expect("spell should have mana cost"),
+        );
+        assert_eq!(cost.to_oracle(), expected, "{message}");
+    }
+
+    game.turn.turn_number += 1;
+    game.turn.active_player = bob;
+    let spell = game.object(bob_instant).expect("bob instant exists");
+    let cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        bob,
+        spell,
+        spell.mana_cost.as_ref().expect("bob instant mana cost"),
+    );
+    assert_eq!(
+        cost.to_oracle(),
+        "{2}",
+        "Will Kenrith -2 reduction should last through the target player's next turn"
+    );
+
+    game.turn.turn_number += 1;
+    game.turn.active_player = alice;
+    let spell = game.object(bob_instant).expect("bob instant exists");
+    let cost = crate::decision::calculate_effective_mana_cost(
+        &game,
+        bob,
+        spell,
+        spell.mana_cost.as_ref().expect("bob instant mana cost"),
+    );
+    assert_eq!(
+        cost.to_oracle(),
+        "{4}",
+        "Will Kenrith -2 reduction should expire on Will controller's next turn"
+    );
+}
+
+#[test]
+fn will_kenrith_minus_eight_gives_emblem_to_target_player() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let will_def = will_kenrith_definition();
+    let will = game.create_object_from_definition(&will_def, alice, Zone::Battlefield);
+    let command_zone_before = game.command_zone.len();
+
+    resolve_will_kenrith_loyalty_ability(
+        &mut game,
+        will,
+        alice,
+        &["RemoveCountersEffect", "Fixed(8)"],
+        vec![crate::effects::ResolvedTarget::Player(bob)],
+    );
+
+    assert_eq!(
+        game.command_zone.len(),
+        command_zone_before + 1,
+        "Will Kenrith -8 should create one emblem"
+    );
+    let emblem_id = *game.command_zone.last().expect("emblem should be in command zone");
+    let emblem = game.object(emblem_id).expect("emblem object should exist");
+    assert_eq!(emblem.kind, ObjectKind::Emblem);
+    assert_eq!(
+        emblem.owner, bob,
+        "Will Kenrith -8 should give the emblem to the targeted player, not Will's controller"
+    );
+    let emblem_debug = format!("{:#?}", emblem.abilities);
+    assert!(
+        emblem_debug.contains("SpellCastTrigger")
+            && emblem_debug.contains("CopySpellEffect")
+            && emblem_debug.contains("RetargetStackObjectEffect"),
+        "Will Kenrith emblem should keep its instant/sorcery copy trigger, got {emblem_debug}"
     );
 }
 

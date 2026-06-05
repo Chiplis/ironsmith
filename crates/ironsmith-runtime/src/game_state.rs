@@ -821,17 +821,28 @@ impl GoadEffectInstance {
 pub struct TemporarySpellCostReductionEffectInstance {
     pub player: PlayerId,
     pub source: ObjectId,
+    pub duration_controller: PlayerId,
     pub filter: crate::target::ObjectFilter,
     pub reduction: crate::mana::ManaCost,
     pub generic_reduction: Option<crate::effect::Value>,
     pub applies_to_all_matching_this_turn: bool,
+    pub duration: crate::effect::Until,
     pub remaining_uses: u32,
     pub expires_end_of_turn: u32,
 }
 
 impl TemporarySpellCostReductionEffectInstance {
-    pub fn is_expired(&self, current_turn: u32) -> bool {
-        self.remaining_uses == 0 || current_turn > self.expires_end_of_turn
+    pub fn is_expired(&self, current_turn: u32, active_player: PlayerId) -> bool {
+        if self.remaining_uses == 0 {
+            return true;
+        }
+        match self.duration {
+            crate::effect::Until::YourNextTurn => {
+                current_turn > self.expires_end_of_turn && active_player == self.duration_controller
+            }
+            crate::effect::Until::Forever => false,
+            _ => current_turn > self.expires_end_of_turn,
+        }
     }
 }
 
@@ -2912,14 +2923,37 @@ impl GameState {
         reduction: crate::mana::ManaCost,
         remaining_uses: u32,
     ) {
+        self.add_temporary_spell_cost_reduction_until(
+            player,
+            source,
+            player,
+            filter,
+            reduction,
+            remaining_uses,
+            crate::effect::Until::EndOfTurn,
+        );
+    }
+
+    pub fn add_temporary_spell_cost_reduction_until(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        duration_controller: PlayerId,
+        filter: crate::target::ObjectFilter,
+        reduction: crate::mana::ManaCost,
+        remaining_uses: u32,
+        duration: crate::effect::Until,
+    ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
                 player,
                 source,
+                duration_controller,
                 filter,
                 reduction,
                 generic_reduction: None,
                 applies_to_all_matching_this_turn: false,
+                duration,
                 remaining_uses,
                 expires_end_of_turn: self.turn.turn_number,
             },
@@ -2933,14 +2967,35 @@ impl GameState {
         filter: crate::target::ObjectFilter,
         generic_reduction: crate::effect::Value,
     ) {
+        self.add_temporary_matching_spell_cost_reduction_until(
+            player,
+            source,
+            player,
+            filter,
+            generic_reduction,
+            crate::effect::Until::EndOfTurn,
+        );
+    }
+
+    pub fn add_temporary_matching_spell_cost_reduction_until(
+        &mut self,
+        player: PlayerId,
+        source: ObjectId,
+        duration_controller: PlayerId,
+        filter: crate::target::ObjectFilter,
+        generic_reduction: crate::effect::Value,
+        duration: crate::effect::Until,
+    ) {
         self.effect_store.temporary_spell_cost_reductions.push(
             TemporarySpellCostReductionEffectInstance {
                 player,
                 source,
+                duration_controller,
                 filter,
                 reduction: crate::mana::ManaCost::new(),
                 generic_reduction: Some(generic_reduction),
                 applies_to_all_matching_this_turn: true,
+                duration,
                 remaining_uses: u32::MAX,
                 expires_end_of_turn: self.turn.turn_number,
             },
@@ -3169,9 +3224,10 @@ impl GameState {
 
     pub fn cleanup_temporary_spell_cost_reductions_end_of_turn(&mut self) {
         let current_turn = self.turn.turn_number;
+        let active_player = self.turn.active_player;
         self.effect_store
             .temporary_spell_cost_reductions
-            .retain(|effect| !effect.is_expired(current_turn));
+            .retain(|effect| !effect.is_expired(current_turn, active_player));
     }
 
     pub fn cleanup_temporary_spell_ability_grants_end_of_turn(&mut self) {

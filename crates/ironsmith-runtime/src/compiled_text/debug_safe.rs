@@ -34,7 +34,48 @@ fn mechanical_cleanup(line: String) -> String {
     let line = normalize_debug_safe_mana_symbol_case(&line);
     let line = strip_parenthetical_text(&line);
     let line = normalize_debug_safe_spelling_surface(&line);
+    let line = normalize_until_your_next_turn_duration_order(&line);
     normalize_each_player_x_token_damage_pair(&line)
+}
+
+fn lower_first_ascii(text: &str) -> String {
+    let Some(first) = text.chars().next() else {
+        return String::new();
+    };
+    let rest = &text[first.len_utf8()..];
+    format!("{}{}", first.to_ascii_lowercase(), rest)
+}
+
+fn normalize_until_your_next_turn_duration_order(line: &str) -> String {
+    let trimmed = line.trim();
+    let had_period = trimmed.ends_with('.');
+    let without_period = trimmed.trim_end_matches('.');
+    let Some(body) = without_period.strip_suffix(" until your next turn") else {
+        return line.to_string();
+    };
+    if body.starts_with("Until your next turn") {
+        return line.to_string();
+    }
+    let (prefix, duration_body) = if let Some((head, tail)) = body.rsplit_once(". ") {
+        (format!("{head}. "), tail)
+    } else if let Some((head, tail)) = body.split_once(": ") {
+        (format!("{head}: "), tail)
+    } else {
+        (String::new(), body)
+    };
+    let mut normalized = format!(
+        "{}Until your next turn, {}",
+        prefix,
+        lower_first_ascii(duration_body)
+    );
+    normalized = normalized.replace(
+        " target creatures have base power and toughness ",
+        " target creatures each have base power and toughness ",
+    );
+    if had_period {
+        normalized.push('.');
+    }
+    normalized
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {

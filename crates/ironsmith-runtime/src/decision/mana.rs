@@ -3095,7 +3095,7 @@ pub(crate) fn apply_spell_cost_modifiers(
 
     let current_turn = game.turn.turn_number;
     for effect in &game.effect_store.temporary_spell_cost_reductions {
-        if effect.player != player || effect.is_expired(current_turn) {
+        if effect.player != player || effect.is_expired(current_turn, game.turn.active_player) {
             continue;
         }
         let temporary_ctx = with_source_exiled_tagged_objects(

@@ -1988,6 +1988,7 @@ pub struct GrantNextSpellCostReductionEffect {
     pub reduction: crate::mana::ManaCost,
     pub generic_reduction: Option<Value>,
     pub applies_to_all_matching_this_turn: bool,
+    pub duration: Until,
 }
 
 impl GrantNextSpellCostReductionEffect {
@@ -2002,6 +2003,7 @@ impl GrantNextSpellCostReductionEffect {
             reduction,
             generic_reduction: None,
             applies_to_all_matching_this_turn: false,
+            duration: Until::EndOfTurn,
         }
     }
 
@@ -2016,6 +2018,23 @@ impl GrantNextSpellCostReductionEffect {
             reduction: crate::mana::ManaCost::new(),
             generic_reduction: Some(generic_reduction.into()),
             applies_to_all_matching_this_turn: true,
+            duration: Until::EndOfTurn,
+        }
+    }
+
+    pub fn all_matching_until(
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        generic_reduction: impl Into<Value>,
+        duration: Until,
+    ) -> Self {
+        Self {
+            player,
+            filter,
+            reduction: crate::mana::ManaCost::new(),
+            generic_reduction: Some(generic_reduction.into()),
+            applies_to_all_matching_this_turn: true,
+            duration,
         }
     }
 }

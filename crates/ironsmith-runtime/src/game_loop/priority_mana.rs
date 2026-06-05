@@ -3953,7 +3953,7 @@ pub(super) fn finalize_spell_cast(
             .iter()
             .enumerate()
             .filter_map(|(idx, effect)| {
-                if effect.player != caster || effect.is_expired(current_turn) {
+                if effect.player != caster || effect.is_expired(current_turn, game.turn.active_player) {
                     return None;
                 }
                 let mut cast_filter = effect.filter.clone();

@@ -5913,7 +5913,11 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, reduction } => {
+        SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn {
+            filter,
+            reduction,
+            duration,
+        } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let mut player_filter = subject.into_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
@@ -5926,10 +5930,11 @@ fn compile_subject_verb_effect(
             }
             Ok((
                 vec![Effect::new(
-                    crate::effects::GrantNextSpellCostReductionEffect::all_matching_this_turn(
+                    crate::effects::GrantNextSpellCostReductionEffect::all_matching_until(
                         player_filter,
                         resolved_filter,
                         reduction.clone(),
+                        duration.clone(),
                     ),
                 )],
                 Vec::new(),

@@ -9323,7 +9323,11 @@ pub(super) fn describe_apply_continuous_clauses(
                 ));
             }
             crate::effects::continuous::RuntimeModification::RemoveAllAbilities => {
-                clauses.push("loses all abilities".to_string());
+                clauses.push(if plural_target {
+                    "lose all abilities".to_string()
+                } else {
+                    "loses all abilities".to_string()
+                });
             }
             crate::effects::continuous::RuntimeModification::RemoveThisAbility => {
                 clauses.push("loses this ability".to_string());

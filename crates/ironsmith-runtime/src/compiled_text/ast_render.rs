@@ -2938,6 +2938,9 @@ fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
     let AbilityKind::Static(static_ability) = &ability.kind else {
         return false;
     };
+    if static_ability.id() == crate::static_abilities::StaticAbilityId::CanBeCommander {
+        return true;
+    }
     static_ability
         .enter_as_copy_as_enters()
         .is_some_and(|spec| spec.linked_exile_pair.is_some())
