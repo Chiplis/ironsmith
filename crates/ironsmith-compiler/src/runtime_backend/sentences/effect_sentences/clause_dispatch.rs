@@ -10,8 +10,9 @@ use super::super::activation_and_restrictions::{
     parse_cant_restrictions, parse_choose_card_type_phrase_words, parse_choose_color_phrase_words,
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_may_cast_it_sentence, parse_single_word_keyword_action,
-    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause,
-    parse_you_choose_player_clause, starts_with_target_indicator,
+    parse_target_player_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
+    parse_you_choose_player_clause,
+    starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
@@ -76,6 +77,49 @@ mod helpers;
 mod next_turn_cant;
 
 type ClauseDispatchCompatWords<'a> = TokenWordView<'a>;
+
+fn parse_mana_replacement_clause_words(words: &[&str]) -> Option<EffectAst> {
+    let [
+        "until",
+        "end",
+        "of",
+        "turn",
+        "if",
+        "you",
+        "tap",
+        "a",
+        "land",
+        "you",
+        "control",
+        "for",
+        "mana",
+        "it",
+        "produces",
+        mana_word,
+        "instead",
+        "of",
+        "any",
+        "other",
+        "type",
+    ] = words
+    else {
+        return None;
+    };
+    let replacement_mana = match *mana_word {
+        "w" => crate::mana::ManaSymbol::White,
+        "u" => crate::mana::ManaSymbol::Blue,
+        "b" => crate::mana::ManaSymbol::Black,
+        "r" => crate::mana::ManaSymbol::Red,
+        "g" => crate::mana::ManaSymbol::Green,
+        "c" => crate::mana::ManaSymbol::Colorless,
+        _ => return None,
+    };
+    Some(EffectAst::subject_verb_register_mana_replacement(
+        ObjectFilter::land().you_control(),
+        vec![replacement_mana],
+        crate::effects::ReplacementApplyMode::UntilEndOfTurn,
+    ))
+}
 
 const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
 const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -1039,6 +1083,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     if let Some(effect) = parse_additional_phase_sentence(tokens) {
         return Ok(effect);
     }
+    if let Some(effect) = parse_mana_replacement_clause_words(&clause_words) {
+        return Ok(effect);
+    }
     if is_mana_replacement_clause_words(&clause_words) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana replacement clause (clause: '{}') [rule=mana-replacement]",
@@ -1286,11 +1333,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if let Some((chooser, choose_filter, choose_count)) = parse_you_choose_objects_clause(tokens)? {
+    if let Some((chooser, choose_filter, choose_count, count_value)) =
+        parse_you_choose_objects_clause_with_count_value(tokens)?
+    {
         return Ok(EffectAst::ChooseObjects {
             filter: choose_filter,
             count: choose_count,
-            count_value: None,
+            count_value,
             player: chooser,
             tag: TagKey::from(IT_TAG),
         });

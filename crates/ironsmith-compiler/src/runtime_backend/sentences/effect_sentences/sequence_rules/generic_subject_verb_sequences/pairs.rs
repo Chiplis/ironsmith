@@ -572,6 +572,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                filter,
                 ..
             },
         ..
@@ -590,6 +591,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            filter,
         ),
     ]))
 }

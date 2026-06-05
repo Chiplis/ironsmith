@@ -53,6 +53,7 @@ pub(crate) enum PermissionClauseSpec {
         as_copy: bool,
         without_paying_mana_cost: bool,
         lifetime: PermissionLifetime,
+        filter: Option<ObjectFilter>,
     },
     GrantBySpec {
         player: PlayerAst,
@@ -255,6 +256,9 @@ const PERMISSION_LIFETIME_PREFIXES: &[&[&str]] = &[
     &["for", "as", "long", "as", "it", "remains", "exiled"],
     &[
         "for", "as", "long", "as", "that", "card", "remains", "exiled",
+    ],
+    &[
+        "for", "as", "long", "as", "those", "cards", "remain", "exiled",
     ],
     &[
         "for", "as", "long", "as", "you", "control", "this", "creature",
@@ -700,6 +704,9 @@ fn permission_lifetime_from_prefix_words(words: &[&str]) -> Option<PermissionLif
             "card",
             "remains",
             "exiled",
+        ]
+        | [
+            "for", "as", "long", "as", "those", "cards", "remain", "exiled",
         ] => Some(PermissionLifetime::ForAsLongAsExiled),
         [
             "for",
@@ -733,6 +740,72 @@ fn parse_permission_lifetime_prefix_tokens<'a>(
         lifetime,
         rest_tokens: rest_clause.tokens(),
     })
+}
+
+fn strip_for_as_long_as_look_at_tagged_prefix_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<OwnedLexToken>> {
+    let parsed = parse_permission_lifetime_prefix_tokens(tokens)?;
+    if parsed.lifetime != PermissionLifetime::ForAsLongAsExiled {
+        return None;
+    }
+    let prefix_len = tokens.len().checked_sub(parsed.rest_tokens.len())?;
+    let rest_tokens = trim_lexed_commas(parsed.rest_tokens);
+    let rest_words = token_word_refs(rest_tokens);
+    let look_word_count = if rest_words.starts_with(&["you", "may", "look", "at", "them"]) {
+        5
+    } else if rest_words.starts_with(&["you", "may", "look", "at", "those", "cards"]) {
+        6
+    } else {
+        return None;
+    };
+    let after_look_idx = token_index_for_word_index(rest_tokens, look_word_count)?;
+    let after_look = trim_lexed_commas(strip_leading_token_words_any(
+        trim_lexed_commas(&rest_tokens[after_look_idx..]),
+        &["and"],
+    ));
+    if after_look.is_empty() {
+        return None;
+    }
+
+    let mut permission_tokens = tokens[..prefix_len].to_vec();
+    permission_tokens.extend_from_slice(after_look);
+    Some(permission_tokens)
+}
+
+fn parse_permanent_spells_from_among_tagged_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken], ObjectFilter)> {
+    for phrase in [
+        &["permanent", "spells", "from", "among", "them"][..],
+        &[
+            "permanent",
+            "spells",
+            "from",
+            "among",
+            "those",
+            "cards",
+        ][..],
+    ] {
+        let words = token_word_refs(tokens);
+        if !words.starts_with(phrase) {
+            continue;
+        }
+        let rest_idx = if words.len() == phrase.len() {
+            tokens.len()
+        } else {
+            token_index_for_word_index(tokens, phrase.len())?
+        };
+        return Some((
+            TaggedPermissionTarget {
+                tag: TagKey::from(IT_TAG),
+                as_copy: false,
+            },
+            &tokens[rest_idx..],
+            permanent_spell_filter(),
+        ));
+    }
+    None
 }
 
 fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
@@ -1886,8 +1959,13 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         return Ok(None);
     }
 
-    if let Some((target_ref, tagged_tail_tokens)) =
-        parse_tagged_cast_or_play_target_tokens(rest_tokens)
+    if let Some((target_ref, tagged_tail_tokens, filter)) =
+        parse_permanent_spells_from_among_tagged_tokens(rest_tokens)
+            .map(|(target_ref, tail, filter)| (target_ref, tail, Some(filter)))
+            .or_else(|| {
+                parse_tagged_cast_or_play_target_tokens(rest_tokens)
+                    .map(|(target_ref, tail)| (target_ref, tail, None))
+            })
     {
         let target_len = rest_tokens.len() - tagged_tail_tokens.len();
         let target_tokens = &rest_tokens[..target_len];
@@ -1973,6 +2051,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             as_copy: target_ref.as_copy,
             without_paying_mana_cost,
             lifetime,
+            filter,
         }));
     }
 
@@ -2188,6 +2267,7 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
+            ..
         }) if player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 tag,
@@ -2212,6 +2292,7 @@ pub(crate) fn parse_until_your_next_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
+            ..
         }) if matches!(player, PlayerAst::You | PlayerAst::Implicit) => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                 tag,
@@ -2546,6 +2627,19 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         return Ok(Some(effect));
     }
 
+    if let Some(permission_tokens) = strip_for_as_long_as_look_at_tagged_prefix_tokens(&trimmed)
+        && let Some(permission) = parse_cast_or_play_tagged_clause(&permission_tokens)?
+    {
+        let mut look_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        look_filter.zone = Some(Zone::Exile);
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![
+                EffectAst::subject_verb_look_at_objects(PlayerAst::You, look_filter),
+                permission,
+            ],
+        }));
+    }
+
     let mut allow_any_color_for_cast = false;
     if let Some(stripped) = strip_allow_any_color_for_cast_suffix_tokens(&trimmed) {
         allow_any_color_for_cast = true;
@@ -2620,6 +2714,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::Immediate,
+            ..
         }) => {
             let cast = EffectAst::subject_verb_cast_tagged(
                 tag,
@@ -2645,6 +2740,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+            ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
                 tag,
@@ -2661,6 +2757,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::UntilYourNextTurn,
+            ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_until_your_next_turn(
                 tag,
@@ -2709,6 +2806,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
+            filter,
         }) if matches!(
             player,
             PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
@@ -2721,6 +2819,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
+                    filter,
                 ),
             ))
         }
@@ -2731,6 +2830,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsYouControlSource,
+            ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
                 tag,

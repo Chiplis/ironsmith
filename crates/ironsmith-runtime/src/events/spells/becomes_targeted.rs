@@ -6,11 +6,11 @@ use crate::events::traits::{EventKind, GameEventType};
 use crate::game_state::{GameState, Target};
 use crate::ids::{ObjectId, PlayerId};
 
-/// A permanent became the target of a spell or ability.
+/// An object or player became the target of a spell or ability.
 #[derive(Debug, Clone)]
 pub struct BecomesTargetedEvent {
-    /// The object that became targeted.
-    pub target: ObjectId,
+    /// The object or player that became targeted.
+    pub target: Target,
     /// The spell or ability source that targeted it.
     pub source: ObjectId,
     /// The controller of the source.
@@ -20,9 +20,39 @@ pub struct BecomesTargetedEvent {
 }
 
 impl BecomesTargetedEvent {
-    /// Create a new becomes-targeted event.
+    /// Create a new object becomes-targeted event.
     pub fn new(
         target: ObjectId,
+        source: ObjectId,
+        source_controller: PlayerId,
+        by_ability: bool,
+    ) -> Self {
+        Self {
+            target: Target::Object(target),
+            source,
+            source_controller,
+            by_ability,
+        }
+    }
+
+    /// Create a new player becomes-targeted event.
+    pub fn new_player(
+        target: PlayerId,
+        source: ObjectId,
+        source_controller: PlayerId,
+        by_ability: bool,
+    ) -> Self {
+        Self {
+            target: Target::Player(target),
+            source,
+            source_controller,
+            by_ability,
+        }
+    }
+
+    /// Create a new becomes-targeted event for any target kind.
+    pub fn new_target(
+        target: Target,
         source: ObjectId,
         source_controller: PlayerId,
         by_ability: bool,
@@ -34,6 +64,20 @@ impl BecomesTargetedEvent {
             by_ability,
         }
     }
+
+    pub fn target_object(&self) -> Option<ObjectId> {
+        match self.target {
+            Target::Object(id) => Some(id),
+            Target::Player(_) => None,
+        }
+    }
+
+    pub fn target_player(&self) -> Option<PlayerId> {
+        match self.target {
+            Target::Object(_) => None,
+            Target::Player(player) => Some(player),
+        }
+    }
 }
 
 impl GameEventType for BecomesTargetedEvent {
@@ -42,20 +86,21 @@ impl GameEventType for BecomesTargetedEvent {
     }
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
-        game.object(self.target)
-            .map(|o| game.controller_of(o))
-            .unwrap_or(self.source_controller)
+        match self.target {
+            Target::Object(object_id) => game
+                .object(object_id)
+                .map(|o| game.controller_of(o))
+                .unwrap_or(self.source_controller),
+            Target::Player(player) => player,
+        }
     }
 
     fn with_target_replaced(&self, old: &Target, new: &Target) -> Option<Box<dyn GameEventType>> {
-        if &Target::Object(self.target) != old {
+        if &self.target != old {
             return None;
         }
-        let Target::Object(new_target) = new else {
-            return None;
-        };
         Some(Box::new(Self {
-            target: *new_target,
+            target: *new,
             source: self.source,
             source_controller: self.source_controller,
             by_ability: self.by_ability,
@@ -75,7 +120,7 @@ impl GameEventType for BecomesTargetedEvent {
     }
 
     fn object_id(&self) -> Option<ObjectId> {
-        Some(self.target)
+        self.target_object()
     }
 
     fn player(&self) -> Option<PlayerId> {

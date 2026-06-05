@@ -407,6 +407,15 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }
         }
+        PredicateAst::CountParity {
+            count,
+            even,
+            display,
+        } => Condition::CountParity {
+            count: count.clone(),
+            even: *even,
+            display: display.clone(),
+        },
         PredicateAst::PlayerIsMonarch { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
@@ -563,6 +572,8 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter.clone())
         }
         PredicateAst::SourceIsTapped => Condition::SourceIsTapped,
+        PredicateAst::SourceIsEquipped => Condition::SourceIsEquipped,
+        PredicateAst::SourceIsEnchanted => Condition::SourceIsEnchanted,
         PredicateAst::SourceIsSaddled => Condition::SourceIsSaddled,
         PredicateAst::SourceCrewedByExactly { count, filter } => Condition::SourceCrewedByExactly {
             count: *count,

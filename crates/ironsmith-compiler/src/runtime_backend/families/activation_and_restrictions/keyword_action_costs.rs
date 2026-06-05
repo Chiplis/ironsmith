@@ -946,6 +946,36 @@ where
     Some(KeywordAction::Marker(keyword))
 }
 
+pub(crate) fn parse_dynamic_soulshift_keyword_action(words: &[&str]) -> Option<KeywordAction> {
+    if !matches!(
+        words,
+        [
+            "soulshift",
+            "x",
+            "where",
+            "x",
+            "is",
+            "the",
+            "number",
+            "of",
+            spirit_word,
+            "you",
+            "control",
+            ..
+        ] if matches!(*spirit_word, "spirit" | "spirits")
+    ) {
+        return None;
+    }
+
+    let count_filter = ObjectFilter::default()
+        .with_subtype(crate::types::Subtype::Spirit)
+        .you_control()
+        .in_zone(crate::zone::Zone::Battlefield);
+    Some(KeywordAction::SoulshiftValue(crate::effect::Value::Count(
+        count_filter,
+    )))
+}
+
 pub(crate) enum KeywordCostFallback {
     MarkerOnly,
     MarkerOrText,
@@ -1318,8 +1348,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if let Some(action) = parse_numeric_keyword_action(&words, "renown", KeywordAction::Renown) {
         return Some(action);
     }
-    if let Some(action) =
-        parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
+    if let Some(action) = parse_dynamic_soulshift_keyword_action(&words) {
+        return Some(action);
+    }
+    if let Some(action) = parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
     {
         return Some(action);
     }

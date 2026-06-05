@@ -75,6 +75,7 @@ pub enum StaticAbilityId {
     CantBeBlockedByMoreThan,
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
+    CanAttackAsThoughHaste,
     MustAttack,
     GoadedBySourceController,
     MustAttackAttachedController,
@@ -154,6 +155,7 @@ pub enum StaticAbilityId {
     PlayersSkipUpkeep,
     DamageNotRemovedDuringCleanup,
     BlackManaMayBePaidWithLife,
+    DieRollResultAdjustment,
     MinimumSpellTotalMana,
     CantPayLifeOrSacrificeNonlandForCastOrActivate,
     ChooseColorAsEnters,
@@ -183,6 +185,7 @@ pub enum StaticAbilityId {
     PreventAllDamageToSelf,
     PreventAllCombatDamageToSelf,
     PreventAllCombatDamageToPermanentsMatching,
+    PreventAllNoncombatDamageToPermanentsMatching,
     PreventAllDamageToSelfByCreatures,
     PreventDamageToYouFromSourceFilter,
     PreventDamageToSelfRemoveCounter,
@@ -341,6 +344,7 @@ impl StaticAbilityId {
             | CantBeBlockedByMoreThan
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
+            | CanAttackAsThoughHaste
             | MustAttack
             | GoadedBySourceController
             | MustAttackAttachedController
@@ -420,6 +424,7 @@ impl StaticAbilityId {
             | PlayersSkipUpkeep
             | DamageNotRemovedDuringCleanup
             | BlackManaMayBePaidWithLife
+            | DieRollResultAdjustment
             | MinimumSpellTotalMana
             | CantPayLifeOrSacrificeNonlandForCastOrActivate
             | ChooseColorAsEnters
@@ -449,6 +454,7 @@ impl StaticAbilityId {
             | PreventAllDamageToSelf
             | PreventAllCombatDamageToSelf
             | PreventAllCombatDamageToPermanentsMatching
+            | PreventAllNoncombatDamageToPermanentsMatching
             | PreventAllDamageToSelfByCreatures
             | PreventDamageToYouFromSourceFilter
             | PreventDamageToSelfRemoveCounter
@@ -651,6 +657,7 @@ impl StaticAbilityId {
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
                 | CanAttackAsThoughNoDefender
+                | CanAttackAsThoughHaste
                 | MustAttack
                 | MustBlock
                 | CantAttack

@@ -114,14 +114,11 @@ pub(super) fn target_events_from_targets(
 ) -> Vec<TriggerEvent> {
     targets
         .iter()
-        .filter_map(|target| {
-            let Target::Object(target_id) = target else {
-                return None;
-            };
-            Some(TriggerEvent::new_with_provenance(
-                BecomesTargetedEvent::new(*target_id, source, source_controller, by_ability),
+        .map(|target| {
+            TriggerEvent::new_with_provenance(
+                BecomesTargetedEvent::new_target(*target, source, source_controller, by_ability),
                 provenance,
-            ))
+            )
         })
         .collect()
 }

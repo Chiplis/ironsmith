@@ -39,6 +39,7 @@ use super::grammar::abilities::{
     is_prevent_all_combat_damage_to_source_line_lexed,
     is_prevent_all_damage_dealt_to_creatures_line_lexed,
     is_prevent_all_damage_to_source_by_creatures_line_lexed,
+    is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed,
     is_prevent_all_noncombat_damage_to_other_creatures_you_control_line_lexed,
     is_prevent_damage_to_other_creature_you_control_put_counters_line_lexed,
     is_protection_mana_value_marker_line_lexed, is_remove_snow_line_lexed,
@@ -304,6 +305,8 @@ const DAMAGE_DOUBLING_TO_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to"]);
+const WOULD_DEAL_COMBAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["would", "deal", "combat", "damage", "to"]);
 const WOULD_DEAL_DAMAGE_TO_YOU_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to", "you"]);
 const IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2102,6 +2105,30 @@ fn simple_would_die_exile_player_filter(words: &[&str]) -> Option<PlayerFilter> 
         .find_map(|(phrase, player)| (*phrase == words).then(|| player.clone()))
 }
 
+fn simple_source_would_die_exile_filter(words: &[&str]) -> Option<ObjectFilter> {
+    let source_type = match words {
+        ["if", "this", "creature", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Creature)
+        }
+        ["if", "this", "artifact", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Artifact)
+        }
+        ["if", "this", "enchantment", "would", "die", "exile", "it", "instead"] => {
+            Some(CardType::Enchantment)
+        }
+        ["if", "this", "permanent", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "object", "would", "die", "exile", "it", "instead"]
+        | ["if", "this", "would", "die", "exile", "it", "instead"] => None,
+        _ => return None,
+    };
+
+    let filter = match source_type {
+        Some(card_type) => ObjectFilter::source().with_type(card_type),
+        None => ObjectFilter::source(),
+    };
+    Some(filter)
+}
+
 fn max_hand_size_subject_prefix(words: &[&str]) -> Option<(PlayerFilter, usize)> {
     if MAX_HAND_SIZE_YOU_SUBJECT_PATTERN.matches_words(words) {
         Some((PlayerFilter::You, 1))
@@ -2499,6 +2526,14 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "can"),
         ],
+        "parse_attached_can_attack_as_though_no_defender_line" => vec![
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "wall"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
+            StaticAbilityLineHeadHint::Single("attached"),
+        ],
         "parse_no_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
@@ -2703,6 +2738,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_pregame_choose_color_line),
         single_static_ability_ast_rule!(parse_activated_abilities_cost_increase_line),
         single_static_ability_ast_rule!(parse_choose_basic_land_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_revealed_hand_choose_nonland_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_card_name_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
@@ -2865,6 +2901,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
         single_static_ability_ast_passthrough_rule!(
+            parse_attached_can_attack_as_though_no_defender_line
+        ),
+        single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_by_attached_line
         ),
         single_static_ability_ast_passthrough_rule!(
@@ -2933,6 +2972,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(
             parse_prevent_all_noncombat_damage_to_other_creatures_you_control_line
+        ),
+        single_static_ability_ast_rule!(
+            parse_prevent_all_noncombat_damage_to_matching_permanents_line
         ),
         single_static_ability_ast_rule!(parse_prevent_all_damage_to_source_by_creatures_line),
         single_static_ability_ast_rule!(
@@ -3953,7 +3995,13 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
-        return Some(keyword_static_marker(tokens));
+        let condition = Condition::Not(Box::new(Condition::ObjectEnteredBattlefieldThisTurn(
+            ObjectFilter::source(),
+        )));
+        return Some(StaticAbility::new(
+            GrantAbility::source(StaticAbility::can_attack_as_though_haste())
+                .with_condition(condition),
+        ));
     }
 
     if is_sab_sunen_cant_attack_or_block_unless_line_lexed(tokens) {
@@ -4391,6 +4439,40 @@ pub(crate) fn parse_choose_card_name_as_enters_line(
 
     Ok(Some(StaticAbility::choose_card_name_as_enters(format!(
         "As {display_subject} enters, choose a card name."
+    ))))
+}
+
+pub(crate) fn parse_revealed_hand_choose_nonland_card_name_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    if sentences.len() != 2 {
+        return Ok(None);
+    }
+
+    let first_words = parser_token_word_refs(sentences[0]);
+    let Some((idx, display_subject)) =
+        parse_as_enters_choice_subject_words(&first_words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+    else {
+        return Ok(None);
+    };
+    if first_words.get(idx..) != Some(&["each", "opponent", "reveals", "their", "hand"][..])
+    {
+        return Ok(None);
+    }
+
+    let second_words = parser_token_word_refs(sentences[1]);
+    if second_words
+        != [
+            "you", "choose", "the", "name", "of", "a", "nonland", "card", "revealed",
+            "this", "way",
+        ]
+    {
+        return Ok(None);
+    }
+
+    Ok(Some(StaticAbility::choose_revealed_hand_nonland_card_name_as_enters(format!(
+        "As {display_subject} enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way."
     ))))
 }
 
@@ -5005,30 +5087,25 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let Some(would_idx) = find_window_by(&words, 4, |window| {
-        WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
-    }) else {
+    let Some((would_idx, damage_phrase_len, combat_only)) =
+        find_damage_multiplier_would_deal_phrase(&words)
+    else {
         return Ok(None);
     };
-    let Some(source_idx) = SOURCE_WORD_PATTERN.find_word(&words[..would_idx]) else {
-        return Ok(None);
-    };
-    if source_idx <= 1 {
-        return Ok(None);
-    }
 
-    let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
+    let damage_tail_start = would_idx + damage_phrase_len;
+    let Some(tail_idx) = find_window_by(&words[damage_tail_start..], 6, |window| {
         IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
     }) else {
         return Ok(None);
     };
-    let replacement_start = would_idx + 4 + tail_idx;
+    let replacement_start = damage_tail_start + tail_idx;
     let factor = match words.get(replacement_start + 2).copied() {
         Some("double") => 2,
         Some("triple") => 3,
         _ => return Ok(None),
     };
-    let damaged_words = &words[would_idx + 4..replacement_start];
+    let damaged_words = &words[damage_tail_start..replacement_start];
     let replacement_target_words = &words[replacement_start + 6..];
     if damaged_words.is_empty()
         || replacement_target_words.len() < 2
@@ -5044,28 +5121,10 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let source_tokens = trim_lexed_commas(
-        LexedClause::new(&tokens)
-            .between_word_range(1, source_idx)
-            .unwrap_or_else(|| LexedClause::new(&tokens).between(tokens.len(), tokens.len()))
-            .tokens(),
-    );
-    let source_words = parser_token_word_refs(source_tokens);
-    let mut source_filter =
-        if source_tokens.is_empty() || ARTICLE_WORD_PATTERN.matches_words(&source_words) {
-            ObjectFilter::default()
-        } else {
-            parse_object_filter_lexed(source_tokens, false)?
-        };
-
-    match &words[source_idx + 1..would_idx] {
-        ["you", "control"] => source_filter = source_filter.you_control(),
-        ["an", "opponent", "controls"] | ["opponent", "controls"] => {
-            source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
-        }
-        [] => {}
-        _ => return Ok(None),
-    }
+    let Some(source_filter) = parse_damage_replacement_source_filter(&tokens, &words, would_idx)?
+    else {
+        return Ok(None);
+    };
 
     let mut display = render_token_slice(&tokens).trim().to_string();
     if !display.ends_with('.') {
@@ -5077,8 +5136,72 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         target_player_filter,
         target_object_filter,
         factor,
+        combat_only,
         display,
     )))
+}
+
+fn find_damage_multiplier_would_deal_phrase(words: &[&str]) -> Option<(usize, usize, bool)> {
+    find_window_by(words, 5, |window| {
+        WOULD_DEAL_COMBAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+    })
+    .map(|idx| (idx, 5, true))
+    .or_else(|| {
+        find_window_by(words, 4, |window| {
+            WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+        })
+        .map(|idx| (idx, 4, false))
+    })
+}
+
+fn parse_damage_replacement_source_filter(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+    would_idx: usize,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if would_idx <= 1 {
+        return Ok(None);
+    }
+
+    if let Some(source_idx) = SOURCE_WORD_PATTERN.find_word(&words[..would_idx]) {
+        if source_idx <= 1 {
+            return Ok(None);
+        }
+        let source_tokens = trim_lexed_commas(
+            LexedClause::new(tokens)
+                .between_word_range(1, source_idx)
+                .unwrap_or_else(|| LexedClause::new(tokens).between(tokens.len(), tokens.len()))
+                .tokens(),
+        );
+        let source_words = parser_token_word_refs(source_tokens);
+        let mut source_filter =
+            if source_tokens.is_empty() || ARTICLE_WORD_PATTERN.matches_words(&source_words) {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(source_tokens, false)?
+            };
+
+        match &words[source_idx + 1..would_idx] {
+            ["you", "control"] => source_filter = source_filter.you_control(),
+            ["an", "opponent", "controls"] | ["opponent", "controls"] => {
+                source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
+            }
+            [] => {}
+            _ => return Ok(None),
+        }
+        return Ok(Some(source_filter));
+    }
+
+    let source_tokens = trim_lexed_commas(
+        LexedClause::new(tokens)
+            .between_word_range(1, would_idx)
+            .unwrap_or_else(|| LexedClause::new(tokens).between(tokens.len(), tokens.len()))
+            .tokens(),
+    );
+    if source_tokens.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parse_object_filter_lexed(source_tokens, false)?))
 }
 
 fn parse_damage_amount_replacement_target_filters(
@@ -7106,7 +7229,14 @@ pub(crate) fn parse_spells_cost_modifier_line(
         });
     let remaining_tokens = &amount_tokens[used..];
     let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
-    let Some(direction) = parse_cost_modifier_direction(&remaining_words) else {
+    let direction_words = if let Some(if_idx) = find_index(&remaining_words, |word| {
+        IF_PREFIX_PATTERN.matches_word(word)
+    }) {
+        &remaining_words[..if_idx]
+    } else {
+        &remaining_words
+    };
+    let Some(direction) = parse_cost_modifier_direction(direction_words) else {
         return Ok(None);
     };
 
@@ -7921,6 +8051,15 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     // so model the dynamic amount as `X`.
     if COUNTERS_REMOVED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::X));
+    }
+    if filter_words.len() >= 4
+        && let Some(counter_type) = parse_counter_type_word(filter_words[0])
+        && COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(filter_words[1])
+    {
+        let player_words = &filter_words[2..];
+        if player_words == ["you", "have"] || player_words == ["you", "ve"] {
+            return Ok(Some(Value::PlayerCounters(PlayerFilter::You, counter_type)));
+        }
     }
     if DESTROYED_THIS_WAY_PATTERN.matches_words(&filter_words) {
         return Ok(Some(Value::PendingEffectMetric {
@@ -9069,6 +9208,42 @@ pub(crate) fn parse_prevent_all_noncombat_damage_to_other_creatures_you_control_
     }
 
     Ok(None)
+}
+
+pub(crate) fn parse_prevent_all_noncombat_damage_to_matching_permanents_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !is_prevent_all_noncombat_damage_to_matching_permanents_line_lexed(tokens) {
+        return Ok(None);
+    }
+
+    let Some((_phrase_idx, phrase_end)) = find_token_word_sequence_span(
+        tokens,
+        &[
+            "prevent",
+            "all",
+            "noncombat",
+            "damage",
+            "that",
+            "would",
+            "be",
+            "dealt",
+            "to",
+        ],
+    ) else {
+        return Ok(None);
+    };
+    let target_tokens = trim_commas(&tokens[phrase_end..]);
+    if target_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing prevent-all noncombat damage target filter: {}",
+            render_token_slice(tokens)
+        )));
+    }
+    let filter = parse_object_filter_lexed(&target_tokens, false)?;
+    Ok(Some(
+        StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter),
+    ))
 }
 
 pub(crate) fn parse_prevent_all_damage_to_source_by_creatures_line(
@@ -10881,6 +11056,10 @@ pub(crate) fn parse_exile_would_die_instead_line(
                 StaticAbility::exile_would_die_instead_with_damage_source(victim, Some(damaged_by)),
             ));
         }
+    }
+
+    if let Some(filter) = simple_source_would_die_exile_filter(&words) {
+        return Ok(Some(StaticAbility::exile_would_die_instead(filter)));
     }
 
     let Some(player) = simple_would_die_exile_player_filter(&words) else {

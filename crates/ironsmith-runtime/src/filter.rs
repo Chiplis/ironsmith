@@ -958,6 +958,12 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::GreatestPower(filter) => game
+            .objects_in_deterministic_order()
+            .into_iter()
+            .filter(|object| filter.matches(object, ctx, game))
+            .filter_map(|object| game.calculated_power(object.id).or_else(|| object.power()))
+            .max(),
         Value::CountersOnSource(counter_type) => {
             let source = game.object(ctx.source?)?;
             Some(source.counters.get(counter_type).copied().unwrap_or(0) as i32)
@@ -2305,6 +2311,21 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.blocked_by_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(combat) = &game.combat else {
+                return false;
+            };
+            if !combat
+                .blockers
+                .get(&object.id)
+                .is_some_and(|blockers| blockers.contains(&source_id))
+            {
+                return false;
+            }
+        }
         if self.in_combat_with_source {
             let Some(source_id) = ctx.source else {
                 return false;
@@ -2907,6 +2928,21 @@ impl ObjectFilterExt for ObjectFilter {
             && !creature_was_blocked_by_ref(game, ctx, snapshot.object_id, blocker_ref)
         {
             return false;
+        }
+        if self.blocked_by_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(combat) = &game.combat else {
+                return false;
+            };
+            if !combat
+                .blockers
+                .get(&snapshot.object_id)
+                .is_some_and(|blockers| blockers.contains(&source_id))
+            {
+                return false;
+            }
         }
 
         // Power check
@@ -3529,6 +3565,9 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Tagged(_) => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
+        }
+        if self.blocked_by_source {
+            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
         if self.tapped && self.untapped {
             parts.push("tapped/untapped".to_string());

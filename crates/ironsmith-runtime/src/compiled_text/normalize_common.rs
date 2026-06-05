@@ -141,6 +141,16 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
     }
 }
 
+pub(super) fn describe_player_counter_holder(filter: &PlayerFilter) -> String {
+    match filter {
+        PlayerFilter::You => "you have".to_string(),
+        PlayerFilter::Opponent => "an opponent has".to_string(),
+        PlayerFilter::Any => "a player has".to_string(),
+        PlayerFilter::Target(_) | PlayerFilter::Specific(_) => "that player has".to_string(),
+        other => format!("{} has", describe_player_filter(other)),
+    }
+}
+
 pub(super) fn describe_player_set_filter(filter: &PlayerFilter) -> String {
     match filter {
         PlayerFilter::Opponent => "your opponents".to_string(),
@@ -5847,6 +5857,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Counter target instant or sorcery spell",
         )
         .replace("Counter target sorcery", "Counter target sorcery spell")
+        .replace("Counter target instant spell spell", "Counter target instant spell")
+        .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
         .replace(
             "Counter target enchantment or instant or sorcery",
             "Counter target enchantment, instant, or sorcery spell",
@@ -8237,6 +8249,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
                         describe_count_filter_value_subject(filter)
                     );
                 }
+                let library_filter = match (left.as_ref(), right.as_ref()) {
+                    (Value::CardsInLibrary(filter), Value::Fixed(1))
+                    | (Value::Fixed(1), Value::CardsInLibrary(filter)) => Some(filter),
+                    _ => None,
+                };
+                if let Some(filter) = library_filter {
+                    return format!(
+                        "half the number of cards in {} library, rounded up",
+                        describe_possessive_player_filter(filter)
+                    );
+                }
             }
             format!("half {}, rounded down", describe_value(value))
         }
@@ -8641,6 +8664,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
             title_case_card_name_fragment(card_name)
         ),
         Value::LastNotedLifeTotal => "the last noted life total for this permanent".to_string(),
+        Value::PlayerCounters(player, counter_type) => format!(
+            "the number of {} counters {}",
+            counter_type.description(),
+            describe_player_counter_holder(player)
+        ),
         Value::EffectValue(_) => "X".to_string(),
         Value::EffectValueOffset(_, offset) => {
             if *offset == 0 {
@@ -9693,6 +9721,23 @@ pub(super) fn describe_apply_continuous_effect(
     if let Some(text) = describe_apply_continuous_animation_effect(effect, &target, plural_target) {
         return Some(text);
     }
+    if matches!(effect.target, crate::continuous::EffectTarget::Source)
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && matches!(effect.until, Until::Forever)
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughHaste
+        && let Some(Condition::Not(inner)) = &effect.condition
+        && matches!(
+            inner.as_ref(),
+            Condition::ObjectEnteredBattlefieldThisTurn(filter) if *filter == ObjectFilter::source()
+        )
+    {
+        return Some(
+            "This creature can attack as though it had haste unless it entered this turn"
+                .to_string(),
+        );
+    }
     if effect.modification.is_none()
         && effect.additional_modifications.is_empty()
         && matches!(
@@ -10679,6 +10724,22 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::BeTargeted(filter) => {
             format!("{} can't be targeted", filter.description())
         }
+        crate::effect::Restriction::BeTargetedFrom(filter, source_filter) => {
+            if let Some(source_description) = describe_spell_targeting_source_filter(source_filter) {
+                return format!(
+                    "{} can't be the target of {}",
+                    filter.description(),
+                    source_description
+                );
+            }
+            let source_description = describe_hexproof_from_filter(source_filter);
+            format!(
+                "{} can't be the target of {} spells or abilities from {} sources",
+                filter.description(),
+                source_description,
+                source_description
+            )
+        }
         crate::effect::Restriction::BeTargetedPlayer(filter) => {
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
@@ -10709,6 +10770,33 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't attack or block alone", filter.description())
         }
     }
+}
+
+fn describe_spell_targeting_source_filter(source_filter: &ObjectFilter) -> Option<String> {
+    if source_filter.zone != Some(Zone::Stack)
+        || source_filter.stack_kind != Some(StackObjectKind::Spell)
+    {
+        return None;
+    }
+
+    let mut rest = source_filter.clone();
+    rest.zone = None;
+    rest.stack_kind = None;
+    if rest.subtypes == [crate::types::Subtype::Aura]
+        && (rest.card_types.is_empty()
+            || rest.card_types == [crate::types::CardType::Enchantment])
+    {
+        rest.subtypes.clear();
+        rest.card_types.clear();
+        if rest == ObjectFilter::default() {
+            return Some("Aura spells".to_string());
+        }
+    }
+
+    let description = source_filter.description();
+    description
+        .strip_suffix(" spell")
+        .map(|description| format!("{description} spells"))
 }
 
 fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
@@ -12479,6 +12567,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "count comparison".to_string()),
+        Condition::CountParity { display, even, .. } => display
+            .as_ref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("count is {}", if *even { "even" } else { "odd" })),
         Condition::ValueComparison {
             left,
             operator,
@@ -12505,6 +12597,17 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                     "{} lost {} or more life this turn",
                     describe_player_filter(player),
                     count
+                );
+            }
+            if let (
+                Value::CreaturesDiedThisTurnControlledBy(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(1),
+            ) = (left, operator, right)
+            {
+                return format!(
+                    "a creature died under {} control this turn",
+                    describe_possessive_player_filter(player)
                 );
             }
             if let (

@@ -114,6 +114,7 @@ pub enum PreventNextTimeDamageSource {
 pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     You,
+    Target(ChooseSpec),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1701,6 +1702,7 @@ pub struct ChooseObjectsEffect {
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
     pub top_only: bool,
+    pub bottom_only: bool,
     pub replace_tagged_objects: bool,
 }
 
@@ -1724,6 +1726,7 @@ impl ChooseObjectsEffect {
             reveal: false,
             search_mode: SearchSelectionMode::Exact,
             top_only: false,
+            bottom_only: false,
             replace_tagged_objects: false,
         }
     }
@@ -1786,6 +1789,13 @@ impl ChooseObjectsEffect {
 
     pub fn top_only(mut self) -> Self {
         self.top_only = true;
+        self.bottom_only = false;
+        self
+    }
+
+    pub fn bottom_only(mut self) -> Self {
+        self.bottom_only = true;
+        self.top_only = false;
         self
     }
 
@@ -3817,6 +3827,7 @@ pub struct GrantPlayTaggedEffect {
     pub allow_land: bool,
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
+    pub filter: Option<ObjectFilter>,
 }
 
 impl GrantPlayTaggedEffect {
@@ -3834,11 +3845,17 @@ impl GrantPlayTaggedEffect {
             allow_land,
             allow_any_color_for_cast,
             while_on_top_of_library: false,
+            filter: None,
         }
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
         self.while_on_top_of_library = true;
+        self
+    }
+
+    pub fn with_filter(mut self, filter: ObjectFilter) -> Self {
+        self.filter = Some(filter);
         self
     }
 }
@@ -3895,6 +3912,13 @@ pub struct RegisterFutureZoneReplacementEffect {
 pub struct RegisterDrawReplacementEffect<E = ()> {
     pub player: PlayerFilter,
     pub replacement_effects: Vec<E>,
+    pub mode: ReplacementApplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct RegisterManaReplacementEffect {
+    pub source_filter: crate::filter_model::ObjectFilter,
+    pub replacement_mana: Vec<ManaSymbol>,
     pub mode: ReplacementApplyMode,
 }
 
@@ -3958,6 +3982,20 @@ impl<E> RegisterDrawReplacementEffect<E> {
         Self {
             player,
             replacement_effects,
+            mode,
+        }
+    }
+}
+
+impl RegisterManaReplacementEffect {
+    pub fn new(
+        source_filter: crate::filter_model::ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: ReplacementApplyMode,
+    ) -> Self {
+        Self {
+            source_filter,
+            replacement_mana,
             mode,
         }
     }
@@ -5406,6 +5444,8 @@ pub struct PreventAllDamageEffect {
     pub target: PreventionTarget,
     /// What kinds of damage this shield prevents.
     pub damage_filter: DamageFilter,
+    /// Whether the source is chosen as the effect resolves.
+    pub source_of_your_choice: bool,
     pub until: Until,
 }
 
@@ -5415,8 +5455,15 @@ impl PreventAllDamageEffect {
         Self {
             target,
             damage_filter,
+            source_of_your_choice: false,
             until,
         }
+    }
+
+    /// Restrict this prevention shield to a source chosen as the effect resolves.
+    pub fn with_source_of_your_choice(mut self) -> Self {
+        self.source_of_your_choice = true;
+        self
     }
 
     /// Prevent all damage to everything.
@@ -5537,6 +5584,25 @@ pub struct EnergyCountersEffect {
 }
 
 impl EnergyCountersEffect {
+    pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
+        Self {
+            count: count.into(),
+            player,
+        }
+    }
+
+    pub fn you(count: impl Into<Value>) -> Self {
+        Self::new(count, PlayerFilter::You)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExperienceCountersEffect {
+    pub count: Value,
+    pub player: PlayerFilter,
+}
+
+impl ExperienceCountersEffect {
     pub fn new(count: impl Into<Value>, player: PlayerFilter) -> Self {
         Self {
             count: count.into(),

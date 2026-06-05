@@ -8,14 +8,18 @@ use crate::runtime_backend::grammar::structure::{
     StatementLineFamily, classify_statement_line_family_lexed,
 };
 use crate::runtime_backend::lexer::parser_token_word_refs;
+use crate::runtime_backend::util::is_source_reference_words;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
+use crate::KeywordAction;
 
 const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
 const THIS_CREATURE_SOURCE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["this", "creature"]);
+const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
 const PARTNER_KEYWORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["partner"]);
 const CHARACTER_SELECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["character", "select"]);
@@ -206,6 +210,15 @@ const TARGETED_TEMPORARY_MODIFIER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_any_words & [&["get", "gets", "gain", "gains"]]
 );
 const IF_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["if", "instead"]);
+const DIE_ROLL_RESULT_ADJUSTMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["after", "you", "roll", "a", "die"];
+    contains_phrases & [
+        &["you", "may", "pay"],
+        &["if", "you", "do"],
+        &["increase", "or", "decrease", "the", "result", "by"],
+        &["do", "this", "only", "once", "each", "turn"],
+    ]
+);
 const CANT_CAST_PHRASES: &[&[&str]] = &[&["cant", "cast"], &["can't", "cast"]];
 const CANT_CAST_NEXT_TURN_PATTERN: ClauseShape<'static> = ClauseShape::new()
     .contains_any_phrases(&[CANT_CAST_PHRASES])
@@ -462,6 +475,9 @@ fn lower_rewrite_statement_to_chunks_impl(
     parse_tokens: &[OwnedLexToken],
     parse_groups: &[Vec<OwnedLexToken>],
 ) -> Result<Vec<LineAst>, CardTextError> {
+    if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(parse_tokens) {
+        return Ok(vec![chunk]);
+    }
     if !parse_groups.is_empty() {
         if parse_groups.len() > 1
             && sentences_have_token_creation_followup_after_first(parse_groups)
@@ -480,6 +496,8 @@ fn lower_rewrite_statement_to_chunks_impl(
         let mut chunks = Vec::with_capacity(parse_groups.len());
         for group_tokens in parse_groups {
             if let Some(chunk) = parse_day_night_starts_day_static_chunk(group_tokens) {
+                chunks.push(chunk);
+            } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(group_tokens) {
                 chunks.push(chunk);
             } else if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(group_tokens)
             {
@@ -520,6 +538,8 @@ fn lower_rewrite_statement_to_chunks_impl(
             for sentence in sentence_tokens {
                 if let Some(chunk) = parse_self_enters_with_x_counters_static_chunk(&sentence) {
                     chunks.push(chunk);
+                } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(&sentence) {
+                    chunks.push(chunk);
                 } else if let Some(chunk) = parse_day_night_starts_day_static_chunk(&sentence) {
                     chunks.push(chunk);
                 } else if let Some(abilities) = parse_static_ability_ast_line_lexed(&sentence)? {
@@ -537,6 +557,8 @@ fn lower_rewrite_statement_to_chunks_impl(
             let mut chunks = Vec::with_capacity(grouped_tokens.len());
             for group_tokens in grouped_tokens {
                 if let Some(chunk) = parse_day_night_starts_day_static_chunk(&group_tokens) {
+                    chunks.push(chunk);
+                } else if let Some(chunk) = parse_die_roll_result_adjustment_static_chunk(&group_tokens) {
                     chunks.push(chunk);
                 } else if let Some(chunk) =
                     parse_self_enters_with_x_counters_static_chunk(&group_tokens)
@@ -562,6 +584,43 @@ fn lower_rewrite_statement_to_chunks_impl(
         "rewrite statement lowering expected prepared parse tokens for '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_die_roll_result_adjustment_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
+    let words = token_word_refs(tokens);
+    if !DIE_ROLL_RESULT_ADJUSTMENT_PATTERN.matches_words(&words) {
+        return None;
+    }
+    let life_cost = words
+        .windows(3)
+        .find_map(|window| {
+            (window[0] == "pay" && window[2] == "life")
+                .then(|| window[1].parse::<u32>().ok())
+                .flatten()
+        })
+        .unwrap_or(1);
+    let amount = words
+        .windows(2)
+        .find_map(|window| {
+            (window[0] == "by")
+                .then(|| window[1].parse::<u32>().ok())
+                .flatten()
+        })
+        .unwrap_or(1);
+    let display = format!(
+        "After you roll a die, you may pay {life_cost} life. If you do, increase or decrease the result by {amount}. Do this only once each turn."
+    );
+    Some(LineAst::StaticAbilities(vec![
+        crate::cards::builders::StaticAbilityAst::Static(
+            StaticAbility::die_roll_result_adjustment(
+                PlayerFilter::You,
+                life_cost,
+                amount,
+                true,
+                display,
+            ),
+        ),
+    ]))
 }
 
 fn sentences_have_token_copy_followup_after_first<S: AsRef<[OwnedLexToken]>>(
@@ -1590,6 +1649,12 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if let Some(ability) = parse_spells_cost_modifier_line(&lexed)? {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(ability.into()),
+            chosen_option_label,
+        );
+    }
     if let Some(chunk) = lower_compound_buff_and_unblockable_static_chunk(line, parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }
@@ -1600,6 +1665,9 @@ fn lower_rewrite_static_to_chunk_impl(
             LineAst::StaticAbilities(abilities),
             chosen_option_label,
         );
+    }
+    if let Some(actions) = parse_source_has_keyword_actions(&lexed) {
+        return Ok(LineAst::Abilities(actions));
     }
     if !should_skip_keyword_action_static_probe_tokens(parse_tokens)
         && let Some(actions) = parse_ability_line_lexed(&lexed)
@@ -1648,6 +1716,20 @@ fn lower_rewrite_static_to_chunk_impl(
         "rewrite static lowering could not reconstitute static line '{}'",
         line.info.raw_line
     )))
+}
+
+fn parse_source_has_keyword_actions(lexed: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let words = crate::runtime_backend::lexer::token_word_refs(lexed);
+    let has_word_idx = words
+        .iter()
+        .position(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))?;
+    if has_word_idx == 0 || !is_source_reference_words(&words[..has_word_idx]) {
+        return None;
+    }
+
+    let has_token_idx = token_index_for_word_index(lexed, has_word_idx)?;
+    let tail = trim_commas(&lexed[has_token_idx + 1..]);
+    parse_ability_line_lexed(&tail)
 }
 
 fn looks_like_ability_word_marker_tokens(parse_tokens: &[OwnedLexToken]) -> bool {

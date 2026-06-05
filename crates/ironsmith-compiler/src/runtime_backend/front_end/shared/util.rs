@@ -2350,6 +2350,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "storage" => Some(CounterType::Storage),
         "ki" => Some(CounterType::Ki),
         "energy" => Some(CounterType::Energy),
+        "experience" => Some(CounterType::Experience),
         "age" => Some(CounterType::Age),
         "blood" => Some(CounterType::Blood),
         "ice" => Some(CounterType::Ice),

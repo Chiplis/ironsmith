@@ -861,6 +861,21 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when [player] or [target] becomes the target of a spell or ability [player] controls" trigger.
+    pub fn player_or_object_becomes_targeted_by_source_controller(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        source_controller: PlayerFilter,
+    ) -> Self {
+        Self::new(
+            PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
+                player_filter,
+                object_filter,
+                source_controller,
+            ),
+        )
+    }
+
     // === Card Triggers ===
 
     /// Create a "whenever you draw a card" trigger (fires once per card drawn).

@@ -5,7 +5,7 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, DieRollResultAdjustmentSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
@@ -29,6 +29,7 @@ use crate::events::damage::matchers::{
     DamageFromSourceToPlayerMatcher, DamageToObjectMatcher, DamageToOtherCreatureYouControlMatcher,
     DamageToPlayerOrObjectMatcher, DamageToSelfCombatMatcher, DamageToSelfConstraintMatcher,
     DamageToSelfFromSourceFilterMatcher, PreventableCombatDamageToObjectMatcher,
+    PreventableNoncombatDamageToObjectMatcher,
 };
 use crate::events::permanents::matchers::AttachedPermanentWouldBeDestroyedMatcher;
 use crate::events::traits::{
@@ -174,6 +175,52 @@ fn describe_redirect_zone_phrase(zone: Zone) -> &'static str {
 /// Daybound keyword static ability.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Daybound;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    player: PlayerFilter,
+    life_cost: u32,
+    amount: u32,
+    once_each_turn: bool,
+    display: String,
+}
+
+impl DieRollResultAdjustment {
+    pub fn new(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self {
+            player,
+            life_cost,
+            amount,
+            once_each_turn,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for DieRollResultAdjustment {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::DieRollResultAdjustment
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        Some(DieRollResultAdjustmentSpec {
+            player: self.player.clone(),
+            life_cost: self.life_cost,
+            amount: self.amount,
+            once_each_turn: self.once_each_turn,
+        })
+    }
+}
 
 impl StaticAbilityKind for Daybound {
     fn id(&self) -> StaticAbilityId {
@@ -1631,11 +1678,22 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChooseCardNameAsEnters {
     pub display: String,
+    pub reveal_opponents_hands: bool,
+    pub require_nonland_from_revealed_opponents: bool,
 }
 
 impl ChooseCardNameAsEnters {
     pub fn new(display: String) -> Self {
-        Self { display }
+        Self::with_spec(display, ChooseCardNameAsEntersSpec::default())
+    }
+
+    pub fn with_spec(display: String, spec: ChooseCardNameAsEntersSpec) -> Self {
+        Self {
+            display,
+            reveal_opponents_hands: spec.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: spec
+                .require_nonland_from_revealed_opponents,
+        }
     }
 }
 
@@ -1649,7 +1707,10 @@ impl StaticAbilityKind for ChooseCardNameAsEnters {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
-        Some(ChooseCardNameAsEntersSpec)
+        Some(ChooseCardNameAsEntersSpec {
+            reveal_opponents_hands: self.reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: self.require_nonland_from_revealed_opponents,
+        })
     }
 }
 
@@ -2014,6 +2075,44 @@ impl StaticAbilityKind for PreventAllCombatDamageToPermanentsMatching {
             source,
             controller,
             PreventableCombatDamageToObjectMatcher::new(self.filter.clone()),
+            ReplacementAction::Prevent,
+        ))
+    }
+}
+
+/// "Prevent all noncombat damage that would be dealt to [matching permanents]."
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreventAllNoncombatDamageToPermanentsMatching {
+    pub filter: ObjectFilter,
+}
+
+impl PreventAllNoncombatDamageToPermanentsMatching {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl StaticAbilityKind for PreventAllNoncombatDamageToPermanentsMatching {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Prevent all noncombat damage that would be dealt to {}.",
+            pluralize_filter_description(&self.filter.description())
+        )
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            PreventableNoncombatDamageToObjectMatcher::new(self.filter.clone()),
             ReplacementAction::Prevent,
         ))
     }
@@ -3227,6 +3326,7 @@ impl StaticAbilityKind for RedirectDamageToSourceController {
                 target_player_filter: Some(self.target_player_filter.clone()),
                 target_object_filter: None,
                 condition: None,
+                combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
             },
@@ -3308,6 +3408,7 @@ struct DamageAmountReplacementMatcher {
     target_player_filter: Option<PlayerFilter>,
     target_object_filter: Option<ObjectFilter>,
     condition: Option<crate::ConditionExpr>,
+    combat_only: bool,
     noncombat_only: bool,
     amount_less_than: Option<Value>,
 }
@@ -3392,6 +3493,9 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        if self.combat_only && !damage.is_combat {
+            return false;
+        }
         if self.noncombat_only && damage.is_combat {
             return false;
         }
@@ -3488,6 +3592,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: self.condition.clone(),
+                combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
             },
@@ -3518,6 +3623,7 @@ impl StaticAbilityKind for MinimumDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
+                combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: Some(self.floor.clone()),
             },
@@ -3532,6 +3638,7 @@ pub struct DoubleDamageAmountReplacement {
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
     pub factor: u32,
+    pub combat_only: bool,
     pub display: String,
 }
 
@@ -3541,6 +3648,7 @@ impl DoubleDamageAmountReplacement {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: impl Into<String>,
     ) -> Self {
         Self {
@@ -3548,6 +3656,7 @@ impl DoubleDamageAmountReplacement {
             target_player_filter,
             target_object_filter,
             factor,
+            combat_only,
             display: display.into(),
         }
     }
@@ -3575,6 +3684,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
+                combat_only: self.combat_only,
                 noncombat_only: false,
                 amount_less_than: None,
             },
@@ -5086,6 +5196,16 @@ impl ExileWouldDieInstead {
     }
 }
 
+fn is_simple_source_would_die_filter(filter: &ObjectFilter) -> bool {
+    if !filter.source || filter.card_types.len() > 1 {
+        return false;
+    }
+
+    let mut filter_without_type = filter.clone();
+    filter_without_type.card_types.clear();
+    filter_without_type == ObjectFilter::source()
+}
+
 impl StaticAbilityKind for ExileWouldDieInstead {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::ExileWouldDieInstead
@@ -5138,6 +5258,13 @@ impl StaticAbilityKind for ExileWouldDieInstead {
                     effects: self.follow_up_effects.clone(),
                 },
             ));
+        }
+
+        if is_simple_source_would_die_filter(&self.filter)
+            && self.exile_with_counters.is_empty()
+            && self.follow_up_effects.is_empty()
+        {
+            return Some(ReplacementEffect::exile_instead_of_dying(source, controller));
         }
 
         Some(ReplacementEffect::with_matcher(
@@ -6998,6 +7125,84 @@ mod tests {
             crate::events::cause::EventCause::effect(),
         );
         assert!(!matcher.matches_event(&noncreature_damage, &ctx));
+    }
+
+    #[test]
+    fn test_prevent_all_noncombat_damage_to_permanents_matching_generates_replacement() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let source = CardBuilder::new(CardId::new(), "Mark of Asylum Probe")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+
+        let protected = CardBuilder::new(CardId::new(), "Protected Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let protected_id = game.create_object_from_card(&protected, alice, Zone::Battlefield);
+
+        let opponent = CardBuilder::new(CardId::new(), "Opponent Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let opponent_id = game.create_object_from_card(&opponent, bob, Zone::Battlefield);
+
+        let damage_source = CardBuilder::new(CardId::new(), "Damage Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let damage_source_id =
+            game.create_object_from_card(&damage_source, bob, Zone::Battlefield);
+
+        let mut filter = ObjectFilter::creature();
+        filter.controller = Some(PlayerFilter::You);
+        let ability = PreventAllNoncombatDamageToPermanentsMatching::new(filter);
+        let replacement = ability
+            .generate_replacement_effect(source_id, alice)
+            .expect("should generate replacement effect");
+        assert_eq!(replacement.replacement, ReplacementAction::Prevent);
+
+        let matcher = replacement
+            .matcher
+            .as_ref()
+            .expect("replacement must have a matcher");
+        let ctx = EventContext::for_replacement_effect(alice, source_id, &game);
+
+        let noncombat_to_controlled_creature = DamageEvent::with_cause(
+            damage_source_id,
+            DamageTarget::Object(protected_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(matcher.matches_event(&noncombat_to_controlled_creature, &ctx));
+
+        let combat_to_controlled_creature = DamageEvent::with_cause(
+            damage_source_id,
+            DamageTarget::Object(protected_id),
+            2,
+            true,
+            crate::events::cause::EventCause::combat_damage(damage_source_id),
+        );
+        assert!(!matcher.matches_event(&combat_to_controlled_creature, &ctx));
+
+        let noncombat_to_opponent_creature = DamageEvent::with_cause(
+            damage_source_id,
+            DamageTarget::Object(opponent_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&noncombat_to_opponent_creature, &ctx));
+
+        let unpreventable = DamageEvent::unpreventable_with_cause(
+            damage_source_id,
+            DamageTarget::Object(protected_id),
+            2,
+            false,
+            crate::events::cause::EventCause::effect(),
+        );
+        assert!(!matcher.matches_event(&unpreventable, &ctx));
     }
 
     #[test]

@@ -14,6 +14,27 @@ pub struct BecomesTargetedBySourceControllerTrigger {
     pub source_controller: PlayerFilter,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
+    pub player_filter: PlayerFilter,
+    pub object_filter: ObjectFilter,
+    pub source_controller: PlayerFilter,
+}
+
+impl PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
+    pub fn new(
+        player_filter: PlayerFilter,
+        object_filter: ObjectFilter,
+        source_controller: PlayerFilter,
+    ) -> Self {
+        Self {
+            player_filter,
+            object_filter,
+            source_controller,
+        }
+    }
+}
+
 impl BecomesTargetedBySourceControllerTrigger {
     pub fn new(target_filter: ObjectFilter, source_controller: PlayerFilter) -> Self {
         Self {
@@ -31,7 +52,10 @@ impl TriggerMatcher for BecomesTargetedBySourceControllerTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        let Some(target) = ctx.game.object(e.target) else {
+        let Some(target_id) = e.target_object() else {
+            return false;
+        };
+        let Some(target) = ctx.game.object(target_id) else {
             return false;
         };
         if !self
@@ -54,6 +78,51 @@ impl TriggerMatcher for BecomesTargetedBySourceControllerTrigger {
         format!(
             "Whenever {} becomes the target of a spell or ability {} controls",
             self.target_filter.description(),
+            controller
+        )
+    }
+}
+
+impl TriggerMatcher for PlayerOrObjectBecomesTargetedBySourceControllerTrigger {
+    fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
+        if event.kind() != EventKind::BecomesTargeted {
+            return false;
+        }
+        let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
+            return false;
+        };
+        if !self
+            .source_controller
+            .matches_player(e.source_controller, &ctx.filter_ctx)
+        {
+            return false;
+        }
+        if let Some(player) = e.target_player()
+            && self.player_filter.matches_player(player, &ctx.filter_ctx)
+        {
+            return true;
+        }
+        let Some(target_id) = e.target_object() else {
+            return false;
+        };
+        let Some(target) = ctx.game.object(target_id) else {
+            return false;
+        };
+        self.object_filter
+            .matches(target, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn display(&self) -> String {
+        let controller = match self.source_controller {
+            PlayerFilter::You => "you",
+            PlayerFilter::Opponent => "an opponent",
+            PlayerFilter::Any => "a player",
+            _ => "a player",
+        };
+        format!(
+            "Whenever {} or {} becomes the target of a spell or ability {} controls",
+            crate::triggers::describe_player_filter_subject(&self.player_filter),
+            self.object_filter.description(),
             controller
         )
     }

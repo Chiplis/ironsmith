@@ -589,6 +589,8 @@ const SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause
             &["that", "creature", "attacked", "this", "turn"],
         ]
 );
+const YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const SOURCE_ENTERED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2892,6 +2894,9 @@ pub(crate) fn parse_static_condition_clause(
     }
     if SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceAttackedThisTurn);
+    }
+    if YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::AttackedThisTurn);
     }
     if SOURCE_ENTERED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         let mut filter = ObjectFilter::source();
@@ -5556,6 +5561,24 @@ fn nonstatic_keyword_action_as_granted_object_ability(
     action: KeywordAction,
 ) -> Option<(ParsedAbility, String)> {
     match action {
+        KeywordAction::Soulshift(amount) => {
+            let ability = crate::CardDefinitionBuilder::new(crate::CardId::from_raw(0), "Soulshift")
+                .soulshift(amount)
+                .build()
+                .abilities
+                .into_iter()
+                .next()?;
+            Some((parsed_ability_from_ability(ability), format!("Soulshift {amount}")))
+        }
+        KeywordAction::SoulshiftValue(value) => Some((
+            parsed_ability_from_ability(
+                crate::CardDefinitionBuilder::soulshift_triggered_ability_from_value(value.clone()),
+            ),
+            format!(
+                "Soulshift X, where X is {}",
+                crate::payload::describe_soulshift_value(&value)
+            ),
+        )),
         KeywordAction::Casualty(power) => {
             let mut creature_filter = ObjectFilter::creature().you_control();
             creature_filter.power = Some(crate::filter::Comparison::GreaterThanOrEqual(
@@ -6437,6 +6460,59 @@ pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
     Ok(Some(granted))
 }
 
+pub(crate) fn parse_attached_can_attack_as_though_no_defender_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let normalized = crate::runtime_backend::token_word_refs(tokens)
+        .into_iter()
+        .map(|word| {
+            if ANTHEM_DIDNT_CONTRACTION_WORD_PATTERN.matches_word(word) {
+                "didnt"
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>();
+    if !CAN_ATTACK_AS_NO_DEFENDER_PATTERN.matches_words(&normalized) {
+        return Ok(None);
+    }
+    let Some(can_idx) =
+        anthem_find_prefix_shape_start(&normalized, &CAN_ATTACK_AS_NO_DEFENDER_PREFIX_PATTERN)
+    else {
+        return Ok(None);
+    };
+    if can_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_words = &normalized[..can_idx];
+    if !matches!(
+        subject_words.first().copied(),
+        Some("enchanted" | "equipped" | "attached")
+    ) {
+        return Ok(None);
+    }
+    let Some(subject_end) = token_index_for_word_index(tokens, can_idx) else {
+        return Err(CardTextError::ParseError(format!(
+            "unable to map attached no-defender subject (clause: '{}')",
+            normalized.join(" ")
+        )));
+    };
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = crate::runtime_backend::token_word_refs(&subject_tokens).join(" ");
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::can_attack_as_though_no_defender(),
+        )),
+        display: format!("{subject} can attack as though it didn't have defender"),
+        condition: None,
+    }))
+}
+
 pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -6889,7 +6965,37 @@ pub(crate) fn parse_isnt_creature_line(
     } else {
         None
     };
-    let clause_tokens = clause_tokens_buf.as_deref().unwrap_or(tokens);
+    let mut clause_tokens_storage: Vec<OwnedLexToken> = Vec::new();
+    let mut clause_tokens = clause_tokens_buf.as_deref().unwrap_or(tokens);
+
+    let clause_words = crate::runtime_backend::token_word_refs(clause_tokens);
+    if let Some(unless_word_idx) = clause_words.iter().position(|word| *word == "unless") {
+        let unless_token_idx = token_index_for_word_index(clause_tokens, unless_word_idx)
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unable to map unless condition in isn't-a-creature clause (clause: '{}')",
+                    all_words.join(" ")
+                ))
+            })?;
+        let condition_tokens = trim_commas(&clause_tokens[unless_token_idx + 1..]);
+        if condition_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing condition after trailing 'unless' clause (clause: '{}')",
+                all_words.join(" ")
+            )));
+        }
+        let unless_condition = crate::ConditionExpr::Not(Box::new(parse_static_condition_clause(
+            &condition_tokens,
+        )?));
+        condition = Some(match condition {
+            Some(existing) => {
+                crate::ConditionExpr::And(Box::new(existing), Box::new(unless_condition))
+            }
+            None => unless_condition,
+        });
+        clause_tokens_storage.extend(trim_commas(&clause_tokens[..unless_token_idx]));
+        clause_tokens = &clause_tokens_storage;
+    }
 
     let clause_words = crate::runtime_backend::token_word_refs(clause_tokens);
     if clause_words.len() < 3 {

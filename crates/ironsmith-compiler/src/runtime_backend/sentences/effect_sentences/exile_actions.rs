@@ -66,21 +66,24 @@ const EXILE_LIBRARY_OWNER_THAT_PLAYER_PATTERN: ClauseShape<'static> = clause_sha
     prefix_any
         & [
             &["that", "player", "library"],
-            &["that", "players", "library"]
+            &["that", "players", "library"],
+            &["that", "player's", "library"]
         ]
 );
 const EXILE_LIBRARY_OWNER_TARGET_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
             &["target", "player", "library"],
-            &["target", "players", "library"]
+            &["target", "players", "library"],
+            &["target", "player's", "library"]
         ]
 );
 const EXILE_LIBRARY_OWNER_TARGET_OPPONENT_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
             &["target", "opponent", "library"],
-            &["target", "opponents", "library"]
+            &["target", "opponents", "library"],
+            &["target", "opponent's", "library"]
         ]
 );
 const EXILE_LIBRARY_OWNER_ITS_CONTROLLER_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -98,7 +101,8 @@ const EXILE_EACH_OPPONENT_LIBRARY_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
             &["each", "opponent", "library"],
-            &["each", "opponents", "library"]
+            &["each", "opponents", "library"],
+            &["each", "opponent's", "library"]
         ]
 );
 const EXILE_THE_TOP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["the", "top"]);
@@ -163,6 +167,11 @@ pub(crate) fn parse_exile(
         } else {
             EffectAst::subject_verb_exile_all(filter, face_down)
         });
+    }
+    if !until_source_leaves
+        && let Some(effect) = parse_exile_bottom_library_clause(tokens, subject, face_down)
+    {
+        return Ok(effect);
     }
     if !face_down
         && !until_source_leaves
@@ -587,6 +596,87 @@ pub(crate) fn parse_exile_top_library_clause(
         vec![helper_tag_for_tokens(&tokens, "exiled")],
         Vec::new(),
     ))
+}
+
+fn parse_exile_bottom_library_clause(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+    face_down: bool,
+) -> Option<EffectAst> {
+    let tokens = trim_commas(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    let prefix = ["the", "bottom"];
+    let mut start = 0usize;
+    if words.starts_with(&prefix) {
+        start = 1;
+    }
+    if !words.get(start).is_some_and(|word| *word == "bottom") {
+        return None;
+    }
+    let count_start = token_index_for_word_index(&tokens, start + 1)?;
+    let count_start_words = crate::runtime_backend::token_word_refs(&tokens[count_start..=count_start]);
+    let (count, used_after_bottom) = if count_start_words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
+        (Value::Fixed(1), 0)
+    } else {
+        parse_value(&tokens[count_start..])?
+    };
+    if count != Value::Fixed(1) {
+        return None;
+    }
+    let after_count = trim_commas(&tokens[count_start + used_after_bottom..]);
+    let after_count_words = crate::runtime_backend::token_word_refs(&after_count);
+    if !after_count_words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+    let after_cards_start = token_index_for_word_index(&after_count, 1)?;
+    let after_cards = trim_commas(&after_count[after_cards_start..]);
+    let after_cards_words = crate::runtime_backend::token_word_refs(&after_cards);
+    if !after_cards_words
+        .first()
+        .is_some_and(|word| EXILE_OF_WORD_PATTERN.matches_word(word))
+    {
+        return None;
+    }
+    let owner_tokens = trim_commas(&after_cards[1..]);
+    let owner_words = crate::runtime_backend::token_word_refs(&owner_tokens);
+    let tag = helper_tag_for_tokens(&tokens, "exiled");
+    let mut filter = ObjectFilter::default();
+    filter.zone = Some(Zone::Library);
+
+    let choose_and_exile = |player: PlayerAst, tag: TagKey| {
+        vec![
+            EffectAst::ChooseObjectsBottomOfLibrary {
+                filter: filter.clone(),
+                count: crate::effect::ChoiceCount::exactly(1),
+                count_value: None,
+                player,
+                tag: tag.clone(),
+            },
+            EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), face_down),
+        ]
+    };
+
+    if EXILE_EACH_OPPONENT_LIBRARY_PATTERN.matches_words(&owner_words) {
+        return Some(EffectAst::ForEachOpponent {
+            effects: choose_and_exile(PlayerAst::That, tag),
+        });
+    }
+
+    let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (player, used_words) = parse_library_owner_prefix(&owner_words, default_player)?;
+    if used_words < owner_words.len() {
+        return None;
+    }
+
+    Some(EffectAst::Sequence {
+        effects: choose_and_exile(player, tag),
+    })
 }
 
 pub(crate) fn parse_target_player_graveyard_filter(

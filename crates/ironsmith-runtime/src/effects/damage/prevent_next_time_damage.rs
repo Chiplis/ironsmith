@@ -8,7 +8,7 @@ use crate::Value;
 use crate::effect::{Effect, EffectOutcome, EventValueSpec};
 use crate::effects::DealDamageEffect;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_objects_for_effect;
+use crate::effects::helpers::{resolve_objects_for_effect, resolve_players_from_spec};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::damage::matchers::{
     DamageSourceConstraint, DamageTargetConstraint, PreventableDamageConstraintMatcher,
@@ -35,6 +35,8 @@ pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     /// Only damage that would be dealt to you.
     You,
+    /// Only damage that would be dealt to a chosen target.
+    Target(ChooseSpec),
 }
 
 /// Register a one-shot replacement effect that prevents the next damage event matching constraints.
@@ -75,9 +77,22 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_constraint = match self.target {
+        let target_constraint = match &self.target {
             PreventNextTimeDamageTarget::AnyTarget => DamageTargetConstraint::Any,
             PreventNextTimeDamageTarget::You => DamageTargetConstraint::Player(ctx.controller),
+            PreventNextTimeDamageTarget::Target(spec) => {
+                if let Ok(objects) = resolve_objects_for_effect(game, ctx, spec)
+                    && let Some(object_id) = objects.first()
+                {
+                    DamageTargetConstraint::Object(*object_id)
+                } else if let Ok(players) = resolve_players_from_spec(game, spec, ctx)
+                    && let Some(player_id) = players.first()
+                {
+                    DamageTargetConstraint::Player(*player_id)
+                } else {
+                    return Err(ExecutionError::InvalidTarget);
+                }
+            }
         };
 
         let mut chosen_source = None;
@@ -173,16 +188,29 @@ impl EffectExecutor for PreventNextTimeDamageEffect {
             .add_one_shot_effect(replacement);
         Ok(EffectOutcome::resolved())
     }
+
+    fn get_target_spec(&self) -> Option<&ChooseSpec> {
+        match &self.target {
+            PreventNextTimeDamageTarget::Target(spec) => Some(spec),
+            _ => None,
+        }
+    }
+
+    fn target_description(&self) -> &'static str {
+        "damage prevention target"
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::decision::SelectFirstDecisionMaker;
+    use crate::effects::ResolvedTarget;
     use crate::events::DamageTarget;
     use crate::events::processing::process_damage_with_event;
     use crate::events::traits::ReplacementMatcher;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::{CardDefinitionBuilder, CardId, CardType, PowerToughness, Zone};
 
     #[test]
     fn prevent_next_time_damage_choice_any_target_prevents() {
@@ -281,5 +309,97 @@ mod tests {
             !matcher.matches_event(&unpreventable, &ctx),
             "matcher should not match unpreventable damage"
         );
+    }
+
+    #[test]
+    fn prevent_next_time_damage_target_object_only_prevents_matching_damage_once() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let chosen_source_def =
+            CardDefinitionBuilder::new(CardId::from_raw(91_401), "Chosen Source")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
+        let protected_def =
+            CardDefinitionBuilder::new(CardId::from_raw(91_402), "Protected Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
+        let other_target_def =
+            CardDefinitionBuilder::new(CardId::from_raw(91_403), "Other Creature")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
+        let other_source_def =
+            CardDefinitionBuilder::new(CardId::from_raw(91_404), "Other Source")
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build();
+
+        let chosen_source =
+            game.create_object_from_definition(&chosen_source_def, bob, Zone::Battlefield);
+        let protected =
+            game.create_object_from_definition(&protected_def, alice, Zone::Battlefield);
+        let other_target =
+            game.create_object_from_definition(&other_target_def, alice, Zone::Battlefield);
+        let other_source =
+            game.create_object_from_definition(&other_source_def, bob, Zone::Battlefield);
+
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(chosen_source, alice, &mut dm)
+            .with_targets(vec![ResolvedTarget::Object(protected)]);
+        let effect = PreventNextTimeDamageEffect::new(
+            PreventNextTimeDamageSource::Choice,
+            PreventNextTimeDamageTarget::Target(ChooseSpec::target(ChooseSpec::Object(
+                ObjectFilter::default(),
+            ))),
+        );
+        effect.execute(&mut game, &mut ctx).unwrap();
+
+        let (damage_to_other_target, prevented_other_target) = process_damage_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(other_target),
+            3,
+            false,
+            crate::events::cause::EventCause::from_effect(chosen_source, alice),
+        );
+        assert_eq!(damage_to_other_target, 3);
+        assert!(!prevented_other_target);
+
+        let (damage_from_other_source, prevented_other_source) = process_damage_with_event(
+            &mut game,
+            other_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            crate::events::cause::EventCause::from_effect(other_source, bob),
+        );
+        assert_eq!(damage_from_other_source, 3);
+        assert!(!prevented_other_source);
+
+        let (prevented_damage, prevented) = process_damage_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            crate::events::cause::EventCause::from_effect(chosen_source, alice),
+        );
+        assert_eq!(prevented_damage, 0);
+        assert!(prevented);
+
+        let (second_damage, second_prevented) = process_damage_with_event(
+            &mut game,
+            chosen_source,
+            DamageTarget::Object(protected),
+            3,
+            false,
+            crate::events::cause::EventCause::from_effect(chosen_source, alice),
+        );
+        assert_eq!(second_damage, 3);
+        assert!(!second_prevented);
     }
 }

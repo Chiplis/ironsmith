@@ -1400,6 +1400,47 @@ pub(crate) fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> O
     if grammar::words_match_any_prefix(
         tokens,
         &[
+            &["card", "exiled", "this", "way"],
+            &["cards", "exiled", "this", "way"],
+        ],
+    )
+    .is_some()
+    {
+        return Some(
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::AffectedObjects,
+                metric: ironsmith_core::EffectMetric::Count,
+            }
+            .with_surface_hints([
+                ValueSurfaceHint::ForEach,
+                ValueSurfaceHint::CardsExiledThisWay,
+            ]),
+        );
+    }
+
+    if grammar::words_match_any_prefix(
+        tokens,
+        &[
+            &["object", "exiled", "this", "way"],
+            &["objects", "exiled", "this", "way"],
+            &["permanent", "exiled", "this", "way"],
+            &["permanents", "exiled", "this", "way"],
+        ],
+    )
+    .is_some()
+    {
+        return Some(
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::AffectedObjects,
+                metric: ironsmith_core::EffectMetric::Count,
+            }
+            .with_surface_hint(ValueSurfaceHint::ForEach),
+        );
+    }
+
+    if grammar::words_match_any_prefix(
+        tokens,
+        &[
             &["card", "put", "into", "a", "graveyard", "this", "way"],
             &["cards", "put", "into", "a", "graveyard", "this", "way"],
             &["object", "put", "into", "a", "graveyard", "this", "way"],

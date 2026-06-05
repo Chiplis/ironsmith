@@ -42,6 +42,7 @@ pub enum ValueSurfaceHint {
     WhereXIs,
     EqualTo,
     ForEach,
+    CardsExiledThisWay,
     CountersRemovedThisWay,
     Difference,
 }
@@ -166,6 +167,7 @@ pub enum Value {
         card_name: String,
     },
     LastNotedLifeTotal,
+    PlayerCounters(PlayerFilter, CounterType),
     CountersOnSource(CounterType),
     CountersOn(Box<ChooseSpec>, Option<CounterType>),
     TaggedCount,
@@ -310,6 +312,7 @@ pub enum Restriction {
     BeSacrificed(ObjectFilter),
     HaveCountersPlaced(ObjectFilter),
     BeTargeted(ObjectFilter),
+    BeTargetedFrom(ObjectFilter, ObjectFilter),
     BeTargetedPlayer(PlayerFilter),
     BeTargetedPlayerFrom(PlayerFilter, ObjectFilter),
     BeCountered(ObjectFilter),
@@ -594,6 +597,10 @@ impl Restriction {
 
     pub fn be_targeted(filter: ObjectFilter) -> Self {
         Self::BeTargeted(filter)
+    }
+
+    pub fn be_targeted_from(filter: ObjectFilter, source_filter: ObjectFilter) -> Self {
+        Self::BeTargetedFrom(filter, source_filter)
     }
 
     pub fn be_targeted_player(filter: PlayerFilter) -> Self {
@@ -884,6 +891,11 @@ pub enum Condition {
     CountComparison {
         count: AnthemCountExpression,
         comparison: Comparison,
+        display: Option<String>,
+    },
+    CountParity {
+        count: AnthemCountExpression,
+        even: bool,
         display: Option<String>,
     },
     OwnsCardExiledWithCounter(CounterType),

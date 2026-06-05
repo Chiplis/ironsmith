@@ -2,7 +2,7 @@ use winnow::Parser as _;
 
 use super::super::activation_and_restrictions::choice_object_clauses::{
     parse_choose_card_type_phrase_words, parse_target_player_choose_objects_clause,
-    parse_you_choose_objects_clause,
+    parse_you_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
 };
 use super::super::lexer::{
     OwnedLexToken, TokenKind, parser_token_word_refs, split_lexed_sentences,
@@ -36,6 +36,18 @@ use crate::zone::Zone;
 const CHOSEN_TYPE_REFERENCE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words &[&["that", "chosen"]]; contains_words & ["type"]);
 const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
+const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
+const DISCARD_ANY_NUMBER_OF_CARDS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["discard", "any", "number", "of", "cards"]);
+const TARGET_PLAYER_REVEALS_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["target", "player", "reveals", "their", "hand"],
+            &["target", "opponent", "reveals", "their", "hand"]
+        ]
+);
+const THAT_PLAYER_DISCARDS_THOSE_CARDS_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["that", "player", "discards", "those", "cards"]);
 const PROLIFERATE_CHOOSE_COUNTERED_PERMANENTS_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -687,6 +699,7 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
+                    filter,
                     ..
                 },
             ..
@@ -696,6 +709,7 @@ fn parse_exile_top_library_then_play_bundle(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            filter,
         ),
         _ => return Ok(None),
     };
@@ -1242,6 +1256,73 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
         combined.extend(trailing_effects);
     }
     Ok(Some(combined))
+}
+
+fn parse_discard_reveal_choose_discard_chosen_bundle(
+    sentences: &[&[OwnedLexToken]],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [first, second, third] = sentences else {
+        return Ok(None);
+    };
+    if !DISCARD_ANY_NUMBER_OF_CARDS_PATTERN.matches_words(&parser_token_word_refs(first)) {
+        return Ok(None);
+    }
+    if !THAT_PLAYER_DISCARDS_THOSE_CARDS_PATTERN.matches_words(&parser_token_word_refs(third)) {
+        return Ok(None);
+    }
+
+    let Some(then_idx) = find_index(second, |token| THEN_WORD_PATTERN.matches_token(token)) else {
+        return Ok(None);
+    };
+    let reveal_tokens = trim_commas(&second[..then_idx]);
+    let reveal_words = parser_token_word_refs(&reveal_tokens);
+    if !TARGET_PLAYER_REVEALS_HAND_PATTERN.matches_words(&reveal_words) {
+        return Ok(None);
+    }
+    let revealed_player = match reveal_words.as_slice() {
+        ["target", "player", "reveals", "their", "hand"] => PlayerAst::Target,
+        ["target", "opponent", "reveals", "their", "hand"] => PlayerAst::TargetOpponent,
+        _ => return Ok(None),
+    };
+
+    let choose_tokens = trim_commas(&second[then_idx + 1..]);
+    let Some((chooser, choose_filter, choose_count, count_value)) =
+        parse_you_choose_objects_clause_with_count_value(&choose_tokens)?
+    else {
+        return Ok(None);
+    };
+    let discarded_tag = TagKey::from("discarded_this_way");
+    let count_value = count_value.map(|_| Value::Count(ObjectFilter::tagged(discarded_tag.clone())));
+
+    let mut discarded_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
+    discarded_filter.zone = Some(Zone::Hand);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_discard(
+            PlayerAst::Implicit,
+            Value::Fixed(0),
+            false,
+            true,
+            None,
+            Some(discarded_tag),
+        ),
+        EffectAst::subject_verb_reveal_hand(revealed_player),
+        EffectAst::ChooseObjects {
+            filter: choose_filter,
+            count: choose_count,
+            count_value,
+            player: chooser,
+            tag: TagKey::from(IT_TAG),
+        },
+        EffectAst::subject_verb_discard(
+            PlayerAst::That,
+            Value::Count(discarded_filter.clone()),
+            false,
+            false,
+            Some(discarded_filter),
+            None,
+        ),
+    ]))
 }
 
 fn choose_counter_target(
@@ -2286,6 +2367,11 @@ pub(crate) fn parse_exact_card_effect_bundle_lexed(
             sentences[0],
             sentences[1],
         )
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 3
+        && let Ok(Some(effects)) = parse_discard_reveal_choose_discard_chosen_bundle(&sentences)
     {
         return Some(effects);
     }

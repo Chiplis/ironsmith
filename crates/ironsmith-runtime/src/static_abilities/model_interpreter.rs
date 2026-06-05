@@ -113,6 +113,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
             }
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                format!("DieRollResultAdjustment {{ spec: {spec:?} }}")
+            }
             payload => format!("{payload:?}"),
         }
     }
@@ -944,6 +947,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(
                 filter,
             ) => StaticAbility::prevent_all_combat_damage_to_permanents_matching(filter.clone()),
+            ironsmith_core::StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(
+                filter,
+            ) => StaticAbility::prevent_all_noncombat_damage_to_permanents_matching(filter.clone()),
             ironsmith_core::StaticAbilityPayload::HexproofFrom(filter) => {
                 StaticAbility::hexproof_from(filter.clone())
             }
@@ -1191,6 +1197,15 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                StaticAbility::die_roll_result_adjustment(
+                    spec.player.clone(),
+                    spec.life_cost,
+                    spec.amount,
+                    spec.once_each_turn,
+                    spec.display.clone(),
+                )
+            }
             ironsmith_core::StaticAbilityPayload::MinimumSpellTotalMana(amount) => {
                 StaticAbility::minimum_spell_total_mana(*amount)
             }
@@ -1200,9 +1215,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
             }
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbility::choose_card_name_as_enters(display.clone())
-            }
+            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            } => StaticAbility::choose_card_name_as_enters_with_spec(
+                display.clone(),
+                super::ChooseCardNameAsEntersSpec {
+                    reveal_opponents_hands: *reveal_opponents_hands,
+                    require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+                },
+            ),
             ironsmith_core::StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbility::choose_creature_type_as_enters(display.clone())
             }
@@ -1350,12 +1373,14 @@ impl StaticAbilityModelInterpreter {
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             } => StaticAbility::multiply_damage_amount_replacement(
                 source_filter.clone(),
                 target_player_filter.clone(),
                 target_object_filter.clone(),
                 *factor,
+                *combat_only,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
@@ -1926,11 +1951,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {
-        matches!(
-            self.payload(),
-            ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters(_)
-        )
-        .then_some(super::ChooseCardNameAsEntersSpec)
+        let ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
+            reveal_opponents_hands,
+            require_nonland_from_revealed_opponents,
+            ..
+        } = self.payload()
+        else {
+            return None;
+        };
+        Some(super::ChooseCardNameAsEntersSpec {
+            reveal_opponents_hands: *reveal_opponents_hands,
+            require_nonland_from_revealed_opponents: *require_nonland_from_revealed_opponents,
+        })
     }
 
     fn basic_land_type_choice_as_enters(&self) -> Option<super::ChooseBasicLandTypeAsEntersSpec> {
@@ -2031,6 +2063,20 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
                 spell_name: spell_name.clone(),
                 counted_name: counted_name.clone(),
             }),
+            _ => None,
+        }
+    }
+
+    fn die_roll_result_adjustment_spec(&self) -> Option<super::DieRollResultAdjustmentSpec> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                Some(super::DieRollResultAdjustmentSpec {
+                    player: spec.player.clone(),
+                    life_cost: spec.life_cost,
+                    amount: spec.amount,
+                    once_each_turn: spec.once_each_turn,
+                })
+            }
             _ => None,
         }
     }

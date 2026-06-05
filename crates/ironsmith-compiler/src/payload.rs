@@ -1,6 +1,7 @@
 use crate::ability::ActivationTiming;
 use crate::color::ColorSet;
 use crate::cost::TotalCost;
+use crate::effect::Value;
 use crate::filter::ObjectFilter;
 use crate::mana::ManaCost;
 use crate::static_abilities::LandwalkKind;
@@ -59,6 +60,7 @@ pub enum KeywordAction {
     Graft(u32),
     Soulbond,
     Soulshift(u32),
+    SoulshiftValue(Value),
     Recover(ManaCost),
     Outlast(ManaCost),
     Scavenge(ManaCost),
@@ -163,6 +165,17 @@ pub enum KeywordAction {
     MarkerText(String),
 }
 
+pub(crate) fn describe_soulshift_value(value: &Value) -> String {
+    if let Value::Count(filter) = value
+        && filter.zone == Some(crate::zone::Zone::Battlefield)
+        && filter.controller == Some(crate::target::PlayerFilter::You)
+        && filter.subtypes.contains(&Subtype::Spirit)
+    {
+        return "the number of Spirits you control".to_string();
+    }
+    "that value".to_string()
+}
+
 impl KeywordAction {
     pub fn lowers_to_static_ability(&self) -> bool {
         matches!(
@@ -215,6 +228,7 @@ impl KeywordAction {
                 | Self::Graft(_)
                 | Self::Soulbond
                 | Self::Soulshift(_)
+                | Self::SoulshiftValue(_)
                 | Self::Outlast(_)
                 | Self::Unearth(_)
                 | Self::Eternalize(_)
@@ -332,6 +346,10 @@ impl KeywordAction {
             Self::Graft(amount) => format!("Graft {amount}"),
             Self::Soulbond => "Soulbond".to_string(),
             Self::Soulshift(amount) => format!("Soulshift {amount}"),
+            Self::SoulshiftValue(value) => format!(
+                "Soulshift X, where X is {}",
+                describe_soulshift_value(value)
+            ),
             Self::Recover(cost) => format!("Recover {}", cost.to_oracle()),
             Self::Outlast(cost) => format!("Outlast {}", cost.to_oracle()),
             Self::Scavenge(cost) => format!("Scavenge {}", cost.to_oracle()),

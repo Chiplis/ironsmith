@@ -19,6 +19,12 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
         return Some(actions);
     }
+    let words = crate::runtime_backend::lexer::TokenWordView::new(tokens).word_refs();
+    if let Some(action) =
+        super::activation_and_restrictions::parse_dynamic_soulshift_keyword_action(&words)
+    {
+        return Some(vec![action]);
+    }
 
     let segments = split_lexed_slices_on_commas_or_semicolons(tokens);
     let mut actions = Vec::new();

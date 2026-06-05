@@ -369,6 +369,9 @@ pub(super) fn parse_static_line_cst(
     if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
+    if parse_spells_cost_modifier_line(&lexed)?.is_some() {
+        return Ok(Some(make_static(None)));
+    }
 
     if is_activate_only_once_each_turn_line_lexed(&lexed) {
         return Ok(Some(make_static(None)));
@@ -450,6 +453,10 @@ fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usiz
     let mut item_count = 0usize;
     for sentence in sentences {
         if parse_if_this_spell_costs_less_to_cast_line_lexed(sentence)?.is_some() {
+            item_count += 1;
+            continue;
+        }
+        if parse_spells_cost_modifier_line(sentence)?.is_some() {
             item_count += 1;
             continue;
         }

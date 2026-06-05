@@ -230,6 +230,53 @@ impl ReplacementMatcher for PreventableCombatDamageToObjectMatcher {
     }
 }
 
+/// Matches preventable noncombat damage events dealt to an object matching a filter.
+#[derive(Debug, Clone)]
+pub struct PreventableNoncombatDamageToObjectMatcher {
+    pub filter: ObjectFilter,
+}
+
+impl PreventableNoncombatDamageToObjectMatcher {
+    pub fn new(filter: ObjectFilter) -> Self {
+        Self { filter }
+    }
+}
+
+impl ReplacementMatcher for PreventableNoncombatDamageToObjectMatcher {
+    fn matches_event(&self, event: &dyn GameEventType, ctx: &EventContext) -> bool {
+        if event.event_kind() != EventKind::Damage {
+            return false;
+        }
+
+        let Some(damage) = downcast_event::<DamageEvent>(event) else {
+            return false;
+        };
+
+        if damage.is_unpreventable || damage.is_combat {
+            return false;
+        }
+
+        let DamageTarget::Object(object_id) = damage.target else {
+            return false;
+        };
+
+        ctx.game
+            .object(object_id)
+            .is_some_and(|object| self.filter.matches(object, &ctx.filter_ctx, ctx.game))
+    }
+
+    fn priority(&self) -> ReplacementPriority {
+        ReplacementPriority::Other
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "When preventable noncombat damage would be dealt to {}",
+            self.filter.description()
+        )
+    }
+}
+
 /// Matches noncombat damage events.
 #[derive(Debug, Clone)]
 pub struct NoncombatDamageMatcher;
@@ -561,6 +608,8 @@ pub enum DamageTargetConstraint {
     Any,
     /// Damage is dealt to a specific player.
     Player(PlayerId),
+    /// Damage is dealt to a specific object.
+    Object(ObjectId),
 }
 
 /// Matches preventable damage events with optional source/target constraints.
@@ -637,6 +686,14 @@ impl ReplacementMatcher for PreventableDamageConstraintMatcher {
                     }
                 }
                 DamageTarget::Object(_) => return false,
+            },
+            DamageTargetConstraint::Object(object_id) => match damage.target {
+                DamageTarget::Object(id) => {
+                    if &id != object_id {
+                        return false;
+                    }
+                }
+                DamageTarget::Player(_) => return false,
             },
         }
 

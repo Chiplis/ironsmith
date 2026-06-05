@@ -9,6 +9,7 @@ use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::ids::PlayerId;
 use crate::mana::ManaSymbol;
+use crate::snapshot::ObjectSnapshot;
 use crate::types::Subtype;
 
 pub(crate) fn mana_added_value_outcome(
@@ -38,12 +39,11 @@ pub(crate) fn mana_added_outcome_with_value(
     if mana.is_empty() {
         outcome
     } else {
-        outcome.with_event(ManaAddedEvent::trigger_event(
-            ctx.source,
-            ctx.controller,
-            player_id,
-            mana,
-        ))
+        outcome.with_event(
+            ManaAddedEvent::new(ctx.source, ctx.controller, player_id, mana)
+                .with_production_provenance(ctx.mana.production_provenance)
+                .into_trigger_event(),
+        )
     }
 }
 
@@ -149,8 +149,9 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
     game: &mut GameState,
     player_id: PlayerId,
     symbols: I,
-    ctx: &ExecutionContext,
-) where
+    ctx: &mut ExecutionContext,
+) -> Vec<ManaSymbol>
+where
     I: IntoIterator<Item = ManaSymbol>,
 {
     credit_mana_symbols_with_context(
@@ -158,9 +159,13 @@ pub(crate) fn credit_mana_symbols_from_context<I>(
         player_id,
         symbols,
         Some(ctx.source),
+        ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
-    );
+        ctx.mana.production_provenance,
+        ctx.source_snapshot.clone(),
+        &mut *ctx.decision_maker,
+    )
 }
 
 fn credit_mana_symbols_with_context<I>(
@@ -168,25 +173,47 @@ fn credit_mana_symbols_with_context<I>(
     player_id: PlayerId,
     symbols: I,
     source: Option<ObjectId>,
+    controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
-) where
+    production_provenance: crate::events::mana::ManaProductionProvenance,
+    source_snapshot: Option<ObjectSnapshot>,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> Vec<ManaSymbol>
+where
     I: IntoIterator<Item = ManaSymbol>,
 {
+    let source = source.unwrap_or(ObjectId::from_raw(0));
+    let mana = symbols.into_iter().collect::<Vec<_>>();
+    let snapshot = source_snapshot.or_else(|| {
+        game.object(source)
+            .map(|object| ObjectSnapshot::from_object(object, game))
+    });
+    let mana = crate::events::mana::apply_mana_replacements(
+        game,
+        source,
+        controller,
+        player_id,
+        mana,
+        production_provenance,
+        snapshot,
+        decision_maker,
+    );
     if let Some(player) = game.player_mut(player_id) {
-        for symbol in symbols {
+        for symbol in mana.iter().copied() {
             if restrictions.is_empty() {
                 player.mana_pool.add(symbol, 1);
             } else {
                 player.add_restricted_mana(crate::ability::RestrictedManaUnit {
                     symbol,
-                    source: source.unwrap_or(ObjectId::from_raw(0)),
+                    source,
                     source_chosen_creature_type,
                     restrictions: restrictions.to_vec(),
                 });
             }
         }
     }
+    mana
 }
 
 pub(crate) fn credit_repeated_mana_symbol_from_context(
@@ -194,17 +221,21 @@ pub(crate) fn credit_repeated_mana_symbol_from_context(
     player_id: PlayerId,
     symbol: ManaSymbol,
     count: u32,
-    ctx: &ExecutionContext,
-) {
+    ctx: &mut ExecutionContext,
+) -> Vec<ManaSymbol> {
     credit_repeated_mana_symbol_with_context(
         game,
         player_id,
         symbol,
         count,
         Some(ctx.source),
+        ctx.controller,
         &ctx.mana.mana_usage_restrictions,
         ctx.mana.mana_source_chosen_creature_type,
-    );
+        ctx.mana.production_provenance,
+        ctx.source_snapshot.clone(),
+        &mut *ctx.decision_maker,
+    )
 }
 
 fn credit_repeated_mana_symbol_with_context(
@@ -213,17 +244,25 @@ fn credit_repeated_mana_symbol_with_context(
     symbol: ManaSymbol,
     count: u32,
     source: Option<ObjectId>,
+    controller: PlayerId,
     restrictions: &[crate::ability::ManaUsageRestriction],
     source_chosen_creature_type: Option<Subtype>,
-) {
+    production_provenance: crate::events::mana::ManaProductionProvenance,
+    source_snapshot: Option<ObjectSnapshot>,
+    decision_maker: &mut dyn crate::decision::DecisionMaker,
+) -> Vec<ManaSymbol> {
     credit_mana_symbols_with_context(
         game,
         player_id,
         std::iter::repeat_n(symbol, count as usize),
         source,
+        controller,
         restrictions,
         source_chosen_creature_type,
-    );
+        production_provenance,
+        source_snapshot,
+        decision_maker,
+    )
 }
 
 /// Choose one or more mana symbols through the decision system with stable

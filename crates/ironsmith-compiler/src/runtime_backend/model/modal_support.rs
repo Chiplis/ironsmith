@@ -246,6 +246,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::Discard { count: amount, .. }
             | SubjectVerbActionAst::PoisonCounters { count: amount }
             | SubjectVerbActionAst::EnergyCounters { count: amount }
+            | SubjectVerbActionAst::ExperienceCounters { count: amount }
             | SubjectVerbActionAst::TicketCounters { count: amount }
             | SubjectVerbActionAst::PayEnergy { amount }
             | SubjectVerbActionAst::SetLifeTotal { amount }
@@ -461,6 +462,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RegisterZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterFutureZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterDrawReplacement { .. }
+            | SubjectVerbActionAst::RegisterManaReplacement { .. }
             | SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. }
             | SubjectVerbActionAst::Enchant { .. }

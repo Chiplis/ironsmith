@@ -959,6 +959,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
     ) -> Option<CountAsCardNamedForSpellEffectSpec> {
         None
     }
+
+    /// Return a die-roll result adjustment descriptor, if any.
+    fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        None
+    }
 }
 
 /// Spec for "as this enters, choose a color" abilities.
@@ -981,7 +986,10 @@ pub struct NoteLifeTotalAsEntersSpec;
 
 /// Spec for "as this enters, choose a card name" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct ChooseCardNameAsEntersSpec;
+pub struct ChooseCardNameAsEntersSpec {
+    pub reveal_opponents_hands: bool,
+    pub require_nonland_from_revealed_opponents: bool,
+}
 
 /// Spec for "as this enters, choose a basic land type" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1085,6 +1093,15 @@ pub struct RevealDrawnCardSpec {
 pub struct CountAsCardNamedForSpellEffectSpec {
     pub spell_name: String,
     pub counted_name: String,
+}
+
+/// Spec for abilities that can change a die-roll result as it is rolled.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustmentSpec {
+    pub player: crate::target::PlayerFilter,
+    pub life_cost: u32,
+    pub amount: u32,
+    pub once_each_turn: bool,
 }
 
 // Implement Clone for Box<dyn StaticAbilityKind>
@@ -1211,6 +1228,10 @@ impl StaticAbility {
         &self,
     ) -> Option<CountAsCardNamedForSpellEffectSpec> {
         self.0.count_as_card_named_for_spell_effect_spec()
+    }
+
+    pub fn die_roll_result_adjustment_spec(&self) -> Option<DieRollResultAdjustmentSpec> {
+        self.0.die_roll_result_adjustment_spec()
     }
 
     /// Get the display text for this ability.
@@ -2037,6 +2058,10 @@ impl StaticAbility {
         Self::new(CanAttackAsThoughNoDefender)
     }
 
+    pub fn can_attack_as_though_haste() -> Self {
+        Self::new(CanAttackAsThoughHaste)
+    }
+
     pub fn doesnt_untap() -> Self {
         Self::new(DoesntUntap)
     }
@@ -2452,6 +2477,12 @@ impl StaticAbility {
         Self::new(PreventAllCombatDamageToPermanentsMatching::new(filter))
     }
 
+    pub fn prevent_all_noncombat_damage_to_permanents_matching(
+        filter: crate::target::ObjectFilter,
+    ) -> Self {
+        Self::new(PreventAllNoncombatDamageToPermanentsMatching::new(filter))
+    }
+
     pub fn prevent_all_damage_to_self() -> Self {
         Self::new(PreventAllDamageToSelf)
     }
@@ -2724,6 +2755,23 @@ impl StaticAbility {
         Self::new(ChooseCardNameAsEnters::new(display))
     }
 
+    pub fn choose_card_name_as_enters_with_spec(
+        display: String,
+        spec: ChooseCardNameAsEntersSpec,
+    ) -> Self {
+        Self::new(ChooseCardNameAsEnters::with_spec(display, spec))
+    }
+
+    pub fn choose_revealed_hand_nonland_card_name_as_enters(display: String) -> Self {
+        Self::choose_card_name_as_enters_with_spec(
+            display,
+            ChooseCardNameAsEntersSpec {
+                reveal_opponents_hands: true,
+                require_nonland_from_revealed_opponents: true,
+            },
+        )
+    }
+
     pub fn choose_basic_land_type_as_enters(display: String) -> Self {
         Self::new(ChooseBasicLandTypeAsEnters::new(display))
     }
@@ -2920,6 +2968,7 @@ impl StaticAbility {
             target_player_filter,
             target_object_filter,
             2,
+            false,
             display,
         )
     }
@@ -2929,6 +2978,7 @@ impl StaticAbility {
         target_player_filter: Option<crate::target::PlayerFilter>,
         target_object_filter: Option<crate::target::ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: String,
     ) -> Self {
         Self::new(DoubleDamageAmountReplacement::new(
@@ -2936,6 +2986,7 @@ impl StaticAbility {
             target_player_filter,
             target_object_filter,
             factor,
+            combat_only,
             display,
         ))
     }
@@ -3216,6 +3267,22 @@ impl StaticAbility {
     /// you may pay 2 life. If you don't, it enters the battlefield tapped."
     pub fn pay_life_or_enter_tapped(life_cost: u32) -> Self {
         Self::new(PayLifeOrEnterTappedReplacement::new(life_cost))
+    }
+
+    pub fn die_roll_result_adjustment(
+        player: crate::target::PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        Self::new(DieRollResultAdjustment::new(
+            player,
+            life_cost,
+            amount,
+            once_each_turn,
+            display,
+        ))
     }
 
     pub fn keyword_fallback_text(text: impl Into<String>) -> Self {

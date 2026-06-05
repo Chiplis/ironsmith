@@ -1520,6 +1520,25 @@ fn check_mana_ability_condition(
     crate::condition_eval::evaluate_condition_external(game, condition, &eval_ctx)
 }
 
+pub(crate) fn mana_production_provenance_for_activation_cost(
+    cost: &crate::cost::TotalCost,
+) -> crate::events::mana::ManaProductionProvenance {
+    fn cost_taps_source(cost: &crate::cost::TotalCost) -> bool {
+        match cost.kind() {
+            ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| cost.requires_tap()),
+            ironsmith_core::TotalCostKind::OneOf(branches) => {
+                !branches.is_empty() && branches.iter().all(cost_taps_source)
+            }
+        }
+    }
+
+    if cost_taps_source(cost) {
+        crate::events::mana::ManaProductionProvenance::TappedSourceForMana
+    } else {
+        crate::events::mana::ManaProductionProvenance::Unknown
+    }
+}
+
 pub fn perform_activate_mana_ability(
     game: &mut GameState,
     player: PlayerId,
@@ -1586,6 +1605,8 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
             permanent_id,
             &mana_ability.mana_cost,
         );
+        let mana_production_provenance =
+            mana_production_provenance_for_activation_cost(&total_cost);
         let effects = mana_ability.effects.clone();
         let mana = mana_ability.mana_output.clone().unwrap_or_default();
         let mana_usage_restrictions = mana_ability.mana_usage_restrictions.clone();
@@ -1600,6 +1621,17 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
                 .map_err(cost_error_to_action_error)?;
         let x_value_from_costs = cost_summary.x_value;
         drop(cost_ctx);
+
+        let mana = crate::events::mana::apply_mana_replacements(
+            game,
+            permanent_id,
+            player,
+            player,
+            mana,
+            mana_production_provenance,
+            Some(source_snapshot.clone()),
+            decision_maker,
+        );
 
         // Add mana to player's pool
         if let Some(player_data) = game.player_mut(player) {
@@ -1619,6 +1651,7 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
         if !mana.is_empty() {
             emitted_events.push(
                 crate::events::ManaAddedEvent::new(permanent_id, player, player, mana.clone())
+                    .with_production_provenance(mana_production_provenance)
                     .with_snapshot(Some(source_snapshot.clone()))
                     .into_trigger_event(),
             );
@@ -1629,7 +1662,9 @@ pub(crate) fn perform_activate_mana_ability_restricted_colors_with_events(
             let mut effect_ctx = ExecutionContext::new(permanent_id, player, decision_maker)
                 .with_mana_color_restriction(mana_color_restriction.clone())
                 .with_mana_usage_restrictions(mana_usage_restrictions)
-                .with_mana_source_chosen_creature_type(source_chosen_creature_type);
+                .with_mana_source_chosen_creature_type(source_chosen_creature_type)
+                .with_mana_production_provenance(mana_production_provenance)
+                .with_source_snapshot(source_snapshot.clone());
             if let Some(x) = x_value_from_costs {
                 effect_ctx = effect_ctx.with_x(x);
             }

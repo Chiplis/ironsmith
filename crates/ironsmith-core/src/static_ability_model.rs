@@ -212,10 +212,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         maximum: Value,
         display: String,
     },
+    DieRollResultAdjustment(DieRollResultAdjustment),
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
     Protection(ProtectionFrom),
     PreventAllCombatDamageToPermanentsMatching(ObjectFilter),
+    PreventAllNoncombatDamageToPermanentsMatching(ObjectFilter),
     RuleRestriction {
         restriction: Restriction,
         display: String,
@@ -393,7 +395,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     NoteLifeTotalAsEnters(String),
-    ChooseCardNameAsEnters(String),
+    ChooseCardNameAsEnters {
+        display: String,
+        reveal_opponents_hands: bool,
+        require_nonland_from_revealed_opponents: bool,
+    },
     ChooseCreatureTypeAsEnters(String),
     ChooseNamedOptionAsEnters {
         options: Vec<String>,
@@ -460,6 +466,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: String,
     },
     DoubleCountersReplacement {
@@ -563,6 +570,15 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         count: Value,
         subtypes: Vec<Subtype>,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct DieRollResultAdjustment {
+    pub player: PlayerFilter,
+    pub life_cost: u32,
+    pub amount: u32,
+    pub once_each_turn: bool,
+    pub display: String,
 }
 
 impl<T, E, C, Cond> StaticAbility<T, E, C, Cond>
@@ -907,6 +923,9 @@ where
             StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
             }
+            StaticAbilityPayload::DieRollResultAdjustment(spec) => {
+                StaticAbilityPayload::DieRollResultAdjustment(spec)
+            }
             StaticAbilityPayload::LevelAbility(level) => {
                 let level = *level;
                 let mut abilities = Vec::with_capacity(level.abilities.len());
@@ -929,6 +948,9 @@ where
             StaticAbilityPayload::Protection(from) => StaticAbilityPayload::Protection(from),
             StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter) => {
                 StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter)
+            }
+            StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter) => {
+                StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter)
             }
             StaticAbilityPayload::RuleRestriction {
                 restriction,
@@ -1218,9 +1240,15 @@ where
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
-            StaticAbilityPayload::ChooseCardNameAsEnters(display) => {
-                StaticAbilityPayload::ChooseCardNameAsEnters(display)
-            }
+            StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            } => StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands,
+                require_nonland_from_revealed_opponents,
+            },
             StaticAbilityPayload::ChooseCreatureTypeAsEnters(display) => {
                 StaticAbilityPayload::ChooseCreatureTypeAsEnters(display)
             }
@@ -1378,12 +1406,14 @@ where
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             } => StaticAbilityPayload::DoubleDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             },
             StaticAbilityPayload::DoubleCountersReplacement {
@@ -1772,6 +1802,27 @@ impl<
         }
     }
 
+    pub fn die_roll_result_adjustment(
+        player: PlayerFilter,
+        life_cost: u32,
+        amount: u32,
+        once_each_turn: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DieRollResultAdjustment),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DieRollResultAdjustment(DieRollResultAdjustment {
+                player,
+                life_cost,
+                amount,
+                once_each_turn,
+                display,
+            }),
+        }
+    }
+
     pub fn morph(cost: TotalCost<C>) -> Self {
         Self {
             id: Some(StaticAbilityId::Morph),
@@ -1988,6 +2039,13 @@ impl<
         Self::identified(
             StaticAbilityId::CanAttackAsThoughNoDefender,
             "can attack as though no defender",
+        )
+    }
+
+    pub fn can_attack_as_though_haste() -> Self {
+        Self::identified(
+            StaticAbilityId::CanAttackAsThoughHaste,
+            "can attack as though haste",
         )
     }
 
@@ -3290,7 +3348,23 @@ impl<
         Self {
             id: Some(StaticAbilityId::ChooseCardNameAsEnters),
             label: display.clone(),
-            payload: StaticAbilityPayload::ChooseCardNameAsEnters(display),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: false,
+                require_nonland_from_revealed_opponents: false,
+            },
+        }
+    }
+    pub fn choose_revealed_hand_nonland_card_name_as_enters(display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::ChooseCardNameAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ChooseCardNameAsEnters {
+                display,
+                reveal_opponents_hands: true,
+                require_nonland_from_revealed_opponents: true,
+            },
         }
     }
     pub fn redirect_damage_from_you_and_other_permanents_to_source() -> Self {
@@ -3448,6 +3522,13 @@ impl<
             id: Some(StaticAbilityId::PreventAllCombatDamageToPermanentsMatching),
             label: "prevent all combat damage to permanents matching filter".into(),
             payload: StaticAbilityPayload::PreventAllCombatDamageToPermanentsMatching(filter),
+        }
+    }
+    pub fn prevent_all_noncombat_damage_to_permanents_matching(filter: ObjectFilter) -> Self {
+        Self {
+            id: Some(StaticAbilityId::PreventAllNoncombatDamageToPermanentsMatching),
+            label: "prevent all noncombat damage to permanents matching filter".into(),
+            payload: StaticAbilityPayload::PreventAllNoncombatDamageToPermanentsMatching(filter),
         }
     }
     pub fn prevent_all_damage_to_self() -> Self {
@@ -3839,6 +3920,7 @@ impl<
             target_player_filter,
             target_object_filter,
             2,
+            false,
             display,
         )
     }
@@ -3848,6 +3930,7 @@ impl<
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -3859,6 +3942,7 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             },
         }

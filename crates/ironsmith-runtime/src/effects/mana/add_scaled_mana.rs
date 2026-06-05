@@ -29,7 +29,7 @@ impl EffectExecutor for AddScaledManaEffect {
         for _ in 0..repeats {
             added.extend(self.mana.iter().copied());
         }
-        credit_mana_symbols_from_context(game, player_id, added.iter().copied(), ctx);
+        let added = credit_mana_symbols_from_context(game, player_id, added, ctx);
 
         Ok(mana_added_value_outcome(ctx, player_id, added))
     }

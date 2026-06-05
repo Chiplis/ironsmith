@@ -671,6 +671,9 @@ pub struct CantEffectTracker {
     /// "can't be the target of spells or abilities"
     pub cant_be_targeted: HashSet<ObjectId>,
 
+    /// Permanents that can't be targeted by sources matching a filter.
+    pub cant_be_targeted_from: Vec<ObjectCantBeTargetedFrom>,
+
     /// Players that can't be targeted.
     pub cant_target_players: HashSet<PlayerId>,
 
@@ -693,6 +696,13 @@ pub struct CantEffectTracker {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PlayerCantBeTargetedFrom {
     pub player: PlayerId,
+    pub source_filter: crate::target::ObjectFilter,
+    pub controller: PlayerId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectCantBeTargetedFrom {
+    pub object: ObjectId,
     pub source_filter: crate::target::ObjectFilter,
     pub controller: PlayerId,
 }
@@ -919,6 +929,8 @@ impl CantEffectTracker {
         self.cant_win_game.extend(other.cant_win_game);
         self.cant_become_monarch.extend(other.cant_become_monarch);
         self.cant_be_targeted.extend(other.cant_be_targeted);
+        self.cant_be_targeted_from
+            .extend(other.cant_be_targeted_from.clone());
         self.cant_target_players.extend(other.cant_target_players);
         self.cant_target_players_from
             .extend(other.cant_target_players_from.clone());
@@ -964,6 +976,7 @@ impl CantEffectTracker {
         self.cant_win_game.clear();
         self.cant_become_monarch.clear();
         self.cant_be_targeted.clear();
+        self.cant_be_targeted_from.clear();
         self.cant_target_players.clear();
         self.cant_target_players_from.clear();
         self.cant_be_countered.clear();
@@ -1267,6 +1280,25 @@ impl CantEffectTracker {
     /// Check if a permanent is untargetable by the rules tracker.
     pub fn is_untargetable(&self, permanent: ObjectId) -> bool {
         self.cant_be_targeted.contains(&permanent)
+    }
+
+    pub fn can_target_object_from_source(
+        &self,
+        game: &GameState,
+        object: ObjectId,
+        source_id: ObjectId,
+    ) -> bool {
+        let Some(source) = game.object(source_id) else {
+            return true;
+        };
+
+        !self.cant_be_targeted_from.iter().any(|restriction| {
+            if restriction.object != object {
+                return false;
+            }
+            let filter_ctx = game.filter_context_for(restriction.controller, Some(source_id));
+            restriction.source_filter.matches(source, &filter_ctx, game)
+        })
     }
 
     /// Check if a player can be targeted.
@@ -3499,6 +3531,12 @@ impl GameState {
         self.effect_store.cant_effects.is_untargetable(permanent)
     }
 
+    pub fn can_target_object_from_source(&self, object: ObjectId, source_id: ObjectId) -> bool {
+        self.effect_store
+            .cant_effects
+            .can_target_object_from_source(self, object, source_id)
+    }
+
     /// Can this player be targeted?
     pub fn can_target_player(&self, player: PlayerId) -> bool {
         self.effect_store.cant_effects.can_target_player(player)
@@ -4779,7 +4817,32 @@ impl GameState {
                             self.set_chosen_player(new_id, options[chosen_idx]);
                         }
                     }
-                    if static_ability.card_name_choice_as_enters().is_some() {
+                    if let Some(spec) = static_ability.card_name_choice_as_enters() {
+                        if spec.reveal_opponents_hands {
+                            let opponent_ids = self
+                                .players
+                                .iter()
+                                .filter(|player| player.is_in_game() && player.id != controller)
+                                .map(|player| player.id)
+                                .collect::<Vec<_>>();
+                            for opponent_id in opponent_ids {
+                                let cards = self
+                                    .player(opponent_id)
+                                    .map(|player| player.hand.clone())
+                                    .unwrap_or_default();
+                                for viewer_idx in 0..self.players.len() {
+                                    let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
+                                    let mut view_ctx = crate::decisions::context::ViewCardsContext::look_at_hand(
+                                        viewer,
+                                        opponent_id,
+                                        Some(new_id),
+                                    );
+                                    view_ctx.description = "Reveal that player's hand".to_string();
+                                    view_ctx.public = true;
+                                    decision_maker.view_cards(self, viewer, &cards, &view_ctx);
+                                }
+                            }
+                        }
                         let choice_ctx = crate::decisions::context::TextInputContext::new(
                             controller,
                             Some(new_id),
@@ -4801,6 +4864,20 @@ impl GameState {
                             .get(chosen_name)
                             .map(|definition| definition.name().to_string())
                             .unwrap_or_else(|| chosen_name.to_string());
+                        if spec.require_nonland_from_revealed_opponents
+                            && !self
+                                .players
+                                .iter()
+                                .filter(|player| player.is_in_game() && player.id != controller)
+                                .flat_map(|player| player.hand.iter().copied())
+                                .filter_map(|object_id| self.object(object_id))
+                                .any(|object| {
+                                    !object.is_land()
+                                        && object.name.eq_ignore_ascii_case(&canonical_name)
+                                })
+                        {
+                            continue;
+                        }
                         self.set_chosen_named_option(new_id, canonical_name);
                     }
                     if let Some(spec) = static_ability.named_option_choice_as_enters() {

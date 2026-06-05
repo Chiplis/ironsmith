@@ -4,6 +4,15 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 
 const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
+const DIE_ROLL_RESULT_ADJUSTMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix & ["after", "you", "roll", "a", "die"];
+    contains_phrases & [
+        &["you", "may", "pay"],
+        &["if", "you", "do"],
+        &["increase", "or", "decrease", "the", "result", "by"],
+        &["do", "this", "only", "once", "each", "turn"],
+    ]
+);
 
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
@@ -28,6 +37,14 @@ pub(super) fn parse_statement_line_cst(
     let normalized = line.info.normalized.normalized.as_str();
     if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
         return Ok(None);
+    }
+    if DIE_ROLL_RESULT_ADJUSTMENT_PATTERN.matches_words(&token_word_refs(&line.tokens)) {
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: vec![line.tokens.clone()],
+        }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
@@ -188,6 +205,9 @@ pub(super) fn extend_triggered_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if super::is_nonkeyword_choice_labeled_line(line) {
+            break;
+        }
         if !is_trigger_result_followup_line(line) {
             break;
         }
@@ -218,6 +238,9 @@ pub(super) fn extend_activated_line_with_result_followups(
     let mut next_idx = idx + 1;
 
     while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if super::is_nonkeyword_choice_labeled_line(line) {
+            break;
+        }
         if !is_trigger_result_followup_line(line) {
             break;
         }
@@ -233,6 +256,39 @@ pub(super) fn extend_activated_line_with_result_followups(
     }
 
     (activated, next_idx)
+}
+
+pub(super) fn extend_statement_line_with_result_followups(
+    items: &[PreprocessedItem],
+    idx: usize,
+    mut statement: StatementLineCst,
+) -> (StatementLineCst, usize) {
+    let mut next_idx = idx + 1;
+
+    while let Some(PreprocessedItem::Line(line)) = items.get(next_idx) {
+        if super::is_nonkeyword_choice_labeled_line(line) {
+            break;
+        }
+        if !is_trigger_result_followup_line(line) {
+            break;
+        }
+
+        let followup_text = render_token_slice(&line.tokens).trim().to_string();
+        if !statement.text.is_empty() {
+            statement.text.push('\n');
+        }
+        statement.text.push_str(followup_text.as_str());
+        append_joined_line_tokens(&mut statement.parse_tokens, &line.tokens);
+        if let Some(parse_group) = statement.parse_groups.last_mut() {
+            append_joined_line_tokens(parse_group, &line.tokens);
+        } else {
+            statement.parse_groups.push(line.tokens.clone());
+        }
+
+        next_idx += 1;
+    }
+
+    (statement, next_idx)
 }
 
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {

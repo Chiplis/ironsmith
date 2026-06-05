@@ -503,6 +503,10 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
         if let Some(action) = parse_count_keyword("soulshift", KeywordAction::Soulshift) {
             return Some(action);
         }
+        if let Some(action) = super::activation_and_restrictions::keyword_action_costs::parse_dynamic_soulshift_keyword_action(&words)
+        {
+            return Some(action);
+        }
         if let Some(action) = parse_count_keyword("modular", KeywordAction::Modular) {
             return Some(action);
         }
@@ -752,6 +756,12 @@ pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<K
     }
     if let Some(actions) = parse_splice_keyword_line_lexed(tokens) {
         return Some(actions);
+    }
+    let words = TokenWordView::new(tokens).word_refs();
+    if let Some(action) =
+        super::activation_and_restrictions::keyword_action_costs::parse_dynamic_soulshift_keyword_action(&words)
+    {
+        return Some(vec![action]);
     }
 
     let segments = split_on_lexed_comma_or_semicolon(tokens);

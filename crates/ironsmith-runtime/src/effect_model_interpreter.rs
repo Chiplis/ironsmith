@@ -1015,12 +1015,15 @@ where
                 crate::effects::PreventNextTimeDamageSource::Filter(filter.clone())
             }
         };
-        let target = match payload.target {
+        let target = match &payload.target {
             ironsmith_core::PreventNextTimeDamageTarget::AnyTarget => {
                 crate::effects::PreventNextTimeDamageTarget::AnyTarget
             }
             ironsmith_core::PreventNextTimeDamageTarget::You => {
                 crate::effects::PreventNextTimeDamageTarget::You
+            }
+            ironsmith_core::PreventNextTimeDamageTarget::Target(spec) => {
+                crate::effects::PreventNextTimeDamageTarget::Target(spec.clone())
             }
         };
         let mut effect = crate::effects::PreventNextTimeDamageEffect::new(source, target);
@@ -1128,16 +1131,18 @@ where
         )));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::GrantPlayTaggedEffect>(&effect) {
-        return Ok(Effect::new(
-            crate::effects::GrantPlayTaggedEffect::new(
-                payload.tag.clone(),
-                payload.player.clone(),
-                payload.duration,
-                payload.allow_land,
-                payload.allow_any_color_for_cast,
-            )
-            .while_on_top_of_library_if(payload.while_on_top_of_library),
-        ));
+        let mut grant = crate::effects::GrantPlayTaggedEffect::new(
+            payload.tag.clone(),
+            payload.player.clone(),
+            payload.duration,
+            payload.allow_land,
+            payload.allow_any_color_for_cast,
+        )
+        .while_on_top_of_library_if(payload.while_on_top_of_library);
+        if let Some(filter) = payload.filter.clone() {
+            grant = grant.with_filter(filter);
+        }
+        return Ok(Effect::new(grant));
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::LocalRewriteEffect<M::Effect>>(&effect)
     {
@@ -1280,6 +1285,11 @@ where
         M,
         crate::effects::RegisterEnterUnderControlReplacementEffect,
     >(&effect)
+    {
+        return Ok(converted);
+    }
+    if let Some(converted) =
+        clone_direct_effect::<M, crate::effects::RegisterManaReplacementEffect>(&effect)
     {
         return Ok(converted);
     }
@@ -1541,6 +1551,12 @@ where
     }
     if let Some(payload) = M::downcast_ref::<ironsmith_core::PoisonCountersEffect>(&effect) {
         return Ok(Effect::new(crate::effects::PoisonCountersEffect::new(
+            payload.count.clone(),
+            payload.player.clone(),
+        )));
+    }
+    if let Some(payload) = M::downcast_ref::<ironsmith_core::ExperienceCountersEffect>(&effect) {
+        return Ok(Effect::new(crate::effects::ExperienceCountersEffect::new(
             payload.count.clone(),
             payload.player.clone(),
         )));

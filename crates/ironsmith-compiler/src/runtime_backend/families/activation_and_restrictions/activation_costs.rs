@@ -86,6 +86,19 @@ const THIS_CREATURE_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN: ClauseShape<'sta
 const THIS_SELF_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "cant", "attack", "or", "block", "unless"]);
 const IF_SOURCE_YOU_CONTROL_DOUBLE_MANA_VALUE_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if", "source", "you", "control", "with"]; suffix & ["instead"]; contains_words & ["mana", "value", "double"]);
+const IF_PLAYER_WOULD_GAIN_NO_LIFE_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "if", "a", "player", "would", "gain", "life", "that", "player", "gains", "no",
+                "life", "instead",
+            ],
+            &[
+                "if", "a", "player", "would", "gain", "life", "they", "gain", "no", "life",
+                "instead",
+            ],
+        ]
+);
 const CANONICAL_NEGATED_RESTRICTION_STATIC_ABILITY_PATTERNS: &[StaticAbilityShapeEntry] = &[
     StaticAbilityShapeEntry {
         pattern: clause_shape!(exact & ["players", "cant", "gain", "life"]),
@@ -728,6 +741,12 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
+    if IF_PLAYER_WOULD_GAIN_NO_LIFE_INSTEAD_PATTERN.matches_words(&normalized_words) {
+        return Ok(Some(vec![StaticAbility::restriction(
+            crate::effect::Restriction::gain_life(PlayerFilter::Any),
+            "If a player would gain life, that player gains no life instead".to_string(),
+        )]));
+    }
     if IF_PREFIX_PATTERN.matches_words(&normalized_words) {
         return Ok(None);
     }

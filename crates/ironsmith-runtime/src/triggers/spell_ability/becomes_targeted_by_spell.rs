@@ -26,7 +26,7 @@ impl TriggerMatcher for BecomesTargetedBySpellTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        if e.target != ctx.source_id || e.by_ability {
+        if e.target_object() != Some(ctx.source_id) || e.by_ability {
             return false;
         }
         let Some(source) = ctx.game.object(e.source) else {
@@ -62,7 +62,7 @@ impl TriggerMatcher for BecomesTargetedByStackObjectTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        if e.target != ctx.source_id {
+        if e.target_object() != Some(ctx.source_id) {
             return false;
         }
         let Some(source) = ctx.game.object(e.source) else {
@@ -102,7 +102,10 @@ impl TriggerMatcher for BecomesTargetedObjectByStackObjectTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        let Some(target) = ctx.game.object(e.target) else {
+        let Some(target_id) = e.target_object() else {
+            return false;
+        };
+        let Some(target) = ctx.game.object(target_id) else {
             return false;
         };
         if !self

@@ -82,9 +82,9 @@ impl EffectExecutor for AddManaOfImprintedColorsEffect {
             return Ok(EffectOutcome::count(0));
         }
         let symbol = ManaSymbol::from_color(chosen_color);
-        credit_mana_symbols_from_context(game, controller, [symbol], ctx);
+        let mana = credit_mana_symbols_from_context(game, controller, [symbol], ctx);
 
-        Ok(mana_added_count_outcome(ctx, controller, vec![symbol], 1))
+        Ok(mana_added_count_outcome(ctx, controller, mana, 1))
     }
 
     fn producible_mana_symbols(

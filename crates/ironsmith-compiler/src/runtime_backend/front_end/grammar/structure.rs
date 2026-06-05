@@ -495,6 +495,13 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Generic);
     }
 
+    if primitives::parse_prefix(tokens, primitives::phrase(&["after", "you", "roll", "a", "die"])).is_some()
+        && primitives::contains_phrase(tokens, &["you", "may", "pay"])
+        && primitives::contains_phrase(tokens, &["increase", "or", "decrease", "the", "result"])
+    {
+        return Some(StatementLineFamily::Generic);
+    }
+
     let sentence_words_match = |sentence_tokens: &[OwnedLexToken], expected: &[&str]| {
         let words = TokenWordView::new(sentence_tokens);
         words.len() == expected.len() && words.slice_eq(0, expected)
@@ -1381,12 +1388,10 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<(IfResultPredicate, &'a [OwnedLexToken])> {
     let first = tokens.first()?;
-    let second = tokens.get(1)?;
-    let third = tokens.get(2)?;
     let pipe_idx = tokens
         .iter()
         .position(|token| token.kind == TokenKind::Pipe)?;
-    if pipe_idx < 3 {
+    if pipe_idx != 1 && pipe_idx < 3 {
         return None;
     }
 
@@ -1394,26 +1399,30 @@ fn split_leading_numeric_result_prefix_lexed<'a>(
         TokenKind::Number => first.parser_text().parse::<i32>().ok()?,
         _ => return None,
     };
-    if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
-        return None;
-    }
-    let max = match third.kind {
-        TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
-        _ => return None,
+    let predicate = if pipe_idx == 1 {
+        IfResultPredicate::Value(Comparison::Equal(min))
+    } else {
+        let second = tokens.get(1)?;
+        let third = tokens.get(2)?;
+        if !matches!(second.kind, TokenKind::Dash | TokenKind::EmDash) {
+            return None;
+        }
+        let max = match third.kind {
+            TokenKind::Number => third.parser_text().parse::<i32>().ok()?,
+            _ => return None,
+        };
+        if min > max {
+            return None;
+        }
+        IfResultPredicate::Value(Comparison::BetweenInclusive(min, max))
     };
-    if min > max {
-        return None;
-    }
 
     let trailing_tokens = trim_lexed_commas(&tokens[pipe_idx + 1..]);
     if trailing_tokens.is_empty() {
         return None;
     }
 
-    Some((
-        IfResultPredicate::Value(Comparison::BetweenInclusive(min, max)),
-        trailing_tokens,
-    ))
+    Some((predicate, trailing_tokens))
 }
 
 pub(crate) fn split_trailing_if_clause_lexed<'a>(
@@ -1543,6 +1552,18 @@ pub(crate) fn split_if_clause_lexed(
                 predicate_tokens,
                 effect_tokens,
             ) {
+                return Ok(IfClauseSplitSpec {
+                    predicate: IfClausePredicateSpec::Conditional(predicate),
+                    effects,
+                });
+            }
+            if effect_tokens
+                .first()
+                .is_some_and(|token| token.is_word("search") || token.is_word("searches"))
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && !effects.is_empty()
+            {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
                     effects,

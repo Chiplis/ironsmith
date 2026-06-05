@@ -1272,6 +1272,18 @@ fn compile_subject_verb_effect(
             ));
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::RegisterManaReplacement {
+            source_filter,
+            replacement_mana,
+            mode,
+        } => {
+            let effect = Effect::new(crate::effects::RegisterManaReplacementEffect::new(
+                source_filter.clone(),
+                replacement_mana.clone(),
+                *mode,
+            ));
+            Ok((vec![effect], Vec::new()))
+        }
         SubjectVerbActionAst::RegisterDamagedBySourceZoneReplacement {
             filter,
             from_zone,
@@ -1729,12 +1741,20 @@ fn compile_subject_verb_effect(
                     )?)
                 }
             };
-            let target_spec = match target {
+            let (target_spec, mut choices) = match target {
                 PreventNextTimeDamageTargetAst::AnyTarget => {
-                    crate::effects::PreventNextTimeDamageTarget::AnyTarget
+                    (crate::effects::PreventNextTimeDamageTarget::AnyTarget, Vec::new())
                 }
                 PreventNextTimeDamageTargetAst::You => {
-                    crate::effects::PreventNextTimeDamageTarget::You
+                    (crate::effects::PreventNextTimeDamageTarget::You, Vec::new())
+                }
+                PreventNextTimeDamageTargetAst::Target(target) => {
+                    let (spec, choices) =
+                        resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                    (
+                        crate::effects::PreventNextTimeDamageTarget::Target(spec),
+                        choices,
+                    )
                 }
             };
             let mut effect = crate::effects::PreventNextTimeDamageEffect::new(
@@ -1759,7 +1779,8 @@ fn compile_subject_verb_effect(
             if *reflect_damage_to_source_controller {
                 effect = effect.reflecting_to_source_controller();
             }
-            Ok((vec![Effect::new(effect)], follow_up_choices))
+            choices.extend(follow_up_choices);
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::PreventDamage {
             amount,
@@ -1846,19 +1867,41 @@ fn compile_subject_verb_effect(
                 Ok((effects, choices))
             }
         }
-        SubjectVerbActionAst::PreventAllDamageToTarget { target, duration } => {
+        SubjectVerbActionAst::PreventAllDamageToTarget {
+            target,
+            duration,
+            source_of_your_choice,
+        } => {
+            if *source_of_your_choice
+                && let TargetAst::Player(crate::target::PlayerFilter::You, _) = target
+            {
+                let effect = crate::effects::PreventAllDamageEffect::new(
+                    ironsmith_core::PreventionTarget::You,
+                    ironsmith_core::DamageFilter::all(),
+                    duration.clone(),
+                )
+                .with_source_of_your_choice();
+                return Ok((vec![Effect::new(effect)], Vec::new()));
+            }
             if let TargetAst::Object(filter, explicit_target_span, _) = target
                 && explicit_target_span.is_none()
             {
                 let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-                Ok((
-                    vec![Effect::prevent_all_damage_to(
-                        resolved_filter,
-                        duration.clone(),
-                    )],
-                    Vec::new(),
-                ))
+                let mut effect = crate::effects::PreventAllDamageEffect::matching(
+                    resolved_filter,
+                    duration.clone(),
+                );
+                if *source_of_your_choice {
+                    effect = effect.with_source_of_your_choice();
+                }
+                Ok((vec![Effect::new(effect)], Vec::new()))
             } else {
+                if *source_of_your_choice {
+                    return Err(CardTextError::ParseError(
+                        "prevent-all damage by a source of your choice currently supports non-targeted recipients"
+                            .to_string(),
+                    ));
+                }
                 compile_effect_for_target(target, ctx, |spec| {
                     Effect::prevent_all_damage_to_target(spec, duration.clone())
                 })
@@ -2365,6 +2408,7 @@ fn compile_subject_verb_effect(
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            filter,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -2384,13 +2428,17 @@ fn compile_subject_verb_effect(
             } else {
                 tag.clone()
             };
-            let mut effects = vec![Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            let mut grant_play = crate::effects::GrantPlayTaggedEffect::new(
                 resolved_tag.clone(),
                 player_filter.clone(),
                 crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
                 *allow_land,
                 *allow_any_color_for_cast,
-            ))];
+            );
+            if let Some(filter) = filter.clone() {
+                grant_play = grant_play.with_filter(filter);
+            }
+            let mut effects = vec![Effect::new(grant_play)];
             if *without_paying_mana_cost {
                 effects.push(Effect::new(
                     crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
@@ -5563,7 +5611,11 @@ fn compile_subject_verb_effect(
                     if let Some(inferred_player) = resolved_filter
                         .as_ref()
                         .and_then(infer_player_filter_from_object_filter)
-                        .or_else(|| ctx.last_player_filter.clone())
+                        .or_else(|| {
+                            ctx.last_player_filter
+                                .clone()
+                                .filter(|player| !matches!(player, PlayerFilter::Defending))
+                        })
                     {
                         (inferred_player, Vec::new())
                     } else {
@@ -5642,6 +5694,20 @@ fn compile_subject_verb_effect(
             Effect::energy_counters,
             Effect::energy_counters_player,
         ),
+        SubjectVerbActionAst::ExperienceCounters { count } => {
+            compile_subject_verb_player_value_effect(
+                role,
+                player,
+                count,
+                ctx,
+                true,
+                true,
+                true,
+                false,
+                Effect::experience_counters,
+                Effect::experience_counters_player,
+            )
+        }
         SubjectVerbActionAst::TicketCounters { count } => compile_subject_verb_player_value_effect(
             role,
             player,

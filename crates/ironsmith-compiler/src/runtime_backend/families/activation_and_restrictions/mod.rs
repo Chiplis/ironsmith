@@ -115,12 +115,14 @@ pub(crate) use choice_object_clauses::{
     parse_sentence_target_player_chooses_then_puts_on_top_of_library,
     parse_sentence_target_player_chooses_then_you_put_it_onto_battlefield,
     parse_target_player_choose_objects_clause, parse_target_player_chooses_then_other_cant_block,
-    parse_you_choose_objects_clause, parse_you_choose_player_clause,
+    parse_you_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
+    parse_you_choose_player_clause,
 };
 use keyword_action_costs::*;
 pub(crate) use keyword_action_costs::{
-    normalize_cant_words, parse_ability_phrase, parse_payment_clause_as_total_cost,
-    parse_single_word_keyword_action, target_ast_to_object_filter,
+    normalize_cant_words, parse_ability_phrase, parse_dynamic_soulshift_keyword_action,
+    parse_payment_clause_as_total_cost, parse_single_word_keyword_action,
+    target_ast_to_object_filter,
 };
 use keyword_activated_lines::*;
 pub(crate) use keyword_activated_lines::{

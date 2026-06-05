@@ -1,6 +1,8 @@
 //! Prevent all damage effect implementation.
 
-use super::prevention_helpers::register_prevention_shield;
+use super::prevention_helpers::{
+    SourceChoiceSelection, choose_source_of_your_choice, register_prevention_shield,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -37,13 +39,24 @@ impl EffectExecutor for PreventAllDamageEffect {
             return Ok(EffectOutcome::prevented());
         }
 
+        let mut damage_filter = self.damage_filter.clone();
+        if self.source_of_your_choice {
+            match choose_source_of_your_choice(game, ctx) {
+                SourceChoiceSelection::Chosen(source) => {
+                    damage_filter.from_specific_source = Some(source);
+                }
+                SourceChoiceSelection::NoAvailableSource => return Ok(EffectOutcome::resolved()),
+                SourceChoiceSelection::NoChoiceMade => return Ok(EffectOutcome::count(0)),
+            }
+        }
+
         register_prevention_shield(
             game,
             ctx,
             self.target.clone(),
             None,
             self.until.clone(),
-            self.damage_filter.clone(),
+            damage_filter,
             Vec::new(),
             Vec::new(),
             Vec::new(),

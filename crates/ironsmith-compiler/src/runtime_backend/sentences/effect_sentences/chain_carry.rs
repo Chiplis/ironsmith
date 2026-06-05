@@ -540,6 +540,43 @@ pub(crate) fn parse_effect_chain_lexed(
     let starts_with_each_player =
         grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some();
 
+    if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
+        if let Some(player) = parse_leading_player_may_lexed(trailing_if.leading_tokens) {
+            let mut stripped = remove_through_first_word(trailing_if.leading_tokens, "may");
+            if stripped
+                .first()
+                .is_some_and(|token| CHAIN_HAVE_OR_HAS_WORD_PATTERN.matches_token(token))
+            {
+                stripped.remove(0);
+            }
+            if CHAIN_CHOOSE_TO_PREFIX_PATTERN.matches_words(&token_word_refs(&stripped)) {
+                stripped = remove_through_first_word_tokens(&stripped, "to");
+            }
+            let mut effects = parse_effect_chain_lexed(&stripped)?;
+            for effect in &mut effects {
+                bind_implicit_player_context(effect, player);
+            }
+            return Ok(vec![EffectAst::Conditional {
+                predicate: trailing_if.predicate,
+                if_true: vec![EffectAst::MayByPlayer { player, effects }],
+                if_false: Vec::new(),
+            }]);
+        }
+
+        if token_slice_first_is(trailing_if.leading_tokens, "may")
+            && !starts_with_each_opponent
+            && !starts_with_each_player
+        {
+            let stripped = remove_first_word(trailing_if.leading_tokens, "may");
+            let effects = parse_effect_chain_lexed(&stripped)?;
+            return Ok(vec![EffectAst::Conditional {
+                predicate: trailing_if.predicate,
+                if_true: vec![EffectAst::May { effects }],
+                if_false: Vec::new(),
+            }]);
+        }
+    }
+
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
         if stripped
@@ -2350,6 +2387,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::DiscardHand
                 | SubjectVerbActionAst::PoisonCounters { .. }
                 | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::ExperienceCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
@@ -2426,6 +2464,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::DiscardHand
                 | SubjectVerbActionAst::PoisonCounters { .. }
                 | SubjectVerbActionAst::EnergyCounters { .. }
+                | SubjectVerbActionAst::ExperienceCounters { .. }
                 | SubjectVerbActionAst::TicketCounters { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayAnyEnergy { .. }
@@ -2557,6 +2596,11 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     clause_tokens: &[OwnedLexToken],
 ) {
     let clause_words = clause_words_for_carry_lexed(clause_tokens);
+    if clause_words.first().is_some_and(|word| *word == "create")
+        && normalize_imperative_create_player(effect)
+    {
+        return;
+    }
     let should_skip = match carried_context {
         CarryContext::Player(_) => {
             matches!(
@@ -2596,6 +2640,25 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
         return;
     }
     maybe_apply_carried_player(effect, carried_context);
+}
+
+fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::CreateTokenWithMods { player, .. },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+
+    if matches!(
+        player,
+        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::That
+    ) {
+        *player = PlayerAst::You;
+        return true;
+    }
+    false
 }
 
 pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {

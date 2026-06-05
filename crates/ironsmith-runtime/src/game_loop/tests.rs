@@ -194,6 +194,139 @@ fn component_pouch_d20_branches_put_one_or_two_component_counters_runtime() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn myrkuls_edict_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(563_018), "Myrkul's Edict")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Roll a d20.\n\
+             1—9 | Choose an opponent. That player sacrifices a creature of their choice.\n\
+             10—19 | Each opponent sacrifices a creature of their choice.\n\
+             20 | Each opponent sacrifices a creature with the greatest power among creatures that player controls.",
+        )
+        .expect("Myrkul's Edict should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_myrkul_edict_creature(
+    game: &mut GameState,
+    name: &str,
+    controller: PlayerId,
+    power: i32,
+) -> ObjectId {
+    let card = CardBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(power, power))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_myrkuls_edict(game: &mut GameState, roll: u32) {
+    let def = myrkuls_edict_definition();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.force_next_die_roll(roll);
+
+    let mut dm = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_decision_maker(&mut dm);
+    for effect in def
+        .spell_effect
+        .as_ref()
+        .expect("Myrkul's Edict should have spell effects")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Myrkul's Edict effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn myrkul_edict_zone_contains(game: &GameState, zone: Zone, name: &str) -> bool {
+    game.objects_in_zone(zone)
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .any(|object| object.name == name)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_low_roll_only_chosen_opponent_sacrifices() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Bear", bob, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Bear", charlie, 2);
+
+    resolve_myrkuls_edict(&mut game, 7);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Bear"),
+        "1-9 should make the chosen opponent sacrifice a creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Charlie Bear"),
+        "1-9 should not make each opponent sacrifice"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_middle_roll_each_opponent_sacrifices_one_creature() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Bear", bob, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Bear", charlie, 2);
+
+    resolve_myrkuls_edict(&mut game, 15);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Bear"),
+        "10-19 should make Bob sacrifice a creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Charlie Bear"),
+        "10-19 should make Charlie sacrifice a creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn myrkuls_edict_twenty_sacrifices_only_each_opponents_greatest_power_creature() {
+    let mut game = setup_three_player_game();
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    create_myrkul_edict_creature(&mut game, "Bob Small", bob, 1);
+    create_myrkul_edict_creature(&mut game, "Bob Large", bob, 5);
+    create_myrkul_edict_creature(&mut game, "Charlie Small", charlie, 2);
+    create_myrkul_edict_creature(&mut game, "Charlie Large", charlie, 4);
+
+    resolve_myrkuls_edict(&mut game, 20);
+
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Bob Large"),
+        "20 should make Bob sacrifice a greatest-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Graveyard, "Charlie Large"),
+        "20 should make Charlie sacrifice a greatest-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Bob Small"),
+        "20 should not allow Bob to sacrifice a lower-power creature"
+    );
+    assert!(
+        myrkul_edict_zone_contains(&game, Zone::Battlefield, "Charlie Small"),
+        "20 should not allow Charlie to sacrifice a lower-power creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn reprocess_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(646_813), "Reprocess")
         .mana_cost(ManaCost::from_pips(vec![
@@ -360,6 +493,187 @@ fn reprocess_can_choose_zero_and_draws_no_cards() {
         game.player(alice).expect("Alice").hand.len(),
         0,
         "choosing zero permanents should not draw cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn necromancers_covenant_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(405_317), "Necromancer's Covenant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, exile all creature cards from target player's graveyard, then create a 2/2 black Zombie creature token for each card exiled this way.\n\
+             Zombies you control have lifelink.",
+        )
+        .expect("Necromancer's Covenant should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_necromancers_covenant_graveyard_card(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    card_types: Vec<CardType>,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::new(), name).card_types(card_types.clone());
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    let card = builder.build();
+    game.create_object_from_card(&card, owner, Zone::Graveyard)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_necromancers_covenant_etb(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    target_player: PlayerId,
+) {
+    let covenant = necromancers_covenant_definition();
+    let triggered = covenant
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Necromancer's Covenant should have an enters trigger");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(target_player)]);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Necromancer's Covenant ETB effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn necromancers_covenant_zombie_tokens(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == ObjectKind::Token
+                    && game.controller_of(object) == controller
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Zombie)
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromancers_covenant_exiles_target_graveyard_creatures_and_creates_that_many_zombies() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let covenant = necromancers_covenant_definition();
+    let source = game.create_object_from_definition(&covenant, alice, Zone::Battlefield);
+
+    create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Creature One",
+        bob,
+        vec![CardType::Creature],
+    );
+    create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Creature Two",
+        bob,
+        vec![CardType::Creature],
+    );
+    let bob_noncreature = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Artifact",
+        bob,
+        vec![CardType::Artifact],
+    );
+    let alice_creature = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Alice Graveyard Creature",
+        alice,
+        vec![CardType::Creature],
+    );
+
+    resolve_necromancers_covenant_etb(&mut game, source, alice, bob);
+
+    let exiled_names = game
+        .objects_in_zone(Zone::Exile)
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        exiled_names.iter().any(|name| name == "Bob Graveyard Creature One")
+            && exiled_names.iter().any(|name| name == "Bob Graveyard Creature Two"),
+        "target player's creature cards should be exiled, got {exiled_names:?}"
+    );
+    assert_eq!(
+        game.object(bob_noncreature).expect("Bob artifact").zone,
+        Zone::Graveyard,
+        "noncreature cards in the target graveyard should stay in the graveyard"
+    );
+    assert_eq!(
+        game.object(alice_creature).expect("Alice creature").zone,
+        Zone::Graveyard,
+        "creature cards in non-target graveyards should stay in the graveyard"
+    );
+
+    let zombies = necromancers_covenant_zombie_tokens(&game, alice);
+    assert_eq!(
+        zombies.len(),
+        2,
+        "controller should create one Zombie for each card exiled this way"
+    );
+    for zombie in zombies {
+        let object = game.object(zombie).expect("Zombie token should exist");
+        assert_eq!(object.power(), Some(2));
+        assert_eq!(object.toughness(), Some(2));
+        assert!(
+            game.current_has_static_ability_id(
+                zombie,
+                crate::static_abilities::StaticAbilityId::Lifelink,
+            ),
+            "Necromancer's Covenant should grant lifelink to Zombies you control"
+        );
+    }
+    assert!(
+        necromancers_covenant_zombie_tokens(&game, bob).is_empty(),
+        "target player should not create the Zombies"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromancers_covenant_creates_no_zombies_when_target_graveyard_has_no_creature_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let covenant = necromancers_covenant_definition();
+    let source = game.create_object_from_definition(&covenant, alice, Zone::Battlefield);
+    let bob_artifact = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Artifact",
+        bob,
+        vec![CardType::Artifact],
+    );
+
+    resolve_necromancers_covenant_etb(&mut game, source, alice, bob);
+
+    assert_eq!(
+        game.object(bob_artifact).expect("Bob artifact").zone,
+        Zone::Graveyard,
+        "noncreature cards should not be exiled"
+    );
+    assert!(
+        necromancers_covenant_zombie_tokens(&game, alice).is_empty(),
+        "no cards exiled this way should create no Zombie tokens"
     );
 }
 
@@ -649,6 +963,52 @@ fn colfenors_urn_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(696_480), "Wondrous Crucible")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(7)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Permanents you control have ward {2}.\n\
+             At the beginning of your end step, mill two cards, then exile a nonland card at random from your graveyard. Copy it. You may cast the copy without paying its mana cost.",
+        )
+        .expect("Wondrous Crucible should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_spell_definition(
+    card_id: u32,
+    name: &str,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Instant])
+        .parse_text("Draw a card.")
+        .expect("Wondrous Crucible test spell should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn wondrous_crucible_land_card(card_id: u32, name: &str) -> crate::card::Card {
+    CardBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_wondrous_crucible_end_step_trigger_on_stack(game: &mut GameState) -> usize {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Wondrous Crucible end-step trigger processing should succeed");
+    game.stack.len()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn vanilla_creature_definition(
     card_id: u32,
     name: &str,
@@ -693,6 +1053,170 @@ fn activated_ability_count(game: &GameState, object_id: ObjectId) -> usize {
         .iter()
         .filter(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
         .count()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_grants_ward_two_to_permanents_you_control_runtime() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let protected = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(696_481), "Protected Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let opponent_ward = crate::targeting::collect_ward_costs(&game, &[protected], bob);
+    assert_eq!(opponent_ward.len(), 1, "opponent targeting should see ward");
+    assert_eq!(opponent_ward[0].target, protected);
+    assert_eq!(opponent_ward[0].ward_controller, alice);
+    assert_eq!(opponent_ward[0].cost.display(), "{2}");
+    assert!(
+        crate::targeting::collect_ward_costs(&game, &[protected], alice).is_empty(),
+        "ward should not tax the controller's own targeting"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_randomly_exiles_nonland_and_declining_cast_leaves_it_exiled() {
+    struct DeclineMay;
+
+    impl DecisionMaker for DeclineMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            false
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let spark = wondrous_crucible_spell_definition(696_482, "Crucible Spark");
+    game.create_object_from_definition(&spark, alice, Zone::Library);
+    let land = wondrous_crucible_land_card(696_483, "Milled Plains");
+    game.create_object_from_card(&land, alice, Zone::Library);
+    let random_before = game.irreversible_random_count();
+
+    assert_eq!(
+        put_wondrous_crucible_end_step_trigger_on_stack(&mut game),
+        1,
+        "Wondrous Crucible should trigger at the beginning of your end step"
+    );
+    let mut dm = DeclineMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(
+        game.irreversible_random_count(),
+        random_before + 1,
+        "the at-random graveyard selection should consume match randomness"
+    );
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Milled Plains"), 1);
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
+        0,
+        "declining the may-cast branch should not put a copy on the stack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_accepting_may_casts_copy_without_paying_mana() {
+    struct AcceptMay;
+
+    impl DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let spark = wondrous_crucible_spell_definition(696_484, "Crucible Spark");
+    game.create_object_from_definition(&spark, alice, Zone::Library);
+    let land = wondrous_crucible_land_card(696_485, "Milled Island");
+    game.create_object_from_card(&land, alice, Zone::Library);
+
+    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    let mut dm = AcceptMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
+        1,
+        "accepting the may-cast branch should cast a stack copy"
+    );
+    let copy_id = game
+        .stack
+        .last()
+        .expect("the copied spell should be on the stack")
+        .object_id;
+    let copy = game.object(copy_id).expect("stack copy object exists");
+    assert_eq!(copy.name, "Crucible Spark");
+    assert_eq!(copy.zone, Zone::Stack);
+    assert_eq!(
+        game.player(alice).expect("Alice exists").mana_pool.total(),
+        0,
+        "the copied spell should be cast without paying its {{3}} mana cost"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn wondrous_crucible_end_step_with_no_nonland_graveyard_card_mills_but_casts_no_copy() {
+    struct AcceptMay;
+
+    impl DecisionMaker for AcceptMay {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let crucible = wondrous_crucible_definition();
+    game.create_object_from_definition(&crucible, alice, Zone::Battlefield);
+    let plains = wondrous_crucible_land_card(696_486, "Only Plains");
+    let island = wondrous_crucible_land_card(696_487, "Only Island");
+    game.create_object_from_card(&plains, alice, Zone::Library);
+    game.create_object_from_card(&island, alice, Zone::Library);
+
+    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    let mut dm = AcceptMay;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
+
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Plains"), 1);
+    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Island"), 1);
+    assert_eq!(
+        game.objects_in_zone(Zone::Exile).len(),
+        0,
+        "without a nonland graveyard card, Wondrous Crucible should exile nothing"
+    );
+    assert!(
+        game.stack.is_empty(),
+        "without an exiled nonland card, the copy/may-cast branch should put nothing on the stack"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3503,6 +4027,182 @@ fn create_vanilla_creature(
         .power_toughness(PowerToughness::fixed(power, toughness))
         .build();
     game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn barrensteppe_siege_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1_149_701), "Barrensteppe Siege")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "As this enchantment enters, choose Abzan or Mardu.\n\
+             • Abzan — At the beginning of your end step, put a +1/+1 counter on each creature you control.\n\
+             • Mardu — At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice.",
+        )
+        .expect("Barrensteppe Siege should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct BarrensteppeChoiceDecisionMaker {
+    option_index: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for BarrensteppeChoiceDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx
+            .options
+            .iter()
+            .any(|option| option.legal && option.index == self.option_index)
+        {
+            vec![self.option_index]
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn enter_barrensteppe_siege_with_choice(
+    game: &mut GameState,
+    controller: PlayerId,
+    option_index: usize,
+    expected_option: &str,
+) -> ObjectId {
+    let hand_id = game.create_object_from_definition(
+        &barrensteppe_siege_definition(),
+        controller,
+        Zone::Hand,
+    );
+    let mut dm = BarrensteppeChoiceDecisionMaker { option_index };
+    let siege = game
+        .move_object_with_etb_processing_with_dm(hand_id, Zone::Battlefield, &mut dm)
+        .expect("Barrensteppe Siege should enter the battlefield")
+        .new_id;
+
+    assert_eq!(
+        game.chosen_named_option(siege),
+        Some(expected_option),
+        "Barrensteppe Siege should record its as-enters named option choice"
+    );
+    siege
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_barrensteppe_end_step_triggers_on_stack(game: &mut GameState) -> usize {
+    let mut trigger_queue = TriggerQueue::new();
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfEndStepEvent::new(game.turn.active_player),
+        crate::provenance::ProvNodeId::default(),
+    );
+    for trigger in crate::triggers::check_triggers(game, &event) {
+        trigger_queue.add(trigger);
+    }
+    let count = trigger_queue.entries.len();
+    if count > 0 {
+        put_triggers_on_stack(game, &mut trigger_queue)
+            .expect("Barrensteppe Siege trigger should go on stack");
+    }
+    count
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_abzan_end_step_puts_counters_on_each_creature_you_control() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 0, "abzan");
+    let first = create_vanilla_creature(&mut game, "Abzan Initiate", alice, 2, 2);
+    let second = create_vanilla_creature(&mut game, "Abzan Acolyte", alice, 1, 1);
+    let opponent = create_vanilla_creature(&mut game, "Opponent Creature", bob, 3, 3);
+
+    assert_eq!(put_barrensteppe_end_step_triggers_on_stack(&mut game), 1);
+    resolve_stack_entry(&mut game).expect("Barrensteppe Siege Abzan trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(first, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "first controlled creature should get a +1/+1 counter"
+    );
+    assert_eq!(
+        game.counter_count(second, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "second controlled creature should get a +1/+1 counter"
+    );
+    assert_eq!(
+        game.counter_count(opponent, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "opponent's creature should not get a counter"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_mardu_does_not_trigger_for_opponent_creature_death() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 1, "mardu");
+    let bob_victim = create_vanilla_creature(&mut game, "Bob Victim", bob, 1, 1);
+    create_vanilla_creature(&mut game, "Bob Survivor", bob, 2, 2);
+
+    game.move_object_by_effect(bob_victim, Zone::Graveyard)
+        .expect("opponent creature should die");
+    let mut pending = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut pending);
+
+    assert_eq!(
+        put_barrensteppe_end_step_triggers_on_stack(&mut game),
+        0,
+        "Mardu branch should not trigger when only an opponent's creature died"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn barrensteppe_siege_mardu_sacrifices_each_opponents_chosen_creature_after_yours_died() {
+    let mut game = setup_three_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    game.turn.active_player = alice;
+
+    enter_barrensteppe_siege_with_choice(&mut game, alice, 1, "mardu");
+    let alice_victim = create_vanilla_creature(&mut game, "Alice Victim", alice, 1, 1);
+    let bob_creature = create_vanilla_creature(&mut game, "Bob Creature", bob, 2, 2);
+    let charlie_creature = create_vanilla_creature(&mut game, "Charlie Creature", charlie, 2, 2);
+
+    game.move_object_by_effect(alice_victim, Zone::Graveyard)
+        .expect("your creature should die");
+    let mut pending = TriggerQueue::new();
+    drain_pending_trigger_events(&mut game, &mut pending);
+
+    assert_eq!(put_barrensteppe_end_step_triggers_on_stack(&mut game), 1);
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Barrensteppe Siege Mardu trigger should resolve");
+
+    assert!(
+        !game.battlefield.contains(&bob_creature),
+        "Mardu branch should remove Bob's chosen creature from the battlefield"
+    );
+    assert!(
+        !game.battlefield.contains(&charlie_creature),
+        "Mardu branch should remove Charlie's chosen creature from the battlefield"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -7768,6 +8468,220 @@ impl DecisionMaker for CaptureRevealDecisionMaker {
     }
 }
 
+struct AlhammarretChoiceDecisionMaker {
+    name: &'static str,
+    view_calls: Vec<(PlayerId, PlayerId, Zone, bool, Vec<ObjectId>)>,
+}
+
+impl AlhammarretChoiceDecisionMaker {
+    fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            view_calls: Vec::new(),
+        }
+    }
+}
+
+impl DecisionMaker for AlhammarretChoiceDecisionMaker {
+    fn decide_text(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::TextInputContext,
+    ) -> String {
+        self.name.to_string()
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.view_calls
+            .push((viewer, ctx.subject, ctx.zone, ctx.public, cards.to_vec()));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn alhammarret_high_arbiter_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(91_201), "Alhammarret, High Arbiter")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Sphinx])
+        .power_toughness(PowerToughness::fixed(5, 5))
+        .parse_text(
+            "Flying\nAs Alhammarret enters, each opponent reveals their hand. You choose the name of a nonland card revealed this way.\nYour opponents can't cast spells with the chosen name (as long as this creature is on the battlefield).",
+        )
+        .expect("Alhammarret should parse for runtime regression")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn named_spell_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn named_land_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+        .card_types(vec![CardType::Land])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_reveals_opponents_hand_and_blocks_chosen_nonland_name() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_202, "Lightning Bolt");
+    let giant_growth = named_spell_definition(91_203, "Giant Growth");
+    let forest = named_land_definition(91_204, "Forest");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    let bob_other = game.create_object_from_definition(&giant_growth, bob, Zone::Hand);
+    let bob_forest = game.create_object_from_definition(&forest, bob, Zone::Hand);
+    let alice_lightning = game.create_object_from_definition(&lightning, alice, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Lightning Bolt");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert_eq!(
+        game.chosen_named_option(result.new_id).map(str::to_string),
+        Some("Lightning Bolt".to_string()),
+        "Alhammarret should store the nonland name chosen from an opponent's revealed hand"
+    );
+    assert_eq!(dm.view_calls.len(), 2, "Bob's hand should be revealed to both players");
+    assert!(dm.view_calls.iter().all(|(_, subject, zone, public, cards)| {
+        *subject == bob
+            && *zone == Zone::Hand
+            && *public
+            && cards == &vec![bob_lightning, bob_other, bob_forest]
+    }));
+
+    let bob_filter_debug = format!(
+        "{:?}",
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+    );
+    let alice_filter_debug = format!(
+        "{:?}",
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(alice)
+    );
+    assert!(
+        bob_filter_debug.contains("Lightning Bolt") && !bob_filter_debug.contains("Giant Growth"),
+        "Alhammarret should add only a Bob-side cast prohibition for the chosen nonland name, got {bob_filter_debug}"
+    );
+    assert!(
+        alice_filter_debug == "None",
+        "Alhammarret should not restrict its controller, got {alice_filter_debug}"
+    );
+    game.move_object_by_effect(result.new_id, Zone::Graveyard)
+        .expect("Alhammarret should be movable off the battlefield");
+    game.update_cant_effects();
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "Alhammarret's chosen-name restriction should end when it leaves the battlefield"
+    );
+    assert!(
+        game.object(bob_lightning).is_some()
+            && game.object(bob_other).is_some()
+            && game.object(alice_lightning).is_some(),
+        "test spells should remain in hand while checking cast restrictions"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_rejects_revealed_land_name_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_205, "Lightning Bolt");
+    let forest = named_land_definition(91_206, "Forest");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+    game.create_object_from_definition(&forest, bob, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Forest");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert!(
+        game.chosen_named_option(result.new_id).is_none(),
+        "Alhammarret should reject land names even when revealed"
+    );
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "without a valid nonland revealed choice, Alhammarret should not add a cast prohibition"
+    );
+    assert!(
+        game.object(bob_lightning).is_some(),
+        "Bob's Lightning Bolt should remain available in hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn alhammarret_high_arbiter_rejects_unrevealed_nonland_name_choice() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let alhammarret = alhammarret_high_arbiter_definition();
+    let lightning = named_spell_definition(91_207, "Lightning Bolt");
+
+    let alhammarret_hand = game.create_object_from_definition(&alhammarret, alice, Zone::Hand);
+    let bob_lightning = game.create_object_from_definition(&lightning, bob, Zone::Hand);
+
+    let mut dm = AlhammarretChoiceDecisionMaker::new("Giant Growth");
+    let result = game
+        .move_object_with_etb_processing_with_dm(alhammarret_hand, Zone::Battlefield, &mut dm)
+        .expect("Alhammarret should enter the battlefield");
+    game.update_cant_effects();
+
+    assert!(
+        game.chosen_named_option(result.new_id).is_none(),
+        "Alhammarret should reject nonland names that were not revealed from an opponent's hand"
+    );
+    assert!(
+        game.effect_store
+            .cant_effects
+            .cast_filters_for_player(bob)
+            .is_none(),
+        "without a revealed nonland choice, Alhammarret should not add a cast prohibition"
+    );
+    assert!(
+        game.object(bob_lightning).is_some(),
+        "Bob's Lightning Bolt should remain available in hand"
+    );
+}
+
 #[test]
 fn test_generate_damage_triggers_emits_life_loss_for_player_damage() {
     let mut game = setup_game();
@@ -11074,6 +11988,178 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_614), "Chaos Lord")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Human])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "First strike\nAt the beginning of your upkeep, target opponent gains control of this creature if the number of permanents is even.\nThis creature can attack as though it had haste unless it entered this turn.",
+        )
+        .expect("Chaos Lord should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_filler_permanent_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_615), "Chaos Lord Count Filler")
+        .card_types(vec![CardType::Artifact])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_tap_ability_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_616), "Chaos Lord Tap Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "This creature can attack as though it had haste unless it entered this turn.\n{T}: Add {R}.",
+        )
+        .expect("tap-test creature should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_chaos_lord_upkeep_trigger(game: &mut GameState) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Chaos Lord should trigger at the beginning of its controller's upkeep"
+    );
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_upkeep_trigger_gives_target_opponent_control_when_permanent_count_is_even() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chaos_lord = chaos_lord_definition();
+    let filler = chaos_lord_filler_permanent_definition();
+    let chaos_lord_id = game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+    game.create_object_from_definition(&filler, alice, Zone::Battlefield);
+
+    let mut trigger_queue = queue_chaos_lord_upkeep_trigger(&mut game);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Chaos Lord upkeep trigger should go on the stack with target opponent");
+    resolve_stack_entry(&mut game).expect("Chaos Lord upkeep trigger should resolve");
+
+    assert_eq!(
+        game.current_controller(chaos_lord_id),
+        Some(bob),
+        "target opponent should gain control when the number of permanents is even"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_upkeep_trigger_queues_but_does_not_change_control_when_permanent_count_is_odd() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let chaos_lord = chaos_lord_definition();
+    let chaos_lord_id = game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+
+    let mut trigger_queue = queue_chaos_lord_upkeep_trigger(&mut game);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Chaos Lord upkeep trigger should still go on the stack with a target opponent");
+    resolve_stack_entry(&mut game).expect("Chaos Lord upkeep trigger should resolve");
+
+    assert_eq!(
+        game.current_controller(chaos_lord_id),
+        Some(alice),
+        "the conditional control-change effect should do nothing when the number of permanents is odd"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_can_attack_as_though_hasty_only_if_it_did_not_enter_this_turn() {
+    let mut old_permanent_game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let chaos_lord = chaos_lord_definition();
+    let old_chaos_lord =
+        old_permanent_game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+    old_permanent_game.set_summoning_sick(old_chaos_lord);
+    assert!(
+        crate::rules::combat::can_attack(
+            old_permanent_game
+                .object(old_chaos_lord)
+                .expect("old Chaos Lord exists"),
+            &old_permanent_game,
+        ),
+        "Chaos Lord should attack as though it had haste when it is summoning sick but did not enter this turn"
+    );
+
+    let mut entered_this_turn_game = setup_game();
+    let chaos_lord_in_hand =
+        entered_this_turn_game.create_object_from_definition(&chaos_lord, alice, Zone::Hand);
+    let entered_chaos_lord = entered_this_turn_game
+        .move_object_by_effect(chaos_lord_in_hand, Zone::Battlefield)
+        .expect("Chaos Lord should enter the battlefield");
+    assert!(
+        !crate::rules::combat::can_attack(
+            entered_this_turn_game
+                .object(entered_chaos_lord)
+                .expect("entered Chaos Lord exists"),
+            &entered_this_turn_game,
+        ),
+        "Chaos Lord should not get the as-though-haste attack permission if it entered this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_attack_as_haste_clause_does_not_grant_haste_for_tap_abilities() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tap_creature = chaos_lord_tap_ability_definition();
+    let tap_creature_id =
+        game.create_object_from_definition(&tap_creature, alice, Zone::Battlefield);
+    game.set_summoning_sick(tap_creature_id);
+
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(tap_creature_id)
+                .expect("old tap-test creature exists"),
+            &game,
+        ),
+        "the as-though-haste clause should grant attack-only permission"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            tap_creature_id,
+            crate::static_abilities::StaticAbilityId::Haste,
+        ),
+        "the as-though-haste attack permission must not become the Haste keyword"
+    );
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, .. }
+                    if *source == tap_creature_id
+            )),
+        "summoning-sick tap ability should remain illegal without true haste"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn touch_of_the_eternal_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(278_197), "Touch of the Eternal")
         .mana_cost(ManaCost::from_pips(vec![
@@ -12333,6 +13419,350 @@ fn emrakul_cast_trigger_prompt_does_not_autofill_or_stack_before_choice() {
         trigger_queue.entries.len(),
         1,
         "the unresolved trigger should stay queued while waiting for player input"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(27_376), "Last Rites")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Black,
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Discard any number of cards. Target player reveals their hand, then you choose a nonland card from it for each card discarded this way. That player discards those cards.",
+        )
+        .expect("Last Rites should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn last_rites_test_card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct LastRitesDecisionMaker {
+    target: PlayerId,
+    discard_from_hand: Vec<ObjectId>,
+    choose_from_target: Vec<ObjectId>,
+    reveal_calls: Vec<(PlayerId, PlayerId, bool, Vec<ObjectId>)>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for LastRitesDecisionMaker {
+    fn decide_targets(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::TargetsContext,
+    ) -> Vec<Target> {
+        vec![Target::Player(self.target)]
+    }
+
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let legal_ids = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        let scripted = if self
+            .discard_from_hand
+            .iter()
+            .any(|id| legal_ids.contains(id))
+        {
+            &self.discard_from_hand
+        } else {
+            &self.choose_from_target
+        };
+        scripted
+            .iter()
+            .copied()
+            .filter(|id| legal_ids.contains(id))
+            .collect()
+    }
+
+    fn view_cards(
+        &mut self,
+        _game: &GameState,
+        viewer: PlayerId,
+        cards: &[ObjectId],
+        ctx: &crate::decisions::context::ViewCardsContext,
+    ) {
+        self.reveal_calls
+            .push((viewer, ctx.subject, ctx.public, cards.to_vec()));
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let _alice_keeps = game.create_object_from_card(
+        &last_rites_test_card("Alice Keeps", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland_one = game.create_object_from_card(
+        &last_rites_test_card("Bob Nonland One", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_nonland_two = game.create_object_from_card(
+        &last_rites_test_card("Bob Nonland Two", vec![CardType::Creature]),
+        bob,
+        Zone::Hand,
+    );
+    let bob_land = game.create_object_from_card(
+        &last_rites_test_card("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two],
+        choose_from_target: vec![bob_nonland_one, bob_nonland_two],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Last Rites should resolve");
+
+    assert_eq!(
+        dm.reveal_calls.len(),
+        game.players.len(),
+        "Last Rites should reveal the target player's hand publicly"
+    );
+    for (_viewer, subject, public, cards) in &dm.reveal_calls {
+        assert_eq!(*subject, bob);
+        assert!(*public);
+        assert!(cards.contains(&bob_nonland_one));
+        assert!(cards.contains(&bob_nonland_two));
+        assert!(cards.contains(&bob_land));
+    }
+
+    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard One"));
+    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard Two"));
+    assert!(player_zone_contains_named(&game, alice, Zone::Hand, "Alice Keeps"));
+
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland One"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland Two"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
+
+    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard One"));
+    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard Two"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland One"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland Two"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn last_rites_discards_available_nonlands_when_more_cards_were_discarded() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_discard_one = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard One", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_two = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Two", vec![CardType::Creature]),
+        alice,
+        Zone::Hand,
+    );
+    let alice_discard_three = game.create_object_from_card(
+        &last_rites_test_card("Alice Discard Three", vec![CardType::Sorcery]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_nonland = game.create_object_from_card(
+        &last_rites_test_card("Bob Only Nonland", vec![CardType::Instant]),
+        bob,
+        Zone::Hand,
+    );
+    let _bob_land = game.create_object_from_card(
+        &last_rites_test_card("Bob Land", vec![CardType::Land]),
+        bob,
+        Zone::Hand,
+    );
+
+    let last_rites = last_rites_definition();
+    let spell_id = game.create_object_from_definition(&last_rites, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(bob)]));
+
+    let mut dm = LastRitesDecisionMaker {
+        target: bob,
+        discard_from_hand: vec![alice_discard_one, alice_discard_two, alice_discard_three],
+        choose_from_target: vec![bob_nonland],
+        reveal_calls: Vec::new(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm)
+        .expect("Last Rites should resolve with fewer target nonlands than discarded cards");
+
+    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Only Nonland"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
+    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Only Nonland"));
+    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kodama_of_the_center_tree_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_086), "Kodama of the Center Tree")
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(4),
+            ManaSymbol::Green,
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::new(PtValue::Star, PtValue::Star))
+        .parse_text(
+            "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control.\n\
+             Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control. (When this creature dies, you may return target Spirit card with mana value X or less from your graveyard to your hand.)",
+        )
+        .expect("Kodama of the Center Tree should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn spirit_card_with_mana_value(name: &str, mana_value: u8) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Spirit])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn player_zone_contains_named(game: &GameState, player: PlayerId, zone: Zone, name: &str) -> bool {
+    let object_ids = match zone {
+        Zone::Hand => &game.player(player).expect("player exists").hand,
+        Zone::Graveyard => &game.player(player).expect("player exists").graveyard,
+        _ => panic!("unsupported zone check {zone:?}"),
+    };
+    object_ids.iter().any(|id| {
+        game.object(*id)
+            .is_some_and(|object| object.name == name && object.zone == zone)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_dynamic_soulshift_counts_itself_when_dying() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let other_spirit_one = game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit One", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let other_spirit_two = game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit Two", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Returned Spirit", 3),
+        alice,
+        Zone::Graveyard,
+    );
+
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        entry.targets.contains(&Target::Object(target)),
+        "two other Spirits plus dying Kodama should make a mana value 3 Spirit legal"
+    );
+
+    game.move_object_by_effect(other_spirit_one, Zone::Graveyard);
+    game.move_object_by_effect(other_spirit_two, Zone::Graveyard);
+
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Kodama soulshift should resolve");
+
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Hand, "Returned Spirit"),
+        "soulshift should use the pre-death value instead of drifting with later battlefield changes"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Graveyard, "Returned Spirit"),
+        "returned Spirit should no longer be in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kodama_of_the_center_tree_dynamic_soulshift_rejects_above_predeath_count() {
+    let def = kodama_of_the_center_tree_definition();
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+    let alice = PlayerId::from_index(0);
+    let kodama = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.create_object_from_card(
+        &spirit_card_with_mana_value("Battlefield Spirit", 1),
+        alice,
+        Zone::Battlefield,
+    );
+    let target = game.create_object_from_card(
+        &spirit_card_with_mana_value("Too Large Spirit", 3),
+        alice,
+        Zone::Graveyard,
+    );
+
+    game.mark_damage(kodama, 99);
+    check_and_apply_sbas(&mut game, &mut trigger_queue)
+        .expect("lethal damage should put Kodama into the graveyard and queue soulshift");
+    assert_eq!(trigger_queue.entries.len(), 1, "Kodama should trigger once");
+
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Kodama soulshift should go on the stack even when choosing no target");
+    let entry = game.stack.last().expect("soulshift should be on the stack");
+    assert!(
+        !entry.targets.contains(&Target::Object(target)),
+        "one other Spirit plus dying Kodama should cap soulshift at mana value 2"
+    );
+    assert!(
+        player_zone_contains_named(&game, alice, Zone::Graveyard, "Too Large Spirit"),
+        "over-cap Spirit should stay in the graveyard"
+    );
+    assert!(
+        !player_zone_contains_named(&game, alice, Zone::Hand, "Too Large Spirit"),
+        "over-cap Spirit should not move to hand"
     );
 }
 
@@ -44097,6 +45527,178 @@ fn test_force_of_negation_exiles_nexus_of_fate_instead_of_shuffling_it() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn invasive_surgery_test_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Invasive Surgery")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Counter target sorcery spell.\nDelirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles.",
+        )
+        .expect("Invasive Surgery should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn invasive_surgery_target_sorcery(name: &str) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Black]))
+        .card_types(vec![CardType::Sorcery])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_invasive_surgery_delirium_cards(game: &mut GameState, controller: PlayerId, count: usize) {
+    let type_sets = [
+        ("Delirium Artifact", vec![CardType::Artifact]),
+        ("Delirium Creature", vec![CardType::Creature]),
+        ("Delirium Enchantment", vec![CardType::Enchantment]),
+        ("Delirium Land", vec![CardType::Land]),
+    ];
+    for (name, card_types) in type_sets.into_iter().take(count) {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build();
+        game.create_object_from_definition(&def, controller, Zone::Graveyard);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[derive(Default)]
+struct InvasiveSurgeryDecisionMaker {
+    object_selection_calls: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for InvasiveSurgeryDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        self.object_selection_calls += 1;
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_invasive_surgery_with_delirium_exiles_same_name_cards_from_controller_zones() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    put_invasive_surgery_delirium_cards(&mut game, alice, 4);
+
+    let target_def = invasive_surgery_target_sorcery("Duplicated Sorcery");
+    let stack_copy = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(stack_copy, bob));
+    game.create_object_from_definition(&target_def, bob, Zone::Graveyard);
+    game.create_object_from_definition(&target_def, bob, Zone::Hand);
+    game.create_object_from_definition(&target_def, bob, Zone::Library);
+    let other_def = invasive_surgery_target_sorcery("Different Sorcery");
+    game.create_object_from_definition(&other_def, bob, Zone::Library);
+
+    let invasive_surgery = invasive_surgery_test_definition();
+    let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
+        stack_copy,
+    )]));
+
+    let mut decisions = InvasiveSurgeryDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");
+
+    assert_eq!(
+        decisions.object_selection_calls, 1,
+        "delirium branch should perform one same-name multi-zone search"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Duplicated Sorcery"),
+        4,
+        "delirium branch should exile the countered spell and same-name cards from graveyard, hand, and library"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Duplicated Sorcery"),
+        0,
+        "same-name graveyard cards should be exiled after the counter resolves"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Hand, "Duplicated Sorcery"),
+        0,
+        "same-name hand cards should be exiled"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Duplicated Sorcery"),
+        0,
+        "same-name library cards should be exiled"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Different Sorcery"),
+        1,
+        "cards with a different name should remain in the searched player's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn test_invasive_surgery_without_delirium_only_counters_target_sorcery() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    put_invasive_surgery_delirium_cards(&mut game, alice, 3);
+
+    let target_def = invasive_surgery_target_sorcery("Duplicated Sorcery");
+    let stack_copy = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(stack_copy, bob));
+    game.create_object_from_definition(&target_def, bob, Zone::Graveyard);
+    game.create_object_from_definition(&target_def, bob, Zone::Hand);
+    game.create_object_from_definition(&target_def, bob, Zone::Library);
+
+    let invasive_surgery = invasive_surgery_test_definition();
+    let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
+        stack_copy,
+    )]));
+
+    let mut decisions = InvasiveSurgeryDecisionMaker::default();
+    resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");
+
+    assert_eq!(
+        decisions.object_selection_calls, 0,
+        "non-delirium branch should not perform the same-name search"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Duplicated Sorcery"),
+        0,
+        "without delirium, Invasive Surgery should not exile same-name cards"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Duplicated Sorcery"),
+        2,
+        "without delirium, only the target sorcery should be countered into the graveyard alongside the existing copy"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Hand, "Duplicated Sorcery"),
+        1,
+        "same-name hand card should remain when delirium is not satisfied"
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Library, "Duplicated Sorcery"),
+        1,
+        "same-name library card should remain when delirium is not satisfied"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_force_of_will_alternative_cost_not_available_with_only_nonblue_card() {
     use crate::cards::definitions::force_of_will;
@@ -50019,6 +51621,285 @@ fn giant_solifuge_keywords_apply_to_targeting_haste_and_trample() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn gaeas_revenge_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(193_669), "Gaea's Revenge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(5)],
+            vec![ManaSymbol::Green],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(8, 5))
+        .parse_text(
+            "This spell can't be countered.\n\
+             Haste\n\
+             This creature can't be the target of nongreen spells or abilities from nongreen sources.",
+        )
+        .expect("Gaea's Revenge should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn bartel_runeaxe_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(1_648), "Bartel Runeaxe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Green],
+        ]))
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Giant, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(6, 5))
+        .parse_text("Vigilance\nBartel Runeaxe can't be the target of Aura spells.")
+        .expect("Bartel Runeaxe should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_instant_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Instant])
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn colored_creature_definition(
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .color_indicator(colors)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_strict_parser_and_compiled_text_regression() {
+    let def = gaeas_revenge_definition();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("This spell can't be countered."),
+        "Gaea's Revenge should render its uncounterable spell restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Haste"),
+        "Gaea's Revenge should render haste, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "This creature can't be the target of nongreen spells or abilities from nongreen sources."
+        ),
+        "Gaea's Revenge should render its nongreen source targeting restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gaeas_revenge_static_abilities_apply_to_countering_haste_and_targeting() {
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::targeting::{
+        TargetingInvalidReason, TargetingResult, can_target_object, compute_legal_targets,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let revenge = gaeas_revenge_definition();
+
+    let revenge_spell = game.create_object_from_definition(&revenge, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(revenge_spell, alice));
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_countered(revenge_spell),
+        "Gaea's Revenge should be uncounterable while it is a spell on the stack"
+    );
+
+    let revenge_id = game.create_object_from_definition(&revenge, alice, Zone::Battlefield);
+    game.set_summoning_sick(revenge_id);
+    game.refresh_continuous_state();
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(revenge_id).expect("Gaea's Revenge exists"),
+            &game,
+        ),
+        "haste should let Gaea's Revenge attack despite summoning sickness"
+    );
+
+    let red_spell =
+        colored_instant_definition("Nongreen Targeting Spell", crate::color::ColorSet::RED);
+    let red_spell_id = game.create_object_from_definition(&red_spell, bob, Zone::Stack);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, red_spell_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "an opponent's nongreen spell should not be able to target Gaea's Revenge"
+    );
+
+    let friendly_red_source = colored_creature_definition(
+        "Friendly Nongreen Ability Source",
+        crate::color::ColorSet::RED,
+    );
+    let friendly_red_source_id =
+        game.create_object_from_definition(&friendly_red_source, alice, Zone::Battlefield);
+    assert!(
+        matches!(
+            can_target_object(&game, revenge_id, friendly_red_source_id, alice),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "Gaea's Revenge should also reject its controller's nongreen ability sources"
+    );
+
+    let green_spell =
+        colored_instant_definition("Green Targeting Spell", crate::color::ColorSet::GREEN);
+    let green_spell_id = game.create_object_from_definition(&green_spell, bob, Zone::Stack);
+    assert!(
+        can_target_object(&game, revenge_id, green_spell_id, bob).is_legal(),
+        "a green spell should be able to target Gaea's Revenge"
+    );
+
+    let legal_targets_from_red = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(red_spell_id),
+    );
+    assert!(
+        !legal_targets_from_red.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should not appear in legal target lists for nongreen sources"
+    );
+
+    let legal_targets_from_green = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(green_spell_id),
+    );
+    assert!(
+        legal_targets_from_green.contains(&Target::Object(revenge_id)),
+        "Gaea's Revenge should appear in legal target lists for green sources"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bartel_runeaxe_strict_parser_and_compiled_text_regression() {
+    let def = bartel_runeaxe_definition();
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains("Vigilance"),
+        "Bartel Runeaxe should render vigilance, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Bartel Runeaxe can't be the target of Aura spells."),
+        "Bartel Runeaxe should render its Aura-spell targeting restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn bartel_runeaxe_blocks_aura_spell_targets_but_not_other_spells_and_has_vigilance() {
+    use crate::target::{ChooseSpec, ObjectFilter};
+    use crate::targeting::{
+        TargetingInvalidReason, TargetingResult, can_target_object, compute_legal_targets,
+    };
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let bartel = bartel_runeaxe_definition();
+    let bartel_id = game.create_object_from_definition(&bartel, alice, Zone::Battlefield);
+    game.update_cant_effects();
+
+    let aura_spell = CardDefinitionBuilder::new(CardId::new(), "Targeting Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .build();
+    let aura_spell_id = game.create_object_from_definition(&aura_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(aura_spell_id, bob));
+    assert!(
+        matches!(
+            can_target_object(&game, bartel_id, aura_spell_id, bob),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "an opponent's Aura spell should not be able to target Bartel Runeaxe"
+    );
+
+    let friendly_aura_spell_id =
+        game.create_object_from_definition(&aura_spell, alice, Zone::Stack);
+    game.push_to_stack(StackEntry::new(friendly_aura_spell_id, alice));
+    assert!(
+        matches!(
+            can_target_object(&game, bartel_id, friendly_aura_spell_id, alice),
+            TargetingResult::Invalid(TargetingInvalidReason::CantBeTargeted)
+        ),
+        "Bartel Runeaxe's Aura-spell restriction should not depend on controller"
+    );
+
+    let non_aura_spell = CardDefinitionBuilder::new(CardId::new(), "Targeting Enchantment")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let non_aura_spell_id = game.create_object_from_definition(&non_aura_spell, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(non_aura_spell_id, bob));
+    assert!(
+        can_target_object(&game, bartel_id, non_aura_spell_id, bob).is_legal(),
+        "a non-Aura spell should be able to target Bartel Runeaxe"
+    );
+
+    let legal_targets_from_aura = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(aura_spell_id),
+    );
+    assert!(
+        !legal_targets_from_aura.contains(&Target::Object(bartel_id)),
+        "Bartel Runeaxe should not appear in legal target lists for Aura spells"
+    );
+
+    let legal_targets_from_non_aura = compute_legal_targets(
+        &game,
+        &ChooseSpec::Target(Box::new(ChooseSpec::Object(ObjectFilter::creature()))),
+        bob,
+        Some(non_aura_spell_id),
+    );
+    assert!(
+        legal_targets_from_non_aura.contains(&Target::Object(bartel_id)),
+        "Bartel Runeaxe should appear in legal target lists for non-Aura spells"
+    );
+
+    game.remove_summoning_sickness(bartel_id);
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
+    let mut combat = CombatState::default();
+    let mut trigger_queue = TriggerQueue::new();
+    apply_attacker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[AttackerDeclaration {
+            creature: bartel_id,
+            target: AttackTarget::Player(bob),
+        }],
+    )
+    .expect("Bartel Runeaxe should be able to attack");
+    assert!(
+        !game.is_tapped(bartel_id),
+        "vigilance should keep Bartel Runeaxe untapped as it attacks"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn cultivator_colossus_etb_only_asks_may_once_per_land_put() {
     use crate::cards::definitions::{basic_forest, grizzly_bears};
@@ -50823,6 +52704,231 @@ fn splinters_technique_sneak_cast_returns_attacker_and_searches_library() {
                 .object(*id)
                 .is_some_and(|object| object.name == "Library Prize")),
         "Splinter's Technique should put the searched library card into hand"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn kitsunes_technique_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_492), "Kitsune's Technique")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Sneak {1}{U} (You may cast this spell for {1}{U} if you also return an unblocked attacker you control to hand during the declare blockers step.)\n\
+             Target opponent mills half their library, rounded up.",
+        )
+        .expect("Kitsune's Technique should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn set_up_kitsunes_technique_sneak_game(
+    step: Step,
+    include_unblocked_attacker: bool,
+) -> (GameState, PlayerId, PlayerId, ObjectId, Option<ObjectId>) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::Combat;
+    game.turn.step = Some(step);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+
+    let spell_id =
+        game.create_object_from_definition(&kitsunes_technique_definition(), alice, Zone::Hand);
+    let attacker_id = if include_unblocked_attacker {
+        let attacker = CardBuilder::new(CardId::from_raw(80_493), "Kitsune Sneak Attacker")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attacker_id = game.create_object_from_card(&attacker, alice, Zone::Battlefield);
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![crate::combat_state::AttackerInfo {
+                creature: attacker_id,
+                target: AttackTarget::Player(bob),
+            }],
+            ..Default::default()
+        });
+        Some(attacker_id)
+    } else {
+        game.combat = Some(Default::default());
+        None
+    };
+
+    (game, alice, bob, spell_id, attacker_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_kitsune_library_cards(game: &mut GameState, owner: PlayerId, count: u32) {
+    for index in 0..count {
+        let card = CardBuilder::new(
+            CardId::from_raw(80_500 + index),
+            &format!("Kitsune Library Card {index}"),
+        )
+        .card_types(vec![CardType::Sorcery])
+        .build();
+        game.create_object_from_card(&card, owner, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_kitsunes_technique_targeting_bob(
+    game: &mut GameState,
+    alice: PlayerId,
+    bob: PlayerId,
+    spell_id: ObjectId,
+    spell_effect: &crate::resolution::ResolutionProgram,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: ChooseSpec::target_opponent(),
+            range: 0..1,
+        }]);
+    for effect in spell_effect.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Kitsune's Technique effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_sneak_cast_is_legal_only_with_unblocked_attacker_during_declare_blockers() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::decision::{LegalAction, compute_legal_actions};
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, true);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                from_zone: Zone::Hand,
+                casting_method: CastingMethod::Alternative(0),
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique should be sneak-castable during declare blockers with an unblocked attacker"
+    );
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, false);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                casting_method: CastingMethod::Alternative(0),
+                ..
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique should not be sneak-castable without an unblocked attacker"
+    );
+
+    let (game, alice, _, spell_id, _) =
+        set_up_kitsunes_technique_sneak_game(Step::CombatDamage, true);
+    let actions = compute_legal_actions(&game, alice);
+    assert!(
+        !actions.iter().any(|action| matches!(
+            action,
+            LegalAction::CastSpell {
+                spell_id: candidate,
+                casting_method: CastingMethod::Alternative(0),
+                ..
+            } if *candidate == spell_id
+        )),
+        "Kitsune's Technique sneak timing should end after the declare blockers step"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_sneak_cost_returns_attacker_and_mills_odd_library_rounded_up() {
+    let (mut game, alice, bob, spell_id, attacker_id) =
+        set_up_kitsunes_technique_sneak_game(Step::DeclareBlockers, true);
+    let attacker_id = attacker_id.expect("attacker should exist");
+    add_kitsune_library_cards(&mut game, bob, 5);
+
+    let total_cost = game
+        .object(spell_id)
+        .and_then(|object| object.alternative_casts[0].total_cost().cloned())
+        .expect("Kitsune's Technique should have a sneak total cost");
+    let spell_effect = game
+        .object(spell_id)
+        .and_then(|object| object.spell_effect.clone())
+        .expect("Kitsune's Technique should have a spell effect");
+    let mut decision_maker = SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(spell_id, alice, &mut decision_maker);
+    crate::special_actions::pay_total_cost_with_choice_in_context(
+        &mut game,
+        alice,
+        spell_id,
+        &total_cost,
+        crate::costs::PaymentReason::CastSpell,
+        &mut ctx,
+    )
+    .expect("paying Kitsune's Technique sneak cost should succeed");
+
+    assert!(
+        game.player(alice)
+            .expect("alice exists")
+            .hand
+            .iter()
+            .any(|id| game
+                .object(*id)
+                .is_some_and(|object| object.name == "Kitsune Sneak Attacker")),
+        "paying sneak should return the unblocked attacker to hand"
+    );
+    assert!(
+        !game.battlefield.contains(&attacker_id),
+        "paying sneak should remove the attacker from the battlefield"
+    );
+
+    resolve_kitsunes_technique_targeting_bob(&mut game, alice, bob, spell_id, &spell_effect);
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "five-card library should mill three cards when rounded up"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "Kitsune's Technique should leave the un-milled half in Bob's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn kitsunes_technique_even_library_does_not_round_past_half() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = kitsunes_technique_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    add_kitsune_library_cards(&mut game, bob, 4);
+    let spell_effect = def
+        .spell_effect
+        .as_ref()
+        .expect("Kitsune's Technique should have a spell effect");
+
+    resolve_kitsunes_technique_targeting_bob(&mut game, alice, bob, spell_id, spell_effect);
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        2,
+        "four-card library should mill exactly two cards"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "rounded-up half should not mill an extra card for an even library size"
     );
 }
 

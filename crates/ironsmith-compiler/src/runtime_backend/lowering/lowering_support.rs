@@ -469,6 +469,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     fn predicate_can_promote_to_intervening_if(predicate: &PredicateAst) -> bool {
         match predicate {
             PredicateAst::TargetMatches(_) => false,
+            PredicateAst::CountParity { .. } => false,
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_can_promote_to_intervening_if(left)
                     && predicate_can_promote_to_intervening_if(right)
@@ -1010,6 +1011,10 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Soulshift(amount) => {
             Some(StaticAbility::keyword_marker(format!("soulshift {amount}")))
         }
+        KeywordAction::SoulshiftValue(value) => Some(StaticAbility::keyword_marker(format!(
+            "soulshift X, where X is {}",
+            crate::payload::describe_soulshift_value(&value)
+        ))),
         KeywordAction::Outlast(cost) => Some(StaticAbility::keyword_marker(format!(
             "outlast {}",
             cost.to_oracle()

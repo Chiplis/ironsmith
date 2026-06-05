@@ -203,6 +203,10 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let followup_player = choose_followup_player_filter(&resolved_filter, &chooser)
                 .unwrap_or_else(|| chooser.clone());
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
+            let count_value = count_value
+                .as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             let (mut effects, choices) = if let Some(zones) = cross_zone_choices {
                 compile_choose_objects_across_zones_with_subject(
                     subject,
@@ -246,6 +250,36 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             }
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
+        }
+        EffectAst::ChooseObjectsBottomOfLibrary {
+            filter,
+            count,
+            count_value,
+            player,
+            tag,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let chooser = subject.clone_player_filter();
+            let mut resolved_filter = subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            resolved_filter.zone = Some(Zone::Library);
+            let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
+                resolved_filter,
+                *count,
+                chooser.clone(),
+                tag.clone(),
+            )
+            .with_count_value_opt(count_value.clone())
+            .in_zone(Zone::Library)
+            .bottom_only();
+            choose_effect.description = "Choose bottom library card".to_string();
+            let effects = subject.prepend_target_prelude_if_needed(Effect::new(choose_effect));
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            }
+            ctx.last_player_filter = Some(chooser);
+            (effects, subject.into_choices())
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -297,6 +331,10 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             let chooses_tagged_pool = chooses_tagged_object_pool(&resolved_filter);
             let default_search =
                 slice_contains(zones.as_slice(), &Zone::Library) && !chooses_tagged_pool;
+            let count_value = count_value
+                .as_ref()
+                .map(|value| resolve_value_it_tag(value, &current_reference_env(ctx)))
+                .transpose()?;
             let (effects, choices) = compile_choose_objects_across_zones_with_subject(
                 subject,
                 resolved_filter,

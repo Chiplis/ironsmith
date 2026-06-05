@@ -5,10 +5,13 @@ use std::collections::HashSet;
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::EffectExecutor;
+use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
+use crate::triggers::TriggerEvent;
 pub type ForEachObject = ironsmith_core::ForEachObject<Effect>;
 
 impl EffectExecutor for ForEachObject {
@@ -72,6 +75,59 @@ impl EffectExecutor for ForEachObject {
         // Execute the effects once for each matching object and expose that object via
         // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
         let it_tag = TagKey::from("__it__");
+        if let [move_effect, shuffle_effect] = self.effects.as_slice()
+            && let Some(move_to_zone) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+            && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && matches!(
+                &shuffle.player,
+                crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
+                    if tag == &it_tag
+            )
+        {
+            let mut owners = Vec::new();
+            for object_id in &matching {
+                let Some(object) = game.object(*object_id) else {
+                    continue;
+                };
+                let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+                let original_it = ctx.tagged_objects.remove(&it_tag);
+                ctx.tag_object(it_tag.clone(), snapshot.clone());
+                let owner = resolve_player_filter(game, &shuffle.player, ctx)?;
+                if !owners.contains(&owner) {
+                    owners.push(owner);
+                }
+
+                ctx.with_temp_iterated_object(Some(*object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        outcomes.push(execute_effect(game, move_effect, ctx)?);
+                        Ok::<(), ExecutionError>(())
+                    })
+                })?;
+
+                match original_it {
+                    Some(value) => {
+                        ctx.tagged_objects.insert(it_tag.clone(), value);
+                    }
+                    None => {
+                        ctx.tagged_objects.remove(&it_tag);
+                    }
+                }
+            }
+
+            for owner in owners {
+                game.shuffle_player_library(owner);
+                outcomes.push(
+                    EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                        ShuffleLibraryEvent::new(owner, ctx.cause.clone()),
+                        ctx.provenance,
+                    )),
+                );
+            }
+
+            return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
+        }
+
         for object_id in &matching {
             let Some(object) = game.object(*object_id) else {
                 continue;

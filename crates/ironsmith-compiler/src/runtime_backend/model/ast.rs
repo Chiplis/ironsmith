@@ -165,6 +165,11 @@ pub(crate) enum TriggerSpec {
         target: ObjectFilter,
         source_controller: PlayerFilter,
     },
+    PlayerOrObjectBecomesTargetedBySourceController {
+        player: PlayerFilter,
+        object: ObjectFilter,
+        source_controller: PlayerFilter,
+    },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
         player: PlayerFilter,
@@ -472,6 +477,11 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },
+    CountParity {
+        count: crate::static_abilities::AnthemCountExpression,
+        even: bool,
+        display: Option<String>,
+    },
     PlayerIsMonarch {
         player: PlayerAst,
     },
@@ -554,6 +564,8 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
     },
     SourceIsTapped,
+    SourceIsEquipped,
+    SourceIsEnchanted,
     SourceIsSaddled,
     SourceCrewedByExactly {
         count: u32,
@@ -641,6 +653,8 @@ impl PredicateAst {
         match self {
             PredicateAst::SourceChosenOption(_)
             | PredicateAst::SourceIsTapped
+            | PredicateAst::SourceIsEquipped
+            | PredicateAst::SourceIsEnchanted
             | PredicateAst::SourceIsSaddled
             | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)
@@ -936,6 +950,11 @@ pub(crate) enum SubjectVerbActionAst {
         replacement_effects: Vec<EffectAst>,
         duration: ZoneReplacementDurationAst,
     },
+    RegisterManaReplacement {
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    },
     RegisterDamagedBySourceZoneReplacement {
         filter: ObjectFilter,
         from_zone: Option<Zone>,
@@ -1051,6 +1070,7 @@ pub(crate) enum SubjectVerbActionAst {
     PreventAllDamageToTarget {
         target: TargetAst,
         duration: Until,
+        source_of_your_choice: bool,
     },
     PreventAllDamageToTargetFromSourceFilter {
         target: TargetAst,
@@ -1125,6 +1145,7 @@ pub(crate) enum SubjectVerbActionAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        filter: Option<ObjectFilter>,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
@@ -1690,6 +1711,9 @@ pub(crate) enum SubjectVerbActionAst {
     EnergyCounters {
         count: Value,
     },
+    ExperienceCounters {
+        count: Value,
+    },
     TicketCounters {
         count: Value,
     },
@@ -2099,6 +2123,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("replacement_effects", replacement_effects)
                 .field("duration", duration)
                 .finish(),
+            Self::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
+            } => f
+                .debug_struct("RegisterManaReplacement")
+                .field("source_filter", source_filter)
+                .field("replacement_mana", replacement_mana)
+                .field("mode", mode)
+                .finish(),
             Self::RegisterDamagedBySourceZoneReplacement {
                 filter,
                 from_zone,
@@ -2264,10 +2298,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("follow_up_effects", follow_up_effects)
                 .finish(),
-            Self::PreventAllDamageToTarget { target, duration } => f
+            Self::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice,
+            } => f
                 .debug_struct("PreventAllDamageToTarget")
                 .field("target", target)
                 .field("duration", duration)
+                .field("source_of_your_choice", source_of_your_choice)
                 .finish(),
             Self::PreventAllDamageToTargetFromSourceFilter {
                 target,
@@ -2409,6 +2448,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                filter,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
@@ -2416,6 +2456,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("allow_land", allow_land)
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("filter", filter)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
@@ -3276,6 +3317,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::DiscardHand => f.write_str("DiscardHand"),
             Self::PoisonCounters { count } => f.debug_tuple("PoisonCounters").field(count).finish(),
             Self::EnergyCounters { count } => f.debug_tuple("EnergyCounters").field(count).finish(),
+            Self::ExperienceCounters { count } => {
+                f.debug_tuple("ExperienceCounters").field(count).finish()
+            }
             Self::TicketCounters { count } => f.debug_tuple("TicketCounters").field(count).finish(),
             Self::PayEnergy { amount } => f.debug_tuple("PayEnergy").field(amount).finish(),
             Self::PayAnyEnergy { min_amount } => f
@@ -3441,6 +3485,13 @@ pub(crate) enum EffectAst {
         if_false: Vec<EffectAst>,
     },
     ChooseObjects {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        count_value: Option<Value>,
+        player: PlayerAst,
+        tag: TagKey,
+    },
+    ChooseObjectsBottomOfLibrary {
         filter: ObjectFilter,
         count: ChoiceCount,
         count_value: Option<Value>,
@@ -3808,10 +3859,22 @@ impl EffectAst {
         target: TargetAst,
         duration: Until,
     ) -> Self {
+        Self::subject_verb_prevent_all_damage_to_target_with_source_choice(target, duration, false)
+    }
+
+    pub(crate) fn subject_verb_prevent_all_damage_to_target_with_source_choice(
+        target: TargetAst,
+        duration: Until,
+        source_of_your_choice: bool,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::PreventAllDamageToTarget { target, duration },
+            SubjectVerbActionAst::PreventAllDamageToTarget {
+                target,
+                duration,
+                source_of_your_choice,
+            },
         )
     }
 
@@ -4085,6 +4148,7 @@ impl EffectAst {
         allow_land: bool,
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: bool,
+        filter: Option<ObjectFilter>,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -4095,6 +4159,7 @@ impl EffectAst {
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                filter,
             },
         )
     }
@@ -5285,6 +5350,22 @@ impl EffectAst {
                 player,
                 replacement_effects,
                 duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_register_mana_replacement(
+        source_filter: ObjectFilter,
+        replacement_mana: Vec<ManaSymbol>,
+        mode: crate::effects::ReplacementApplyMode,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::RegisterManaReplacement {
+                source_filter,
+                replacement_mana,
+                mode,
             },
         )
     }
@@ -6670,6 +6751,14 @@ impl EffectAst {
             SubjectVerbRoleAst::AffectedPlayer,
             player,
             SubjectVerbActionAst::EnergyCounters { count },
+        )
+    }
+
+    pub(crate) fn subject_verb_experience_counters(player: PlayerAst, count: Value) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::ExperienceCounters { count },
         )
     }
 
