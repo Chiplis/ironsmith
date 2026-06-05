@@ -18469,15 +18469,33 @@ fn samite_blessing_runtime_prevents_next_chosen_source_damage_to_target_creature
                 .then_some(activated)
         })
         .expect("Samite Blessing should grant the enchanted creature the prevention ability");
+    let target_spec = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.0.get_target_spec())
+        .expect("Samite Blessing granted ability should require a target");
+    let ChooseSpec::Object(target_filter) = target_spec.base() else {
+        panic!(
+            "Samite Blessing granted ability should target a creature object, got {target_spec:?}"
+        );
+    };
+    let target_filter_ctx = crate::filter::FilterContext::new(alice).with_source(enchanted_id);
     assert!(
-        activated.effects.flattened_default_effects().iter().any(|effect| {
-            effect
-                .0
-                .get_target_spec()
-                .is_some_and(|spec| format!("{spec:?}").contains("Creature"))
-        }),
-        "granted Samite Blessing ability should require a target creature, got {:?}",
-        activated.effects
+        game.object(protected_id).is_some_and(|object| target_filter.matches(
+            object,
+            &target_filter_ctx,
+            &game
+        )),
+        "Samite Blessing should allow a creature as the prevention target"
+    );
+    assert!(
+        game.object(blessing_id).is_some_and(|object| !target_filter.matches(
+            object,
+            &target_filter_ctx,
+            &game
+        )),
+        "Samite Blessing should not allow a noncreature permanent as the prevention target"
     );
 
     let mut dm = ChooseNamedSourceDecisionMaker {
