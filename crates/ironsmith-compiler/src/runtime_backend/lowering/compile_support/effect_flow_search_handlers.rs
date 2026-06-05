@@ -51,6 +51,27 @@ fn binary_pile_choice_labels(
     })
 }
 
+fn compiled_effects_are_play_permissions(effects: &[Effect]) -> bool {
+    let mut saw_play_grant = false;
+    for effect in effects {
+        if effect
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            .is_some()
+        {
+            saw_play_grant = true;
+            continue;
+        }
+        if effect
+            .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            .is_some()
+        {
+            continue;
+        }
+        return false;
+    }
+    saw_play_grant
+}
+
 fn try_compile_for_each_object_become_copy_of_prior_choice(
     filter: &ObjectFilter,
     effects: &[EffectAst],
@@ -128,6 +149,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     "empty compiled may-effect branch is unsupported".to_string(),
                 ));
             }
+            if compiled_effects_are_play_permissions(&inner_effects) {
+                return Ok(Some((inner_effects, inner_choices)));
+            }
             let effect = Effect::may(inner_effects);
             (vec![effect], inner_choices)
         }
@@ -158,9 +182,12 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     "empty compiled may-by-player effect branch is unsupported".to_string(),
                 ));
             }
-            let effect = Effect::may_player(player_filter, inner_effects);
             let mut choices = inner_choices;
             choices.extend(subject.into_choices());
+            if compiled_effects_are_play_permissions(&inner_effects) {
+                return Ok(Some((inner_effects, choices)));
+            }
+            let effect = Effect::may_player(player_filter, inner_effects);
             (vec![effect], choices)
         }
         EffectAst::RepeatThisProcessMay => (

@@ -219,13 +219,17 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     false,
                 )
             } else if chooses_tagged_pool {
+                let choice_zones = resolved_filter
+                    .zone
+                    .map(|zone| vec![zone])
+                    .unwrap_or_else(scoped_collection_zones);
                 compile_choose_objects_across_zones_with_subject(
                     subject,
                     resolved_filter,
                     *count,
                     count_value.clone(),
                     tag.clone(),
-                    scoped_collection_zones(),
+                    choice_zones,
                     None,
                     false,
                 )

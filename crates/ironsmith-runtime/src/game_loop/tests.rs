@@ -31244,6 +31244,195 @@ fn test_fallen_shinobi_trigger_exiles_top_two_cards_and_grants_play_permission()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn black_cat_cunning_thief_definition() -> crate::cards::CardDefinition {
+    let oracle = "When Black Cat enters, look at the top nine cards of target opponent's library, \
+        exile two of them face down, then put the rest on the bottom of their library in a random \
+        order. You may play the exiled cards for as long as they remain exiled. Mana of any type \
+        can be spent to cast spells this way.";
+
+    CardDefinitionBuilder::new(CardId::from_raw(90_468), "Black Cat, Cunning Thief")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Rogue, Subtype::Villain])
+        .power_toughness(PowerToughness::fixed(2, 3))
+        .parse_text(oracle)
+        .expect("Black Cat, Cunning Thief should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseBlackCatCardsDecisionMaker {
+    selected: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseBlackCatCardsDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal && self.selected.contains(&candidate.id))
+            .map(|candidate| candidate.id)
+            .take(ctx.max.unwrap_or(self.selected.len()))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn black_cat_library_card(name: &str, card_type: CardType) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(vec![card_type])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn black_cat_cunning_thief_exiles_two_looked_cards_face_down_and_bottoms_rest() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let black_cat = black_cat_cunning_thief_definition();
+    let source = game.create_object_from_definition(&black_cat, alice, Zone::Battlefield);
+
+    let alice_card = black_cat_library_card("Alice Untouched", CardType::Sorcery);
+    let alice_card_id = game.create_object_from_card(&alice_card, alice, Zone::Library);
+    let unrelated_exiled_card = black_cat_library_card("Unrelated Exiled", CardType::Instant);
+    let unrelated_exiled_id =
+        game.create_object_from_card(&unrelated_exiled_card, bob, Zone::Exile);
+
+    let mut bob_library = Vec::new();
+    for index in 1..=9 {
+        let card_type = if index == 8 {
+            CardType::Land
+        } else if index == 9 {
+            CardType::Instant
+        } else {
+            CardType::Sorcery
+        };
+        let card = black_cat_library_card(&format!("Bob Card {index}"), card_type);
+        bob_library.push(game.create_object_from_card(&card, bob, Zone::Library));
+    }
+    assert!(game.set_player_library_order_with_audit(
+        bob,
+        bob_library.clone(),
+        "Black Cat runtime test setup",
+    ));
+    let selected_permanent = bob_library[7];
+    let selected_spell = bob_library[8];
+    let selected_permanent_stable = game
+        .object(selected_permanent)
+        .expect("selected permanent setup")
+        .stable_id;
+    let selected_spell_stable = game
+        .object(selected_spell)
+        .expect("selected spell setup")
+        .stable_id;
+
+    let triggered = black_cat
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Black Cat should have an enters trigger");
+    let mut dm = ChooseBlackCatCardsDecisionMaker {
+        selected: vec![selected_permanent, selected_spell],
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_decision_maker(&mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)])
+        .with_triggering_event(TriggerEvent::new_with_provenance(
+            EnterBattlefieldEvent::new(source, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        ));
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        source,
+        &triggered.effects,
+        None,
+        &[],
+    )
+    .expect("Black Cat enters trigger should resolve");
+
+    let selected_permanent = game
+        .find_object_by_stable_id(selected_permanent_stable)
+        .expect("selected permanent should still exist");
+    let selected_spell = game
+        .find_object_by_stable_id(selected_spell_stable)
+        .expect("selected spell should still exist");
+    for selected in [selected_permanent, selected_spell] {
+        assert_eq!(
+            game.object(selected).expect("selected card exists").zone,
+            Zone::Exile,
+            "Black Cat should exile the two selected looked-at cards"
+        );
+        assert!(
+            game.is_face_down(selected),
+            "Black Cat should exile selected cards face down"
+        );
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                selected,
+                Zone::Exile,
+                alice,
+            ),
+            "Black Cat should let its controller play selected exiled cards"
+        );
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                selected,
+                Zone::Exile,
+                bob,
+            ),
+            "Black Cat should not let the target opponent play its selected exiled cards"
+        );
+    }
+    assert!(
+        game.can_spend_mana_as_any_color(alice, Some(selected_spell)),
+        "Black Cat should allow mana of any type to cast exiled spells"
+    );
+    assert!(
+        !game.can_spend_mana_as_any_color(bob, Some(selected_spell)),
+        "Black Cat's any-mana permission should belong to its controller"
+    );
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            unrelated_exiled_id,
+            Zone::Exile,
+            alice,
+        ),
+        "Black Cat should not grant play permission for unrelated exiled cards"
+    );
+    assert!(
+        !game.can_spend_mana_as_any_color(alice, Some(unrelated_exiled_id)),
+        "Black Cat should not grant any-mana casting for unrelated exiled cards"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        7,
+        "Black Cat should put the seven unchosen looked-at cards back on the bottom of Bob's library"
+    );
+    assert!(
+        bob_library[..7].iter().all(|id| game
+            .object(*id)
+            .is_some_and(|object| object.zone == Zone::Library && object.owner == bob)),
+        "Black Cat should leave the unchosen looked-at cards in the target opponent's library"
+    );
+    assert_eq!(
+        game.object(alice_card_id).expect("alice card exists").zone,
+        Zone::Library,
+        "Black Cat should not touch its controller's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn mindleech_mass_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(90_467), "Mindleech Mass")
         .mana_cost(ManaCost::from_pips(vec![
