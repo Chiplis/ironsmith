@@ -38950,6 +38950,13 @@ fn describe_mana_usage_restriction(
             line.push_str(&bonuses.join(" and "));
             Some(line)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { filter } => {
+            let spell_text = describe_mana_usage_spell_filter_plural_target(filter)?;
+            let source_text = describe_mana_usage_ability_source_filter(filter)?;
+            Some(format!(
+                "Spend this mana only to cast {spell_text} or activate abilities of {source_text}"
+            ))
+        }
         crate::ability::ManaUsageRestriction::ActivateAbility => {
             Some("Spend this mana only to activate abilities".to_string())
         }
@@ -39034,6 +39041,38 @@ fn describe_mana_usage_spell_filter_target_with_options(
         "a"
     };
     Some(format!("{article} {described}"))
+}
+
+fn describe_mana_usage_spell_filter_plural_target(filter: &ObjectFilter) -> Option<String> {
+    if let Some(special) = describe_special_mana_usage_spell_filter_target(filter, true) {
+        return Some(special);
+    }
+    let described = describe_simple_mana_usage_spell_filter(filter)
+        .unwrap_or_else(|| describe_cast_limit_spell_filter(filter));
+    if described.is_empty() {
+        return None;
+    }
+    if described == "spell" {
+        return Some("spells".to_string());
+    }
+    if let Some(singular) = described.strip_suffix(" spell") {
+        return Some(format!("{singular} spells"));
+    }
+    Some(pluralize_noun_phrase(&described))
+}
+
+fn describe_mana_usage_ability_source_filter(filter: &ObjectFilter) -> Option<String> {
+    if let Some(described) = describe_simple_mana_usage_spell_filter(filter)
+        && let Some(source) = described.strip_suffix(" spell")
+    {
+        return Some(pluralize_noun_phrase(source));
+    }
+    let described = describe_cast_limit_spell_filter(filter);
+    if described.is_empty() {
+        None
+    } else {
+        Some(pluralize_noun_phrase(&described))
+    }
 }
 
 fn describe_special_mana_usage_spell_filter_target(

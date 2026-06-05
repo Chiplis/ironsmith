@@ -2573,6 +2573,24 @@ fn rewrite_lexed_mana_restrictions_parse_supported_spell_filter_shapes() {
 }
 
 #[test]
+fn rewrite_lexed_mana_restriction_parses_cast_or_activate_matching_source() {
+    let tokens = lex_line(
+        "Spend this mana only to cast artifact spells or activate abilities of artifacts.",
+        0,
+    )
+    .expect("rewrite lexer should classify cast-or-activate mana restriction");
+
+    match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+        Some(crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching {
+            filter,
+        }) => {
+            assert_eq!(filter.card_types, vec![CardType::Artifact]);
+        }
+        other => panic!("expected cast-or-activate artifact restriction, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_spell_mana_restriction_wraps_preceding_mana_effect() {
     let tokens = lex_line(
         "Add one mana of any one color. Spend this mana only to cast creature spells.",

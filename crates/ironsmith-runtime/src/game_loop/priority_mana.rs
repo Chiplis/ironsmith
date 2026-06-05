@@ -696,6 +696,7 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
             restrict_to_matching_spell,
             ..
         } => *restrict_to_matching_spell,
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { .. } => true,
         crate::ability::ManaUsageRestriction::ActivateAbility => true,
     }
 }
@@ -744,6 +745,7 @@ fn restriction_bonus_applies_to_payment_source(
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { .. } => false,
         crate::ability::ManaUsageRestriction::ActivateAbility => false,
     }
 }
@@ -808,6 +810,18 @@ pub(super) fn payment_source_matches_restriction(
                 return true;
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
+        }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { filter } => {
+            if source_obj.zone == Zone::Stack {
+                cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
+            } else {
+                let Some(mana_source) = game.object(unit.source) else {
+                    return false;
+                };
+                let filter_ctx =
+                    game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
+                filter.matches(source_obj, &filter_ctx, game)
+            }
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
@@ -948,6 +962,9 @@ pub(super) fn apply_spent_mana_bonuses(
                 enters_with_counters,
                 granted_abilities,
             ),
+            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { .. } => {
+                continue;
+            }
             crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 
@@ -4807,6 +4824,80 @@ mod priority_mana_tests {
         assert!(
             spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(spell_id)).is_none(),
             "James restricted mana should not be spendable to cast spells"
+        );
+    }
+
+    #[test]
+    fn hargilde_kindly_runechanter_restricted_mana_pays_only_artifact_spells_or_artifact_abilities()
+    {
+        let hargilde = CardDefinitionBuilder::new(CardId::new(), "Hargilde, Kindly Runechanter")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "{T}: Add {C}{C}. Spend this mana only to cast artifact spells or activate abilities of artifacts.",
+            )
+            .expect("Hargilde mana ability text should parse");
+        let restriction = hargilde
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated)
+                    if !activated.mana_usage_restrictions.is_empty() =>
+                {
+                    activated.mana_usage_restrictions.first().cloned()
+                }
+                _ => None,
+            })
+            .expect("Hargilde mana ability should include a usage restriction");
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_id = game.create_object_from_definition(&hargilde, alice, Zone::Battlefield);
+        let unit = RestrictedManaUnit {
+            symbol: ManaSymbol::Colorless,
+            source: source_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        };
+
+        let artifact_spell = CardDefinitionBuilder::new(CardId::new(), "Artifact Spell")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_spell_id =
+            game.create_object_from_definition(&artifact_spell, alice, Zone::Stack);
+        assert!(
+            restricted_unit_is_payable(&game, &unit, Some(artifact_spell_id)),
+            "Hargilde mana should pay for artifact spells"
+        );
+
+        let artifact_source = CardDefinitionBuilder::new(CardId::new(), "Artifact Ability Source")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let artifact_source_id =
+            game.create_object_from_definition(&artifact_source, alice, Zone::Battlefield);
+        assert!(
+            restricted_unit_is_payable(&game, &unit, Some(artifact_source_id)),
+            "Hargilde mana should pay for abilities of artifacts"
+        );
+
+        let instant_spell = CardDefinitionBuilder::new(CardId::new(), "Nonartifact Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let instant_spell_id =
+            game.create_object_from_definition(&instant_spell, alice, Zone::Stack);
+        assert!(
+            !restricted_unit_is_payable(&game, &unit, Some(instant_spell_id)),
+            "Hargilde mana should reject nonartifact spells"
+        );
+
+        let creature_source =
+            CardDefinitionBuilder::new(CardId::new(), "Nonartifact Ability Source")
+                .card_types(vec![CardType::Creature])
+                .build();
+        let creature_source_id =
+            game.create_object_from_definition(&creature_source, alice, Zone::Battlefield);
+        assert!(
+            !restricted_unit_is_payable(&game, &unit, Some(creature_source_id)),
+            "Hargilde mana should reject abilities of nonartifacts"
         );
     }
 

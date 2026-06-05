@@ -38,6 +38,9 @@ pub enum ManaUsageRestriction {
         enters_with_counters: Vec<(crate::CounterType, u32)>,
         granted_abilities: Vec<StaticAbilityId>,
     },
+    CastSpellOrActivateAbilityMatching {
+        filter: ObjectFilter,
+    },
     ActivateAbility,
 }
 

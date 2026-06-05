@@ -111,6 +111,11 @@ struct FilterManaUsageCastRestriction<'a> {
     grant_uncounterable: bool,
 }
 
+struct CastOrActivateManaUsageRestriction<'a> {
+    spell_spec_tokens: &'a [OwnedLexToken],
+    ability_source_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ManaSpendBonusSentence<'a> {
     spec_tokens: &'a [OwnedLexToken],
@@ -774,10 +779,68 @@ pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken])
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
-    parse_legacy_mana_usage_restriction_sentence_lexed(tokens)
+    parse_cast_or_activate_mana_usage_restriction_sentence_lexed(tokens)
+        .or_else(|| parse_legacy_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_activate_ability_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_cant_be_spent_to_cast_sentence_lexed(tokens))
         .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
+}
+
+fn parse_cast_or_activate_mana_usage_restriction_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    let parsed = parse_cast_or_activate_mana_usage_restriction_tokens(tokens)?;
+    let spell_tokens = trim_lexed_commas(parsed.spell_spec_tokens);
+    let source_tokens = trim_mana_usage_ability_source_tokens(trim_lexed_commas(
+        parsed.ability_source_tokens,
+    ));
+    if spell_tokens.is_empty() || source_tokens.is_empty() {
+        return None;
+    }
+
+    let spell_filter = parse_spell_filter_with_grammar_entrypoint(spell_tokens);
+    let source_filter = parse_spell_filter_with_grammar_entrypoint(source_tokens);
+    if spell_filter == ObjectFilter::default() || spell_filter != source_filter {
+        return None;
+    }
+
+    Some(ManaUsageRestriction::CastSpellOrActivateAbilityMatching {
+        filter: spell_filter,
+    })
+}
+
+fn parse_cast_or_activate_mana_usage_restriction_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<CastOrActivateManaUsageRestriction<'a>> {
+    const CAST_OR_ACTIVATE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(SPEND_MANA_CAST_PREFIXES),
+        LexPattern::object(
+            "spell_spec",
+            LexCaptureKind::UntilPhrase(&["or", "activate", "abilities", "of"]),
+        ),
+        LexPattern::phrase(&["or", "activate", "abilities", "of"]),
+        LexPattern::subject("ability_source", LexCaptureKind::OneOrMoreWords),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = CAST_OR_ACTIVATE_PATTERN.match_clause(clause)?;
+    let spell_spec = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let ability_source = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    Some(CastOrActivateManaUsageRestriction {
+        spell_spec_tokens: spell_spec.tokens(),
+        ability_source_tokens: ability_source.tokens(),
+    })
+}
+
+fn trim_mana_usage_ability_source_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
+    let Some(last) = tokens.last() else {
+        return tokens;
+    };
+    if last.is_word("source") || last.is_word("sources") {
+        &tokens[..tokens.len() - 1]
+    } else {
+        tokens
+    }
 }
 
 fn parse_cant_be_spent_to_cast_sentence_lexed(

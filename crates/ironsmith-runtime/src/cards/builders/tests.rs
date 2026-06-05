@@ -57006,6 +57006,46 @@ fn jetfire_ingenious_scientist_mana_ability_restricts_nonartifact_spells() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn hargilde_kindly_runechanter_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Hargilde, Kindly Runechanter");
+    let def = parse_oracle_card_definition("Hargilde, Kindly Runechanter");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "spend this mana only to cast artifact spells or activate abilities of artifacts"
+        ),
+        "expected Hargilde compiled text to preserve artifact cast-or-activate mana restriction, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn hargilde_kindly_runechanter_models_cast_or_activate_artifact_mana_restriction() {
+    let def = parse_oracle_card_definition("Hargilde, Kindly Runechanter");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.mana_output.is_some() => Some(activated),
+            _ => None,
+        })
+        .expect("Hargilde should have a mana ability");
+
+    let [crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilityMatching { filter }] =
+        activated.mana_usage_restrictions.as_slice()
+    else {
+        panic!(
+            "expected Hargilde mana ability to carry one cast-or-activate usage restriction, got {:?}",
+            activated.mana_usage_restrictions
+        );
+    };
+    assert_eq!(filter.card_types, vec![CardType::Artifact]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn oran_rief_the_vastwood_compiled_text_keeps_entered_this_turn_green_filter() {
     let def = parse_oracle_card_definition("Oran-Rief, the Vastwood");
     let rendered = canonical_compiled_lines(&def)
