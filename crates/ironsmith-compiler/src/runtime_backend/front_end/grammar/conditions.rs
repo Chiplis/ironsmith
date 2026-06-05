@@ -339,6 +339,7 @@ pub(crate) struct PlayerWouldActionConditionAst {
 pub(crate) enum BattlefieldChangeThisTurnConditionAst {
     PermanentLeftBattlefield { negated: bool },
     PermanentLeftBattlefieldUnderYourControl,
+    ObjectLeftBattlefield { filter: ObjectFilter },
     ObjectPutIntoGraveyardFromBattlefield { filter: ObjectFilter },
 }
 
@@ -1561,8 +1562,8 @@ fn parse_battlefield_change_this_turn_shape(
     parse_no_permanent_left_battlefield_shape(tokens)
         .or_else(|| parse_permanent_left_battlefield_under_your_control_shape(tokens))
         .or_else(|| parse_object_put_into_graveyard_from_battlefield_shape(tokens))
-        .or_else(|| parse_nonland_permanent_or_spell_warped_this_turn_shape(tokens))
         .or_else(|| parse_permanent_left_battlefield_shape(tokens))
+        .or_else(|| parse_object_left_battlefield_shape(tokens))
 }
 
 fn parse_no_permanent_left_battlefield_shape(
@@ -1588,9 +1589,7 @@ fn parse_permanent_left_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::any_word(&[
-        "a", "an",
-    ])];
+    let optional_article = [LexPattern::any_word(&["a", "an"])];
     let optional_the = [LexPattern::word("the")];
     let atoms = [
         LexPattern::optional(&optional_article),
@@ -1670,24 +1669,29 @@ fn parse_object_put_into_graveyard_from_battlefield_shape(
     )
 }
 
-fn parse_nonland_permanent_or_spell_warped_this_turn_shape(
+fn parse_object_left_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
+    let optional_article = [LexPattern::any_word(&[
+        "a", "an",
+    ])];
+    let optional_the = [LexPattern::word("the")];
     let atoms = [
-        LexPattern::phrase(&[
-            "nonland",
-            "permanent",
-            "left",
-            "battlefield",
-            "this",
-            "turn",
-        ]),
-        LexPattern::word("or"),
-        LexPattern::phrase(&["spell", "was", "warped", "this", "turn"]),
+        LexPattern::optional(&optional_article),
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["left"])),
+        LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
+        LexPattern::optional(&optional_the),
+        LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
-    LexPattern::new(&atoms).match_clause(clause)?;
-    Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: false })
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let object_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let mut filter =
+        parse_object_filter_with_grammar_entrypoint(object_clause.tokens(), false).ok()?;
+    filter.zone = Some(Zone::Battlefield);
+    Some(BattlefieldChangeThisTurnConditionAst::ObjectLeftBattlefield {
+        filter,
+    })
 }
 
 pub(crate) fn parse_object_death_this_turn_condition(

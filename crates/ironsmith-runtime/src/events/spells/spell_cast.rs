@@ -22,6 +22,8 @@ pub struct SpellCastEvent {
     pub from_zone: Zone,
     /// Snapshot of the spell on the stack at cast time.
     pub snapshot: Option<ObjectSnapshot>,
+    /// Whether the spell was cast using a Warp alternative cost.
+    pub was_warped: bool,
 }
 
 impl SpellCastEvent {
@@ -32,6 +34,7 @@ impl SpellCastEvent {
             caster,
             from_zone,
             snapshot: None,
+            was_warped: false,
         }
     }
 
@@ -46,7 +49,13 @@ impl SpellCastEvent {
             caster,
             from_zone,
             snapshot: Some(snapshot),
+            was_warped: false,
         }
+    }
+
+    pub fn with_warped(mut self) -> Self {
+        self.was_warped = true;
+        self
     }
 }
 

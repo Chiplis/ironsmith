@@ -1019,6 +1019,18 @@ fn evaluate_condition_shared_core(
                 .permanents_left_battlefield_under_controller(ctx.controller)
                 > 0,
         ),
+        Condition::ObjectLeftBattlefieldThisTurn(filter) => Some(
+            game.turn_store.turn_history.object_left_battlefield_this_turn(
+                game,
+                filter,
+                &game.filter_context_for(ctx.controller, ctx.filter_source),
+            ) > 0,
+        ),
+        Condition::SpellWasWarpedThisTurn => Some(
+            game.turn_store
+                .turn_history
+                .spell_was_warped_this_turn(),
+        ),
         Condition::ObjectEnteredBattlefieldThisTurn(filter) => Some(
             object_matching_entered_battlefield_this_turn(game, ctx, filter),
         ),
@@ -1214,6 +1226,8 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::OpponentLostLifeThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
+        Condition::ObjectLeftBattlefieldThisTurn(..) => {}
+        Condition::SpellWasWarpedThisTurn => {}
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
         Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
@@ -2146,6 +2160,8 @@ pub fn evaluate_condition_external(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectLeftBattlefieldThisTurn(_)
+        | Condition::SpellWasWarpedThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
@@ -2882,6 +2898,8 @@ fn evaluate_condition_simple(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectLeftBattlefieldThisTurn(_)
+        | Condition::SpellWasWarpedThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
@@ -4019,6 +4037,8 @@ fn evaluate_condition(
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::ObjectLeftBattlefieldThisTurn(_)
+        | Condition::SpellWasWarpedThisTurn
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)

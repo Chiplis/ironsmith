@@ -752,6 +752,8 @@ pub enum Condition {
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
+    ObjectLeftBattlefieldThisTurn(ObjectFilter),
+    SpellWasWarpedThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),

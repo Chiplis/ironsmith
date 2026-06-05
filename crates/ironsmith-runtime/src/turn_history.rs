@@ -11,10 +11,12 @@ use crate::events::permanents::SacrificeEvent;
 use crate::events::spells::SpellCastEvent;
 use crate::events::zones::ZoneChangeEvent;
 use crate::events::{DamageEvent, EventKind, LifeGainEvent, LifeLossEvent};
+use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::TurnCounterTracker;
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::provenance::{ProvNodeId, ProvenanceGraph};
 use crate::snapshot::ObjectSnapshot;
+use crate::target::ObjectFilter;
 use crate::triggers::TriggerEvent;
 use crate::triggers::TriggerIdentity;
 use crate::types::{CardType, Subtype};
@@ -216,6 +218,33 @@ impl TurnHistory {
     pub fn any_spell_was_cast_this_turn(&self) -> bool {
         self.projected_records()
             .any(|record| record.event.downcast::<SpellCastEvent>().is_some())
+    }
+
+    pub fn spell_was_warped_this_turn(&self) -> bool {
+        self.projected_records().any(|record| {
+            record
+                .event
+                .downcast::<SpellCastEvent>()
+                .is_some_and(|event| event.was_warped)
+        })
+    }
+
+    pub fn object_left_battlefield_this_turn(
+        &self,
+        game: &crate::game_state::GameState,
+        filter: &ObjectFilter,
+        ctx: &FilterContext,
+    ) -> u32 {
+        self.projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.from == Zone::Battlefield)
+            .filter(|event| {
+                event
+                    .snapshot
+                    .as_ref()
+                    .is_some_and(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
+            })
+            .count() as u32
     }
 
     pub fn total_life_gained_for_players(&self, players: &[PlayerId]) -> u32 {

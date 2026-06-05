@@ -63128,8 +63128,38 @@ fn parse_void_pump_upgrade_as_self_replacement() {
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("SelfReplacementBranch")
-            && debug.contains("PermanentLeftBattlefieldThisTurn"),
+            && debug.contains("ObjectLeftBattlefieldThisTurn")
+            && debug.contains("SpellWasWarpedThisTurn"),
         "expected void pump upgrade to lower as self-replacement, got {debug}"
+    );
+}
+
+#[test]
+fn parse_oracle_decode_transmissions_void_replacement_regression() {
+    let def = parse_oracle_card_definition("Decode Transmissions");
+
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("SelfReplacementBranch")
+            && spell_debug.contains("ObjectLeftBattlefieldThisTurn")
+            && spell_debug.contains("excluded_card_types")
+            && spell_debug.contains("Land")
+            && spell_debug.contains("SpellWasWarpedThisTurn"),
+        "Decode Transmissions should structurally lower its Void condition as nonland-left OR warped-spell, got {spell_debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Draw two cards and lose 2 life")
+            && rendered.contains("a nonland permanent left the battlefield this turn")
+            && rendered.contains("a spell was warped this turn")
+            && rendered.contains("instead draw two cards")
+            && rendered.contains("each opponent loses 2 life"),
+        "Decode Transmissions compiled text should preserve the Void replacement clause, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("unsupported predicate") && !rendered.contains("unsupported effect"),
+        "Decode Transmissions should compile without unsupported markers, got {rendered}"
     );
 }
 

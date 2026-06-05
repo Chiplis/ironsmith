@@ -561,6 +561,10 @@ pub(crate) fn compile_condition_from_predicate_ast(
         PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
         }
+        PredicateAst::ObjectLeftBattlefieldThisTurn(filter) => {
+            Condition::ObjectLeftBattlefieldThisTurn(filter.clone())
+        }
+        PredicateAst::SpellWasWarpedThisTurn => Condition::SpellWasWarpedThisTurn,
         PredicateAst::ObjectEnteredBattlefieldThisTurn(filter) => {
             Condition::ObjectEnteredBattlefieldThisTurn(filter.clone())
         }

@@ -11791,6 +11791,13 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {
             "a permanent left the battlefield under your control this turn".to_string()
         }
+        Condition::ObjectLeftBattlefieldThisTurn(filter) => {
+            let mut object_filter = filter.clone();
+            object_filter.zone = None;
+            let object = with_indefinite_article(strip_leading_article(&object_filter.description()));
+            format!("{object} left the battlefield this turn")
+        }
+        Condition::SpellWasWarpedThisTurn => "a spell was warped this turn".to_string(),
         Condition::ObjectEnteredBattlefieldThisTurn(filter) => {
             let mut object_filter = filter.clone();
             object_filter.zone = None;

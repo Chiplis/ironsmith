@@ -1389,18 +1389,26 @@ pub(super) fn finalize_pending_spell_cast(
 
     let event = if let Some(obj) = game.object(result.new_id) {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
+        let mut spell_cast = SpellCastEvent::new_with_snapshot(
+            result.new_id,
+            result.caster,
+            result.from_zone,
+            snapshot,
+        );
+        if result.was_warped {
+            spell_cast = spell_cast.with_warped();
+        }
         TriggerEvent::new_with_provenance(
-            SpellCastEvent::new_with_snapshot(
-                result.new_id,
-                result.caster,
-                result.from_zone,
-                snapshot,
-            ),
+            spell_cast,
             spell_cast_provenance,
         )
     } else {
+        let mut spell_cast = SpellCastEvent::new(result.new_id, result.caster, result.from_zone);
+        if result.was_warped {
+            spell_cast = spell_cast.with_warped();
+        }
         TriggerEvent::new_with_provenance(
-            SpellCastEvent::new(result.new_id, result.caster, result.from_zone),
+            spell_cast,
             spell_cast_provenance,
         )
     };

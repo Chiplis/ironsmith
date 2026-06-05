@@ -3491,6 +3491,8 @@ pub(super) struct SpellCastResult {
     pub(super) caster: PlayerId,
     /// Which zone the spell was cast from.
     pub(super) from_zone: Zone,
+    /// Whether the spell was cast using its Warp alternative.
+    pub(super) was_warped: bool,
 }
 
 fn parse_simple_mana_marker_cost(text: &str) -> Option<crate::mana::ManaCost> {
@@ -3858,6 +3860,9 @@ pub(super) fn finalize_spell_cast(
         }
     }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
+    let was_warped = selected_alternative_label
+        .as_deref()
+        .is_some_and(|label| label.eq_ignore_ascii_case("Warp"));
     if let Some(label) = selected_alternative_label.as_deref()
         && !label.eq_ignore_ascii_case("Parsed alternative cost")
         && !matches!(
@@ -4023,6 +4028,7 @@ pub(super) fn finalize_spell_cast(
         new_id,
         caster,
         from_zone,
+        was_warped,
     })
 }
 

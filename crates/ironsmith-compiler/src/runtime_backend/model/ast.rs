@@ -610,6 +610,8 @@ pub(crate) enum PredicateAst {
     CreatureCardPutIntoYourGraveyardThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
+    ObjectLeftBattlefieldThisTurn(ObjectFilter),
+    SpellWasWarpedThisTurn,
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),

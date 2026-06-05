@@ -617,6 +617,13 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(count_override_text);
     }
+    if let Some(draw_life_text) = describe_draw_life_to_opponent_loss_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &condition_text,
+    ) {
+        return Some(draw_life_text);
+    }
     if let Some(draw_discard_text) = describe_target_player_draw_discard_self_replacement(
         &segment.default_effects,
         &branch.replacement_effects,
@@ -1016,6 +1023,56 @@ fn card_count_text(count: &Value) -> String {
         Value::Fixed(n) => number_word(*n).unwrap_or_else(|| n.to_string()),
         _ => describe_value(count),
     }
+}
+
+fn describe_draw_life_to_opponent_loss_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    condition_text: &str,
+) -> Option<String> {
+    let [default_draw_effect, default_life_effect] = default_effects else {
+        return None;
+    };
+    let [replacement_draw_effect, replacement_life_effect] = replacement_effects else {
+        return None;
+    };
+
+    let default_draw = default_draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let default_life = default_life_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if default_draw.player != PlayerFilter::You
+        || !matches!(default_life.player, ChooseSpec::Player(PlayerFilter::You))
+    {
+        return None;
+    }
+
+    let replacement_draw =
+        replacement_draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    let replacement_for_players =
+        replacement_life_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [replacement_life_effect] = replacement_for_players.effects.as_slice() else {
+        return None;
+    };
+    let replacement_life =
+        replacement_life_effect.downcast_ref::<crate::effects::LoseLifeEffect>()?;
+    if replacement_draw.player != PlayerFilter::You
+        || replacement_draw.count != default_draw.count
+        || replacement_for_players.filter != PlayerFilter::Opponent
+        || replacement_for_players.starting_with_controller
+        || !matches!(
+            replacement_life.player,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+    {
+        return None;
+    }
+
+    let draw_count = card_count_text(&default_draw.count);
+    let draw_noun = card_count_noun(&default_draw.count);
+    let default_loss = describe_value(&default_life.amount);
+    let opponent_loss = describe_value(&replacement_life.amount);
+    Some(format!(
+        "You draw {draw_count} {draw_noun} and lose {default_loss} life. If {condition_text}, instead you draw {draw_count} {draw_noun} and each opponent loses {opponent_loss} life"
+    ))
 }
 
 fn describe_target_player_draw_discard_self_replacement(

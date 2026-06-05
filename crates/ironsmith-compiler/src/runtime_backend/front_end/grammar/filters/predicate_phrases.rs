@@ -3652,6 +3652,9 @@ fn parse_battlefield_change_this_turn_predicate(tokens: &[OwnedLexToken]) -> Opt
         crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl => {
             Some(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn)
         }
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::ObjectLeftBattlefield {
+            filter,
+        } => Some(PredicateAst::ObjectLeftBattlefieldThisTurn(filter)),
         crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
             filter,
         } => Some(PredicateAst::ObjectPutIntoGraveyardFromBattlefieldThisTurn(filter)),
@@ -3956,6 +3959,15 @@ fn parse_source_did_not_attack_or_enter_control_this_turn_shape(
 }
 
 fn parse_spell_lifecycle_predicate(words: &[&str]) -> Option<PredicateAst> {
+    if matches!(
+        words,
+        ["spell", "was", "warped", "this", "turn"]
+            | ["spells", "were", "warped", "this", "turn"]
+    )
+    {
+        return Some(PredicateAst::SpellWasWarpedThisTurn);
+    }
+
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     parse_you_cast_source_shape(&tokens)
         .or_else(|| parse_tagged_was_cast_shape(&tokens))
@@ -8089,6 +8101,8 @@ mod tests {
     #[test]
     fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
     -> Result<(), CardTextError> {
+        let mut nonland_permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
+        nonland_permanent.excluded_card_types.push(CardType::Land);
         let cases = [
             (
                 "If no permanents left battlefield this turn",
@@ -8097,6 +8111,10 @@ mod tests {
             (
                 "If a permanent left battlefield this turn",
                 PredicateAst::PermanentLeftBattlefieldThisTurn,
+            ),
+            (
+                "If a nonland permanent left battlefield this turn",
+                PredicateAst::ObjectLeftBattlefieldThisTurn(nonland_permanent.clone()),
             ),
             (
                 "If creatures left battlefield under your control this turn",
@@ -8118,6 +8136,29 @@ mod tests {
 
             assert_eq!(parsed, expected, "{text}");
         }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_predicate_void_nonland_left_or_spell_warped_this_turn()
+    -> Result<(), CardTextError> {
+        let mut nonland_permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
+        nonland_permanent.excluded_card_types.push(CardType::Land);
+        let tokens = lex_line(
+            "If a nonland permanent left the battlefield this turn or a spell was warped this turn",
+            0,
+        )?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+        assert_eq!(
+            parsed,
+            PredicateAst::Or(
+                Box::new(PredicateAst::ObjectLeftBattlefieldThisTurn(
+                    nonland_permanent,
+                )),
+                Box::new(PredicateAst::SpellWasWarpedThisTurn),
+            )
+        );
         Ok(())
     }
 

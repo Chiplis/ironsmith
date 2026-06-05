@@ -9,7 +9,6 @@ use crate::decision::{AutoPassDecisionMaker, DecisionMaker, SelectFirstDecisionM
 use crate::effect::RestrictionExt as _;
 use crate::effect::{Effect, EventValueSpec, Until, Value};
 use crate::events::EventKind;
-use crate::events::spells::SpellCastEvent;
 use crate::events::zones::EnterBattlefieldEvent;
 use crate::execute_cleanup_step;
 use crate::filter::ObjectFilterExt as _;
@@ -24722,6 +24721,216 @@ fn test_resolve_stack_entry_uses_default_effect_when_self_replacement_condition_
         game.player(alice).expect("alice exists").library.len(),
         library_before - 1,
         "the default segment should draw exactly one card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn decode_transmissions_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::new(), "Decode Transmissions")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "You draw two cards and lose 2 life.\n\
+             Void — If a nonland permanent left the battlefield this turn or a spell was warped \
+             this turn, instead you draw two cards and each opponent loses 2 life.",
+        )
+        .expect("Decode Transmissions should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_decode_transmissions_draw_cards(game: &mut GameState, player: PlayerId) {
+    for idx in 0..2 {
+        let card = CardBuilder::new(CardId::new(), format!("Decode Draw Card {idx}"))
+            .card_types(vec![CardType::Artifact])
+            .build();
+        game.create_object_from_card(&card, player, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_decode_transmissions(game: &mut GameState, controller: PlayerId) {
+    let spell_def = decode_transmissions_definition();
+    let spell_id = game.create_object_from_definition(&spell_def, controller, Zone::Stack);
+    game.push_to_stack(StackEntry::new(spell_id, controller));
+    resolve_stack_entry(game).expect("Decode Transmissions should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cast_decode_setup_spell(
+    game: &mut GameState,
+    controller: PlayerId,
+    definition: &crate::cards::CardDefinition,
+    casting_method: CastingMethod,
+) {
+    let spell_id = game.create_object_from_definition(definition, controller, Zone::Hand);
+    let mut state = PriorityLoopState::new(2);
+    let mut trigger_queue = TriggerQueue::new();
+    let cast_response = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id,
+        from_zone: Zone::Hand,
+        casting_method,
+    });
+    apply_priority_response(game, &mut trigger_queue, &mut state, &cast_response)
+        .expect("setup spell cast should succeed");
+    resolve_stack_entry(game).expect("setup spell should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn decode_transmissions_default_branch_draws_and_loses_life_without_void() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_decode_transmissions_draw_cards(&mut game, alice);
+
+    let hand_before = game.player(alice).expect("alice exists").hand.len();
+
+    resolve_decode_transmissions(&mut game, alice);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").hand.len(),
+        hand_before + 2,
+        "Decode Transmissions should draw two cards on its default branch"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        18,
+        "Decode Transmissions default branch should make its controller lose 2 life"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "Decode Transmissions default branch should not make opponents lose life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn decode_transmissions_land_leaving_does_not_enable_void() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_decode_transmissions_draw_cards(&mut game, alice);
+
+    let land = CardBuilder::new(CardId::new(), "Void Test Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let land_id = game.create_object_from_card(&land, alice, Zone::Battlefield);
+    game.move_object_by_effect(land_id, Zone::Graveyard);
+
+    resolve_decode_transmissions(&mut game, alice);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        18,
+        "a land leaving the battlefield should not satisfy Decode Transmissions' nonland Void condition"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "opponents should not lose life when only a land left the battlefield"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn decode_transmissions_nonland_permanent_leaving_enables_void() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_decode_transmissions_draw_cards(&mut game, alice);
+
+    let artifact = CardBuilder::new(CardId::new(), "Void Test Artifact")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let artifact_id = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    game.move_object_by_effect(artifact_id, Zone::Graveyard);
+
+    resolve_decode_transmissions(&mut game, alice);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "Decode Transmissions Void branch should replace the controller life loss"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        18,
+        "Decode Transmissions Void branch should make each opponent lose 2 life"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn decode_transmissions_nonwarped_spell_does_not_enable_void() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    add_decode_transmissions_draw_cards(&mut game, alice);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let setup_spell = CardDefinitionBuilder::new(CardId::new(), "Nonwarped Setup Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    cast_decode_setup_spell(&mut game, alice, &setup_spell, CastingMethod::Normal);
+
+    resolve_decode_transmissions(&mut game, alice);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        18,
+        "a normally cast spell should not enable Decode Transmissions' Void replacement branch"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        20,
+        "opponents should not lose life when only a nonwarped spell was cast"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn decode_transmissions_warped_spell_enables_void() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    add_decode_transmissions_draw_cards(&mut game, alice);
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+    let warped_spell = CardDefinitionBuilder::new(CardId::new(), "Warped Setup Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .warp(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .build();
+    cast_decode_setup_spell(&mut game, alice, &warped_spell, CastingMethod::Alternative(0));
+
+    resolve_decode_transmissions(&mut game, alice);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").life,
+        20,
+        "a warped spell should enable Decode Transmissions' Void replacement branch"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").life,
+        18,
+        "the warped-spell Void branch should make each opponent lose 2 life"
     );
 }
 
