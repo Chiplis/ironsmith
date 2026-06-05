@@ -160,8 +160,9 @@ use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
     extend_activated_line_with_result_followups, extend_triggered_line_with_result_followups,
-    looks_like_statement_line_lexed, normalize_statement_parse_groups_lexed,
-    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
+    extend_statement_line_with_result_followups, looks_like_statement_line_lexed,
+    normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
+    parse_statement_line_cst,
 };
 use unsupported::diagnose_known_unsupported_rewrite_line;
 
@@ -3415,9 +3416,11 @@ fn try_parse_labeled_line_dispatch(
     if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(&body_line)?
     {
+        let (statement_line, next_idx) =
+            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Statement(statement_line),
-            idx + 1,
+            next_idx,
         )));
     }
 
@@ -3499,9 +3502,11 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if let Some(statement_line) = parse_statement_line_cst(&body_line)? {
+        let (statement_line, next_idx) =
+            extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Statement(statement_line),
-            idx + 1,
+            next_idx,
         )));
     }
 

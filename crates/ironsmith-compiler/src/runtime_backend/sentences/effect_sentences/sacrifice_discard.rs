@@ -42,6 +42,9 @@ const GREATEST_MANA_VALUE_AMONG_WORDS: &[&str] =
     &["with", "the", "greatest", "mana", "value", "among"];
 const GREATEST_MANA_VALUE_AMONG_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & GREATEST_MANA_VALUE_AMONG_WORDS);
+const GREATEST_POWER_AMONG_WORDS: &[&str] = &["with", "the", "greatest", "power", "among"];
+const GREATEST_POWER_AMONG_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & GREATEST_POWER_AMONG_WORDS);
 const CHOICE_SUFFIX_THREE_WORD_PATTERNS: &[&[&str]] = &[
     &["of", "their", "choice"],
     &["of", "your", "choice"],
@@ -188,11 +191,29 @@ fn parse_unless_mana_spent_to_cast_predicate(tokens: &[OwnedLexToken]) -> Option
 fn split_greatest_mana_value_among_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    split_aggregate_among_clause(
+        tokens,
+        GREATEST_MANA_VALUE_AMONG_WORDS,
+        GREATEST_MANA_VALUE_AMONG_PATTERN,
+    )
+}
+
+fn split_greatest_power_among_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    split_aggregate_among_clause(tokens, GREATEST_POWER_AMONG_WORDS, GREATEST_POWER_AMONG_PATTERN)
+}
+
+fn split_aggregate_among_clause<'a>(
+    tokens: &'a [OwnedLexToken],
+    marker_words: &[&str],
+    marker_pattern: ClauseShape<'static>,
+) -> Option<(&'a [OwnedLexToken], &'a [OwnedLexToken])> {
     let words = crate::runtime_backend::token_word_refs(tokens);
     let marker_start = words
-        .windows(GREATEST_MANA_VALUE_AMONG_WORDS.len())
-        .position(|window| GREATEST_MANA_VALUE_AMONG_PATTERN.matches_words(window))?;
-    let marker_end = marker_start + GREATEST_MANA_VALUE_AMONG_WORDS.len();
+        .windows(marker_words.len())
+        .position(|window| marker_pattern.matches_words(window))?;
+    let marker_end = marker_start + marker_words.len();
     let before_idx = token_index_for_word_index(tokens, marker_start)?;
     let after_idx = token_index_for_word_index(tokens, marker_end)?;
     Some((&tokens[..before_idx], &tokens[after_idx..]))
@@ -323,6 +344,7 @@ pub(crate) fn parse_sacrifice(
     // Split off a trailing "for each ..." suffix before parsing the filter.
     let remaining_tokens = &tokens[idx..];
     let mut greatest_mana_value_reference_filter = None;
+    let mut greatest_power_reference_filter = None;
     let object_clause_tokens = if let Some((base_object_tokens, among_tokens)) =
         split_greatest_mana_value_among_clause(remaining_tokens)
     {
@@ -334,6 +356,18 @@ pub(crate) fn parse_sacrifice(
         }
         let among_filter = parse_object_filter_lexed(among_tokens, false)?;
         greatest_mana_value_reference_filter = Some(among_filter);
+        base_object_tokens
+    } else if let Some((base_object_tokens, among_tokens)) =
+        split_greatest_power_among_clause(remaining_tokens)
+    {
+        if among_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing object set after greatest power among (clause: '{}')",
+                normalized_words.join(" ")
+            )));
+        }
+        let among_filter = parse_object_filter_lexed(among_tokens, false)?;
+        greatest_power_reference_filter = Some(among_filter);
         base_object_tokens
     } else {
         remaining_tokens
@@ -403,6 +437,11 @@ pub(crate) fn parse_sacrifice(
     if let Some(among_filter) = greatest_mana_value_reference_filter {
         filter.mana_value = Some(crate::filter::Comparison::EqualExpr(Box::new(
             Value::GreatestManaValue(among_filter),
+        )));
+    }
+    if let Some(among_filter) = greatest_power_reference_filter {
+        filter.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+            Value::GreatestPower(among_filter),
         )));
     }
     if filter.source && count != 1 {
