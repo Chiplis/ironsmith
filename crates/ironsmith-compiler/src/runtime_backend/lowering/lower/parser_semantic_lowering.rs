@@ -691,7 +691,12 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
-    if matches!(parse_static_ability_ast_line_lexed(tokens), Ok(Some(_))) {
+    if matches!(
+        crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
+            tokens,
+        ),
+        Ok(Some(_))
+    ) {
         return false;
     }
     if linked_statement_should_stay_grouped(tokens) {

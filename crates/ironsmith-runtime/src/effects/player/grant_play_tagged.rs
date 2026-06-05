@@ -486,6 +486,18 @@ mod tests {
             ),
             "grant remains tied to the exile zone"
         );
+
+        let graveyard_id = game
+            .move_object(
+                exiled_id,
+                Zone::Graveyard,
+                crate::events::cause::EventCause::effect(),
+            )
+            .expect("test card should move to graveyard");
+        assert!(
+            !game.can_spend_mana_as_any_color(alice, Some(graveyard_id)),
+            "any-mana permission for spells cast this way should not apply after the card leaves exile"
+        );
     }
 
     #[test]

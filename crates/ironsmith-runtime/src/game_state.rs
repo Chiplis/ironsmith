@@ -1555,7 +1555,14 @@ impl ActiveManaSpendPermission {
                 let Some(source_obj) = game.object(source_id) else {
                     return false;
                 };
-                stable_ids.contains(&source_obj.stable_id)
+                if !stable_ids.contains(&source_obj.stable_id) {
+                    return false;
+                }
+                source_obj.zone == Zone::Exile
+                    || (source_obj.zone == Zone::Stack
+                        && game
+                            .cast_origin_snapshot(source_id)
+                            .is_some_and(|snapshot| snapshot.zone == Zone::Exile))
             }
             crate::effect::ManaSpendScope::CastingSpellsMatching(filter) => {
                 let Some(source_id) = source else {

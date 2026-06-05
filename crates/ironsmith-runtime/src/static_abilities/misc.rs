@@ -3802,6 +3802,9 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 }
             }
             EventKind::EnterBattlefield => {
+                if self.player_filter.is_some() {
+                    return false;
+                }
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
                     return false;
                 };

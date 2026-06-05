@@ -1551,7 +1551,11 @@ fn statement_probe_shape_prefers_statement(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if parse_static_line_cst(ctx.line)?.is_some() {
+    if crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
+        &ctx.line.tokens,
+    )?
+    .is_some()
+    {
         return Ok(None);
     }
     if (matches!(
