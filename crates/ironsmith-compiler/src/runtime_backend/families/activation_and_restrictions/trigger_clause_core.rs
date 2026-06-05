@@ -3719,6 +3719,12 @@ pub(crate) fn parse_trigger_clause_lexed(
             } else {
                 result_words
             };
+            if matches!(
+                result_words,
+                ["die's" | "dies", "highest", "natural", "result"]
+            ) {
+                return Ok(TriggerSpec::PlayerRollsHighestNaturalResult { player });
+            }
             if let Some((result, used)) = ironsmith_core::parse_cardinal_words(result_words)
                 && used == result_words.len()
             {

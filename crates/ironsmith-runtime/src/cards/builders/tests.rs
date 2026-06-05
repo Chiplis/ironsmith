@@ -9765,6 +9765,32 @@ fn test_parse_complaints_clerk_roll_one_trigger_creates_clown_robot() {
     );
 }
 
+#[test]
+fn netherese_puzzle_ward_strict_parser_compiled_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Netherese Puzzle-Ward");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("At the beginning of your upkeep")
+            && rendered.contains("roll a d4")
+            && rendered.contains("Scry X, where X is the result"),
+        "expected Focus Beam upkeep roll-and-scry text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you roll a die's highest natural result, draw a card"),
+        "expected Perfect Illumination highest-natural-result trigger text, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RollDieEffect") && debug.contains("sides: 4"),
+        "expected Netherese Puzzle-Ward to roll a d4, got {debug}"
+    );
+    assert!(
+        debug.contains("PlayerRollsHighestNaturalResult") && debug.contains("DrawCardsEffect"),
+        "expected highest-natural-result die-roll trigger to draw a card, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {

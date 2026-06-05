@@ -5585,6 +5585,37 @@ fn describe_roll_die_with_numeric_result_table(effects: &[Effect]) -> Option<Str
     Some(lines.join("\n"))
 }
 
+fn describe_roll_die_then_scry_result(effects: &[Effect]) -> Option<String> {
+    let [roll_effect, scry_effect] = effects else {
+        return None;
+    };
+    let roll_with_id = roll_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let roll = roll_with_id
+        .effect
+        .downcast_ref::<crate::effects::RollDieEffect>()?;
+    let scry = scry_effect.downcast_ref::<crate::effects::ScryEffect>()?;
+    if roll.player != scry.player
+        || !value_prefers_where_x(&scry.count)
+        || !matches!(scry.count.unhinted(), Value::EffectValue(id) if *id == roll_with_id.id)
+    {
+        return None;
+    }
+
+    let scry_text = if scry.player == PlayerFilter::You {
+        "Scry X, where X is the result".to_string()
+    } else {
+        let player = describe_player_filter(&scry.player);
+        format!(
+            "{player} {} X, where X is the result",
+            player_verb(&player, "scry", "scries")
+        )
+    };
+    Some(format!(
+        "{}. {scry_text}",
+        describe_effect(roll_effect).trim_end_matches('.')
+    ))
+}
+
 fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<String> {
     let [pump_effect, conditional_effect] = effects else {
         return None;
@@ -5670,6 +5701,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_group_pump_then_conditional_untap(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_roll_die_then_scry_result(effects) {
         return compact;
     }
     if let Some(compact) = describe_roll_die_with_numeric_result_table(effects) {
@@ -16623,6 +16657,10 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(cleanup_decompiled_text(&lowercase_first(
             compact_trimmed.trim_end_matches('.'),
         )));
+    }
+
+    if let Some(compact) = describe_roll_die_then_scry_result(effects) {
+        return Some(compact);
     }
 
     let mut parts = Vec::with_capacity(effects.len());

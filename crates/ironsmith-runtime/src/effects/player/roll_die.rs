@@ -61,7 +61,9 @@ impl EffectExecutor for RollDieEffect {
             game.turn_store.turn_history.record_die_roll(player, adjusted);
             return Ok(EffectOutcome::count(adjusted as i32)
                 .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                    DieRolledEvent::new(player, ctx.source, adjusted, self.sides),
+                    DieRolledEvent::new_with_natural_result(
+                        player, ctx.source, result, adjusted, self.sides,
+                    ),
                     ctx.provenance,
                 ))
                 .with_execution_fact(ExecutionFact::ChosenNumber(adjusted)));
@@ -76,7 +78,9 @@ impl EffectExecutor for RollDieEffect {
         game.turn_store.turn_history.record_die_roll(player, adjusted);
         Ok(EffectOutcome::count(adjusted as i32)
             .with_event(crate::triggers::TriggerEvent::new_with_provenance(
-                DieRolledEvent::new(player, ctx.source, adjusted, self.sides),
+                DieRolledEvent::new_with_natural_result(
+                    player, ctx.source, result, adjusted, self.sides,
+                ),
                 ctx.provenance,
             ))
             .with_execution_fact(ExecutionFact::ChosenNumber(adjusted)))
@@ -408,6 +412,7 @@ mod tests {
             .and_then(|event| event.downcast::<DieRolledEvent>())
             .expect("roll should emit a die-rolled event");
         assert_eq!(outcome.as_count(), Some(7));
+        assert_eq!(die_event.natural_result, 6);
         assert_eq!(die_event.result, 7);
         assert!(
             game.turn_store

@@ -30732,6 +30732,184 @@ fn complaints_clerk_opponent_roll_one_does_not_trigger() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn netherese_puzzle_ward_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(531_506), "Netherese Puzzle-Ward")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Focus Beam — At the beginning of your upkeep, roll a d4. Scry X, where X is the result.\n\
+             Perfect Illumination — Whenever you roll a die's highest natural result, draw a card.",
+        )
+        .expect("Netherese Puzzle-Ward should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_netherese_puzzle_ward_roll(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    source: ObjectId,
+    roller: PlayerId,
+    roll: u32,
+) {
+    game.force_next_die_roll(roll);
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, roller);
+    let outcome = crate::effects::execute_effect(
+        game,
+        &Effect::roll_die(4, PlayerFilter::Specific(roller)),
+        &mut ctx,
+    )
+    .expect("die roll should resolve");
+    for event in outcome.events {
+        queue_triggers_from_event(game, trigger_queue, event, false);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct NethereseRollAdjustmentDecisionMaker;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for NethereseRollAdjustmentDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        true
+    }
+
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        vec![0]
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_netherese_roll_adjustment_source(game: &mut GameState, controller: PlayerId) {
+    let card = CardDefinitionBuilder::new(CardId::new(), "Die Adjustment Source")
+        .card_types(vec![CardType::Enchantment])
+        .with_ability(Ability::static_ability(
+            StaticAbility::die_roll_result_adjustment(
+                PlayerFilter::You,
+                1,
+                1,
+                true,
+                "After you roll a die, you may pay 1 life. If you do, increase or decrease the result by 1. Do this only once each turn.",
+            ),
+        ))
+        .build();
+    game.create_object_from_definition(&card, controller, Zone::Battlefield);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn netherese_puzzle_ward_highest_natural_result_draws_a_card() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    let ward = netherese_puzzle_ward_definition();
+    let ward_id = game.create_object_from_definition(&ward, alice, Zone::Battlefield);
+
+    resolve_netherese_puzzle_ward_roll(&mut game, &mut trigger_queue, ward_id, alice, 4);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Netherese Puzzle-Ward should trigger when its controller rolls the d4's highest natural result"
+    );
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Netherese Puzzle-Ward roll trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Netherese Puzzle-Ward roll trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "highest natural result should draw one card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn netherese_puzzle_ward_non_highest_result_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    let ward = netherese_puzzle_ward_definition();
+    let ward_id = game.create_object_from_definition(&ward, alice, Zone::Battlefield);
+
+    resolve_netherese_puzzle_ward_roll(&mut game, &mut trigger_queue, ward_id, alice, 3);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Netherese Puzzle-Ward should not trigger for a non-highest d4 result"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn netherese_puzzle_ward_adjusted_high_result_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    add_netherese_roll_adjustment_source(&mut game, alice);
+    let ward = netherese_puzzle_ward_definition();
+    let ward_id = game.create_object_from_definition(&ward, alice, Zone::Battlefield);
+
+    game.force_next_die_roll(3);
+    let mut decisions = NethereseRollAdjustmentDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new_default(ward_id, alice)
+        .with_decision_maker(&mut decisions);
+    let outcome = crate::effects::execute_effect(
+        &mut game,
+        &Effect::roll_die(4, PlayerFilter::Specific(alice)),
+        &mut ctx,
+    )
+    .expect("die roll should resolve");
+    let die_event = outcome
+        .events
+        .first()
+        .and_then(|event| event.downcast::<crate::events::other::DieRolledEvent>())
+        .expect("roll should emit a die-rolled event");
+    assert_eq!(die_event.natural_result, 3);
+    assert_eq!(die_event.result, 4);
+    for event in outcome.events {
+        queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    }
+
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Netherese Puzzle-Ward should not trigger when an adjusted result, not the natural result, is highest"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn netherese_puzzle_ward_opponent_highest_result_does_not_trigger() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    put_test_cards_in_zone(&mut game, alice, Zone::Library, 1);
+    let ward = netherese_puzzle_ward_definition();
+    let ward_id = game.create_object_from_definition(&ward, alice, Zone::Battlefield);
+
+    resolve_netherese_puzzle_ward_roll(&mut game, &mut trigger_queue, ward_id, bob, 4);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Netherese Puzzle-Ward should not trigger when another player rolls the highest natural result"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn arden_angel_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Arden Angel")
         .card_types(vec![CardType::Creature])

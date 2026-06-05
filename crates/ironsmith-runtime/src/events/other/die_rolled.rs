@@ -11,15 +11,27 @@ use crate::ids::{ObjectId, PlayerId};
 pub struct DieRolledEvent {
     pub player: PlayerId,
     pub source: ObjectId,
+    pub natural_result: u32,
     pub result: u32,
     pub sides: u32,
 }
 
 impl DieRolledEvent {
     pub fn new(player: PlayerId, source: ObjectId, result: u32, sides: u32) -> Self {
+        Self::new_with_natural_result(player, source, result, result, sides)
+    }
+
+    pub fn new_with_natural_result(
+        player: PlayerId,
+        source: ObjectId,
+        natural_result: u32,
+        result: u32,
+        sides: u32,
+    ) -> Self {
         Self {
             player,
             source,
+            natural_result,
             result,
             sides,
         }
