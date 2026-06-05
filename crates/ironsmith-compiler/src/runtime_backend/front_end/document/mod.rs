@@ -36,7 +36,9 @@ use super::grammar::primitives as grammar;
 use super::grammar::structure::split_lexed_sentences;
 use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
 use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse_tokens};
-use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
+use super::keyword_static::{
+    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_spells_cost_modifier_line,
+};
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
     LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,

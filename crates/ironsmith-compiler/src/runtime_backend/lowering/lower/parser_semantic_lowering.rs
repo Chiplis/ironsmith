@@ -1647,6 +1647,12 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
+    if let Some(ability) = parse_spells_cost_modifier_line(&lexed)? {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(ability.into()),
+            chosen_option_label,
+        );
+    }
     if let Some(chunk) = lower_compound_buff_and_unblockable_static_chunk(line, parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);
     }

@@ -99,7 +99,8 @@ use super::ir::{
     RewriteStaticLine, RewriteTriggeredLine,
 };
 use super::keyword_static::{
-    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_value_binding_clause,
+    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_spells_cost_modifier_line,
+    parse_value_binding_clause,
 };
 use super::lexer::{
     OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, lex_line,

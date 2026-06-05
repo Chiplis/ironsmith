@@ -34521,6 +34521,142 @@ fn shadow_of_mortality_compiled_text_keeps_life_difference_clause() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn octavia_living_thesis_definition() -> CardDefinition {
+    let oracle = oracle_text_by_name()
+        .get("Octavia, Living Thesis")
+        .expect("Octavia, Living Thesis should exist in cards.json")
+        .clone();
+    CardDefinitionBuilder::new(CardId::from_raw(658_547), "Octavia, Living Thesis")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(8)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental, Subtype::Octopus])
+        .power_toughness(PowerToughness::fixed(8, 8))
+        .parse_text(oracle)
+        .expect("Octavia, Living Thesis should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_octavia_graveyard_card(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+    card_types: Vec<CardType>,
+) {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Graveyard);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn octavia_living_thesis_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Octavia, Living Thesis");
+    let def = octavia_living_thesis_definition();
+
+    let reduction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.this_spell_cost_reduction(),
+            _ => None,
+        })
+        .expect("Octavia should have a this-spell cost reduction");
+    assert!(matches!(reduction.reduction, crate::effect::Value::Fixed(8)));
+    assert!(matches!(
+        &reduction.condition,
+        crate::static_abilities::ThisSpellCostCondition::YouHaveCardsOfTypesInYourGraveyardOrMore {
+            count: 8,
+            card_types,
+        } if card_types == &vec![CardType::Instant, CardType::Sorcery]
+    ));
+
+    let rendered = crate::compiled_text::compiled_text_lines(&def);
+    assert_eq!(
+        rendered.first().map(String::as_str),
+        Some(
+            "This spell costs {8} less to cast if you have 8 or more instant and/or sorcery cards in your graveyard."
+        ),
+        "Octavia compiled text should preserve the conditional instant/sorcery graveyard cost reduction, got {rendered:?}"
+    );
+    assert!(
+        rendered.iter().any(|line| line == "Ward {8}"),
+        "Octavia compiled text should preserve ward, got {rendered:?}"
+    );
+    assert!(
+        rendered.iter().any(|line| line.contains("Magecraft")
+            && line.contains("instant or sorcery spell")
+            && line.contains("base power and toughness 8/8 until end of turn")),
+        "Octavia compiled text should preserve magecraft base-8/8 effect, got {rendered:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn octavia_living_thesis_cost_reduction_requires_matching_cards_in_your_graveyard() {
+    let def = octavia_living_thesis_definition();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let octavia_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+
+    for idx in 0..7 {
+        create_octavia_graveyard_card(
+            &mut game,
+            alice,
+            &format!("Alice Instant {idx}"),
+            vec![CardType::Instant],
+        );
+    }
+    create_octavia_graveyard_card(
+        &mut game,
+        alice,
+        "Alice Creature",
+        vec![CardType::Creature],
+    );
+    for idx in 0..8 {
+        create_octavia_graveyard_card(
+            &mut game,
+            bob,
+            &format!("Bob Instant {idx}"),
+            vec![CardType::Instant],
+        );
+    }
+
+    let octavia = game
+        .object(octavia_id)
+        .expect("Octavia should be in Alice's hand");
+    let base_cost = octavia.mana_cost.as_ref().expect("Octavia has a mana cost");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, octavia, base_cost)
+            .to_oracle(),
+        "{8}{U}{U}",
+        "Octavia should not count nonmatching cards or an opponent's graveyard"
+    );
+
+    create_octavia_graveyard_card(
+        &mut game,
+        alice,
+        "Alice Sorcery",
+        vec![CardType::Sorcery],
+    );
+    let octavia = game
+        .object(octavia_id)
+        .expect("Octavia should still be in Alice's hand");
+    let base_cost = octavia.mana_cost.as_ref().expect("Octavia has a mana cost");
+    assert_eq!(
+        crate::decision::calculate_effective_mana_cost(&game, alice, octavia, base_cost)
+            .to_oracle(),
+        "{U}{U}",
+        "Octavia should cost {{8}} less with eight instant and/or sorcery cards in your graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_this_spell_cost_reduction_counts_creature_types_with_cap() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Valiant Changeling Variant")
