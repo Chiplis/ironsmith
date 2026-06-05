@@ -93,6 +93,100 @@ fn component_pouch_d20_ability_index(def: &crate::cards::CardDefinition) -> usiz
 }
 
 #[test]
+fn eternal_scourge_static_permission_applies_only_to_its_controller_from_exile() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let eternal_scourge = CardDefinitionBuilder::new(CardId::new(), "Eternal Scourge")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "You may cast this card from exile.\n\
+             When this creature becomes the target of a spell or ability an opponent controls, exile this creature.",
+        )
+        .expect("Eternal Scourge should parse for exile permission test");
+    let scourge_id = game.create_object_from_definition(&eternal_scourge, alice, Zone::Exile);
+
+    assert!(
+        game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            scourge_id,
+            Zone::Exile,
+            alice
+        ),
+        "Eternal Scourge should let its controller cast it from exile"
+    );
+    assert!(
+        !game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            scourge_id,
+            Zone::Exile,
+            bob
+        ),
+        "Eternal Scourge should not let an opponent cast it from exile"
+    );
+}
+
+#[test]
+fn eternal_scourge_targeting_trigger_exiles_it_on_resolution() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let eternal_scourge = CardDefinitionBuilder::new(CardId::new(), "Eternal Scourge")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "You may cast this card from exile.\n\
+             When this creature becomes the target of a spell or ability an opponent controls, exile this creature.",
+        )
+        .expect("Eternal Scourge should parse for trigger resolution test");
+    let scourge_id =
+        game.create_object_from_definition(&eternal_scourge, alice, Zone::Battlefield);
+    let opponent_source = CardBuilder::new(CardId::new(), "Opponent Targeting Source")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let opponent_source_id =
+        game.create_object_from_card(&opponent_source, bob, Zone::Battlefield);
+
+    let event = TriggerEvent::new_with_provenance(
+        crate::events::spells::BecomesTargetedEvent::new(
+            scourge_id,
+            opponent_source_id,
+            bob,
+            true,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = TriggerQueue::new();
+    queue_triggers_from_event(&mut game, &mut trigger_queue, event, false);
+    assert_eq!(trigger_queue.entries.len(), 1);
+
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Eternal Scourge trigger should go on the stack");
+    resolve_stack_entry(&mut game).expect("Eternal Scourge trigger should resolve");
+
+    let exiled_scourges = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Eternal Scourge")
+        })
+        .count();
+    assert_eq!(
+        exiled_scourges,
+        1,
+        "Eternal Scourge should exile itself when its targeting trigger resolves"
+    );
+}
+
+#[test]
 fn component_pouch_mana_activation_requires_counter_pays_cost_and_adds_distinct_mana_runtime() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

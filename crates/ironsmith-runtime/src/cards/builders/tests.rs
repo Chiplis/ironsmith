@@ -57,6 +57,34 @@ fn test_creature_with_mana_ability() {
 }
 
 #[test]
+fn eternal_scourge_parses_and_renders_exile_target_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Eternal Scourge")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Horror])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(
+            "You may cast this card from exile.\n\
+             When this creature becomes the target of a spell or ability an opponent controls, exile this creature.",
+        )
+        .expect("Eternal Scourge oracle text should parse strictly");
+
+    let lines = compiled_text_lines(&def);
+    let compiled = lines.join("\n");
+
+    assert!(
+        compiled.contains("You may cast this card from exile."),
+        "compiled Eternal Scourge text should preserve exile casting permission, got {compiled}"
+    );
+    assert!(
+        compiled.contains(
+            "When this creature becomes the target of a spell or ability an opponent controls, exile this creature."
+        ),
+        "compiled Eternal Scourge text should preserve opponent-targeted exile trigger, got {compiled}"
+    );
+}
+
+#[test]
 fn test_spell_with_effects() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Test Bolt")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))

@@ -3080,6 +3080,50 @@ mod tests {
     }
 
     #[test]
+    fn eternal_scourge_triggers_only_for_opponent_controlled_targeting_sources() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let eternal_scourge = CardDefinitionBuilder::new(CardId::new(), "Eternal Scourge")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .parse_text(
+                "You may cast this card from exile.\n\
+                 When this creature becomes the target of a spell or ability an opponent controls, exile this creature.",
+            )
+            .expect("Eternal Scourge should parse for trigger behavior tests");
+        let scourge_id =
+            game.create_object_from_definition(&eternal_scourge, alice, Zone::Battlefield);
+        let opponent_source =
+            make_battlefield_creature(&mut game, bob, "Opponent Targeting Source");
+        let friendly_source =
+            make_battlefield_creature(&mut game, alice, "Friendly Targeting Source");
+
+        let opponent_event = TriggerEvent::new_with_provenance(
+            BecomesTargetedEvent::new(scourge_id, opponent_source, bob, true),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let opponent_triggers = check_triggers(&game, &opponent_event);
+        assert_eq!(
+            opponent_triggers.len(),
+            1,
+            "Eternal Scourge should trigger when targeted by an opponent-controlled spell or ability"
+        );
+        assert_eq!(opponent_triggers[0].source, scourge_id);
+
+        let friendly_event = TriggerEvent::new_with_provenance(
+            BecomesTargetedEvent::new(scourge_id, friendly_source, alice, true),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let friendly_triggers = check_triggers(&game, &friendly_event);
+        assert!(
+            friendly_triggers.is_empty(),
+            "Eternal Scourge should not trigger when targeted by its controller's own spell or ability"
+        );
+    }
+
+    #[test]
     fn ring_designation_block_trigger_schedules_end_of_combat_sacrifice() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);

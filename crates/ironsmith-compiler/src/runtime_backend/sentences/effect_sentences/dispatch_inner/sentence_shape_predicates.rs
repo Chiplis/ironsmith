@@ -713,6 +713,13 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if sentence_words.first().is_some_and(|word| *word == "exile")
+        && is_source_reference_words(&sentence_words[1..])
+    {
+        let target_tokens = trim_commas(&tokens[1..]);
+        let target = parse_target_phrase(&target_tokens)?;
+        return Ok(vec![EffectAst::subject_verb_exile(target, false)]);
+    }
     if let Some(effect) = parse_source_and_blocked_creatures_top_library_shuffle_sentence(tokens) {
         return Ok(vec![effect]);
     }
