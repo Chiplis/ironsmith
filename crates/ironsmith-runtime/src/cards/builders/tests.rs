@@ -59009,6 +59009,99 @@ fn serpentine_ambush_regression_renders_color_subtype_and_base_pt() {
 }
 
 #[test]
+fn turtle_duck_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Turtle-Duck");
+
+    let def = parse_oracle_card_definition("Turtle-Duck");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        ability_debug.contains("SetPower {")
+            && !ability_debug.contains("SetPowerToughness")
+            && ability_debug.contains("AddAbility")
+            && ability_debug.contains("Trample")
+            && !ability_debug.contains("KeywordFallbackText")
+            && !ability_debug.contains("RuleFallbackText")
+            && !ability_debug.contains("UnsupportedParserLine"),
+        "expected Turtle-Duck to structurally set base power and grant trample without fallback text, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("this creature has base power 4")
+            && rendered.contains("gains trample")
+            && rendered.contains("until end of turn"),
+        "expected Turtle-Duck compiled text to preserve base-power plus trample activation, got {rendered}"
+    );
+}
+
+#[test]
+fn turtle_duck_activation_sets_base_power_and_grants_trample_until_cleanup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Turtle-Duck")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 7))
+        .parse_text("{3}: Until end of turn, this creature has base power 4 and gains trample.")
+        .expect("Turtle-Duck runtime definition should parse");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Turtle-Duck should have an activated ability");
+
+    assert_eq!(
+        activated.mana_cost.display(),
+        "{3}",
+        "Turtle-Duck activation cost should parse as {{3}}"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let turtle_duck = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert_eq!(
+        (game.current_power(turtle_duck), game.current_toughness(turtle_duck)),
+        (Some(0), Some(7)),
+        "Turtle-Duck toughness probe should start as a 0/7"
+    );
+    assert!(
+        !game.current_has_static_ability_id(turtle_duck, StaticAbilityId::Trample),
+        "Turtle-Duck should not have trample before its ability resolves"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(turtle_duck, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Turtle-Duck activated ability effect should resolve");
+    }
+
+    assert_eq!(
+        (game.current_power(turtle_duck), game.current_toughness(turtle_duck)),
+        (Some(4), Some(7)),
+        "Turtle-Duck activation should set only base power to 4 and leave toughness unchanged"
+    );
+    assert!(
+        game.current_has_static_ability_id(turtle_duck, StaticAbilityId::Trample),
+        "Turtle-Duck should gain trample until end of turn"
+    );
+
+    crate::turn::execute_cleanup_step(&mut game);
+
+    assert_eq!(
+        (game.current_power(turtle_duck), game.current_toughness(turtle_duck)),
+        (Some(0), Some(7)),
+        "Turtle-Duck base-power effect should expire during cleanup"
+    );
+    assert!(
+        !game.current_has_static_ability_id(turtle_duck, StaticAbilityId::Trample),
+        "Turtle-Duck trample grant should expire during cleanup"
+    );
+}
+
+#[test]
 fn consuming_tide_regression_draws_for_each_opponent_who_is_ahead_on_cards() {
     let def = parse_oracle_card_definition("Consuming Tide");
     let rendered = unprocessed_compiled_lines(&def)

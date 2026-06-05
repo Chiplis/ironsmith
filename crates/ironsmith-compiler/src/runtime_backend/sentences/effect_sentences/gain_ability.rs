@@ -18,7 +18,7 @@ use super::super::object_filters::{parse_object_filter, parse_object_filter_lexe
 use super::super::token_primitives::{rfind_index_with, str_contains as string_contains};
 use super::super::util::{
     is_article, is_source_reference_words, parse_choice_count_word_prefix, parse_mana_symbol,
-    parse_target_phrase, span_from_tokens, strip_leading_token_words_any,
+    parse_target_phrase, parse_value, span_from_tokens, strip_leading_token_words_any,
     token_index_for_word_index, trim_commas,
 };
 use super::clause_dispatch::parse_become_clause;
@@ -50,6 +50,7 @@ type SharedSubjectPump = (
     Option<(i32, i32, Value)>,
 );
 type SharedSubjectBasePt = (Value, Value, usize, Until);
+type SharedSubjectBasePower = (Value, usize, Until);
 
 const UNTIL_YOUR_NEXT_TURN_PREFIXES: &[&[&str]] = &[
     &["until", "your", "next", "turn"],
@@ -66,8 +67,10 @@ const CHOICE_OF_ABILITY_PREFIXES: &[&[&str]] =
 
 const BASE_POWER_TOUGHNESS_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["base", "power", "and", "toughness"]);
+const BASE_POWER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["base", "power"]);
 const UNTIL_END_OF_TURN_AND_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["until", "end", "of", "turn", "and"]);
+const AND_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
 const THIS_ABILITY_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "ability"]);
 const ALL_ABILITIES_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["all", "abilities"]);
 const PRONOUN_TAGGED_SUBJECT_PATTERN: ClauseShape<'static> =
@@ -303,6 +306,21 @@ fn append_shared_subject_base_pt_to_target(
     ));
 }
 
+fn append_shared_subject_base_power_to_target(
+    effects: &mut Vec<EffectAst>,
+    target: &TargetAst,
+    base_power_effect: &Option<SharedSubjectBasePower>,
+) {
+    let Some((power, _, duration)) = base_power_effect else {
+        return;
+    };
+    effects.push(EffectAst::subject_verb_set_base_power(
+        power.clone(),
+        target.clone(),
+        duration.clone(),
+    ));
+}
+
 fn parse_shared_subject_base_pt_from_has_tail(
     tokens: &[OwnedLexToken],
     has_word_idx: usize,
@@ -371,6 +389,68 @@ fn parse_leading_subject_base_pt_before_gain(
         return Ok(None);
     }
     Ok(Some((power, toughness, has_word_idx, Until::EndOfTurn)))
+}
+
+fn parse_leading_subject_base_power_before_gain(
+    tokens: &[OwnedLexToken],
+    before_gain: &[&str],
+    subject_start_word_idx: usize,
+    gain_idx: usize,
+) -> Result<Option<SharedSubjectBasePower>, CardTextError> {
+    let Some(local_has_idx) = before_gain
+        .iter()
+        .position(|word| HAS_OR_HAVE_WORD_PATTERN.matches_word(word))
+    else {
+        return Ok(None);
+    };
+    if local_has_idx == 0 {
+        return Ok(None);
+    }
+    let rest = &before_gain[local_has_idx + 1..];
+    if rest.len() < 3 || !BASE_POWER_PREFIX_PATTERN.matches_words(rest) {
+        return Ok(None);
+    }
+    if rest
+        .get(2)
+        .is_some_and(|word| AND_WORD_PATTERN.matches_word(word))
+    {
+        return Ok(None);
+    }
+
+    let value_word_idx = subject_start_word_idx + local_has_idx + 3;
+    let Some(value_token_idx) = token_index_for_word_index(tokens, value_word_idx) else {
+        return Ok(None);
+    };
+    let Some(gain_token_idx) = token_index_for_word_index(tokens, gain_idx) else {
+        return Ok(None);
+    };
+    let (power, value_used) = parse_value(&tokens[value_token_idx..gain_token_idx]).ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "invalid base power value (clause: '{}')",
+            before_gain.join(" ")
+        ))
+    })?;
+
+    let tail_words: Vec<&str> = tokens[value_token_idx + value_used..gain_token_idx]
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect();
+    if !tail_words.is_empty()
+        && !AND_TAIL_PATTERN.matches_words(&tail_words)
+        && !is_until_end_of_turn(&tail_words)
+        && !UNTIL_END_OF_TURN_AND_TAIL_PATTERN.matches_words(&tail_words)
+    {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported trailing base power clause (clause: '{}')",
+            before_gain.join(" ")
+        )));
+    }
+
+    let has_word_idx = subject_start_word_idx + local_has_idx;
+    if has_word_idx >= gain_idx {
+        return Ok(None);
+    }
+    Ok(Some((power, has_word_idx, Until::EndOfTurn)))
 }
 
 fn parse_shared_subject_pump_from_get_tail(
@@ -1279,7 +1359,11 @@ pub(crate) fn parse_gain_ability_sentence(
     };
     let gain_idx = if HAS_OR_HAVE_WORD_PATTERN.matches_word(word_list[gain_idx]) {
         let after_has = &word_list[gain_idx + 1..];
-        if BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(after_has) {
+        let starts_base_power_only = BASE_POWER_PREFIX_PATTERN.matches_words(after_has)
+            && !after_has
+                .get(2)
+                .is_some_and(|word| AND_WORD_PATTERN.matches_word(word));
+        if BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(after_has) || starts_base_power_only {
             gain_find_any_phrase_start(after_has, SHARED_GAIN_TAIL_PATTERNS)
                 .map(|(_, shared_idx)| gain_idx + 1 + shared_idx + 1)
                 .unwrap_or(gain_idx)
@@ -1351,7 +1435,18 @@ pub(crate) fn parse_gain_ability_sentence(
             .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
             && controller_tail_subject;
         let object_filter_subject = parse_object_filter(&subject_tokens, false).is_ok();
+        let base_power_or_pt_subject = HAS_OR_HAVE_WORD_PATTERN
+            .find_word(&subject_word_refs)
+            .is_some_and(|has_idx| {
+                let after_has = &subject_word_refs[has_idx + 1..];
+                BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(after_has)
+                    || (BASE_POWER_PREFIX_PATTERN.matches_words(after_has)
+                        && !after_has
+                            .get(2)
+                            .is_some_and(|word| AND_WORD_PATTERN.matches_word(word)))
+            });
         if !target_phrase_with_controller_tail && !controller_tail_subject && !object_filter_subject
+            && !base_power_or_pt_subject
         {
             return Ok(None);
         }
@@ -1531,6 +1626,16 @@ pub(crate) fn parse_gain_ability_sentence(
     } else {
         None
     };
+    let leading_base_power_effect = if !losing {
+        parse_leading_subject_base_power_before_gain(
+            tokens,
+            before_gain,
+            subject_start_word_idx,
+            gain_idx,
+        )?
+    } else {
+        None
+    };
     let pump_effect = if let Some(gi) = get_idx {
         let modifier_start_word_idx = subject_start_word_idx + gi + 1;
         let Some(modifier_start_token_idx) =
@@ -1655,6 +1760,9 @@ pub(crate) fn parse_gain_ability_sentence(
         .or(leading_base_pt_effect
             .as_ref()
             .map(|(_, _, has_idx, _)| *has_idx))
+        .or(leading_base_power_effect
+            .as_ref()
+            .map(|(_, has_idx, _)| *has_idx))
         .or(leading_become_subject_end_word_idx)
         .unwrap_or(gain_idx);
     let real_subject_start_word_idx = if let Some(gi) = get_idx {
@@ -1723,6 +1831,11 @@ pub(crate) fn parse_gain_ability_sentence(
             effects.push(become_effect.clone());
         }
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
+        append_shared_subject_base_power_to_target(
+            &mut effects,
+            &target,
+            &leading_base_power_effect,
+        );
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1757,6 +1870,11 @@ pub(crate) fn parse_gain_ability_sentence(
             effects.push(become_effect.clone());
         }
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
+        append_shared_subject_base_power_to_target(
+            &mut effects,
+            &target,
+            &leading_base_power_effect,
+        );
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1795,6 +1913,11 @@ pub(crate) fn parse_gain_ability_sentence(
             effects.push(become_effect.clone());
         }
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
+        append_shared_subject_base_power_to_target(
+            &mut effects,
+            &target,
+            &leading_base_power_effect,
+        );
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         if losing {
             effects.push(EffectAst::subject_verb_remove_abilities_from_target(
@@ -1828,12 +1951,20 @@ pub(crate) fn parse_gain_ability_sentence(
         .iter()
         .any(|word| TARGET_WORD_PATTERN.matches_word(word))
     {
-        let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
+        let has_preceding_target_effect = pump_effect.is_some()
+            || leading_become_effect.is_some()
+            || leading_base_pt_effect.is_some()
+            || leading_base_power_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
         if let Some(become_effect) = &leading_become_effect {
             effects.push(become_effect.clone());
         }
         append_shared_subject_base_pt_to_target(&mut effects, &target, &leading_base_pt_effect);
+        append_shared_subject_base_power_to_target(
+            &mut effects,
+            &target,
+            &leading_base_power_effect,
+        );
         append_shared_subject_pump_to_target(&mut effects, &target, &pump_effect);
         let grant_target = if has_preceding_target_effect {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&real_subject_tokens))
@@ -1952,6 +2083,13 @@ pub(crate) fn parse_gain_ability_sentence(
             toughness.clone(),
             TargetAst::Object(filter.clone(), None, None),
             base_pt_duration.clone(),
+        ));
+    }
+    if let Some((power, _has_idx, base_power_duration)) = &leading_base_power_effect {
+        effects.push(EffectAst::subject_verb_set_base_power(
+            power.clone(),
+            TargetAst::Object(filter.clone(), None, None),
+            base_power_duration.clone(),
         ));
     }
     if let Some((power, toughness, _, pump_duration, _condition, _for_each)) = pump_effect {
@@ -2536,6 +2674,27 @@ mod tests {
                 && string_contains(&debug, "wither")
                 && debug.matches("endofturn").count() >= 2,
             "expected shared self-targeted base P/T plus wither grant until EOT, got {debug}"
+        );
+    }
+
+    #[test]
+    fn base_power_then_gains_keyword_in_single_clause_parses() {
+        let tokens = tokenize_line(
+            "Until end of turn, this creature has base power 4 and gains trample.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("base-power then gains clause should parse")
+            .expect("base-power then gains clause should produce effects");
+
+        let debug = format!("{effects:?}").to_ascii_lowercase();
+        assert!(
+            string_contains(&debug, "setbasepower")
+                && !string_contains(&debug, "setbasepowertoughness")
+                && string_contains(&debug, "grantabilitiestotarget")
+                && string_contains(&debug, "trample")
+                && debug.matches("endofturn").count() >= 2,
+            "expected shared self-targeted base power plus trample grant until EOT, got {debug}"
         );
     }
 

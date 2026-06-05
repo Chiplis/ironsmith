@@ -297,6 +297,9 @@ const WHERE_X_IS_PATTERN: ClauseShape<'static> =
 const SOURCE_GETS_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["this"], &["this", "creature"], &["this", "permanent"]]);
 const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["has"], &["have"]]);
+const BASE_POWER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["base", "power"]);
 const GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["get"], &["gets"]]);
 const GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
@@ -425,6 +428,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     if let Some(effects) = parse_target_gets_then_gains_subject_verb(tokens)? {
         return Ok(Some((
             "subject-verb verb=Get subject=target recognizer=shared-subject-get-gain",
+            effects,
+        )));
+    }
+    if let Some(effects) = parse_base_power_then_gains_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Gain subject=shared recognizer=shared-subject-base-power-gain",
             effects,
         )));
     }
@@ -619,6 +628,23 @@ fn parse_target_gets_then_gains_subject_verb(
         return Ok(None);
     }
     if WHERE_X_IS_PATTERN.matches_words(&words) {
+        return Ok(None);
+    }
+    super::gain_ability::parse_gain_ability_sentence(tokens)
+}
+
+fn parse_base_power_then_gains_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(has_idx) = find_generic_word_matching_shape(&words, HAS_OR_HAVE_WORD_PATTERN) else {
+        return Ok(None);
+    };
+    if !BASE_POWER_PREFIX_PATTERN.matches_words(&words[has_idx + 1..]) {
+        return Ok(None);
+    }
+    let has_gain_tail = AND_GAIN_OR_GAINS_PATTERN.matches_words(&words[has_idx + 1..]);
+    if !has_gain_tail {
         return Ok(None);
     }
     super::gain_ability::parse_gain_ability_sentence(tokens)
