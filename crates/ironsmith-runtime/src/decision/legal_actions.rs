@@ -795,6 +795,10 @@ fn add_battlefield_actions(
                 }
             }
         }
+        let unlock_action = SpecialAction::UnlockRoomDoor { room_id: perm_id };
+        if can_perform_check(&unlock_action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(unlock_action));
+        }
     }
 
     let simple_mana_analysis = view.simple_battlefield_mana_analysis(player);

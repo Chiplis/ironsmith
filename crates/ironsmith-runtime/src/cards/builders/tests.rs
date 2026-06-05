@@ -57240,10 +57240,42 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         "Creeping Peeper mana should not pay for unrelated activated abilities"
     );
 
-    let room = CardDefinitionBuilder::new(CardId::new(), "Locked Door Probe")
+    let non_lockable_room = CardDefinitionBuilder::new(CardId::new(), "Non-Lockable Room Probe")
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![Subtype::Room])
         .build();
+    let non_lockable_room_id =
+        game.create_object_from_definition(&non_lockable_room, alice, Zone::Battlefield);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(non_lockable_room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "Creeping Peeper mana should not pay unlock-door costs for a Room with no locked door"
+    );
+
+    let room_front_id = CardId::from_raw(571_600_001);
+    let room_back_id = CardId::from_raw(571_600_002);
+    let room = CardDefinitionBuilder::new(room_front_id, "Locked Door Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .other_face(room_back_id)
+        .other_face_name("Other Locked Door Probe")
+        .linked_face_layout(crate::card::LinkedFaceLayout::Split)
+        .build();
+    let other_room_door = CardDefinitionBuilder::new(room_back_id, "Other Locked Door Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .mana_cost(blue_cost.clone())
+        .other_face(room_front_id)
+        .other_face_name("Locked Door Probe")
+        .linked_face_layout(crate::card::LinkedFaceLayout::Split)
+        .build();
+    game.register_linked_face_definition(&other_room_door);
     let room_id = game.create_object_from_definition(&room, alice, Zone::Battlefield);
     assert!(
         game.can_pay_mana_cost_with_reason(
@@ -57253,7 +57285,7 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
             0,
             crate::costs::PaymentReason::UnlockDoor,
         ),
-        "Creeping Peeper mana should pay to unlock a Room door"
+        "Creeping Peeper mana should pay to unlock a genuinely locked Room door"
     );
     assert!(
         !game.can_pay_mana_cost_with_reason(
@@ -57319,15 +57351,35 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         "failed Room activation should leave Creeping Peeper mana available for a real unlock-door payment"
     );
 
-    crate::special_actions::pay_total_cost_with_choice(
+    let unlock_room_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::SpecialAction(
+                    crate::special_actions::SpecialAction::UnlockRoomDoor { room_id: action_room }
+                ) if *action_room == room_id
+            )
+        })
+        .expect("locked Room should expose a real unlock-door special action");
+    crate::game_loop::apply_priority_response_with_dm(
         &mut game,
-        alice,
-        room_id,
-        &crate::cost::TotalCost::mana(blue_cost.clone()),
-        crate::costs::PaymentReason::UnlockDoor,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(unlock_room_action),
         &mut dm,
     )
-    .expect("Creeping Peeper mana should be spendable on the unlock-door payment path");
+    .expect("Creeping Peeper mana should be spendable through the real unlock-door action path");
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "fully unlocked Rooms should no longer accept unlock-door restricted mana"
+    );
 
     game.player_mut(alice)
         .expect("alice exists")

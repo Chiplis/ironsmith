@@ -2151,6 +2151,9 @@ pub struct GameState {
     /// Face-down permanents created via manifest.
     pub manifested: HashSet<ObjectId>,
 
+    /// Split Room permanents whose linked locked door has been unlocked.
+    pub fully_unlocked_rooms: HashSet<ObjectId>,
+
     /// Number of times each battlefield permanent has transformed.
     ///
     /// Used to enforce CR 701.27f for abilities that try to transform their source.
@@ -2309,6 +2312,7 @@ impl GameState {
             flipped: HashSet::new(),
             face_down: HashSet::new(),
             manifested: HashSet::new(),
+            fully_unlocked_rooms: HashSet::new(),
             transform_count: HashMap::new(),
             face_down_exile_viewers: HashMap::new(),
             phased_out: HashSet::new(),
@@ -6628,11 +6632,27 @@ impl GameState {
     }
 
     pub(crate) fn object_is_room_unlock_payment_source(&self, object_id: ObjectId) -> bool {
+        self.room_has_locked_door(object_id)
+    }
+
+    pub(crate) fn room_has_locked_door(&self, object_id: ObjectId) -> bool {
         let Some(object) = self.object(object_id) else {
             return false;
         };
         object.zone == Zone::Battlefield
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
+            && object.linked_face_layout == LinkedFaceLayout::Split
+            && !self.fully_unlocked_rooms.contains(&object_id)
+            && self
+                .linked_face_definition_by_name_or_id(
+                    object.other_face_name.as_deref(),
+                    object.other_face,
+                )
+                .is_some_and(|def| def.card.subtypes.contains(&crate::types::Subtype::Room))
+    }
+
+    pub(crate) fn mark_room_fully_unlocked(&mut self, object_id: ObjectId) {
+        self.fully_unlocked_rooms.insert(object_id);
     }
 
     fn required_sacrifice_count_for_cost(&self, cost: &crate::costs::Cost) -> usize {
@@ -9248,6 +9268,7 @@ impl GameState {
         self.flipped.remove(&id);
         self.face_down.remove(&id);
         self.manifested.remove(&id);
+        self.fully_unlocked_rooms.remove(&id);
         self.transform_count.remove(&id);
         self.phased_out.remove(&id);
         self.imprinted_cards.remove(&id);
