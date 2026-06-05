@@ -6460,6 +6460,59 @@ pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line(
     Ok(Some(granted))
 }
 
+pub(crate) fn parse_attached_can_attack_as_though_no_defender_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let normalized = crate::runtime_backend::token_word_refs(tokens)
+        .into_iter()
+        .map(|word| {
+            if ANTHEM_DIDNT_CONTRACTION_WORD_PATTERN.matches_word(word) {
+                "didnt"
+            } else {
+                word
+            }
+        })
+        .collect::<Vec<_>>();
+    if !CAN_ATTACK_AS_NO_DEFENDER_PATTERN.matches_words(&normalized) {
+        return Ok(None);
+    }
+    let Some(can_idx) =
+        anthem_find_prefix_shape_start(&normalized, &CAN_ATTACK_AS_NO_DEFENDER_PREFIX_PATTERN)
+    else {
+        return Ok(None);
+    };
+    if can_idx == 0 {
+        return Ok(None);
+    }
+
+    let subject_words = &normalized[..can_idx];
+    if !matches!(
+        subject_words.first().copied(),
+        Some("enchanted" | "equipped" | "attached")
+    ) {
+        return Ok(None);
+    }
+    let Some(subject_end) = token_index_for_word_index(tokens, can_idx) else {
+        return Err(CardTextError::ParseError(format!(
+            "unable to map attached no-defender subject (clause: '{}')",
+            normalized.join(" ")
+        )));
+    };
+    let subject_tokens = trim_commas(&tokens[..subject_end]);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let subject = crate::runtime_backend::token_word_refs(&subject_tokens).join(" ");
+    Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
+        ability: Box::new(StaticAbilityAst::Static(
+            StaticAbility::can_attack_as_though_no_defender(),
+        )),
+        display: format!("{subject} can attack as though it didn't have defender"),
+        condition: None,
+    }))
+}
+
 pub(crate) fn parse_as_long_as_condition_can_attack_as_though_no_defender_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {

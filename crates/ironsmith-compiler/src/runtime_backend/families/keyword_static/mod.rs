@@ -2526,6 +2526,14 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "can"),
         ],
+        "parse_attached_can_attack_as_though_no_defender_line" => vec![
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "wall"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
+            StaticAbilityLineHeadHint::Single("attached"),
+        ],
         "parse_no_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "have"),
@@ -2892,6 +2900,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_attached_has_and_loses_keywords_line),
         single_static_ability_ast_rule!(parse_you_control_attached_creature_line),
         single_static_ability_ast_passthrough_rule!(parse_attached_cant_attack_or_block_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_attached_can_attack_as_though_no_defender_line
+        ),
         single_static_ability_ast_passthrough_rule!(
             parse_attached_prevent_all_damage_dealt_by_attached_line
         ),

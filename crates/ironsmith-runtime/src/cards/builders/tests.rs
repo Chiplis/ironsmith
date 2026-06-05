@@ -28439,6 +28439,111 @@ fn parse_enchanted_creature_doesnt_untap_during_controller_untap_step() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn animate_wall_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Animate Wall");
+
+    let def = parse_oracle_card_definition("Animate Wall");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::AttachedAbilityGrant),
+        "Animate Wall should parse as an attached static ability grant, got {ids:?}"
+    );
+    let Some(AuraAttachmentFilter::Object(filter)) = &def.aura_attach_filter else {
+        panic!(
+            "Animate Wall should parse Enchant Wall as an object attachment filter, got {:?}",
+            def.aura_attach_filter
+        );
+    };
+    assert!(
+        filter.subtypes.contains(&Subtype::Wall),
+        "Animate Wall's attachment filter should require Wall subtype, got {filter:?}"
+    );
+
+    let compiled = compiled_text_lines(&def).join("\n");
+    assert!(
+        compiled.contains("Enchant Wall"),
+        "Animate Wall should preserve its Wall enchant restriction, got {compiled}"
+    );
+    assert!(
+        compiled
+            .to_ascii_lowercase()
+            .contains("enchanted wall can attack as though it didn't have defender"),
+        "Animate Wall should preserve the as-though defender attack clause, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn animate_wall_allows_only_enchanted_wall_to_attack_through_defender() {
+    let animate_wall = parse_oracle_card_definition("Animate Wall");
+    let wall = CardDefinitionBuilder::new(CardId::new(), "Test Wall")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Wall])
+        .power_toughness(PowerToughness::fixed(0, 4))
+        .defender()
+        .build();
+    let non_wall = CardDefinitionBuilder::new(CardId::new(), "Defender Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .defender()
+        .build();
+
+    let alice = PlayerId::from_index(0);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let wall_id = game.create_object_from_definition(&wall, alice, Zone::Battlefield);
+    let non_wall_id = game.create_object_from_definition(&non_wall, alice, Zone::Battlefield);
+    let aura_id = game.create_object_from_definition(&animate_wall, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(wall_id);
+    game.remove_summoning_sickness(non_wall_id);
+
+    assert!(
+        !crate::rules::combat::can_attack(
+            game.object(wall_id).expect("wall exists before attachment"),
+            &game,
+        ),
+        "a Wall with defender should not attack before Animate Wall is attached"
+    );
+    assert!(
+        !crate::effects::permanents::attachment_can_attach_to_target(
+            &game,
+            aura_id,
+            crate::object::AttachmentTarget::Object(non_wall_id),
+        ),
+        "Animate Wall's enchant restriction should reject non-Wall targets"
+    );
+    assert!(crate::effects::permanents::attach_battlefield_object_to_target(
+        &mut game,
+        aura_id,
+        crate::object::AttachmentTarget::Object(wall_id),
+    ));
+
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(wall_id).expect("wall exists after attachment"),
+            &game,
+        ),
+        "Animate Wall should let the enchanted Wall attack as though it didn't have defender"
+    );
+    assert!(
+        !crate::rules::combat::can_attack(
+            game.object(non_wall_id).expect("non-Wall defender exists"),
+            &game,
+        ),
+        "Animate Wall should not let an unattached non-Wall defender attack"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Endoskeleton Untap Variant")
         .card_types(vec![CardType::Artifact])
