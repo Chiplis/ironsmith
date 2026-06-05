@@ -7212,7 +7212,14 @@ pub(crate) fn parse_spells_cost_modifier_line(
         });
     let remaining_tokens = &amount_tokens[used..];
     let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
-    let Some(direction) = parse_cost_modifier_direction(&remaining_words) else {
+    let direction_words = if let Some(if_idx) = find_index(&remaining_words, |word| {
+        IF_PREFIX_PATTERN.matches_word(word)
+    }) {
+        &remaining_words[..if_idx]
+    } else {
+        &remaining_words
+    };
+    let Some(direction) = parse_cost_modifier_direction(direction_words) else {
         return Ok(None);
     };
 

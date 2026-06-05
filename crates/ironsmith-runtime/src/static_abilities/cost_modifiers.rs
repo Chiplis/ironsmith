@@ -63,6 +63,20 @@ fn join_with_or(items: &[String]) -> String {
     }
 }
 
+fn join_with_and_or(items: &[String]) -> String {
+    match items.len() {
+        0 => String::new(),
+        1 => items[0].clone(),
+        2 => format!("{} and/or {}", items[0], items[1]),
+        _ => {
+            let mut out = items[..items.len() - 1].join(", ");
+            out.push_str(", and/or ");
+            out.push_str(items.last().map(String::as_str).unwrap_or_default());
+            out
+        }
+    }
+}
+
 fn strip_indefinite_article(text: &str) -> &str {
     text.strip_prefix("a ")
         .or_else(|| text.strip_prefix("an "))
@@ -1428,7 +1442,7 @@ pub fn describe_this_spell_cost_condition(condition: &ThisSpellCostCondition) ->
                 .collect::<Vec<_>>();
             Some(format!(
                 "you have {count} or more {} cards in your graveyard",
-                join_with_and(&type_text)
+                join_with_and_or(&type_text)
             ))
         }
         ThisSpellCostCondition::OnlyCreatureCardsInHandNamed(name) => Some(format!(

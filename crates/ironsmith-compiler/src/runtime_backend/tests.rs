@@ -5680,6 +5680,16 @@ fn rewrite_lexed_keyword_line_and_static_cost_probe_work_natively() {
         ),
         Ok(Some(_))
     ));
+
+    let trailing_cost_tokens = lex_line(
+        "This spell costs {8} less to cast if you have eight or more instant and/or sorcery cards in your graveyard.",
+        0,
+    )
+    .expect("rewrite lexer should classify trailing conditional this-spell cost line");
+    match super::keyword_static::parse_spells_cost_modifier_line(&trailing_cost_tokens) {
+        Ok(Some(_)) => {}
+        other => panic!("expected trailing conditional cost modifier to parse, got {other:?}"),
+    }
 }
 
 #[test]
