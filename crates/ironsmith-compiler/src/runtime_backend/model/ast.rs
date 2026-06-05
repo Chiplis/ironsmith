@@ -245,6 +245,7 @@ pub(crate) enum TriggerSpec {
         filter: Option<ObjectFilter>,
         cause_controller: Option<PlayerFilter>,
         effect_like_only: bool,
+        one_or_more: bool,
     },
     PlayerRevealsCard {
         player: PlayerFilter,

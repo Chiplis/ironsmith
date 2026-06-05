@@ -322,8 +322,16 @@ pub(crate) fn interpret_trigger_model(
             controller,
             effect_like_only,
         ),
-        TriggerKind::PlayerDiscardsCard { player, filter } => {
-            crate::triggers::Trigger::player_discards_card(player, filter)
+        TriggerKind::PlayerDiscardsCard {
+            player,
+            filter,
+            one_or_more,
+        } => {
+            if one_or_more {
+                crate::triggers::Trigger::player_discards_cards(player, filter)
+            } else {
+                crate::triggers::Trigger::player_discards_card(player, filter)
+            }
         }
         TriggerKind::PlayerRevealsCard {
             player,

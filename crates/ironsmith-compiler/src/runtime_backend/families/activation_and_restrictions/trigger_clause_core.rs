@@ -2983,6 +2983,7 @@ pub(crate) fn parse_trigger_clause_lexed(
                 filter: None,
                 cause_controller: None,
                 effect_like_only: false,
+                one_or_more: false,
             }),
         ));
     }
@@ -3606,6 +3607,7 @@ pub(crate) fn parse_trigger_clause_lexed(
             filter: Some(ObjectFilter::source()),
             cause_controller: Some(PlayerFilter::Opponent),
             effect_like_only: true,
+            one_or_more: false,
         });
     }
 
@@ -3618,11 +3620,19 @@ pub(crate) fn parse_trigger_clause_lexed(
             if let Ok(filter) =
                 parse_discard_trigger_card_filter(&tokens[discard_token_idx + 1..], &words)
             {
+                let tail_words = ActivationRestrictionCompatWords::new(
+                    tokens.get(discard_token_idx + 1..).unwrap_or_default(),
+                )
+                .to_word_refs();
+                let one_or_more = tail_words
+                    .windows(3)
+                    .any(|window| window == ["one", "or", "more"]);
                 return Ok(TriggerSpec::PlayerDiscardsCard {
                     player,
                     filter,
                     cause_controller: None,
                     effect_like_only: false,
+                    one_or_more,
                 });
             }
         }

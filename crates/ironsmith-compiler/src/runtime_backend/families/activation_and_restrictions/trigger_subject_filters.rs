@@ -393,6 +393,10 @@ pub(crate) fn parse_discard_trigger_card_filter(
         token_index_for_word_index(&remainder, card_word_idx).unwrap_or(remainder.len());
     let qualifier_tokens = trim_commas(&remainder[..qualifier_end]);
     let mut qualifier_tokens = strip_leading_articles(&qualifier_tokens);
+    let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
+    if ONE_OR_MORE_PATTERN.matches_words(&qualifier_words) {
+        qualifier_tokens.clear();
+    }
     if qualifier_tokens.len() >= 2
         && qualifier_tokens
             .first()
@@ -433,10 +437,6 @@ pub(crate) fn parse_discard_trigger_card_filter(
     }
 
     let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
-    if ONE_OR_MORE_PATTERN.matches_words(&qualifier_words) {
-        return Ok(None);
-    }
-
     if let Ok(filter) = parse_object_filter(&qualifier_tokens, false) {
         return Ok(Some(filter));
     }

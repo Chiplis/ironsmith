@@ -6,7 +6,10 @@
 
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::snapshot::ObjectSnapshot;
+use crate::tag::TagKey;
 use crate::target::FilterContext;
+use std::collections::HashMap;
 
 use super::TriggerEvent;
 
@@ -47,6 +50,17 @@ impl<'a> TriggerContext<'a> {
     /// Create a trigger context for a source permanent.
     pub fn for_source(source_id: ObjectId, controller: PlayerId, game: &'a GameState) -> Self {
         let filter_ctx = game.filter_context_for(controller, Some(source_id));
+        Self::new(source_id, controller, filter_ctx, game)
+    }
+
+    pub fn for_delayed_source(
+        source_id: ObjectId,
+        controller: PlayerId,
+        game: &'a GameState,
+        tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+    ) -> Self {
+        let mut filter_ctx = game.filter_context_for(controller, Some(source_id));
+        filter_ctx.tagged_objects = tagged_objects.clone();
         Self::new(source_id, controller, filter_ctx, game)
     }
 }

@@ -153,7 +153,7 @@ impl EffectExecutor for DiscardEffect {
         let mut discarded = 0;
         let mut discarded_cards = Vec::new();
         let mut discarded_snapshots = Vec::new();
-        let mut discard_events = Vec::new();
+        let mut successful_discards = Vec::new();
 
         let mut hand_cards: Vec<_> = game
             .player(player_id)
@@ -274,28 +274,39 @@ impl EffectExecutor for DiscardEffect {
                 if let Some(memory) = pre_memory {
                     affected_memory.push(memory);
                 }
-                discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                    DiscardEvent::with_cause(card_id, player_id, cause.clone())
-                        .with_destination(result.final_zone),
-                    ctx.provenance,
-                ));
-                discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                    {
-                        let event =
-                            CardDiscardedEvent::with_cause(player_id, card_id, cause.clone());
-                        if let Some(snapshot) = pre_discard_snapshot {
-                            event.with_snapshot(snapshot)
-                        } else {
-                            event
-                        }
-                    },
-                    ctx.provenance,
-                ));
+                successful_discards.push((card_id, pre_discard_snapshot, result.final_zone));
                 let snapshot_id = result.new_id.unwrap_or(card_id);
                 if let Some(obj) = game.object(snapshot_id) {
                     discarded_snapshots.push(ObjectSnapshot::from_object(obj, game));
                 }
             }
+        }
+
+        let batch_cards: Vec<_> = successful_discards
+            .iter()
+            .map(|(card_id, _, _)| *card_id)
+            .collect();
+        let batch_snapshots: Vec<_> = successful_discards
+            .iter()
+            .filter_map(|(_, snapshot, _)| snapshot.clone())
+            .collect();
+        let mut discard_events = Vec::new();
+        for (batch_index, (card_id, pre_discard_snapshot, final_zone)) in
+            successful_discards.into_iter().enumerate()
+        {
+            discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                DiscardEvent::with_cause(card_id, player_id, cause.clone()).with_destination(final_zone),
+                ctx.provenance,
+            ));
+            let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())
+                .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
+            if let Some(snapshot) = pre_discard_snapshot {
+                event = event.with_snapshot(snapshot);
+            }
+            discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
+                event,
+                ctx.provenance,
+            ));
         }
 
         if let Some(tag) = &self.tag

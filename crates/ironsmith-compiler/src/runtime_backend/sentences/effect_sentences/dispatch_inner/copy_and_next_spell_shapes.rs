@@ -20,6 +20,8 @@ const TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN: ClauseShape<'static> = clause_sh
             &["that", "permanent", "is", "dealt", "combat", "damage"],
         ]
 );
+const TAGGED_DEALS_COMBAT_DAMAGE_TO_PLAYER_TRIGGER_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["that", "creature", "deals", "combat", "damage", "to"]);
 const CREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
 const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["combat"]);
 const DIES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["dies"]);
@@ -353,6 +355,19 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         } else {
             TriggerSpec::IsDealtDamage(filter)
         }
+    } else if TAGGED_DEALS_COMBAT_DAMAGE_TO_PLAYER_TRIGGER_PREFIX_PATTERN
+        .matches_words(&trigger_core_words)
+    {
+        let target_words = &trigger_core_words[6..];
+        let Some(player) = parse_trigger_subject_player_filter(target_words) else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported delayed combat damage recipient filter (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
+        };
+        let source = ObjectFilter::creature()
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+        TriggerSpec::DealsCombatDamageToPlayer { source, player }
     } else {
         parse_trigger_clause_lexed(&trigger_core_tokens)?
     };

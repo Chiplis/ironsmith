@@ -227,6 +227,7 @@ pub enum TriggerKind {
     PlayerDiscardsCard {
         player: PlayerFilter,
         filter: Option<ObjectFilter>,
+        one_or_more: bool,
     },
     PlayerRevealsCard {
         player: PlayerFilter,
@@ -863,7 +864,21 @@ impl Trigger {
     pub fn player_discards_card(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
         Self::typed(
             "player_discards_card",
-            TriggerKind::PlayerDiscardsCard { player, filter },
+            TriggerKind::PlayerDiscardsCard {
+                player,
+                filter,
+                one_or_more: false,
+            },
+        )
+    }
+    pub fn player_discards_cards(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
+        Self::typed(
+            "player_discards_cards",
+            TriggerKind::PlayerDiscardsCard {
+                player,
+                filter,
+                one_or_more: true,
+            },
         )
     }
     pub fn player_reveals_card(

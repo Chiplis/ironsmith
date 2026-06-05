@@ -126,7 +126,8 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             let Some(tagged) = tagged_objects.get(tag) else {
                 return Ok(EffectOutcome::count(0));
             };
-            let filter_ctx = ctx.filter_context(game);
+            let mut filter_ctx = ctx.filter_context(game);
+            filter_ctx.tagged_objects = tagged_objects.clone();
             let mut matched = 0i32;
             for snapshot in tagged {
                 if let Some(filter) = &self.target_filter

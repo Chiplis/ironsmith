@@ -34,7 +34,11 @@ fn mechanical_cleanup(line: String) -> String {
     let line = normalize_debug_safe_mana_symbol_case(&line);
     let line = strip_parenthetical_text(&line);
     let line = normalize_debug_safe_spelling_surface(&line);
-    normalize_each_player_x_token_damage_pair(&line)
+    let line = normalize_each_player_x_token_damage_pair(&line);
+    if line.contains("Whenever that creature ") {
+        return line.replace(", draw ", ", you draw ");
+    }
+    line
 }
 
 fn normalize_debug_safe_sentence_surface(line: &str) -> String {

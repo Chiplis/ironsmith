@@ -10455,6 +10455,200 @@ fn test_parse_trigger_opponent_discards_card() {
     );
 }
 
+fn captain_howler_test_definition() -> crate::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(616_789), "Captain Howler, Sea Scourge")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Shark, Subtype::Pirate])
+        .power_toughness(PowerToughness::fixed(5, 4))
+        .parse_text(
+            "Ward—{2}, Pay 2 life.\n\
+             Whenever you discard one or more cards, target creature gets +2/+0 until end of turn for each card discarded this way. Whenever that creature deals combat damage to a player this turn, you draw a card.",
+        )
+        .expect("Captain Howler, Sea Scourge should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn captain_howler_sea_scourge_parses_strictly_and_renders_discard_count_pump() {
+    let def = captain_howler_test_definition();
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        debug.contains("YouDiscardCardTrigger") && debug.contains("one_or_more: true"),
+        "expected a one-or-more discard trigger for Captain Howler, got {debug}"
+    );
+    assert!(
+        debug.contains("ModifyPowerToughnessForEachEffect")
+            || debug.contains("ModifyPowerToughnessForEach"),
+        "expected Captain Howler trigger to lower to a for-each pump effect, got {debug}"
+    );
+    assert!(
+        debug.contains("EventValue") && debug.contains("Amount"),
+        "expected cards-discarded-this-way count to use trigger event amount, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Whenever you discard one or more cards"),
+        "expected one-or-more discard trigger wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("target creature gets +2/+0 until end of turn")
+            && rendered.contains("card")
+            && rendered.contains("discarded this way"),
+        "expected compiled text to cover the discarded-this-way pump clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever that creature deals combat damage to a player this turn, you draw a card"),
+        "expected compiled text to keep the delayed trigger tied to that creature, got {rendered}"
+    );
+}
+
+#[test]
+fn captain_howler_sea_scourge_discard_batch_pumps_once_for_each_discarded_card() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let captain = game.create_object_from_definition(
+        &captain_howler_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let other_creature_def = CardDefinitionBuilder::new(CardId::new(), "Other Attacker")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let other_creature = game.create_object_from_definition(&other_creature_def, alice, Zone::Battlefield);
+    let draw_card = CardDefinitionBuilder::new(CardId::new(), "Captain Draw Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    game.create_object_from_definition(&draw_card, alice, Zone::Library);
+    for idx in 0..2 {
+        let discard_card = CardDefinitionBuilder::new(CardId::new(), format!("Discard Card {idx}"))
+            .card_types(vec![CardType::Creature])
+            .build();
+        game.create_object_from_definition(&discard_card, alice, Zone::Hand);
+    }
+
+    let discard = crate::effects::DiscardEffect::new(2, PlayerFilter::You, false);
+    let mut discard_dm = crate::decision::SelectFirstDecisionMaker;
+    let mut discard_ctx = crate::effects::ExecutionContext::new(captain, alice, &mut discard_dm);
+    let outcome = discard
+        .execute(&mut game, &mut discard_ctx)
+        .expect("discard effect should resolve");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for event in &outcome.events {
+        for trigger in crate::triggers::check_triggers(&game, event) {
+            if trigger.source == captain {
+                trigger_queue.add(trigger);
+            }
+        }
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Captain Howler should trigger once for a two-card discard batch"
+    );
+
+    let mut target_dm = crate::decision::SelectFirstDecisionMaker;
+    crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut target_dm)
+        .expect("Captain Howler trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry_with(&mut game, &mut target_dm)
+        .expect("Captain Howler trigger should resolve");
+
+    assert_eq!(
+        game.calculated_power(captain),
+        Some(9),
+        "Captain Howler should get +4/+0 from two cards discarded in one batch"
+    );
+
+    let other_combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            other_creature,
+            crate::events::DamageTarget::Player(PlayerId::from_index(1)),
+            1,
+            true,
+            crate::events::cause::EventCause::combat_damage(other_creature),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        crate::triggers::check_delayed_triggers(&mut game, &other_combat)
+            .into_iter()
+            .filter(|entry| entry.source == captain)
+            .count(),
+        0,
+        "Captain Howler's delayed draw trigger should watch only the pumped creature"
+    );
+
+    let hand_before = game.player(alice).expect("Alice exists").hand.len();
+    let captain_combat = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            captain,
+            crate::events::DamageTarget::Player(PlayerId::from_index(1)),
+            9,
+            true,
+            crate::events::cause::EventCause::combat_damage(captain),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut delayed_queue = crate::triggers::TriggerQueue::new();
+    let delayed_triggers = crate::triggers::check_delayed_triggers(&mut game, &captain_combat);
+    let delayed_count = delayed_triggers
+        .iter()
+        .filter(|entry| entry.source == captain)
+        .count();
+    for trigger in delayed_triggers.into_iter().filter(|entry| entry.source == captain) {
+        delayed_queue.add(trigger);
+    }
+    assert_eq!(
+        delayed_count,
+        1,
+        "Captain Howler's delayed trigger should fire when the pumped creature hits a player"
+    );
+    crate::game_loop::put_triggers_on_stack(&mut game, &mut delayed_queue)
+        .expect("Captain Howler delayed trigger should go on the stack");
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("Captain Howler delayed trigger should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        hand_before + 1,
+        "Captain Howler's delayed trigger should draw a card"
+    );
+}
+
+#[test]
+fn captain_howler_sea_scourge_does_not_trigger_when_no_cards_are_discarded() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let captain = game.create_object_from_definition(
+        &captain_howler_test_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let discard = crate::effects::DiscardEffect::new(0, PlayerFilter::You, false);
+    let mut discard_dm = crate::decision::SelectFirstDecisionMaker;
+    let mut discard_ctx = crate::effects::ExecutionContext::new(captain, alice, &mut discard_dm);
+    let outcome = discard
+        .execute(&mut game, &mut discard_ctx)
+        .expect("zero-card discard effect should resolve");
+
+    let mut captain_triggers = 0;
+    for event in &outcome.events {
+        captain_triggers += crate::triggers::check_triggers(&game, event)
+            .into_iter()
+            .filter(|trigger| trigger.source == captain)
+            .count();
+    }
+    assert_eq!(captain_triggers, 0, "no discarded cards should mean no trigger");
+    assert_eq!(game.calculated_power(captain), Some(5));
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_trigger_opponent_plays_land() {

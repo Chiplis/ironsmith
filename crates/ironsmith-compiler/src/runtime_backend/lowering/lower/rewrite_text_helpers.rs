@@ -318,6 +318,17 @@ pub(crate) fn rewrite_lower_line_ast(
             handled_restrictions_for_new_ability = true;
             continue;
         }
+        if let NormalizedLineChunk::Statement { effects_ast, .. } = &parsed
+            && rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
+                builder,
+                *last_restrictable_ability,
+                effects_ast,
+                &info,
+            )?
+        {
+            handled_restrictions_for_new_ability = true;
+            continue;
+        }
 
         let abilities_before = builder.abilities.len();
         *builder = rewrite_apply_line_ast(

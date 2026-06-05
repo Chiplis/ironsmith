@@ -1962,7 +1962,12 @@ pub fn check_delayed_triggers(
 
         let mut fired = false;
         for &source in candidate_sources {
-            let ctx = TriggerContext::for_source(source, delayed.controller, game);
+            let ctx = TriggerContext::for_delayed_source(
+                source,
+                delayed.controller,
+                game,
+                &delayed.tagged_objects,
+            );
             if !delayed.trigger.matches(trigger_event, &ctx) {
                 continue;
             }

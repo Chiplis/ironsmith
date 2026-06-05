@@ -113,6 +113,7 @@ use super::lexer::{
     word_slice_find_word, word_slice_starts_with,
 };
 use super::lowering_support::{
+    rewrite_apply_delayed_trigger_followup_statement_to_last_ability,
     rewrite_apply_instead_followup_statement_to_last_ability, rewrite_lower_prepared_ability,
     rewrite_lower_prepared_additional_cost_choice_modes_with_exports,
     rewrite_lower_prepared_statement_effects, rewrite_lower_static_abilities_ast,

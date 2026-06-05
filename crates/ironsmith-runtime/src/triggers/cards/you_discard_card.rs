@@ -3,6 +3,7 @@
 use crate::events::EventKind;
 use crate::events::other::CardDiscardedEvent;
 use crate::filter::ObjectFilterExt as _;
+use crate::snapshot::ObjectSnapshot;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -13,6 +14,7 @@ pub struct YouDiscardCardTrigger {
     pub filter: Option<ObjectFilter>,
     pub cause_controller: Option<PlayerFilter>,
     pub effect_like_only: bool,
+    pub one_or_more: bool,
 }
 
 impl YouDiscardCardTrigger {
@@ -22,7 +24,13 @@ impl YouDiscardCardTrigger {
             filter,
             cause_controller: None,
             effect_like_only: false,
+            one_or_more: false,
         }
+    }
+
+    pub fn one_or_more(mut self) -> Self {
+        self.one_or_more = true;
+        self
     }
 
     pub fn caused_by_controller(mut self, player: PlayerFilter) -> Self {
@@ -33,6 +41,67 @@ impl YouDiscardCardTrigger {
     pub fn effect_like_only(mut self) -> Self {
         self.effect_like_only = true;
         self
+    }
+
+    fn snapshot_matches_filter(
+        snapshot: &ObjectSnapshot,
+        filter: &ObjectFilter,
+        ctx: &TriggerContext,
+    ) -> bool {
+        if filter.source && snapshot.object_id == ctx.source_id {
+            return true;
+        }
+        filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn event_card_matches_filter(&self, e: &CardDiscardedEvent, ctx: &TriggerContext) -> bool {
+        let Some(filter) = &self.filter else {
+            return true;
+        };
+        if filter.source && e.card == ctx.source_id {
+            return true;
+        }
+        if let Some(snapshot) = &e.snapshot {
+            return Self::snapshot_matches_filter(snapshot, filter, ctx);
+        }
+        let Some(card) = ctx.game.object(e.card) else {
+            return false;
+        };
+        filter.matches(card, &ctx.filter_ctx, ctx.game)
+    }
+
+    fn batch_matching_count(&self, e: &CardDiscardedEvent, ctx: &TriggerContext) -> usize {
+        let Some(filter) = &self.filter else {
+            return e.batch_cards.len().max(1);
+        };
+        if !e.batch_snapshots.is_empty() {
+            return e
+                .batch_snapshots
+                .iter()
+                .filter(|snapshot| Self::snapshot_matches_filter(snapshot, filter, ctx))
+                .count();
+        }
+        usize::from(self.event_card_matches_filter(e, ctx))
+    }
+
+    fn is_first_matching_card_in_batch(
+        &self,
+        e: &CardDiscardedEvent,
+        ctx: &TriggerContext,
+    ) -> bool {
+        let Some(batch_index) = e.batch_index else {
+            return true;
+        };
+        let Some(filter) = &self.filter else {
+            return batch_index == 0;
+        };
+        if e.batch_snapshots.is_empty() {
+            return true;
+        }
+        e.batch_snapshots
+            .iter()
+            .take(batch_index)
+            .all(|snapshot| !Self::snapshot_matches_filter(snapshot, filter, ctx))
     }
 }
 
@@ -78,16 +147,22 @@ impl TriggerMatcher for YouDiscardCardTrigger {
                 return false;
             }
         }
-        if let Some(filter) = &self.filter {
-            if filter.source && e.card == ctx.source_id {
-                return true;
-            }
-            let Some(card) = ctx.game.object(e.card) else {
-                return false;
-            };
-            return filter.matches(card, &ctx.filter_ctx, ctx.game);
+        if !self.event_card_matches_filter(e, ctx) {
+            return false;
+        }
+        if self.one_or_more {
+            return self.batch_matching_count(e, ctx) > 0
+                && self.is_first_matching_card_in_batch(e, ctx);
         }
         true
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.one_or_more || event.kind() != EventKind::CardDiscarded {
+            return None;
+        }
+        let e = event.downcast::<CardDiscardedEvent>()?;
+        Some(self.batch_matching_count(e, ctx) as i32)
     }
 
     fn display(&self) -> String {
@@ -123,7 +198,13 @@ impl TriggerMatcher for YouDiscardCardTrigger {
             } else if !filter_text.ends_with("card") && !filter_text.ends_with("cards") {
                 filter_text = format!("{filter_text} card");
             }
-            format!("Whenever {player_text} {verb} a {filter_text}")
+            if self.one_or_more {
+                format!("Whenever {player_text} {verb} one or more {filter_text}s")
+            } else {
+                format!("Whenever {player_text} {verb} a {filter_text}")
+            }
+        } else if self.one_or_more {
+            format!("Whenever {player_text} {verb} one or more cards")
         } else {
             format!("Whenever {player_text} {verb} a card")
         }

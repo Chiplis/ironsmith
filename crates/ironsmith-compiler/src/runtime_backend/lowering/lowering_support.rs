@@ -4,13 +4,14 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, LineInfo,
     ParsedAbility, PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TargetAst, TriggerSpec,
 };
-use crate::effect::{Condition, Effect, EffectMode, EventValueSpec};
+use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::runtime_backend::token_primitives::is_static_keyword_marker_text;
 use crate::static_abilities::StaticAbility;
 use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
+use ironsmith_core::ValueSurfaceHint;
 
 use super::compile_support::{
     collect_tag_spans_from_effects_with_context, compile_trigger_spec, effect_references_it_tag,
@@ -133,6 +134,36 @@ fn carry_all_object_sweep_filter_to_it_followups(effects: &mut [EffectAst]) {
             idx += 1;
         }
     }
+}
+
+fn discard_one_or_more_trigger_uses_event_count(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => discard_one_or_more_trigger_uses_event_count(trigger),
+        TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
+        _ => false,
+    }
+}
+
+fn replace_it_count_with_event_count(effect: &mut EffectAst) {
+    fn is_it_count(value: &Value) -> bool {
+        matches!(value, Value::Count(filter) if object_filter_is_it_reference(filter))
+    }
+
+    fn replace_in_effects(effects: &mut [EffectAst]) {
+        for effect in effects {
+            replace_it_count_with_event_count(effect);
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::PumpForEach { count, .. } = &mut subject_verb.action
+        && is_it_count(count)
+    {
+        *count = Value::EventValue(EventValueSpec::Amount)
+            .with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay);
+    }
+
+    for_each_nested_effects_mut(effect, false, replace_in_effects);
 }
 
 fn phase_step_trigger_has_no_object_reference(trigger: &TriggerSpec) -> bool {
@@ -550,6 +581,11 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         body_effects = if_true.clone();
         intervening_if = merge_intervening_predicates(intervening_if, Some(predicate.clone()));
     }
+    if discard_one_or_more_trigger_uses_event_count(&trigger) {
+        for effect in &mut body_effects {
+            replace_it_count_with_event_count(effect);
+        }
+    }
     imports.source_object_antecedent |= intervening_if
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent);
@@ -902,6 +938,52 @@ pub(crate) fn rewrite_apply_instead_followup_statement_to_last_ability(
                 ));
         }
         _ => return Ok(false),
+    }
+
+    Ok(true)
+}
+
+pub(crate) fn rewrite_apply_delayed_trigger_followup_statement_to_last_ability(
+    builder: &mut CardDefinitionBuilder,
+    last_restrictable_ability: Option<usize>,
+    effects: &[EffectAst],
+    info: &LineInfo,
+) -> Result<bool, CardTextError> {
+    let Some(index) = last_restrictable_ability else {
+        return Ok(false);
+    };
+    if index >= builder.abilities.len() {
+        return Ok(false);
+    }
+
+    let normalized = info.normalized.normalized.as_str().to_ascii_lowercase();
+    if !(normalized.starts_with("when that creature")
+        || normalized.starts_with("whenever that creature"))
+        || !effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::DelayedTriggerThisTurn { .. }))
+    {
+        return Ok(false);
+    }
+
+    let AbilityKind::Triggered(triggered) = &mut builder.abilities[index].kind else {
+        return Ok(false);
+    };
+    if triggered.choices.is_empty() {
+        return Ok(false);
+    }
+
+    let prepared = rewrite_prepare_effects_for_lowering(
+        effects,
+        ReferenceImports::with_last_object_tag("targeted_0"),
+    )?;
+    let compiled = rewrite_lower_prepared_statement_effects(&prepared)?;
+    if compiled.effects.is_empty() {
+        return Ok(false);
+    }
+
+    for segment in compiled.effects.segments {
+        triggered.effects.push_segment(segment);
     }
 
     Ok(true)
