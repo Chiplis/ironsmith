@@ -381,6 +381,7 @@ fn effect_output_changed(
         filter,
         counter,
         include_mana,
+        only_loyalty,
         exclude_source_name,
         exclude_source_id,
         ..
@@ -390,6 +391,7 @@ fn effect_output_changed(
             filter,
             *counter,
             *include_mana,
+            *only_loyalty,
             *exclude_source_name,
             *exclude_source_id,
             a,
@@ -402,6 +404,7 @@ fn effect_output_changed(
             filter,
             *counter,
             *include_mana,
+            *only_loyalty,
             *exclude_source_name,
             *exclude_source_id,
             a,
@@ -993,6 +996,7 @@ fn collect_activated_ability_signatures(
     filter: &ObjectFilter,
     counter: Option<crate::object::CounterType>,
     include_mana: bool,
+    only_loyalty: bool,
     exclude_source_name: bool,
     exclude_source_id: bool,
     effect: &ContinuousEffect,
@@ -1027,7 +1031,10 @@ fn collect_activated_ability_signatures(
             continue;
         }
         for ability in &chars.abilities {
-            if !matches!(ability.kind, AbilityKind::Activated(_)) {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                continue;
+            };
+            if only_loyalty && !activated.is_loyalty_ability() {
                 continue;
             }
             if ability_is_mana_for_object(ability, game, obj) && !include_mana {
@@ -2364,6 +2371,7 @@ mod tests {
                 filter: ObjectFilter::land(),
                 counter: None,
                 include_mana: true,
+                only_loyalty: false,
                 exclude_source_name: false,
                 exclude_source_id: false,
                 force_once_each_turn: false,
@@ -2473,6 +2481,7 @@ mod tests {
                 filter: ObjectFilter::land(),
                 counter: None,
                 include_mana: true,
+                only_loyalty: false,
                 exclude_source_name: false,
                 exclude_source_id: false,
                 force_once_each_turn: false,

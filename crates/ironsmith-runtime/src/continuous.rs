@@ -370,6 +370,7 @@ pub enum Modification {
         filter: ObjectFilter,
         counter: Option<crate::object::CounterType>,
         include_mana: bool,
+        only_loyalty: bool,
         exclude_source_name: bool,
         exclude_source_id: bool,
         force_once_each_turn: bool,
@@ -2514,6 +2515,7 @@ fn apply_modification_to_chars(
             filter,
             counter,
             include_mana,
+            only_loyalty,
             exclude_source_name,
             exclude_source_id,
             force_once_each_turn,
@@ -2567,7 +2569,10 @@ fn apply_modification_to_chars(
                 }
 
                 for ability in &candidate_chars.abilities {
-                    if !matches!(ability.kind, AbilityKind::Activated(_)) {
+                    let AbilityKind::Activated(activated) = &ability.kind else {
+                        continue;
+                    };
+                    if *only_loyalty && !activated.is_loyalty_ability() {
                         continue;
                     }
                     if ability_is_mana_for_object(ability, game, candidate) && !*include_mana {
@@ -3367,6 +3372,7 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                     filter,
                     counter,
                     include_mana,
+                    only_loyalty,
                     exclude_source_name,
                     exclude_source_id,
                     force_once_each_turn,
@@ -3417,7 +3423,10 @@ fn calculate_with_layers(object: &Object, ctx: &CalculationContext) -> Calculate
                         }
 
                         for ability in &candidate_chars.abilities {
-                            if !matches!(ability.kind, AbilityKind::Activated(_)) {
+                            let AbilityKind::Activated(activated) = &ability.kind else {
+                                continue;
+                            };
+                            if *only_loyalty && !activated.is_loyalty_ability() {
                                 continue;
                             }
                             if ability_is_mana_for_object(ability, ctx.game, candidate)

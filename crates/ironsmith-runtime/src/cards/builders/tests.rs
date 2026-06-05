@@ -1206,6 +1206,206 @@ fn ichormoon_gauntlet_grants_two_loyalty_abilities_to_planeswalkers_you_control(
 }
 
 #[test]
+fn nicol_bolas_dragon_god_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Nicol Bolas, Dragon-God");
+
+    let def = parse_oracle_card_definition("Nicol Bolas, Dragon-God");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("CopyActivatedAbilities")
+            && ability_debug.contains("only_loyalty: true")
+            && ability_debug.contains("exclude_source_id: true"),
+        "Nicol Bolas should structurally copy only loyalty abilities from other planeswalkers, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("ChooseObjectsEffect")
+            && ability_debug.contains("zone: Some")
+            && ability_debug.contains("Hand")
+            && ability_debug.contains("additional_zones")
+            && ability_debug.contains("Battlefield"),
+        "Nicol Bolas +1 should structurally choose from hand or battlefield, got {ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("Not(")
+            && ability_debug.contains("PlayerControls")
+            && ability_debug.contains("LoseTheGameEffect"),
+        "Nicol Bolas -8 should structurally require opponents without legendary creature/planeswalker to lose, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains(
+            "has all loyalty abilities of all other planeswalkers on the battlefield"
+        ),
+        "expected compiled text to preserve loyalty-copy clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "+1: You draw a card. Each opponent exiles a card from their hand or a permanent they control"
+        ) || rendered.contains(
+            "+1: Draw a card. Each opponent exiles a card from their hand or a permanent they control"
+        ),
+        "expected compiled text to preserve draw plus hand-or-permanent exile clauses, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "−8: Each opponent who doesn't control a legendary creature or planeswalker loses the game"
+        ),
+        "expected compiled text to preserve -8 conditional losing-game clause, got {rendered}"
+    );
+    assert!(
+        !crate::cards::generated_definition_has_unimplemented_content(&def),
+        "Nicol Bolas should compile without unsupported runtime markers: {ability_debug}"
+    );
+}
+
+fn nicol_bolas_test_planeswalker_with_loyalty_and_nonloyalty_abilities() -> CardDefinition {
+    let mut loyalty_gain_life = crate::ability::Ability::activated(
+        crate::cost::TotalCost::free(),
+        vec![crate::effect::Effect::gain_life(3)],
+    );
+    if let AbilityKind::Activated(activated) = &mut loyalty_gain_life.kind {
+        activated.is_loyalty_ability = true;
+    }
+
+    CardDefinitionBuilder::new(CardId::new(), "Bolas Test Planeswalker")
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(3)
+        .with_ability(loyalty_gain_life)
+        .with_ability(crate::ability::Ability::activated(
+            crate::cost::TotalCost::free(),
+            vec![crate::effect::Effect::draw(2)],
+        ))
+        .build()
+}
+
+#[test]
+fn nicol_bolas_dragon_god_copies_only_other_planeswalkers_loyalty_abilities() {
+    let nicol = parse_oracle_card_definition("Nicol Bolas, Dragon-God");
+    let other_planeswalker = nicol_bolas_test_planeswalker_with_loyalty_and_nonloyalty_abilities();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let nicol_id = game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
+    game.create_object_from_definition(&other_planeswalker, bob, Zone::Battlefield);
+
+    let activated = game
+        .current_abilities(nicol_id)
+        .expect("Nicol Bolas should have current abilities")
+        .into_iter()
+        .filter_map(|ability| match ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let loyalty_count = activated
+        .iter()
+        .filter(|ability| ability.is_loyalty_ability())
+        .count();
+    assert_eq!(
+        loyalty_count, 4,
+        "Nicol Bolas should have his three printed loyalty abilities plus one copied loyalty ability, got {activated:#?}"
+    );
+    assert!(
+        activated.iter().any(|ability| ability
+            .effects
+            .flattened_default_effects()
+            .into_iter()
+            .any(|effect| effect
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+                .is_some())),
+        "Nicol Bolas should copy the other planeswalker's loyalty ability, got {activated:#?}"
+    );
+    assert!(
+        !activated.iter().any(|ability| ability
+            .effects
+            .flattened_default_effects()
+            .into_iter()
+            .any(|effect| effect
+                .downcast_ref::<crate::effects::DrawCardsEffect>()
+                .is_some_and(|draw| draw.count == Value::Fixed(2)))),
+        "Nicol Bolas must not copy non-loyalty activated abilities, got {activated:#?}"
+    );
+}
+
+fn nicol_bolas_minus_eight_effects(def: &CardDefinition) -> Vec<Effect> {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.is_loyalty_ability()
+                    && activated
+                        .effects
+                        .flattened_default_effects()
+                        .into_iter()
+                        .any(|effect| {
+                            format!("{effect:#?}").contains("LoseTheGameEffect")
+                        }) => Some(
+                activated
+                    .effects
+                    .flattened_default_effects()
+                    .into_iter()
+                    .cloned()
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .expect("Nicol Bolas should have a -8 lose-the-game loyalty ability")
+}
+
+#[test]
+fn nicol_bolas_dragon_god_minus_eight_respects_legendary_creature_or_planeswalker_branch() {
+    let nicol = parse_oracle_card_definition("Nicol Bolas, Dragon-God");
+    let minus_eight_effects = nicol_bolas_minus_eight_effects(&nicol);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let mut unprotected_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let unprotected_source =
+        unprotected_game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(unprotected_source, alice, &mut dm);
+    for effect in &minus_eight_effects {
+        crate::effects::execute_effect(&mut unprotected_game, effect, &mut ctx)
+            .expect("Nicol Bolas -8 should resolve");
+    }
+    assert!(
+        unprotected_game.player(bob).expect("bob exists").has_lost,
+        "opponent without a legendary creature or planeswalker should lose the game"
+    );
+    assert!(
+        !unprotected_game
+            .player(alice)
+            .expect("alice exists")
+            .has_lost,
+        "Nicol Bolas -8 should affect opponents only"
+    );
+
+    let legendary_creature = CardDefinitionBuilder::new(CardId::new(), "Bolas Test Legend")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let mut protected_game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let protected_source =
+        protected_game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
+    protected_game.create_object_from_definition(&legendary_creature, bob, Zone::Battlefield);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(protected_source, alice, &mut dm);
+    for effect in &minus_eight_effects {
+        crate::effects::execute_effect(&mut protected_game, effect, &mut ctx)
+            .expect("Nicol Bolas -8 should resolve");
+    }
+    assert!(
+        !protected_game.player(bob).expect("bob exists").has_lost,
+        "opponent with a legendary creature should not lose the game"
+    );
+}
+
+#[test]
 fn ichormoon_gauntlet_trigger_adds_selected_existing_counter_kind() {
     struct ChooseFirstCounterKind;
     impl crate::decision::DecisionMaker for ChooseFirstCounterKind {

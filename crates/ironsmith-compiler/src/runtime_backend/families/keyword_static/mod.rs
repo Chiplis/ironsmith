@@ -744,7 +744,9 @@ const HAS_ALL_ACTIVATED_ABILITIES_OF_PATTERN: ClauseShape<'static> = clause_shap
     prefix_any
         & [
             &["has", "all", "activated", "abilities", "of"],
-            &["have", "all", "activated", "abilities", "of"]
+            &["have", "all", "activated", "abilities", "of"],
+            &["has", "all", "loyalty", "abilities", "of"],
+            &["have", "all", "loyalty", "abilities", "of"]
         ]
 );
 const SAME_NAME_AS_SOURCE_CREATURE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -11160,6 +11162,9 @@ pub(crate) fn parse_copy_activated_abilities_line(
     let Some(has_idx) = has_idx else {
         return Ok(None);
     };
+    let only_loyalty = clause_words
+        .get(has_idx + 2)
+        .is_some_and(|word| *word == "loyalty");
     let Some(has_token_idx) = token_index_for_word_index(tokens, has_idx) else {
         return Ok(None);
     };
@@ -11229,6 +11234,9 @@ pub(crate) fn parse_copy_activated_abilities_line(
         .with_display(display);
     if let Some(counter) = counter {
         ability = ability.with_counter(counter);
+    }
+    if only_loyalty {
+        ability = ability.with_only_loyalty();
     }
     if force_once_each_turn {
         ability = ability.with_once_each_turn();

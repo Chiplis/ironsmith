@@ -4324,6 +4324,7 @@ impl<T, E, C, Cond> GrantObjectAbilityForFilter<T, E, C, Cond> {
 pub struct CopyActivatedAbilities {
     pub filter: ObjectFilter,
     pub counter: Option<CounterType>,
+    pub only_loyalty: bool,
     pub exclude_source_name: bool,
     pub exclude_source_id: bool,
     pub force_once_each_turn: bool,
@@ -4335,6 +4336,7 @@ impl CopyActivatedAbilities {
         Self {
             filter,
             counter: None,
+            only_loyalty: false,
             exclude_source_name: false,
             exclude_source_id: true,
             force_once_each_turn: false,
@@ -4355,6 +4357,10 @@ impl CopyActivatedAbilities {
     }
     pub fn with_counter(mut self, counter: CounterType) -> Self {
         self.counter = Some(counter);
+        self
+    }
+    pub fn with_only_loyalty(mut self) -> Self {
+        self.only_loyalty = true;
         self
     }
     pub fn with_once_each_turn(mut self) -> Self {

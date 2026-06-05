@@ -2343,6 +2343,50 @@ fn is_nonland_permanent_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> boo
         })
 }
 
+fn is_permanent_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> bool {
+    filter.zone == Some(zone)
+        && filter.excluded_card_types.is_empty()
+        && (filter.card_types.is_empty()
+            || [
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ]
+            .iter()
+            .all(|card_type| filter.card_types.contains(card_type)))
+}
+
+fn choose_filter_is_iterated_hand_card_or_permanent(choose: &crate::effects::ChooseObjectsEffect) -> bool {
+    if choose.filter.any_of.len() != 2 {
+        return false;
+    }
+    let mut has_hand_card = false;
+    let mut has_permanent = false;
+    for branch in &choose.filter.any_of {
+        if branch.zone == Some(Zone::Hand)
+            && branch.card_types.is_empty()
+            && branch.any_of.is_empty()
+            && matches!(branch.owner, None | Some(PlayerFilter::IteratedPlayer))
+            && matches!(branch.controller, None | Some(PlayerFilter::IteratedPlayer))
+        {
+            has_hand_card = true;
+            continue;
+        }
+        if is_permanent_filter_in_zone(branch, Zone::Battlefield)
+            && branch.any_of.is_empty()
+            && matches!(branch.controller, None | Some(PlayerFilter::IteratedPlayer))
+        {
+            has_permanent = true;
+            continue;
+        }
+        return false;
+    }
+    has_hand_card && has_permanent
+}
+
 fn describe_tagged_condition_card_selection(condition: &Condition, tag: &str) -> Option<String> {
     match condition {
         Condition::TaggedObjectMatches(condition_tag, filter) if condition_tag.as_str() == tag => {
@@ -3848,6 +3892,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
 
     let refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_player_protection_from_everything_pair(&refs) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_draw_then_for_players_choose_exile(effects) {
         return Some(compact);
     }
 
@@ -5562,7 +5610,23 @@ fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<Stri
     ))
 }
 
+fn describe_draw_then_for_players_choose_exile(effects: &[Effect]) -> Option<String> {
+    let [draw_effect, for_players_effect] = effects else {
+        return None;
+    };
+    let draw = draw_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.player != PlayerFilter::You || draw.count != Value::Fixed(1) {
+        return None;
+    }
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let exile_clause = describe_for_players_choose_then_exile(for_players)?;
+    Some(format!("You draw a card. {exile_clause}"))
+}
+
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_draw_then_for_players_choose_exile(effects) {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
@@ -22629,6 +22693,23 @@ fn describe_for_players_choose_then_exile(
         }
     }
     let move_to_zone = for_players.effects[1].downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if choose_primary_zone(choose) == Some(Zone::Hand)
+        && choose.additional_zones.contains(&Zone::Battlefield)
+        && !choose.is_search
+        && choose.count.is_single()
+        && choose.chooser == PlayerFilter::IteratedPlayer
+        && choose_filter_is_iterated_hand_card_or_permanent(choose)
+        && move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
+    {
+        let (subject, object) = match for_players.filter {
+            PlayerFilter::Any => ("Each player", "a card from their hand or a permanent they control"),
+            PlayerFilter::Opponent => ("Each opponent", "a card from their hand or a permanent they control"),
+            PlayerFilter::You => ("You", "a card from your hand or a permanent you control"),
+            _ => return None,
+        };
+        let verb = if subject == "You" { "exile" } else { "exiles" };
+        return Some(format!("{subject} {verb} {object}"));
+    }
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
         || !choose.count.is_single()
@@ -22653,6 +22734,44 @@ fn describe_for_players_choose_then_exile(
     Some(format!(
         "{subject} {choose_verb} {selection} and {exile_verb} it"
     ))
+}
+
+fn describe_for_players_controls_no_lose_game(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.effects.len() != 1 {
+        return None;
+    }
+    let conditional = for_players.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+        return None;
+    }
+    let lose_game = conditional.if_true[0].downcast_ref::<crate::effects::LoseTheGameEffect>()?;
+    if lose_game.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+    let Condition::Not(inner) = &conditional.condition else {
+        return None;
+    };
+    let Condition::PlayerControls { player, filter } = inner.as_ref() else {
+        return None;
+    };
+    if player != &PlayerFilter::IteratedPlayer
+        || !filter.supertypes.contains(&Supertype::Legendary)
+        || !filter.card_types.contains(&CardType::Creature)
+        || !filter.card_types.contains(&CardType::Planeswalker)
+    {
+        return None;
+    }
+    match for_players.filter {
+        PlayerFilter::Opponent => {
+            Some("Each opponent who doesn't control a legendary creature or planeswalker loses the game".to_string())
+        }
+        PlayerFilter::Any => {
+            Some("Each player who doesn't control a legendary creature or planeswalker loses the game".to_string())
+        }
+        _ => None,
+    }
 }
 
 fn describe_for_players_bottom_library_exile_then_look_cast(
@@ -31993,6 +32112,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_then_exile(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_controls_no_lose_game(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_may_choose_then_move_to_battlefield(for_players)

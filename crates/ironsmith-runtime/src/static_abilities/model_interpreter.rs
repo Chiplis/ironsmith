@@ -916,6 +916,9 @@ impl StaticAbilityModelInterpreter {
                 if let Some(counter) = copy.counter {
                     converted = converted.with_counter(counter);
                 }
+                if copy.only_loyalty {
+                    converted = converted.with_only_loyalty();
+                }
                 if copy.force_once_each_turn {
                     converted = converted.with_once_each_turn();
                 }
