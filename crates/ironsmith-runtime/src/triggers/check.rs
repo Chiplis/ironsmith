@@ -674,6 +674,86 @@ fn ring_designation_source() -> (ObjectId, StableId, String) {
     (source, StableId::from(source), "The Ring".to_string())
 }
 
+fn dungeon_room_source() -> (ObjectId, StableId) {
+    let source = ObjectId::from_raw(u64::MAX - 2);
+    (source, StableId::from(source))
+}
+
+fn dungeon_room_triggered_ability(
+    dungeon_name: &str,
+    room_name: &str,
+) -> Option<TriggeredAbility> {
+    let effects = match (dungeon_name, room_name) {
+        ("Lost Mine of Phandelver", "Cave Entrance") => vec![Effect::scry(1)],
+        ("Lost Mine of Phandelver", "Mine Tunnels") => vec![Effect::create_tokens(
+            crate::cards::tokens::treasure_token_definition(),
+            1,
+        )],
+        ("Lost Mine of Phandelver", "Dark Pool") => vec![
+            Effect::for_each_opponent(vec![Effect::lose_life_player(
+                1,
+                PlayerFilter::IteratedPlayer,
+            )]),
+            Effect::gain_life(1),
+        ],
+        ("Lost Mine of Phandelver", "Temple of Dumathoin") => vec![Effect::draw(1)],
+        ("Dungeon of the Mad Mage", "Yawning Portal") => vec![Effect::gain_life(1)],
+        ("Dungeon of the Mad Mage", "Dungeon Level") => vec![Effect::scry(1)],
+        ("Dungeon of the Mad Mage", "Goblin Bazaar") => vec![Effect::create_tokens(
+            crate::cards::tokens::treasure_token_definition(),
+            1,
+        )],
+        ("Dungeon of the Mad Mage", "Lost Level") => vec![Effect::scry(2)],
+        ("Dungeon of the Mad Mage", "Deep Mines") => vec![Effect::scry(3)],
+        ("Undercity", "Lost Well") => vec![Effect::scry(2)],
+        ("Undercity", "Archives") => vec![Effect::draw(1)],
+        _ => return None,
+    };
+
+    Some(TriggeredAbility {
+        trigger: Trigger::custom(
+            "dungeon-room",
+            format!("When you enter {room_name} of {dungeon_name}"),
+        ),
+        effects: ResolutionProgram::from_effects(effects),
+        choices: vec![],
+        intervening_if: None,
+        presentation_label: None,
+    })
+}
+
+fn add_dungeon_room_triggers(
+    trigger_event: &TriggerEvent,
+    triggered: &mut Vec<TriggeredAbilityEntry>,
+) {
+    let Some(room_event) = trigger_event.downcast::<crate::events::DungeonRoomEnteredEvent>() else {
+        return;
+    };
+    let Some(ability) =
+        dungeon_room_triggered_ability(&room_event.dungeon_name, &room_event.room_name)
+    else {
+        return;
+    };
+
+    let (source, source_stable_id) = dungeon_room_source();
+    let source_name = format!("{} of {}", room_event.room_name, room_event.dungeon_name);
+    let trigger_identity = compute_trigger_identity(&ability);
+    triggered.push(TriggeredAbilityEntry {
+        source,
+        controller: room_event.player,
+        x_value: None,
+        event_value_amount: None,
+        ability,
+        triggering_event: trigger_event.clone(),
+        source_stable_id,
+        source_name,
+        is_dungeon_room_ability: true,
+        source_snapshot: None,
+        tagged_objects: std::collections::HashMap::new(),
+        trigger_identity,
+    });
+}
+
 fn push_monarch_trigger(
     triggered: &mut Vec<TriggeredAbilityEntry>,
     controller: PlayerId,
@@ -1622,6 +1702,7 @@ pub(crate) fn check_triggers_with_view(
         }
     }
 
+    add_dungeon_room_triggers(trigger_event, &mut triggered);
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
@@ -2455,6 +2536,7 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::combat_state::AttackTarget;
+    use crate::effects::EffectExecutor;
     use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::events::cause::EventCause;
@@ -2490,43 +2572,48 @@ mod tests {
         game.create_object_from_card(&card, owner, Zone::Battlefield)
     }
 
-    fn dungeon_room_test_entry(
-        player: PlayerId,
-        event: TriggerEvent,
-        is_dungeon_room_ability: bool,
-    ) -> TriggeredAbilityEntry {
-        let source = ObjectId::from_raw(90_200);
-        let ability = TriggeredAbility {
-            trigger: Trigger::custom(
-                "dungeon-room-test",
-                "When you enter a dungeon room".to_string(),
-            ),
-            effects: ResolutionProgram::from_effects(vec![Effect::scry(1)]),
-            choices: vec![],
-            intervening_if: None,
-            presentation_label: None,
-        };
-        let trigger_identity = compute_trigger_identity(&ability);
+    struct ChooseFirstOptionDecisionMaker;
 
-        TriggeredAbilityEntry {
-            source,
-            controller: player,
-            x_value: None,
-            event_value_amount: None,
-            ability,
-            triggering_event: event,
-            source_stable_id: StableId::from(source),
-            source_name: "Test Dungeon Room".to_string(),
-            is_dungeon_room_ability,
-            source_snapshot: None,
-            tagged_objects: HashMap::new(),
-            trigger_identity,
+    impl crate::decision::DecisionMaker for ChooseFirstOptionDecisionMaker {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            ctx.options
+                .first()
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
         }
+    }
+
+    fn first_dungeon_room_event_from_venture(
+        game: &mut GameState,
+        player: PlayerId,
+    ) -> TriggerEvent {
+        let mut dm = ChooseFirstOptionDecisionMaker;
+        let mut ctx =
+            crate::effects::EffectContext::new(ObjectId::from_raw(90_200), player, &mut dm);
+        let outcome = crate::effects::player::VentureIntoDungeonEffect::new(PlayerFilter::Specific(
+            player,
+        ))
+        .execute(game, &mut ctx)
+        .expect("venture should resolve");
+
+        outcome
+            .events
+            .into_iter()
+            .find(|event| {
+                event
+                    .downcast::<crate::events::DungeonRoomEnteredEvent>()
+                    .is_some()
+            })
+            .expect("venture should emit a dungeon room event")
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn dungeon_delver_granted_static_duplicates_only_own_dungeon_room_triggers() {
+    fn dungeon_delver_duplicates_real_room_trigger_from_venture_flow() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let bob = PlayerId::from_index(1);
@@ -2548,50 +2635,28 @@ mod tests {
         game.create_object_from_definition(&dungeon_delver, alice, Zone::Battlefield);
         game.refresh_continuous_state();
 
-        let alice_event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                alice,
-                "Lost Mine of Phandelver",
-                "Cave Entrance",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-        let bob_event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                bob,
-                "Lost Mine of Phandelver",
-                "Cave Entrance",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-        let upkeep_event = TriggerEvent::new_with_provenance(
-            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
-            crate::provenance::ProvNodeId::default(),
-        );
-        let view = crate::derived_view::DerivedGameView::from_refreshed_state(&game);
-
-        let mut own_room_triggers = vec![dungeon_room_test_entry(alice, alice_event, true)];
-        append_additional_trigger_copies(&game, &view, &mut own_room_triggers);
+        let alice_event = first_dungeon_room_event_from_venture(&mut game, alice);
+        let own_room_triggers = check_triggers(&game, &alice_event);
         assert_eq!(
             own_room_triggers.len(),
             2,
-            "Dungeon Delver should add one extra copy to room abilities of Alice's dungeon"
+            "Dungeon Delver should add one extra copy to Alice's real dungeon room trigger"
+        );
+        assert!(
+            own_room_triggers.iter().all(|entry| entry.is_dungeon_room_ability
+                && entry.controller == alice
+                && entry.source_name == "Cave Entrance of Lost Mine of Phandelver"
+                && entry.ability.trigger.display()
+                    == "When you enter Cave Entrance of Lost Mine of Phandelver"),
+            "expected only duplicated Cave Entrance room triggers, got {own_room_triggers:?}"
         );
 
-        let mut opponent_room_triggers = vec![dungeon_room_test_entry(bob, bob_event, true)];
-        append_additional_trigger_copies(&game, &view, &mut opponent_room_triggers);
+        let bob_event = first_dungeon_room_event_from_venture(&mut game, bob);
+        let opponent_room_triggers = check_triggers(&game, &bob_event);
         assert_eq!(
             opponent_room_triggers.len(),
             1,
-            "Dungeon Delver should not copy room abilities of another player's dungeon"
-        );
-
-        let mut non_room_triggers = vec![dungeon_room_test_entry(alice, upkeep_event, false)];
-        append_additional_trigger_copies(&game, &view, &mut non_room_triggers);
-        assert_eq!(
-            non_room_triggers.len(),
-            1,
-            "Dungeon Delver should not copy non-room triggered abilities"
+            "Dungeon Delver should not copy real room triggers from another player's dungeon"
         );
     }
 
