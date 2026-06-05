@@ -12067,22 +12067,22 @@ fn chaos_lord_upkeep_trigger_gives_target_opponent_control_when_permanent_count_
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn chaos_lord_upkeep_trigger_does_not_queue_when_permanent_count_is_odd() {
+fn chaos_lord_upkeep_trigger_queues_but_does_not_change_control_when_permanent_count_is_odd() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let chaos_lord = chaos_lord_definition();
-    game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+    let chaos_lord_id = game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
 
-    game.turn.phase = Phase::Beginning;
-    game.turn.step = Some(crate::game_state::Step::Upkeep);
-    game.turn.active_player = alice;
-    game.turn.priority_player = Some(alice);
+    let mut trigger_queue = queue_chaos_lord_upkeep_trigger(&mut game);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Chaos Lord upkeep trigger should still go on the stack with a target opponent");
+    resolve_stack_entry(&mut game).expect("Chaos Lord upkeep trigger should resolve");
 
-    let mut trigger_queue = TriggerQueue::new();
-    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
-    assert!(
-        trigger_queue.entries.is_empty(),
-        "Chaos Lord's parity gate should prevent the upkeep trigger when the number of permanents is odd"
+    assert_eq!(
+        game.current_controller(chaos_lord_id),
+        Some(alice),
+        "the conditional control-change effect should do nothing when the number of permanents is odd"
     );
 }
 

@@ -18176,6 +18176,9 @@ fn describe_triggered_inline_ability(
             } else if let Some(rest) = only.strip_prefix("if ") {
                 line.push_str(", if ");
                 line.push_str(rest.trim_start());
+            } else if only.contains(" if ") && !only.contains(". ") && !only.contains(": ") {
+                line.push_str(", ");
+                line.push_str(&lowercase_first(only));
             } else if triggered.presentation_label.is_some() {
                 line.push_str(", ");
                 line.push_str(&lowercase_first(only));
@@ -35170,6 +35173,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 );
             }
             let condition_text = describe_condition(&conditional.condition);
+            if matches!(conditional.condition, crate::effect::Condition::CountParity { .. })
+                && !true_branch.contains(". ")
+                && !true_branch.contains(": ")
+                && !true_branch.starts_with("If ")
+                && !true_branch.starts_with("When ")
+                && !true_branch.starts_with("Whenever ")
+                && !true_branch.starts_with("At ")
+            {
+                return format!("{true_branch} if {condition_text}");
+            }
             if condition_text.starts_with("the sacrificed ")
                 && !true_branch.contains(". ")
                 && !true_branch.contains(": ")

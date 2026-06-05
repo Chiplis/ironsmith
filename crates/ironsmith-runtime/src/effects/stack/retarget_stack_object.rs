@@ -132,6 +132,20 @@ fn resolve_fixed_target(
     Err(ExecutionError::InvalidTarget)
 }
 
+fn push_becomes_targeted_event(
+    events: &mut Vec<TriggerEvent>,
+    target: Target,
+    source: crate::ids::ObjectId,
+    source_controller: PlayerId,
+    by_ability: bool,
+    provenance: crate::provenance::ProvNodeId,
+) {
+    events.push(TriggerEvent::new_with_provenance(
+        BecomesTargetedEvent::new_target(target, source, source_controller, by_ability),
+        provenance,
+    ));
+}
+
 fn resolve_retarget_objects(
     game: &GameState,
     ctx: &mut ExecutionContext,
@@ -311,19 +325,19 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     };
 
                     if game.stack[stack_idx].targets != new_targets {
+                        let old_targets = game.stack[stack_idx].targets.clone();
                         game.stack[stack_idx].targets = new_targets;
                         changed += 1;
                         for target in &game.stack[stack_idx].targets {
-                            if let Target::Object(target_id) = target {
-                                events.push(TriggerEvent::new_with_provenance(
-                                    BecomesTargetedEvent::new(
-                                        *target_id,
-                                        object_id,
-                                        entry.controller,
-                                        entry.is_ability,
-                                    ),
+                            if !old_targets.contains(target) {
+                                push_becomes_targeted_event(
+                                    &mut events,
+                                    *target,
+                                    object_id,
+                                    entry.controller,
+                                    entry.is_ability,
                                     ctx.provenance,
-                                ));
+                                );
                             }
                         }
                     }
@@ -416,17 +430,14 @@ impl EffectExecutor for RetargetStackObjectEffect {
                         if *entry_target != fixed_target {
                             *entry_target = fixed_target;
                             changed += 1;
-                            if let Target::Object(target_id) = fixed_target {
-                                events.push(TriggerEvent::new_with_provenance(
-                                    BecomesTargetedEvent::new(
-                                        target_id,
-                                        object_id,
-                                        entry.controller,
-                                        entry.is_ability,
-                                    ),
-                                    ctx.provenance,
-                                ));
-                            }
+                            push_becomes_targeted_event(
+                                &mut events,
+                                fixed_target,
+                                object_id,
+                                entry.controller,
+                                entry.is_ability,
+                                ctx.provenance,
+                            );
                         }
                     }
                 }
@@ -454,5 +465,56 @@ impl EffectExecutor for RetargetStackObjectEffect {
 
     fn target_description(&self) -> &'static str {
         "spell or ability to retarget"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::card::CardBuilder;
+    use crate::effect::Effect;
+    use crate::ids::{CardId, PlayerId};
+    use crate::resolution::ResolutionProgram;
+    use crate::types::CardType;
+
+    #[test]
+    fn retarget_to_player_emits_becomes_targeted_event_for_new_player() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let spell = CardBuilder::new(CardId::new(), "Retarget Test Bolt")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        game.object_mut(spell_id)
+            .expect("spell object exists")
+            .spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::deal_damage(
+                1,
+                ChooseSpec::target_player(),
+            )]));
+        game.push_to_stack(
+            StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(alice)]),
+        );
+        let retarget_source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(retarget_source, bob);
+        let retarget = RetargetStackObjectEffect::new(ChooseSpec::SpecificObject(spell_id))
+            .with_mode(RetargetMode::OneToFixed(ChooseSpec::SpecificPlayer(bob)))
+            .with_chooser(crate::target::PlayerFilter::You);
+
+        let outcome = retarget
+            .execute(&mut game, &mut ctx)
+            .expect("retarget should resolve");
+
+        assert_eq!(game.stack[0].targets, vec![Target::Player(bob)]);
+        assert!(outcome.events.iter().any(|event| {
+            event
+                .downcast::<BecomesTargetedEvent>()
+                .is_some_and(|becomes_targeted| {
+                    becomes_targeted.target_player() == Some(bob)
+                        && becomes_targeted.source == spell_id
+                        && becomes_targeted.source_controller == alice
+                })
+        }));
     }
 }

@@ -2318,8 +2318,10 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(combat) = &game.combat else {
                 return false;
             };
-            if !crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == object.id)
+            if !combat
+                .blockers
+                .get(&object.id)
+                .is_some_and(|blockers| blockers.contains(&source_id))
             {
                 return false;
             }
@@ -2934,8 +2936,10 @@ impl ObjectFilterExt for ObjectFilter {
             let Some(combat) = &game.combat else {
                 return false;
             };
-            if !crate::combat_state::get_blocked_attacker(combat, source_id)
-                .is_some_and(|attacker| attacker == snapshot.object_id)
+            if !combat
+                .blockers
+                .get(&snapshot.object_id)
+                .is_some_and(|blockers| blockers.contains(&source_id))
             {
                 return false;
             }

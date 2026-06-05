@@ -469,6 +469,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     fn predicate_can_promote_to_intervening_if(predicate: &PredicateAst) -> bool {
         match predicate {
             PredicateAst::TargetMatches(_) => false,
+            PredicateAst::CountParity { .. } => false,
             PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
                 predicate_can_promote_to_intervening_if(left)
                     && predicate_can_promote_to_intervening_if(right)

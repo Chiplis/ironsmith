@@ -23890,12 +23890,16 @@ fn execute_gomazoa_ability(
     source: ObjectId,
     controller: PlayerId,
     activated: &crate::ability::ActivatedAbility,
-) {
+) -> crate::effect::EffectOutcome {
     let mut ctx = crate::effects::ExecutionContext::new_default(source, controller);
+    let mut outcomes = Vec::new();
     for effect in activated.effects.flattened_default_effects() {
-        crate::effects::execute_effect(game, effect, &mut ctx)
-            .expect("Gomazoa activated ability effect should resolve");
+        outcomes.push(
+            crate::effects::execute_effect(game, effect, &mut ctx)
+                .expect("Gomazoa activated ability effect should resolve"),
+        );
     }
+    crate::effect::EffectOutcome::aggregate_summing_counts(outcomes)
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -23909,6 +23913,22 @@ fn library_contains_card_name(
         .library
         .iter()
         .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn shuffle_event_count_for_player(
+    outcome: &crate::effect::EffectOutcome,
+    player: PlayerId,
+) -> usize {
+    outcome
+        .events
+        .iter()
+        .filter(|event| {
+            event
+                .downcast::<crate::events::ShuffleLibraryEvent>()
+                .is_some_and(|shuffle| shuffle.player == player)
+        })
+        .count()
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -24006,6 +24026,53 @@ fn gomazoa_runtime_does_not_move_creature_blocking_it_when_source_attacks() {
         game.battlefield.contains(&blocker)
             && !library_contains_card_name(&game, bob, "Blocking Bear"),
         "a creature blocking Gomazoa is not a creature Gomazoa is blocking"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gomazoa_runtime_shuffles_each_affected_owner_once_after_all_moves() {
+    let def = parse_oracle_card_definition("Gomazoa");
+    let activated = gomazoa_activated_ability(&def);
+    let bear = CardDefinitionBuilder::new(CardId::new(), "Owned Attacking Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let elk = CardDefinitionBuilder::new(CardId::new(), "Owned Attacking Elk")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let gomazoa = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bear = game.create_object_from_definition(&bear, alice, Zone::Battlefield);
+    let elk = game.create_object_from_definition(&elk, alice, Zone::Battlefield);
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: bear,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: elk,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(bear, vec![gomazoa]);
+    combat.blockers.insert(elk, vec![gomazoa]);
+    game.combat = Some(combat);
+
+    let outcome = execute_gomazoa_ability(&mut game, gomazoa, alice, activated);
+
+    assert!(
+        library_contains_card_name(&game, alice, "Gomazoa")
+            && library_contains_card_name(&game, alice, "Owned Attacking Bear")
+            && library_contains_card_name(&game, alice, "Owned Attacking Elk"),
+        "all affected permanents owned by Alice should move to her library"
+    );
+    assert_eq!(
+        shuffle_event_count_for_player(&outcome, alice),
+        1,
+        "Gomazoa should make each affected owner shuffle once, not once per affected object"
     );
 }
 
@@ -65802,7 +65869,7 @@ fn chaos_lord_parses_even_permanent_control_trigger_and_haste_as_though_text() {
     assert!(
         rendered.contains("First strike")
             && rendered.contains(
-                "At the beginning of your upkeep, if the number of permanents is even, target opponent gains control of this creature."
+                "At the beginning of your upkeep, target opponent gains control of this creature if the number of permanents is even."
             )
             && rendered.contains(
                 "This creature can attack as though it had haste unless it entered this turn."
