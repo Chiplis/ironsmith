@@ -3326,6 +3326,7 @@ impl StaticAbilityKind for RedirectDamageToSourceController {
                 target_player_filter: Some(self.target_player_filter.clone()),
                 target_object_filter: None,
                 condition: None,
+                combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
             },
@@ -3407,6 +3408,7 @@ struct DamageAmountReplacementMatcher {
     target_player_filter: Option<PlayerFilter>,
     target_object_filter: Option<ObjectFilter>,
     condition: Option<crate::ConditionExpr>,
+    combat_only: bool,
     noncombat_only: bool,
     amount_less_than: Option<Value>,
 }
@@ -3491,6 +3493,9 @@ impl DamageAmountReplacementMatcher {
         damage: &DamageEvent,
         ctx: &crate::events::context::EventContext<'_>,
     ) -> bool {
+        if self.combat_only && !damage.is_combat {
+            return false;
+        }
         if self.noncombat_only && damage.is_combat {
             return false;
         }
@@ -3587,6 +3592,7 @@ impl StaticAbilityKind for ModifyDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: self.condition.clone(),
+                combat_only: false,
                 noncombat_only: false,
                 amount_less_than: None,
             },
@@ -3617,6 +3623,7 @@ impl StaticAbilityKind for MinimumDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
+                combat_only: false,
                 noncombat_only: self.noncombat_only,
                 amount_less_than: Some(self.floor.clone()),
             },
@@ -3631,6 +3638,7 @@ pub struct DoubleDamageAmountReplacement {
     pub target_player_filter: Option<PlayerFilter>,
     pub target_object_filter: Option<ObjectFilter>,
     pub factor: u32,
+    pub combat_only: bool,
     pub display: String,
 }
 
@@ -3640,6 +3648,7 @@ impl DoubleDamageAmountReplacement {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: impl Into<String>,
     ) -> Self {
         Self {
@@ -3647,6 +3656,7 @@ impl DoubleDamageAmountReplacement {
             target_player_filter,
             target_object_filter,
             factor,
+            combat_only,
             display: display.into(),
         }
     }
@@ -3674,6 +3684,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
                 target_player_filter: self.target_player_filter.clone(),
                 target_object_filter: self.target_object_filter.clone(),
                 condition: None,
+                combat_only: self.combat_only,
                 noncombat_only: false,
                 amount_less_than: None,
             },

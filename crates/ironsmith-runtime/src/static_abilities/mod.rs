@@ -2964,6 +2964,7 @@ impl StaticAbility {
             target_player_filter,
             target_object_filter,
             2,
+            false,
             display,
         )
     }
@@ -2973,6 +2974,7 @@ impl StaticAbility {
         target_player_filter: Option<crate::target::PlayerFilter>,
         target_object_filter: Option<crate::target::ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: String,
     ) -> Self {
         Self::new(DoubleDamageAmountReplacement::new(
@@ -2980,6 +2982,7 @@ impl StaticAbility {
             target_player_filter,
             target_object_filter,
             factor,
+            combat_only,
             display,
         ))
     }

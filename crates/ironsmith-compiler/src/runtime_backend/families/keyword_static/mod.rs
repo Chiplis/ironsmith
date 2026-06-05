@@ -305,6 +305,8 @@ const DAMAGE_DOUBLING_TO_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to"]);
+const WOULD_DEAL_COMBAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["would", "deal", "combat", "damage", "to"]);
 const WOULD_DEAL_DAMAGE_TO_YOU_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["would", "deal", "damage", "to", "you"]);
 const IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -5068,30 +5070,25 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let Some(would_idx) = find_window_by(&words, 4, |window| {
-        WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
-    }) else {
+    let Some((would_idx, damage_phrase_len, combat_only)) =
+        find_damage_multiplier_would_deal_phrase(&words)
+    else {
         return Ok(None);
     };
-    let Some(source_idx) = SOURCE_WORD_PATTERN.find_word(&words[..would_idx]) else {
-        return Ok(None);
-    };
-    if source_idx <= 1 {
-        return Ok(None);
-    }
 
-    let Some(tail_idx) = find_window_by(&words[would_idx + 4..], 6, |window| {
+    let damage_tail_start = would_idx + damage_phrase_len;
+    let Some(tail_idx) = find_window_by(&words[damage_tail_start..], 6, |window| {
         IT_DEALS_MULTIPLE_THAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
     }) else {
         return Ok(None);
     };
-    let replacement_start = would_idx + 4 + tail_idx;
+    let replacement_start = damage_tail_start + tail_idx;
     let factor = match words.get(replacement_start + 2).copied() {
         Some("double") => 2,
         Some("triple") => 3,
         _ => return Ok(None),
     };
-    let damaged_words = &words[would_idx + 4..replacement_start];
+    let damaged_words = &words[damage_tail_start..replacement_start];
     let replacement_target_words = &words[replacement_start + 6..];
     if damaged_words.is_empty()
         || replacement_target_words.len() < 2
@@ -5107,28 +5104,10 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         return Ok(None);
     }
 
-    let source_tokens = trim_lexed_commas(
-        LexedClause::new(&tokens)
-            .between_word_range(1, source_idx)
-            .unwrap_or_else(|| LexedClause::new(&tokens).between(tokens.len(), tokens.len()))
-            .tokens(),
-    );
-    let source_words = parser_token_word_refs(source_tokens);
-    let mut source_filter =
-        if source_tokens.is_empty() || ARTICLE_WORD_PATTERN.matches_words(&source_words) {
-            ObjectFilter::default()
-        } else {
-            parse_object_filter_lexed(source_tokens, false)?
-        };
-
-    match &words[source_idx + 1..would_idx] {
-        ["you", "control"] => source_filter = source_filter.you_control(),
-        ["an", "opponent", "controls"] | ["opponent", "controls"] => {
-            source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
-        }
-        [] => {}
-        _ => return Ok(None),
-    }
+    let Some(source_filter) = parse_damage_replacement_source_filter(&tokens, &words, would_idx)?
+    else {
+        return Ok(None);
+    };
 
     let mut display = render_token_slice(&tokens).trim().to_string();
     if !display.ends_with('.') {
@@ -5140,8 +5119,72 @@ pub(crate) fn parse_double_damage_amount_replacement_line(
         target_player_filter,
         target_object_filter,
         factor,
+        combat_only,
         display,
     )))
+}
+
+fn find_damage_multiplier_would_deal_phrase(words: &[&str]) -> Option<(usize, usize, bool)> {
+    find_window_by(words, 5, |window| {
+        WOULD_DEAL_COMBAT_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+    })
+    .map(|idx| (idx, 5, true))
+    .or_else(|| {
+        find_window_by(words, 4, |window| {
+            WOULD_DEAL_DAMAGE_TO_PHRASE_PATTERN.matches_words(window)
+        })
+        .map(|idx| (idx, 4, false))
+    })
+}
+
+fn parse_damage_replacement_source_filter(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+    would_idx: usize,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if would_idx <= 1 {
+        return Ok(None);
+    }
+
+    if let Some(source_idx) = SOURCE_WORD_PATTERN.find_word(&words[..would_idx]) {
+        if source_idx <= 1 {
+            return Ok(None);
+        }
+        let source_tokens = trim_lexed_commas(
+            LexedClause::new(tokens)
+                .between_word_range(1, source_idx)
+                .unwrap_or_else(|| LexedClause::new(tokens).between(tokens.len(), tokens.len()))
+                .tokens(),
+        );
+        let source_words = parser_token_word_refs(source_tokens);
+        let mut source_filter =
+            if source_tokens.is_empty() || ARTICLE_WORD_PATTERN.matches_words(&source_words) {
+                ObjectFilter::default()
+            } else {
+                parse_object_filter_lexed(source_tokens, false)?
+            };
+
+        match &words[source_idx + 1..would_idx] {
+            ["you", "control"] => source_filter = source_filter.you_control(),
+            ["an", "opponent", "controls"] | ["opponent", "controls"] => {
+                source_filter = source_filter.controlled_by(PlayerFilter::Opponent);
+            }
+            [] => {}
+            _ => return Ok(None),
+        }
+        return Ok(Some(source_filter));
+    }
+
+    let source_tokens = trim_lexed_commas(
+        LexedClause::new(tokens)
+            .between_word_range(1, would_idx)
+            .unwrap_or_else(|| LexedClause::new(tokens).between(tokens.len(), tokens.len()))
+            .tokens(),
+    );
+    if source_tokens.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(parse_object_filter_lexed(source_tokens, false)?))
 }
 
 fn parse_damage_amount_replacement_target_filters(

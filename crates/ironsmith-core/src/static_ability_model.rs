@@ -466,6 +466,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: String,
     },
     DoubleCountersReplacement {
@@ -1405,12 +1406,14 @@ where
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             } => StaticAbilityPayload::DoubleDamageAmountReplacement {
                 source_filter,
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             },
             StaticAbilityPayload::DoubleCountersReplacement {
@@ -3910,6 +3913,7 @@ impl<
             target_player_filter,
             target_object_filter,
             2,
+            false,
             display,
         )
     }
@@ -3919,6 +3923,7 @@ impl<
         target_player_filter: Option<PlayerFilter>,
         target_object_filter: Option<ObjectFilter>,
         factor: u32,
+        combat_only: bool,
         display: impl Into<String>,
     ) -> Self {
         let display = display.into();
@@ -3930,6 +3935,7 @@ impl<
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             },
         }

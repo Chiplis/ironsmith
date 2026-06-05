@@ -1373,12 +1373,14 @@ impl StaticAbilityModelInterpreter {
                 target_player_filter,
                 target_object_filter,
                 factor,
+                combat_only,
                 display,
             } => StaticAbility::multiply_damage_amount_replacement(
                 source_filter.clone(),
                 target_player_filter.clone(),
                 target_object_filter.clone(),
                 *factor,
+                *combat_only,
                 display.clone(),
             ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
