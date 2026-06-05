@@ -383,6 +383,31 @@ fn distribute_explicit_damage_to_creatures(
     distribution
 }
 
+fn distribute_explicit_damage_among_blockers_as_chosen(
+    blocker_ids: &[ObjectId],
+    blockers_len: usize,
+    total_damage: u32,
+    explicit_assignments: &std::collections::HashMap<ObjectId, u32>,
+) -> Vec<(u32, bool)> {
+    let mut distribution = Vec::with_capacity(blockers_len);
+    let mut remaining_damage = total_damage;
+
+    for blocker_id in blocker_ids.iter().take(blockers_len) {
+        let requested = explicit_assignments.get(blocker_id).copied().unwrap_or(0);
+        let damage = requested.min(remaining_damage);
+        distribution.push((damage, false));
+        remaining_damage = remaining_damage.saturating_sub(damage);
+    }
+
+    if remaining_damage > 0
+        && let Some((damage, _)) = distribution.last_mut()
+    {
+        *damage = damage.saturating_add(remaining_damage);
+    }
+
+    distribution
+}
+
 fn combat_damage_amount_to_player(result: &DamageResult) -> u32 {
     result.damage_dealt.max(result.poison_counters)
 }
@@ -415,8 +440,20 @@ pub(super) fn deal_damage_to_blockers(
     };
 
     // Calculate damage distribution (handles trample and explicit assignment choices)
+    let defender_assigns_damage =
+        defender_assigns_combat_damage_for_attacker(game, combat, attacker_id);
     let (distribution, excess) = if explicit_assignments.is_empty() {
         distribute_trample_damage(attacker, &blockers, total_damage, game)
+    } else if defender_assigns_damage {
+        (
+            distribute_explicit_damage_among_blockers_as_chosen(
+                &blocker_ids,
+                blockers.len(),
+                total_damage,
+                &explicit_assignments,
+            ),
+            0,
+        )
     } else {
         distribute_explicit_trample_damage(
             game,

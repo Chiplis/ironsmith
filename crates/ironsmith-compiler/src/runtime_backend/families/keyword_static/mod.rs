@@ -47,7 +47,7 @@ use super::grammar::abilities::{
     is_shuffle_into_library_from_graveyard_line_lexed, is_skulk_rules_text_line_lexed,
     is_this_creature_cant_attack_alone_line_lexed,
     is_this_creature_cant_attack_its_owner_line_lexed, is_this_subject_reference_lexed,
-    is_you_have_shroud_line_lexed,
+    is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed, is_you_have_shroud_line_lexed,
     is_you_may_look_face_down_creatures_you_dont_control_any_time_line_lexed,
     is_you_may_look_top_card_any_time_line_lexed,
     is_your_opponents_play_with_hands_revealed_line_lexed,
@@ -2816,6 +2816,9 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_passthrough_rule!(parse_trigger_suppression_line_ast),
         single_static_ability_ast_rule!(parse_creatures_assign_combat_damage_using_toughness_line),
+        single_static_ability_ast_rule!(
+            parse_you_assign_combat_damage_of_creatures_attacking_you_line
+        ),
         single_static_ability_ast_rule!(
             parse_lethal_damage_to_creatures_you_control_uses_power_line
         ),
@@ -6347,6 +6350,17 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line(
             ));
         }
         None => {}
+    }
+    Ok(None)
+}
+
+pub(crate) fn parse_you_assign_combat_damage_of_creatures_attacking_you_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(tokens) {
+        return Ok(Some(
+            StaticAbility::you_assign_combat_damage_of_creatures_attacking_you(),
+        ));
     }
     Ok(None)
 }

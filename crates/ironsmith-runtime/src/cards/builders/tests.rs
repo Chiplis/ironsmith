@@ -44349,6 +44349,210 @@ fn parse_this_creature_assigns_combat_damage_with_toughness_static_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_defensive_formation_strict_and_renders_combat_assignment_clause() {
+    assert_oracle_card_parses_strict("Defensive Formation");
+    let def = parse_oracle_card_definition("Defensive Formation");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let static_ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        static_ids.contains(
+            &crate::static_abilities::StaticAbilityId::YouAssignCombatDamageOfCreaturesAttackingYou
+        ),
+        "expected Defensive Formation to lower to defending-player combat-damage assignment static ability, got {static_ids:?}"
+    );
+    assert!(
+        rendered.contains(
+            "Rather than the attacking player, you assign the combat damage of each creature attacking you"
+        ) && rendered.contains(
+            "You can divide that creature's combat damage as you choose among any of the creatures blocking it"
+        ),
+        "Defensive Formation should render both combat-damage assignment clauses, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_attacking_them() {
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let formation = parse_oracle_card_definition("Defensive Formation");
+    game.create_object_from_definition(&formation, alice, Zone::Battlefield);
+
+    let attacker = create_winds_test_creature(&mut game, "Bob Attacker", bob, 4, 4);
+    let alice_blocker_a = create_winds_test_creature(&mut game, "Alice Blocker A", alice, 1, 4);
+    let alice_blocker_b = create_winds_test_creature(&mut game, "Alice Blocker B", alice, 1, 4);
+    let charlie_blocker_a =
+        create_winds_test_creature(&mut game, "Charlie Blocker A", charlie, 1, 4);
+    let charlie_blocker_b =
+        create_winds_test_creature(&mut game, "Charlie Blocker B", charlie, 1, 4);
+    let planeswalker = {
+        let card = crate::card::CardBuilder::new(CardId::new(), "Alice Planeswalker")
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(3)
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Battlefield)
+    };
+
+    let mut attacking_alice = crate::combat_state::CombatState::default();
+    attacking_alice.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    attacking_alice
+        .blockers
+        .insert(attacker, vec![alice_blocker_a, alice_blocker_b]);
+
+    assert_eq!(
+        crate::game_loop::combat_damage_assignment_player_for_attacker(
+            &game,
+            &attacking_alice,
+            attacker
+        ),
+        Some(alice),
+        "Defensive Formation's controller should assign damage for creatures attacking them"
+    );
+    let order_context =
+        crate::game_loop::get_blocker_order_decision(&game, &attacking_alice, attacker)
+            .expect("multiple blockers should need an order decision");
+    let crate::decisions::context::DecisionContext::Order(order_context) = order_context else {
+        panic!("expected order decision context");
+    };
+    assert_eq!(
+        order_context.player, alice,
+        "Defensive Formation should move the combat damage assignment decision to the defending player"
+    );
+
+    let mut attacking_charlie = crate::combat_state::CombatState::default();
+    attacking_charlie.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(charlie),
+    });
+    attacking_charlie
+        .blockers
+        .insert(attacker, vec![charlie_blocker_a, charlie_blocker_b]);
+
+    assert_eq!(
+        crate::game_loop::combat_damage_assignment_player_for_attacker(
+            &game,
+            &attacking_charlie,
+            attacker
+        ),
+        Some(bob),
+        "Defensive Formation should not affect creatures attacking another player"
+    );
+
+    let mut attacking_planeswalker = crate::combat_state::CombatState::default();
+    attacking_planeswalker
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: crate::combat_state::AttackTarget::Planeswalker(planeswalker),
+        });
+    attacking_planeswalker
+        .blockers
+        .insert(attacker, vec![alice_blocker_a, alice_blocker_b]);
+
+    assert_eq!(
+        crate::game_loop::combat_damage_assignment_player_for_attacker(
+            &game,
+            &attacking_planeswalker,
+            attacker
+        ),
+        Some(bob),
+        "Defensive Formation should not affect creatures attacking a planeswalker its controller controls"
+    );
+
+    let alice_trampler = create_winds_test_creature(&mut game, "Bob Trampler", bob, 5, 5);
+    if let Some(object) = game.object_mut(alice_trampler) {
+        object.abilities.push(Ability::static_ability(
+            crate::static_abilities::StaticAbility::trample(),
+        ));
+    }
+    let alice_tough_blocker_a =
+        create_winds_test_creature(&mut game, "Alice Tough Blocker A", alice, 0, 6);
+    let alice_tough_blocker_b =
+        create_winds_test_creature(&mut game, "Alice Tough Blocker B", alice, 0, 6);
+    let mut formation_combat = crate::combat_state::CombatState::default();
+    formation_combat
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: alice_trampler,
+            target: crate::combat_state::AttackTarget::Player(alice),
+        });
+    formation_combat.blockers.insert(
+        alice_trampler,
+        vec![alice_tough_blocker_a, alice_tough_blocker_b],
+    );
+    game.set_combat_damage_assignment(alice_trampler, alice_tough_blocker_a, 1);
+    game.set_combat_damage_assignment(alice_trampler, alice_tough_blocker_b, 1);
+
+    let alice_life_before = game.player(alice).expect("Alice exists").life;
+    let formation_damage_events =
+        crate::game_loop::execute_combat_damage_step(&mut game, &formation_combat, false);
+    assert_eq!(
+        game.damage_on(alice_tough_blocker_a),
+        1,
+        "Defensive Formation should honor the defending player's chosen damage to the first blocker"
+    );
+    assert_eq!(
+        game.damage_on(alice_tough_blocker_b),
+        4,
+        "Defensive Formation should keep any remaining assigned damage among blockers"
+    );
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        alice_life_before,
+        "Defensive Formation should keep unassigned trample damage from being assigned to the attacked player, got {formation_damage_events:?}"
+    );
+
+    let charlie_trampler = create_winds_test_creature(&mut game, "Bob Other Trampler", bob, 5, 5);
+    if let Some(object) = game.object_mut(charlie_trampler) {
+        object.abilities.push(Ability::static_ability(
+            crate::static_abilities::StaticAbility::trample(),
+        ));
+    }
+    let charlie_tough_blocker_a =
+        create_winds_test_creature(&mut game, "Charlie Tough Blocker A", charlie, 0, 6);
+    let charlie_tough_blocker_b =
+        create_winds_test_creature(&mut game, "Charlie Tough Blocker B", charlie, 0, 6);
+    let mut normal_combat = crate::combat_state::CombatState::default();
+    normal_combat
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: charlie_trampler,
+            target: crate::combat_state::AttackTarget::Player(charlie),
+        });
+    normal_combat.blockers.insert(
+        charlie_trampler,
+        vec![charlie_tough_blocker_a, charlie_tough_blocker_b],
+    );
+    game.set_combat_damage_assignment(charlie_trampler, charlie_tough_blocker_a, 1);
+    game.set_combat_damage_assignment(charlie_trampler, charlie_tough_blocker_b, 1);
+
+    let charlie_life_before = game.player(charlie).expect("Charlie exists").life;
+    crate::game_loop::execute_combat_damage_step(&mut game, &normal_combat, false);
+    assert_eq!(
+        game.player(charlie).expect("Charlie exists").life,
+        charlie_life_before - 3,
+        "Defensive Formation controlled by Alice should not change trample assignment for creatures attacking Charlie"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thwart Return Variant")
         .card_types(vec![CardType::Sorcery])

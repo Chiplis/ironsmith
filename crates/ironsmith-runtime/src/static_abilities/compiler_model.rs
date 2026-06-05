@@ -109,6 +109,9 @@ impl StaticAbility {
             Some(StaticAbilityId::MayAssignDamageAsUnblocked) => {
                 Self::may_assign_damage_as_unblocked()
             }
+            Some(StaticAbilityId::YouAssignCombatDamageOfCreaturesAttackingYou) => {
+                Self::you_assign_combat_damage_of_creatures_attacking_you()
+            }
             Some(StaticAbilityId::AttachedGoadedBySourceController) => {
                 Self::attached_goaded_by_source_controller(label)
             }

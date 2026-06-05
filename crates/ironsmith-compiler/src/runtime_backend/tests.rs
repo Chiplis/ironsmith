@@ -8935,6 +8935,35 @@ fn rewrite_grammar_combat_damage_using_toughness_probe_tracks_subject_variant() 
 }
 
 #[test]
+fn rewrite_grammar_defending_player_combat_damage_assignment_probe_matches_static_line() {
+    let tokens = lex_line(
+        "Rather than the attacking player, you assign the combat damage of each creature attacking you. You can divide that creature's combat damage as you choose among any of the creatures blocking it.",
+        0,
+    )
+    .expect("rewrite lexer should classify defending-player combat-damage assignment static line");
+
+    assert!(
+        super::grammar::abilities::is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
+            &tokens
+        ),
+        "grammar-owned defending-player combat-damage assignment probe should match Defensive Formation's static line"
+    );
+
+    let parsed =
+        super::keyword_static::parse_you_assign_combat_damage_of_creatures_attacking_you_line(
+            &tokens,
+        )
+        .expect("defending-player combat-damage assignment static line should parse");
+
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id()
+                == crate::static_abilities::StaticAbilityId::YouAssignCombatDamageOfCreaturesAttackingYou
+    ));
+}
+
+#[test]
 fn rewrite_grammar_zilortha_lethal_damage_power_static_line() {
     let tokens = lex_line(
         "Lethal damage dealt to creatures you control is determined by their power rather than their toughness.",
