@@ -56570,6 +56570,136 @@ fn james_wandering_dad_follow_him_models_activate_only_mana_usage_restriction() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn jasmine_dragon_tea_shop_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Jasmine Dragon Tea Shop");
+    let def = parse_oracle_card_definition("Jasmine Dragon Tea Shop");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "spend this mana only to cast an ally spell or activate an ability of an ally source",
+        ),
+        "expected Jasmine Dragon Tea Shop compiled text to preserve cast-or-activate spend restriction, got {rendered}"
+    );
+
+    let mana_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated
+                .mana_usage_restrictions
+                .iter()
+                .any(|restriction| {
+                    matches!(
+                        restriction,
+                        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                            ..
+                        }
+                    )
+                })
+                .then_some(activated)
+        })
+        .expect("Jasmine Dragon Tea Shop should have restricted Ally mana ability");
+
+    let has_ally_cast_or_ability_restriction = mana_activated
+        .mana_usage_restrictions
+        .iter()
+        .any(|restriction| {
+            matches!(
+                restriction,
+                crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                    spell_filter,
+                    ability_source_filter,
+                } if spell_filter.subtypes == vec![Subtype::Ally]
+                    && ability_source_filter.subtypes == vec![Subtype::Ally]
+            )
+        });
+    assert!(
+        has_ally_cast_or_ability_restriction,
+        "Jasmine Dragon Tea Shop mana should be restricted to Ally spells or Ally-source abilities"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn jasmine_dragon_tea_shop_token_activation_creates_white_ally() {
+    let def = parse_oracle_card_definition("Jasmine Dragon Tea Shop");
+    let token_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated
+                .effects
+                .iter()
+                .any(|effect| effect.downcast_ref::<CreateTokenEffect>().is_some())
+                .then_some(activated)
+        })
+        .expect("Jasmine Dragon Tea Shop should have a token-creating activated ability");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let tea_shop_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 5);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        tea_shop_id,
+        &token_activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Jasmine Dragon Tea Shop token activation cost should be payable");
+    assert!(
+        game.is_tapped(tea_shop_id),
+        "Jasmine Dragon Tea Shop should tap to pay its token activation cost"
+    );
+
+    let mut ctx = crate::effects::ExecutionContext::new(tea_shop_id, alice, &mut dm);
+    crate::game_loop::execute_resolution_program(
+        &mut game,
+        &mut ctx,
+        alice,
+        tea_shop_id,
+        &token_activated.effects,
+        None,
+        &[],
+    )
+    .expect("Jasmine Dragon Tea Shop token activation should resolve");
+
+    let ally_tokens: Vec<_> = game
+        .battlefield
+        .iter()
+        .filter_map(|&id| game.object(id).map(|object| (id, object)))
+        .filter(|(_, object)| {
+            matches!(object.kind, crate::object::ObjectKind::Token)
+                && object.subtypes.contains(&Subtype::Ally)
+                && game.controller_of(*object) == alice
+        })
+        .collect();
+    assert_eq!(ally_tokens.len(), 1, "expected one Ally token");
+    let (token_id, token) = ally_tokens[0];
+    assert!(
+        token.colors().contains(Color::White),
+        "Jasmine Dragon Tea Shop should create a white Ally token"
+    );
+    assert_eq!(game.current_power(token_id), Some(1));
+    assert_eq!(game.current_toughness(token_id), Some(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn throne_of_eldraine_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Throne of Eldraine");
     let def = parse_oracle_card_definition("Throne of Eldraine");

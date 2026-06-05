@@ -774,10 +774,78 @@ pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken])
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
-    parse_legacy_mana_usage_restriction_sentence_lexed(tokens)
+    parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(tokens)
+        .or_else(|| parse_legacy_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_activate_ability_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_cant_be_spent_to_cast_sentence_lexed(tokens))
         .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
+}
+
+fn parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    const OR_ACTIVATE_ABILITY_OF_PHRASES: &[&[&str]] = &[
+        &["or", "activate", "an", "ability", "of"],
+        &["or", "activate", "abilities", "of"],
+    ];
+    const CAST_OR_ACTIVATE_SOURCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(SPEND_MANA_CAST_PREFIXES),
+        LexPattern::object(
+            "spell_spec",
+            LexCaptureKind::UntilAnyPhrase(OR_ACTIVATE_ABILITY_OF_PHRASES),
+        ),
+        LexPattern::any_phrase(OR_ACTIVATE_ABILITY_OF_PHRASES),
+        LexPattern::object("source_spec", LexCaptureKind::OneOrMoreWords),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = CAST_OR_ACTIVATE_SOURCE_PATTERN.match_clause(clause)?;
+    let spell_clause = matched.capture_clause("spell_spec", clause)?;
+    let source_clause = matched.capture_clause("source_spec", clause)?;
+    let spell_tokens = trim_lexed_commas(spell_clause.tokens());
+    let source_tokens = trim_lexed_commas(source_clause.tokens());
+    let spell_filter = parse_mana_usage_spell_filter_tokens(spell_tokens)?;
+    let ability_source_filter = parse_mana_usage_ability_source_filter_tokens(source_tokens)?;
+
+    Some(ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+        spell_filter,
+        ability_source_filter,
+    })
+}
+
+fn parse_mana_usage_spell_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    parse_special_mana_usage_spell_filter_tokens(tokens)
+        .or_else(|| parse_simple_subtype_spell_filter_tokens(tokens))
+        .or_else(|| {
+            let filter = parse_spell_filter_with_grammar_entrypoint(tokens);
+            (filter != ObjectFilter::default()).then_some(filter)
+        })
+}
+
+fn parse_simple_subtype_spell_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let tokens = strip_mana_usage_spell_filter_article_tokens(trim_lexed_commas(tokens));
+    let words = LexedClause::new(tokens).word_refs();
+    let [subtype_word, spell_word] = words.as_slice() else {
+        return None;
+    };
+    if !matches!(*spell_word, "spell" | "spells") {
+        return None;
+    }
+    let subtype = parse_subtype_flexible(subtype_word)?;
+    Some(ObjectFilter::default().with_subtype(subtype))
+}
+
+fn parse_mana_usage_ability_source_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let tokens = strip_mana_usage_spell_filter_article_tokens(trim_lexed_commas(tokens));
+    let words = LexedClause::new(tokens).word_refs();
+    let [subtype_word, source_word] = words.as_slice() else {
+        return None;
+    };
+    if !matches!(*source_word, "source" | "sources") {
+        return None;
+    }
+    let subtype = parse_subtype_flexible(subtype_word)?;
+    Some(ObjectFilter::default().with_subtype(subtype))
 }
 
 fn parse_cant_be_spent_to_cast_sentence_lexed(

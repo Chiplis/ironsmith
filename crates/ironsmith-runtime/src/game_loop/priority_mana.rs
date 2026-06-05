@@ -686,6 +686,29 @@ fn cast_spell_filter_matches_payment_source(
     filter.matches(source_obj, &filter_ctx, game)
 }
 
+fn activate_ability_source_filter_matches_payment_source(
+    game: &GameState,
+    unit: &crate::ability::RestrictedManaUnit,
+    filter: &crate::target::ObjectFilter,
+    payment_source: Option<ObjectId>,
+) -> bool {
+    let Some(source_id) = payment_source else {
+        return false;
+    };
+    let Some(source_obj) = game.object(source_id) else {
+        return false;
+    };
+    if source_obj.zone == Zone::Stack {
+        return false;
+    }
+
+    let Some(mana_source) = game.object(unit.source) else {
+        return false;
+    };
+    let filter_ctx = game.filter_context_for(game.controller_of(mana_source), Some(unit.source));
+    filter.matches(source_obj, &filter_ctx, game)
+}
+
 fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRestriction) -> bool {
     match restriction {
         crate::ability::ManaUsageRestriction::CastSpell {
@@ -696,6 +719,9 @@ fn restriction_requires_matching_spell(restriction: &crate::ability::ManaUsageRe
             restrict_to_matching_spell,
             ..
         } => *restrict_to_matching_spell,
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            ..
+        } => true,
         crate::ability::ManaUsageRestriction::ActivateAbility => true,
     }
 }
@@ -744,6 +770,9 @@ fn restriction_bonus_applies_to_payment_source(
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, payment_source)
         }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            ..
+        } => false,
         crate::ability::ManaUsageRestriction::ActivateAbility => false,
     }
 }
@@ -808,6 +837,18 @@ pub(super) fn payment_source_matches_restriction(
                 return true;
             }
             cast_spell_filter_matches_payment_source(game, unit, filter, Some(source_obj.id))
+        }
+        crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            spell_filter,
+            ability_source_filter,
+        } => {
+            cast_spell_filter_matches_payment_source(game, unit, spell_filter, Some(source_obj.id))
+                || activate_ability_source_filter_matches_payment_source(
+                    game,
+                    unit,
+                    ability_source_filter,
+                    Some(source_obj.id),
+                )
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
@@ -948,6 +989,9 @@ pub(super) fn apply_spent_mana_bonuses(
                 enters_with_counters,
                 granted_abilities,
             ),
+            crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                ..
+            } => continue,
             crate::ability::ManaUsageRestriction::ActivateAbility => continue,
         };
 
@@ -4449,6 +4493,45 @@ mod priority_mana_tests {
             .expect("Arena-style mana ability should parse")
     }
 
+    fn jasmine_dragon_tea_shop_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::new(), "Jasmine Dragon Tea Shop")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{T}: Add {C}.\n\
+                 {T}: Add one mana of any color. Spend this mana only to cast an Ally spell or activate an ability of an Ally source.\n\
+                 {5}, {T}: Create a 1/1 white Ally creature token.",
+            )
+            .expect("Jasmine Dragon Tea Shop should parse")
+    }
+
+    fn jasmine_dragon_tea_shop_restricted_mana_game() -> (GameState, PlayerId, ObjectId) {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let tea_shop = jasmine_dragon_tea_shop_definition();
+        let tea_shop_id = game.create_object_from_definition(&tea_shop, alice, Zone::Battlefield);
+        let restriction = game
+            .object(tea_shop_id)
+            .expect("Jasmine Dragon Tea Shop should exist")
+            .abilities
+            .iter()
+            .find_map(|ability| {
+                let AbilityKind::Activated(activated) = &ability.kind else {
+                    return None;
+                };
+                activated.mana_usage_restrictions.first().cloned()
+            })
+            .expect("Jasmine Dragon Tea Shop should have restricted mana");
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .add_restricted_mana(RestrictedManaUnit {
+                symbol: ManaSymbol::Green,
+                source: tea_shop_id,
+                source_chosen_creature_type: None,
+                restrictions: vec![restriction],
+            });
+        (game, alice, tea_shop_id)
+    }
+
     fn restricted_mana_ability_index(game: &GameState, source: ObjectId) -> usize {
         game.object(source)
             .expect("source should exist")
@@ -4807,6 +4890,60 @@ mod priority_mana_tests {
         assert!(
             spend_pool_symbol(&mut game, alice, ManaSymbol::Colorless, Some(spell_id)).is_none(),
             "James restricted mana should not be spendable to cast spells"
+        );
+    }
+
+    #[test]
+    fn jasmine_dragon_tea_shop_restricted_mana_pays_only_ally_spells_or_ally_source_abilities() {
+        let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+        let ally_spell = CardDefinitionBuilder::new(CardId::new(), "Ally Spell")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Ally])
+            .build();
+        let ally_spell_id = game.create_object_from_definition(&ally_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(ally_spell_id)).is_some(),
+            "Jasmine Dragon Tea Shop restricted mana should pay for Ally spells"
+        );
+
+        let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+        let non_ally_spell = CardDefinitionBuilder::new(CardId::new(), "Non-Ally Spell")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .build();
+        let non_ally_spell_id =
+            game.create_object_from_definition(&non_ally_spell, alice, Zone::Stack);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(non_ally_spell_id))
+                .is_none(),
+            "Jasmine Dragon Tea Shop restricted mana should reject non-Ally spells"
+        );
+
+        let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+        let ally_source = CardDefinitionBuilder::new(CardId::new(), "Ally Ability Source")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Ally])
+            .parse_text("{1}: You gain 1 life.")
+            .expect("Ally ability source should parse");
+        let ally_source_id =
+            game.create_object_from_definition(&ally_source, alice, Zone::Battlefield);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(ally_source_id)).is_some(),
+            "Jasmine Dragon Tea Shop restricted mana should pay for abilities of Ally sources"
+        );
+
+        let (mut game, alice, _) = jasmine_dragon_tea_shop_restricted_mana_game();
+        let non_ally_source = CardDefinitionBuilder::new(CardId::new(), "Non-Ally Ability Source")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Elf])
+            .parse_text("{1}: You gain 1 life.")
+            .expect("non-Ally ability source should parse");
+        let non_ally_source_id =
+            game.create_object_from_definition(&non_ally_source, alice, Zone::Battlefield);
+        assert!(
+            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(non_ally_source_id))
+                .is_none(),
+            "Jasmine Dragon Tea Shop restricted mana should reject abilities of non-Ally sources"
         );
     }
 

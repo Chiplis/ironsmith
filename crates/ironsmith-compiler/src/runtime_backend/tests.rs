@@ -2610,6 +2610,26 @@ fn rewrite_activate_ability_mana_restriction_parses() {
 }
 
 #[test]
+fn rewrite_cast_or_activate_source_mana_restriction_parses() {
+    let tokens = lex_line(
+        "Spend this mana only to cast an Ally spell or activate an ability of an Ally source.",
+        0,
+    )
+    .expect("rewrite lexer should classify cast-or-activate mana restriction");
+
+    match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+        Some(crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            spell_filter,
+            ability_source_filter,
+        }) => {
+            assert_eq!(spell_filter.subtypes, vec![Subtype::Ally]);
+            assert_eq!(ability_source_filter.subtypes, vec![Subtype::Ally]);
+        }
+        other => panic!("expected cast-or-activate Ally restriction, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_cant_be_spent_mana_restriction_parses_as_positive_filter() {
     let tokens = lex_line("This mana can't be spent to cast nonartifact spells.", 0)
         .expect("rewrite lexer should classify negative mana restriction");
