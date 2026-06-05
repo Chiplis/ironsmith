@@ -1303,6 +1303,69 @@ impl StaticAbilityKind for EntersWithCounters {
     }
 }
 
+/// Enters the battlefield with the controller's choice of one counter type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EntersWithCounterChoice {
+    pub counter_types: Vec<CounterType>,
+    pub count: Value,
+}
+
+impl EntersWithCounterChoice {
+    pub fn new(counter_types: Vec<CounterType>, count: Value) -> Self {
+        Self {
+            counter_types,
+            count,
+        }
+    }
+}
+
+impl StaticAbilityKind for EntersWithCounterChoice {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::EnterWithCounters
+    }
+
+    fn display(&self) -> String {
+        let counter_choices = self
+            .counter_types
+            .iter()
+            .map(|counter_type| {
+                let counter = counter_type.description();
+                let article = match counter.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+                    Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+                    _ => "a",
+                };
+                format!("{article} {counter} counter")
+            })
+            .collect::<Vec<_>>();
+        let choices = match counter_choices.as_slice() {
+            [] => "a counter".to_string(),
+            [single] => single.clone(),
+            [head @ .., last] => format!("{} or {last}", head.join(", ")),
+        };
+        let count_prefix = match &self.count {
+            Value::Fixed(1) => String::new(),
+            value => format!("{} ", describe_value(value)),
+        };
+        format!("Enters the battlefield with your choice of {count_prefix}{choices} on it")
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            ThisWouldEnterBattlefieldMatcher,
+            ReplacementAction::EnterWithCounterChoice {
+                counter_types: self.counter_types.clone(),
+                count: self.count.clone(),
+            },
+        ))
+    }
+}
+
 /// Enters the battlefield with counters if a condition is true.
 #[derive(Debug, Clone, PartialEq)]
 pub struct EntersWithCountersIfCondition {

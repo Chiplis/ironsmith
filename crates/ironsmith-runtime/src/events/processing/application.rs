@@ -956,6 +956,14 @@ fn resolve_value_for_etb(
     resolve_value_for_replacement(count, game, source)
 }
 
+pub(super) fn resolve_value_for_etb_for_choice(
+    count: &crate::effect::Value,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> u32 {
+    resolve_value_for_etb(count, game, source)
+}
+
 fn resolve_value_for_replacement(
     count: &crate::effect::Value,
     game: &GameState,

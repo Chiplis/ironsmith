@@ -139,6 +139,12 @@ pub enum ReplacementAction {
         added_abilities: Vec<Ability>,
     },
 
+    /// Enter with the controller's choice of one counter type.
+    EnterWithCounterChoice {
+        counter_types: Vec<CounterType>,
+        count: Value,
+    },
+
     /// As this enters, an opponent may put counters on it and mark a keyword paid.
     Tribute {
         counter_type: CounterType,
