@@ -2359,6 +2359,16 @@ impl StaticAbility {
         Self::new(SetCreatureSubtypesForFilter::new(filter, subtypes))
     }
 
+    pub fn source_characteristics_of_last_exiled_creature_card(
+        filter: crate::target::ObjectFilter,
+        retained_subtypes: Vec<crate::types::Subtype>,
+    ) -> Self {
+        Self::new(SourceCharacteristicsOfLastExiledCreatureCard::new(
+            filter,
+            retained_subtypes,
+        ))
+    }
+
     pub fn make_colorless(filter: crate::target::ObjectFilter) -> Self {
         Self::new(MakeColorlessForFilter::new(filter))
     }

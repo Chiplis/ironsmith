@@ -21977,6 +21977,190 @@ fn rampaging_cyclops_loses_power_only_when_two_or_more_creatures_block_it() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn duplicant_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(20_512), "Duplicant")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(6)]]))
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .subtypes(vec![Subtype::Shapeshifter])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .parse_text(
+            "Imprint — When this creature enters, you may exile target nontoken creature.\n\
+             As long as a card exiled with this creature is a creature card, this creature has the power, toughness, and creature types of the last creature card exiled with it. It's still a Shapeshifter.",
+        )
+        .expect("Duplicant should parse strictly for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct DuplicantMayDecisionMaker {
+    accept: bool,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for DuplicantMayDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn duplicant_enters_trigger(
+    def: &crate::cards::CardDefinition,
+) -> crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered.clone()),
+            _ => None,
+        })
+        .expect("Duplicant should have an enters trigger")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_duplicant_enters_trigger(
+    game: &mut GameState,
+    def: &crate::cards::CardDefinition,
+    duplicant_id: ObjectId,
+    controller: PlayerId,
+    target: ObjectId,
+    accept: bool,
+) {
+    let triggered = duplicant_enters_trigger(def);
+    let target_spec = triggered
+        .choices
+        .first()
+        .cloned()
+        .expect("Duplicant enters trigger should target a nontoken creature");
+    let event = TriggerEvent::new_with_provenance(
+        EnterBattlefieldEvent::new(duplicant_id, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = DuplicantMayDecisionMaker { accept };
+    let mut ctx = crate::effects::ExecutionContext::new(duplicant_id, controller, &mut dm)
+        .with_triggering_event(event)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..1,
+        }]);
+
+    for effect in &triggered.effects {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Duplicant enters trigger should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn duplicant_exiles_chosen_nontoken_creature_and_copies_last_creature_card_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let duplicant = duplicant_definition();
+    let duplicant_id = game.create_object_from_definition(&duplicant, alice, Zone::Battlefield);
+    let target_card = CardBuilder::new(CardId::from_raw(20_513), "Zombie Warrior")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(5, 3))
+        .build();
+    let target_id = game.create_object_from_card(&target_card, bob, Zone::Battlefield);
+
+    resolve_duplicant_enters_trigger(&mut game, &duplicant, duplicant_id, alice, target_id, true);
+    game.refresh_continuous_state();
+
+    let linked = game.get_exiled_with_source_links(duplicant_id);
+    assert_eq!(
+        linked.len(),
+        1,
+        "accepting Duplicant's optional trigger should link exactly one exiled card"
+    );
+    assert_eq!(
+        game.object(linked[0]).map(|object| object.name.as_str()),
+        Some("Zombie Warrior"),
+        "Duplicant should link the creature card exiled by its own trigger"
+    );
+    assert_eq!(game.current_power(duplicant_id), Some(5));
+    assert_eq!(game.current_toughness(duplicant_id), Some(3));
+    let subtypes = game
+        .current_subtypes(duplicant_id)
+        .expect("Duplicant should have current subtypes");
+    assert!(
+        subtypes.contains(&Subtype::Zombie)
+            && subtypes.contains(&Subtype::Warrior)
+            && subtypes.contains(&Subtype::Shapeshifter),
+        "Duplicant should copy creature types and remain a Shapeshifter, got {subtypes:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn duplicant_declining_optional_exile_keeps_printed_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let duplicant = duplicant_definition();
+    let duplicant_id = game.create_object_from_definition(&duplicant, alice, Zone::Battlefield);
+    let target_id = create_creature(&mut game, "Declined Bear", bob, 6, 6);
+
+    resolve_duplicant_enters_trigger(&mut game, &duplicant, duplicant_id, alice, target_id, false);
+    game.refresh_continuous_state();
+
+    assert!(
+        game.get_exiled_with_source_links(duplicant_id).is_empty(),
+        "declining Duplicant's optional trigger should not exile or link a card"
+    );
+    assert_eq!(game.current_power(duplicant_id), Some(2));
+    assert_eq!(game.current_toughness(duplicant_id), Some(4));
+    assert!(
+        game.objects_in_zone(Zone::Battlefield).contains(&target_id),
+        "declining Duplicant's optional trigger should leave the target on the battlefield"
+    );
+    let subtypes = game
+        .current_subtypes(duplicant_id)
+        .expect("Duplicant should have current subtypes");
+    assert!(subtypes.contains(&Subtype::Shapeshifter));
+    assert!(
+        !subtypes.contains(&Subtype::Bear),
+        "Duplicant should not copy creature types without a linked exiled creature card"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn duplicant_enters_trigger_targets_nontoken_creatures_only() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let duplicant = duplicant_definition();
+    let duplicant_id = game.create_object_from_definition(&duplicant, alice, Zone::Battlefield);
+    let nontoken = create_creature(&mut game, "Nontoken Target", bob, 2, 2);
+    let token = create_creature(&mut game, "Token Target", bob, 2, 2);
+    game.object_mut(token)
+        .expect("token target should exist")
+        .kind = ObjectKind::Token;
+
+    let triggered = duplicant_enters_trigger(&duplicant);
+    let requirements = extract_target_requirements(&game, &triggered.effects, alice, Some(duplicant_id));
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Duplicant should have one target requirement"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(nontoken)),
+        "nontoken creatures should be legal Duplicant targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(token)),
+        "token creatures should not be legal Duplicant targets, got {legal_targets:?}"
+    );
+}
+
 fn create_creature(
     game: &mut GameState,
     name: &str,

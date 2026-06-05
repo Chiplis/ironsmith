@@ -3697,6 +3697,116 @@ impl StaticAbilityKind for SetCreatureSubtypesForFilter {
     }
 }
 
+/// This source has the base power, toughness, and creature types of the last
+/// matching creature card exiled with it, while retaining listed creature types.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceCharacteristicsOfLastExiledCreatureCard {
+    pub filter: ObjectFilter,
+    pub retained_subtypes: Vec<Subtype>,
+}
+
+impl SourceCharacteristicsOfLastExiledCreatureCard {
+    pub fn new(filter: ObjectFilter, retained_subtypes: Vec<Subtype>) -> Self {
+        Self {
+            filter,
+            retained_subtypes,
+        }
+    }
+
+    fn linked_card_characteristics(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Option<(i32, i32, Vec<Subtype>)> {
+        let filter_ctx = game.filter_context_for_combat(controller, Some(source), None, None);
+        game.get_exiled_with_source_links(source)
+            .iter()
+            .rev()
+            .filter_map(|id| game.object(*id))
+            .find(|object| self.filter.matches(object, &filter_ctx, game))
+            .and_then(|object| {
+                let power = object.power()?;
+                let toughness = object.toughness()?;
+                let mut subtypes = object
+                    .subtypes
+                    .iter()
+                    .copied()
+                    .filter(Subtype::is_creature_type)
+                    .collect::<Vec<_>>();
+                for retained in &self.retained_subtypes {
+                    if !subtypes.contains(retained) {
+                        subtypes.push(*retained);
+                    }
+                }
+                Some((power, toughness, subtypes))
+            })
+    }
+}
+
+impl StaticAbilityKind for SourceCharacteristicsOfLastExiledCreatureCard {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard
+    }
+
+    fn display(&self) -> String {
+        let retained = if self.retained_subtypes.is_empty() {
+            String::new()
+        } else {
+            let names = self
+                .retained_subtypes
+                .iter()
+                .map(|subtype| subtype.to_string())
+                .collect::<Vec<_>>();
+            format!(" It's still a {}.", join_with_and(&names))
+        };
+        format!(
+            "As long as a card exiled with this creature is a creature card, this creature has the power, toughness, and creature types of the last creature card exiled with it.{retained}"
+        )
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some((power, toughness, subtypes)) =
+            self.linked_card_characteristics(source, controller, game)
+        else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::RemoveAllSubtypesOfFamily(SubtypeFamily::Creature),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::AddSubtypes(subtypes),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Source,
+                Modification::SetPowerToughness {
+                    power: Value::Fixed(power),
+                    toughness: Value::Fixed(toughness),
+                    sublayer: PtSublayer::Setting,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// Make colorless: "All permanents are colorless."
 #[derive(Debug, Clone)]
 pub struct MakeColorlessForFilter {
