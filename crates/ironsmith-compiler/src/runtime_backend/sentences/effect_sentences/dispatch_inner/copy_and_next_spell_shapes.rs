@@ -1,131 +1,228 @@
-const WHEN_OR_WHENEVER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["when"], &["whenever"]]);
-const ATTACKS_AND_ISNT_BLOCKED_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    suffix_any
-        & [
-            &["attacks", "and", "isn't", "blocked"],
-            &["attacks", "and", "isnt", "blocked"],
-        ]
-);
-const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
-const THIS_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "turn"]);
-const COPY_NEXT_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this", "turn"]);
-const TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "creature", "is", "dealt", "damage"],
-            &["that", "permanent", "is", "dealt", "damage"],
-            &["that", "creature", "is", "dealt", "combat", "damage"],
-            &["that", "permanent", "is", "dealt", "combat", "damage"],
-        ]
-);
-const CREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creature"]);
-const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["combat"]);
-const DIES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["dies"]);
-const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
-const DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS: &[&str] =
-    &["dealt", "damage", "this", "way", "dies", "this", "turn"];
-const DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS);
-const DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS: &[&str] = &[
-    "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+const DELAYED_ATTACKS_UNBLOCKED_PHRASES: &[&[&str]] = &[
+    &["attacks", "and", "isn't", "blocked"],
+    &["attacks", "and", "isnt", "blocked"],
 ];
-const DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS);
+const DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("target"),
+    LexPattern::object(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(DELAYED_ATTACKS_UNBLOCKED_PHRASES),
+    ),
+    LexPattern::any_phrase(DELAYED_ATTACKS_UNBLOCKED_PHRASES),
+]);
+const COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier("duration", LexCaptureKind::OneOfPhrase(&[&["this", "turn"]])),
+    LexPattern::action("intro", LexCaptureKind::OneOf(&["when", "whenever"])),
+    LexPattern::condition("trigger", LexCaptureKind::UntilToken(TokenKind::Comma)),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
+const DELAYED_TRIGGER_THIS_TURN_SUFFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action("intro", LexCaptureKind::OneOf(&["when", "whenever"])),
+    LexPattern::condition(
+        "trigger",
+        LexCaptureKind::UntilLastPhraseBeforeToken(&["this", "turn"], TokenKind::Comma),
+    ),
+    LexPattern::modifier("duration", LexCaptureKind::OneOfPhrase(&[&["this", "turn"]])),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
+const DELAYED_NEXT_TRIGGER_MARKER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::capture(
+        "next",
+        LexCaptureKind::OneOf(&["next"]),
+    )]);
+const DELAYED_TAGGED_DEALT_DAMAGE_OPTIONAL_COMBAT_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::capture(
+        "combat",
+        LexCaptureKind::OneOf(&["combat"]),
+    )];
+const DELAYED_TAGGED_DEALT_DAMAGE_TRIGGER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("that"),
+    LexPattern::object("kind", LexCaptureKind::OneOf(&["creature", "permanent"])),
+    LexPattern::phrase(&["is", "dealt"]),
+    LexPattern::optional(DELAYED_TAGGED_DEALT_DAMAGE_OPTIONAL_COMBAT_ATOMS),
+    LexPattern::word("damage"),
+]);
+const DELAYED_TAGGED_DAMAGE_CREATURE_KIND_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "kind",
+        LexCaptureKind::OneOf(&["creature"]),
+    )]);
+const DELAYED_TAGGED_DAMAGE_PERMANENT_KIND_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "kind",
+        LexCaptureKind::OneOf(&["permanent"]),
+    )]);
+const DELAYED_DIES_INTRO_WORDS: &[&str] = &["when", "whenever", "if"];
+const DELAYED_DIES_THIS_TURN_PHRASE: &[&str] = &["dies", "this", "turn"];
+const DELAYED_DIES_THIS_WAY_PHRASES: &[&[&str]] = &[
+    &["dealt", "damage", "this", "way", "dies", "this", "turn"],
+    &[
+        "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+    ],
+];
+const DELAYED_THAT_DIES_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_word(DELAYED_DIES_INTRO_WORDS),
+    LexPattern::word("that"),
+    LexPattern::capture(
+        "that_reference",
+        LexCaptureKind::UntilPhrase(DELAYED_DIES_THIS_TURN_PHRASE),
+    ),
+    LexPattern::phrase(DELAYED_DIES_THIS_TURN_PHRASE),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
+const DELAYED_DIES_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_word(DELAYED_DIES_INTRO_WORDS),
+    LexPattern::object(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(DELAYED_DIES_THIS_WAY_PHRASES),
+    ),
+    LexPattern::any_phrase(DELAYED_DIES_THIS_WAY_PHRASES),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
+const DELAYED_END_STEP_OPTIONAL_THE_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+const DELAYED_END_STEP_OWNER_WORDS: &[&str] = &["your"];
+const DELAYED_END_STEP_YOUR_OWNER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::capture(
+        "owner",
+        LexCaptureKind::OneOf(DELAYED_END_STEP_OWNER_WORDS),
+    )]);
+const DELAYED_END_STEP_THAT_PLAYER_OWNER_PHRASES: &[&[&str]] = &[
+    &["that", "player"],
+    &["that", "players"],
+    &["that", "player's"],
+    &["that", "players'"],
+];
+const DELAYED_END_STEP_THAT_PLAYER_OWNER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::capture(
+        "owner",
+        LexCaptureKind::OneOfPhrase(DELAYED_END_STEP_THAT_PLAYER_OWNER_PHRASES),
+    )]);
+const DELAYED_END_STEP_TARGET_PLAYER_OWNER_PHRASES: &[&[&str]] = &[
+    &["target", "player"],
+    &["target", "players"],
+    &["target", "player's"],
+    &["target", "players'"],
+];
+const DELAYED_END_STEP_TARGET_PLAYER_OWNER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::capture(
+        "owner",
+        LexCaptureKind::OneOfPhrase(DELAYED_END_STEP_TARGET_PLAYER_OWNER_PHRASES),
+    )]);
+const DELAYED_END_STEP_OPTIONAL_STEP_OWNER_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::capture(
+        "step_owner",
+        LexCaptureKind::OneOf(DELAYED_END_STEP_OWNER_WORDS),
+    )];
+const DELAYED_NEXT_END_STEP_SEQUENCE: &[LexPatternAtom<'static>] =
+    &[LexPattern::phrase(&["next", "end", "step"])];
+const DELAYED_END_STEP_SEQUENCE: &[LexPatternAtom<'static>] =
+    &[LexPattern::phrase(&["end", "step"])];
+const DELAYED_END_STEP_SEQUENCES: &[&[LexPatternAtom<'static>]] =
+    &[DELAYED_NEXT_END_STEP_SEQUENCE, DELAYED_END_STEP_SEQUENCE];
+const DELAYED_END_STEP_TURN_OWNER_TAIL_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::word("of"),
+    LexPattern::capture("turn_owner", LexCaptureKind::UntilPhrase(&["next", "turn"])),
+    LexPattern::phrase(&["next", "turn"]),
+];
+const DELAYED_END_STEP_HEADER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("at"),
+    LexPattern::optional(DELAYED_END_STEP_OPTIONAL_THE_ATOMS),
+    LexPattern::word("beginning"),
+    LexPattern::word("of"),
+    LexPattern::optional(DELAYED_END_STEP_OPTIONAL_THE_ATOMS),
+    LexPattern::optional(DELAYED_END_STEP_OPTIONAL_STEP_OWNER_ATOMS),
+    LexPattern::any_sequence(DELAYED_END_STEP_SEQUENCES),
+    LexPattern::optional(DELAYED_END_STEP_TURN_OWNER_TAIL_ATOMS),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::tail("effect", LexCaptureKind::Rest),
+]);
 
-fn copy_next_find_phrase_start(words: &[&str], phrase: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
-    words
-        .windows(phrase.len())
-        .position(|window| shape.matches_words(window))
+fn delayed_end_step_player_from_owner(owner_clause: Option<LexedClause<'_>>) -> Option<PlayerFilter> {
+    let Some(owner_clause) = owner_clause.map(LexedClause::trimmed) else {
+        return Some(PlayerFilter::Any);
+    };
+    if owner_clause.is_empty() {
+        return Some(PlayerFilter::Any);
+    }
+    if DELAYED_END_STEP_YOUR_OWNER_PATTERN.matches_clause(owner_clause) {
+        return Some(PlayerFilter::You);
+    }
+    if DELAYED_END_STEP_THAT_PLAYER_OWNER_PATTERN.matches_clause(owner_clause) {
+        return Some(PlayerFilter::IteratedPlayer);
+    }
+    if DELAYED_END_STEP_TARGET_PLAYER_OWNER_PATTERN.matches_clause(owner_clause) {
+        return Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)));
+    }
+    None
+}
+
+fn delayed_dies_this_way_filter(
+    matched: &crate::runtime_backend::lex_patterns::LexPatternMatch<'_>,
+    clause: LexedClause<'_>,
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+    else {
+        return Ok(None);
+    };
+    let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens());
+    let mut subject_tokens = trim_edge_punctuation(subject_clause.tokens());
+    if subject_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing object filter in delayed dies-this-way clause (clause: '{}')",
+            clause_display.trim()
+        )));
+    }
+    let stripped_subject = strip_leading_articles(&subject_tokens);
+    if !stripped_subject.is_empty() {
+        subject_tokens = stripped_subject;
+    }
+    parse_object_filter(&subject_tokens, false)
+        .map(Some)
+        .map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported object filter in delayed dies-this-way clause (clause: '{}')",
+                clause_display.trim()
+            ))
+        })
 }
 
 pub(crate) fn parse_delayed_until_next_end_step_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if tokens.is_empty() {
+    let clause = LexedClause::new(tokens).trimmed();
+    if clause.is_empty() {
         return Ok(None);
     }
 
-    let mut idx = 0usize;
-    if !token_slice_at_is(tokens, idx, "at") {
+    let Some(matched) = DELAYED_END_STEP_HEADER_PATTERN.match_clause(clause) else {
         return Ok(None);
-    }
-    idx += 1;
-
-    if token_slice_at_is(tokens, idx, "the") {
-        idx += 1;
-    }
-    if !token_slice_at_is(tokens, idx, "beginning")
-    {
-        return Ok(None);
-    }
-    idx += 1;
-    if !token_slice_at_is(tokens, idx, "of") {
-        return Ok(None);
-    }
-    idx += 1;
-
-    if token_slice_at_is(tokens, idx, "the") {
-        idx += 1;
-    }
-
-    let mut player = if token_slice_at_is(tokens, idx, "your") {
-        idx += 1;
-        PlayerFilter::You
-    } else {
-        PlayerFilter::Any
     };
-    let mut start_next_turn = false;
 
-    if token_slice_at_is(tokens, idx, "next") {
-        if !token_slice_at_is(tokens, idx + 1, "end")
-            || !token_slice_at_is(tokens, idx + 2, "step")
-        {
-            return Ok(None);
-        }
-        idx += 3;
-    } else {
-        if !token_slice_at_is(tokens, idx, "end") || !token_slice_at_is(tokens, idx + 1, "step")
-        {
-            return Ok(None);
-        }
-        idx += 2;
+    let mut player =
+        delayed_end_step_player_from_owner(matched.capture_clause("step_owner", clause))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported delayed end-step owner (clause: '{}')",
+                    crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+                ))
+            })?;
+    let start_next_turn = matched.capture("turn_owner").is_some();
+    if let Some(turn_owner) = matched.capture_clause("turn_owner", clause) {
+        player = delayed_end_step_player_from_owner(Some(turn_owner)).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported delayed end-step turn owner (clause: '{}')",
+                crate::runtime_backend::lexer::render_token_slice(tokens).trim()
+            ))
+        })?;
     }
 
-    if token_slice_at_is(tokens, idx, "of") {
-        idx += 1;
-        if token_slice_at_is(tokens, idx, "that")
-            && (token_slice_at_is(tokens, idx + 1, "player")
-                || token_slice_at_is(tokens, idx + 1, "players"))
-        {
-            player = PlayerFilter::IteratedPlayer;
-            idx += 2;
-        } else if token_slice_at_is(tokens, idx, "your") {
-            player = PlayerFilter::You;
-            idx += 1;
-        } else if token_slice_at_is(tokens, idx, "target")
-            && token_slice_at_is(tokens, idx + 1, "player")
-        {
-            player = PlayerFilter::Target(Box::new(PlayerFilter::Any));
-            idx += 2;
-        } else {
-            return Ok(None);
-        }
-
-        if !token_slice_at_is(tokens, idx, "next")
-            || !token_slice_at_is(tokens, idx + 1, "turn")
-        {
-            return Ok(None);
-        }
-        idx += 2;
-        start_next_turn = true;
-    }
-
-    if tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
-        idx += 1;
-    }
-    let remainder = trim_commas(&tokens[idx..]);
+    let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    let remainder = effect_clause.trimmed().tokens();
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(
             "missing delayed end-step effect clause".to_string(),
@@ -136,7 +233,7 @@ pub(crate) fn parse_delayed_until_next_end_step_sentence(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed end-step effect clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            crate::runtime_backend::lexer::render_token_slice(tokens).trim()
         )));
     }
 
@@ -181,80 +278,101 @@ fn retarget_source_copy_spell_to_delayed_triggering_object(effects: &mut [Effect
     }
 }
 
+fn delayed_attack_unblocked_filter_from_trigger(
+    trigger_tokens: &[OwnedLexToken],
+    full_sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let trigger_clause = LexedClause::new(trigger_tokens).trimmed();
+    let Some(matched) = DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN.match_clause(trigger_clause)
+    else {
+        return Ok(None);
+    };
+    let Some(subject_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Object, trigger_clause)
+    else {
+        return Ok(None);
+    };
+    let subject_tokens = subject_clause.trimmed().tokens();
+    let full_sentence_display =
+        crate::runtime_backend::lexer::render_token_slice(full_sentence_tokens);
+    if subject_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing target subject for delayed attack trigger (clause: '{}')",
+            full_sentence_display.trim()
+        )));
+    }
+
+    parse_object_filter(subject_tokens, false)
+        .map(Some)
+        .map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported delayed attack target filter (clause: '{}')",
+                full_sentence_display.trim()
+            ))
+        })
+}
+
+fn delayed_tagged_dealt_damage_trigger_from_core(
+    trigger_core_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let trigger_clause = LexedClause::new(trigger_core_tokens).trimmed();
+    let matched = DELAYED_TAGGED_DEALT_DAMAGE_TRIGGER_PATTERN.match_clause(trigger_clause)?;
+    let kind_clause = matched.capture_clause_by_role(LexCaptureRole::Object, trigger_clause)?;
+    let kind_clause = kind_clause.trimmed();
+    let mut filter = if DELAYED_TAGGED_DAMAGE_CREATURE_KIND_PATTERN.matches_clause(kind_clause) {
+        ObjectFilter::creature()
+    } else if DELAYED_TAGGED_DAMAGE_PERMANENT_KIND_PATTERN.matches_clause(kind_clause) {
+        ObjectFilter::permanent()
+    } else {
+        return None;
+    };
+    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+
+    if matched.capture("combat").is_some() {
+        Some(TriggerSpec::IsDealtCombatDamage(filter))
+    } else {
+        Some(TriggerSpec::IsDealtDamage(filter))
+    }
+}
+
+fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
+    DELAYED_NEXT_TRIGGER_MARKER_PATTERN
+        .find_in_clause(trigger_clause.trimmed())
+        .is_some()
+}
+
 pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-        tokens,
-    )) {
-        let Some((_duration, delayed_clause)) =
-            super::super::grammar::primitives::split_lexed_once_on_delimiter(
-                tokens,
-                super::super::lexer::TokenKind::Comma,
-            )
+    let clause = LexedClause::new(tokens).trimmed();
+    let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens());
+    if let Some(matched) = COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN.match_clause(clause) {
+        let Some(trigger_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
         else {
             return Ok(None);
         };
-        let delayed_clause = trim_commas(delayed_clause);
-        if !delayed_clause
-            .first()
-            .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
-        {
-            return Ok(None);
-        }
-        let Some((trigger_part, effect_part)) =
-            super::super::grammar::primitives::split_lexed_once_on_delimiter(
-                &delayed_clause,
-                super::super::lexer::TokenKind::Comma,
-            )
+        let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
         else {
             return Ok(None);
         };
 
-        let mut trigger_tokens = trim_commas(trigger_part);
-        if trigger_tokens
-            .first()
-            .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
-        {
-            trigger_tokens = trigger_tokens[1..].to_vec();
-        }
+        let trigger_tokens = trigger_clause.trimmed().tokens();
         if trigger_tokens.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed trigger clause after 'this turn' (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                clause_display.trim()
             )));
         }
 
-        let mut delayed_effects = parse_effect_chain(&trim_commas(effect_part))?;
+        let mut delayed_effects = parse_effect_chain(effect_clause.trimmed().tokens())?;
         if delayed_effects.is_empty() {
             return Err(CardTextError::ParseError(format!(
                 "missing delayed trigger effect clause (clause: '{}')",
-                crate::runtime_backend::token_word_refs(tokens).join(" ")
+                clause_display.trim()
             )));
         }
 
-        let trigger_words = crate::runtime_backend::token_word_refs(&trigger_tokens);
-        let attack_unblocked_suffix =
-            ATTACKS_AND_ISNT_BLOCKED_SUFFIX_PATTERN.matches_words(trigger_words.as_slice());
-        if attack_unblocked_suffix
-            && trigger_words
-                .first()
-                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
-        {
-            let subject_len = trigger_words.len().saturating_sub(4);
-            let subject_tokens = trim_commas(&trigger_tokens[1..subject_len]);
-            if subject_tokens.is_empty() {
-                return Err(CardTextError::ParseError(format!(
-                    "missing target subject for delayed attack trigger (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                )));
-            }
-            let filter = parse_object_filter(&subject_tokens, false).map_err(|_| {
-                CardTextError::ParseError(format!(
-                    "unsupported delayed attack target filter (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                ))
-            })?;
+        if let Some(filter) = delayed_attack_unblocked_filter_from_trigger(trigger_tokens, tokens)? {
             let mut trigger_filter = filter.clone();
             trigger_filter
                 .tagged_constraints
@@ -279,7 +397,7 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         }
 
         let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
-        let one_shot = trigger_words.contains(&"next");
+        let one_shot = delayed_trigger_is_one_shot(trigger_clause);
         if matches!(trigger, TriggerSpec::SpellCast { .. }) {
             retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
         }
@@ -290,77 +408,36 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         }]));
     }
 
-    if !tokens
-        .first()
-        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
-    {
+    let Some(matched) = DELAYED_TRIGGER_THIS_TURN_SUFFIX_PATTERN.match_clause(clause) else {
         return Ok(None);
-    }
-
-    let Some((before_comma, after_comma)) =
-        super::super::grammar::primitives::split_lexed_once_on_delimiter(
-            tokens,
-            super::super::lexer::TokenKind::Comma,
-        )
+    };
+    let Some(trigger_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
     else {
         return Ok(None);
     };
-
-    let mut trigger_tokens = trim_commas(before_comma);
-    if trigger_tokens
-        .first()
-        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
-    {
-        trigger_tokens = trigger_tokens[1..].to_vec();
-    }
-    if trigger_tokens.is_empty() {
-        return Err(CardTextError::ParseError(format!(
-            "missing delayed trigger clause before comma (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
-        )));
-    }
-
-    let trigger_word_storage = DispatchInnerNormalizedWords::new(&trigger_tokens);
-    let trigger_words = trigger_word_storage.to_word_refs();
-    if trigger_words.len() < 3 || !THIS_TURN_SUFFIX_PATTERN.matches_words(trigger_words.as_slice())
-    {
+    let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
         return Ok(None);
-    }
+    };
 
-    let trim_start = trigger_word_storage
-        .token_index_for_word_index(trigger_words.len() - 2)
-        .unwrap_or(trigger_tokens.len());
-    let trigger_core_tokens = trim_commas(&trigger_tokens[..trim_start]);
+    let trigger_core_tokens = trigger_clause.trimmed().tokens();
     if trigger_core_tokens.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger clause before 'this turn' (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause_display.trim()
         )));
     }
-    let trigger_core_words = crate::runtime_backend::token_word_refs(&trigger_core_tokens);
-    let trigger = if TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN.matches_words(&trigger_core_words) {
-        let mut filter = if trigger_core_words
-            .get(1)
-            .is_some_and(|word| CREATURE_WORD_PATTERN.matches_word(word))
-        {
-            ObjectFilter::creature()
-        } else {
-            ObjectFilter::permanent()
-        };
-        filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
-        if COMBAT_WORD_PATTERN.matches_words(&trigger_core_words) {
-            TriggerSpec::IsDealtCombatDamage(filter)
-        } else {
-            TriggerSpec::IsDealtDamage(filter)
-        }
+    let trigger = if let Some(trigger) =
+        delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)
+    {
+        trigger
     } else {
-        parse_trigger_clause_lexed(&trigger_core_tokens)?
+        parse_trigger_clause_lexed(trigger_core_tokens)?
     };
-    let remainder = trim_commas(after_comma);
+    let remainder = effect_clause.trimmed().tokens();
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause_display.trim()
         )));
     }
 
@@ -368,14 +445,14 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed trigger effect clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
+            clause_display.trim()
         )));
     }
     if matches!(trigger, TriggerSpec::SpellCast { .. }) {
         retarget_source_copy_spell_to_delayed_triggering_object(&mut delayed_effects);
     }
 
-    let one_shot = trigger_words.contains(&"next");
+    let one_shot = delayed_trigger_is_one_shot(trigger_clause);
     Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
         trigger,
         effects: delayed_effects,
@@ -386,109 +463,31 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
 pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if clause_words.len() < 6 {
-        return Ok(None);
-    }
-    if !matches!(
-        clause_words.first().copied(),
-        Some("when" | "whenever" | "if")
-    ) {
-        return Ok(None);
-    }
-    let mut delayed_filter: Option<ObjectFilter> = None;
-    let split_after_word_idx = if clause_words
-        .get(1)
-        .is_some_and(|word| THAT_WORD_PATTERN.matches_word(word))
-    {
-        let Some(dies_idx) = find_index(clause_words.as_slice(), |word| {
-            DIES_WORD_PATTERN.matches_word(word)
-        }) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens());
+    let (delayed_filter, effect_clause) =
+        if let Some(matched) = DELAYED_THAT_DIES_THIS_TURN_PATTERN.match_clause(clause) {
+            let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
+            else {
+                return Ok(None);
+            };
+            (None, effect_clause)
+        } else if let Some(matched) = DELAYED_DIES_THIS_WAY_PATTERN.match_clause(clause) {
+            let delayed_filter = delayed_dies_this_way_filter(&matched, clause)?;
+            let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
+            else {
+                return Ok(None);
+            };
+            (delayed_filter, effect_clause)
+        } else {
             return Ok(None);
         };
-        if !clause_words
-            .get(dies_idx + 1..)
-            .is_some_and(|words| COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words(words))
-        {
-            return Ok(None);
-        }
-        dies_idx + 2
-    } else if let Some(dealt_idx) = copy_next_find_phrase_start(
-        &clause_words,
-        DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_WORDS,
-        DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_PATTERN,
-    ) {
-        if dealt_idx <= 1 {
-            return Ok(None);
-        }
-        let clause = LexedClause::new(tokens);
-        let Some(subject_clause) = clause.between_word_range(1, dealt_idx) else {
-            return Ok(None);
-        };
-        let mut subject_tokens = trim_edge_punctuation(subject_clause.tokens());
-        if subject_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing object filter in delayed dies-this-way clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        let stripped_subject = strip_leading_articles(&subject_tokens);
-        if !stripped_subject.is_empty() {
-            subject_tokens = stripped_subject;
-        }
-        delayed_filter = Some(parse_object_filter(&subject_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported object filter in delayed dies-this-way clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?);
-        dealt_idx + 6
-    } else if let Some(dealt_idx) = copy_next_find_phrase_start(
-        &clause_words,
-        DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_WORDS,
-        DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_PATTERN,
-    ) {
-        if dealt_idx <= 1 {
-            return Ok(None);
-        }
-        let clause = LexedClause::new(tokens);
-        let Some(subject_clause) = clause.between_word_range(1, dealt_idx) else {
-            return Ok(None);
-        };
-        let mut subject_tokens = trim_edge_punctuation(subject_clause.tokens());
-        if subject_tokens.is_empty() {
-            return Err(CardTextError::ParseError(format!(
-                "missing object filter in delayed dies-this-way clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        }
-        let stripped_subject = strip_leading_articles(&subject_tokens);
-        if !stripped_subject.is_empty() {
-            subject_tokens = stripped_subject;
-        }
-        delayed_filter = Some(parse_object_filter(&subject_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported object filter in delayed dies-this-way clause (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?);
-        dealt_idx + 7
-    } else {
-        return Ok(None);
-    };
-    let clause = LexedClause::new(tokens);
-    let mut remainder = clause
-        .after_words(split_after_word_idx + 1)
-        .unwrap_or_else(|| clause.from(tokens.len()))
-        .tokens();
-    if token_slice_first_kind(remainder, TokenKind::Comma) {
-        remainder = &remainder[1..];
-    }
-    let remainder = trim_commas(remainder);
+
+    let remainder = effect_clause.trimmed().tokens();
     if remainder.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed dies-this-turn effect clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_display.trim()
         )));
     }
 
@@ -496,7 +495,7 @@ pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence(
     if delayed_effects.is_empty() {
         return Err(CardTextError::ParseError(format!(
             "missing delayed dies-this-turn effect clause (clause: '{}')",
-            clause_words.join(" ")
+            clause_display.trim()
         )));
     }
 
@@ -662,4 +661,173 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
     }
 
     merged
+}
+
+#[cfg(test)]
+mod copy_and_next_spell_shape_tests {
+    use super::*;
+
+    #[test]
+    fn delayed_end_step_header_uses_captured_step_owner() {
+        let tokens = crate::runtime_backend::lex_line(
+            "At the beginning of your next end step, draw a card.",
+            0,
+        )
+        .expect("delayed end-step text should lex");
+
+        let effects = parse_delayed_until_next_end_step_sentence(&tokens)
+            .expect("delayed end-step parser should not error")
+            .expect("delayed end-step parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
+        assert!(debug.contains("player: You"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_end_step_header_uses_captured_turn_owner() {
+        let tokens = crate::runtime_backend::lex_line(
+            "At the beginning of the end step of that player's next turn, draw a card.",
+            0,
+        )
+        .expect("extra-turn delayed end-step text should lex");
+
+        let effects = parse_delayed_until_next_end_step_sentence(&tokens)
+            .expect("extra-turn delayed end-step parser should not error")
+            .expect("extra-turn delayed end-step parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedUntilEndStepOfExtraTurn"), "{debug}");
+        assert!(debug.contains("player: That"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_dies_this_way_uses_captured_filter() {
+        let tokens = crate::runtime_backend::lex_line(
+            "If a creature dealt damage this way would die this turn, exile it instead.",
+            0,
+        )
+        .expect("dies-this-way delayed text should lex");
+
+        let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+            .expect("dies-this-way parser should not error")
+            .expect("dies-this-way parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedWhenLastObjectDiesThisTurn"), "{debug}");
+        assert!(debug.contains("filter: Some"), "{debug}");
+        assert!(debug.contains("card_types"), "{debug}");
+        assert!(debug.contains("Exile"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_that_dies_this_turn_uses_captured_effect_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "When that creature dies this turn, draw a card.",
+            0,
+        )
+        .expect("that-dies delayed text should lex");
+
+        let effects = parse_delayed_when_that_dies_this_turn_sentence(&tokens)
+            .expect("that-dies parser should not error")
+            .expect("that-dies parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedWhenLastObjectDiesThisTurn"), "{debug}");
+        assert!(debug.contains("filter: None"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn this_turn_delayed_trigger_uses_captured_duration_tail() {
+        let tokens =
+            crate::runtime_backend::lex_line("This turn, whenever you draw a card, draw a card.", 0)
+                .expect("this-turn delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("this-turn delayed trigger parser should not error")
+            .expect("this-turn delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("YouDrawCard"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn suffix_this_turn_delayed_trigger_uses_captured_trigger_and_effect() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever you draw a card this turn, draw a card.",
+            0,
+        )
+        .expect("suffix-this-turn delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("suffix-this-turn delayed trigger parser should not error")
+            .expect("suffix-this-turn delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("YouDrawCard"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn leading_this_turn_target_attack_unblocked_uses_captured_subject() {
+        let tokens = crate::runtime_backend::lex_line(
+            "This turn, when target creature you control attacks and isn't blocked, draw a card.",
+            0,
+        )
+        .expect("targeted attack-unblocked delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("targeted attack-unblocked delayed trigger parser should not error")
+            .expect("targeted attack-unblocked delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn suffix_this_turn_tagged_dealt_damage_uses_captured_kind() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever that creature is dealt damage this turn, draw a card.",
+            0,
+        )
+        .expect("tagged dealt-damage delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("tagged dealt-damage delayed trigger parser should not error")
+            .expect("tagged dealt-damage delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("IsDealtDamage"), "{debug}");
+        assert!(debug.contains("TaggedObjectConstraint"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn suffix_this_turn_tagged_combat_damage_uses_captured_marker() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever that permanent is dealt combat damage this turn, draw a card.",
+            0,
+        )
+        .expect("tagged combat-damage delayed trigger text should lex");
+
+        let effects = parse_sentence_delayed_trigger_this_turn(&tokens)
+            .expect("tagged combat-damage delayed trigger parser should not error")
+            .expect("tagged combat-damage delayed trigger parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
+        assert!(debug.contains("IsDealtCombatDamage"), "{debug}");
+        assert!(debug.contains("TaggedObjectConstraint"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
 }

@@ -65,17 +65,17 @@ const LABELED_ANOTHER_HASTE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["another", "haste"]);
 const LABELED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["life"]);
 
-fn labeled_mana_value_or_less_bound(words: &[&str]) -> Option<u32> {
-    for idx in 0..words.len().saturating_sub(2) {
-        if words.get(idx..idx + 2) != Some(&["mana", "value"])
-        {
-            continue;
-        }
-        let tail = words.get(idx + 2..)?;
-        let count_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
-        let Some((count, used)) =
+fn labeled_mana_value_or_less_bound(tokens: &[OwnedLexToken]) -> Option<u32> {
+    let mut search_start = 0usize;
+    while search_start < tokens.len() {
+        let relative_idx =
+            find_token_word_sequence(&tokens[search_start..], &["mana", "value"])?;
+        let phrase_start = search_start + relative_idx;
+        let tail_start = phrase_start + 2;
+        let tail = tokens.get(tail_start..)?;
+        let Some((count, _used)) =
             crate::runtime_backend::util::parse_less_than_or_equal_quantity_prefix(
-                &count_tokens,
+                tail,
                 false,
                 false,
                 "mana value bound",
@@ -83,11 +83,10 @@ fn labeled_mana_value_or_less_bound(words: &[&str]) -> Option<u32> {
             .ok()
             .flatten()
         else {
+            search_start = tail_start;
             continue;
         };
-        if used == tail.len() {
-            return Some(count);
-        }
+        return Some(count);
     }
     None
 }
@@ -296,7 +295,7 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
         filter.card_types.push(CardType::Planeswalker);
         filter.card_types.push(CardType::Battle);
         filter.type_or_subtype_union = true;
-        if let Some(bound) = labeled_mana_value_or_less_bound(sentence_words.as_slice()) {
+        if let Some(bound) = labeled_mana_value_or_less_bound(tokens) {
             filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(bound as i32));
         }
         let chosen = TagKey::from("__chosen_cast_from_among");
@@ -1031,4 +1030,20 @@ fn parse_token_copy_modifier_words(filtered: &[&str]) -> Option<TokenCopyFollowu
     }
 
     None
+}
+
+#[cfg(test)]
+mod labeled_prefix_tests {
+    use super::*;
+
+    #[test]
+    fn labeled_mana_value_bound_uses_lexed_tail_tokens() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You may cast any number of spells with mana value 5 or less from among them without paying their mana costs.",
+            0,
+        )
+        .expect("labeled mana-value text should lex");
+
+        assert_eq!(labeled_mana_value_or_less_bound(&tokens), Some(5));
+    }
 }

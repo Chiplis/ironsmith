@@ -74,6 +74,10 @@ const TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause
             &["do", "this", "only", "once", "each", "turn"],
         ]
 );
+const SOURCE_LEAVES_BATTLEFIELD_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["leaves", "the", "battlefield"]]);
+const THIS_PERMANENT_PHRASE_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["this", "permanent"]]);
 const HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE: &[&str] = &[
     "if", "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
     "starting", "life", "total", "plus", "one",
@@ -1193,9 +1197,7 @@ fn normalize_named_source_trigger_for_builder(
     let trimmed = text.trim();
     let lower = trimmed.to_ascii_lowercase();
     if let Some((trigger_head, effect_body)) = split_first_comma_lexed(lower.as_str()) {
-        if trigger_head.contains(" leaves the battlefield")
-            && normalized_line_mentions_source_alias(builder, trigger_head.as_str())
-        {
+        if trigger_head_is_source_alias_leaves_battlefield(builder, trigger_head.as_str()) {
             return None;
         }
         let mut changed = false;
@@ -1230,6 +1232,17 @@ fn normalize_named_source_trigger_for_builder(
     }
 
     normalize_named_source_trigger_head_for_builder(builder, lower.as_str())
+}
+
+fn trigger_head_is_source_alias_leaves_battlefield(
+    builder: &CardDefinitionBuilder,
+    trigger_head: &str,
+) -> bool {
+    let Ok(tokens) = lex_line(trigger_head.trim(), 0) else {
+        return false;
+    };
+    SOURCE_LEAVES_BATTLEFIELD_PATTERN.matches_words(&token_word_refs(&tokens))
+        && normalized_line_mentions_source_alias(builder, trigger_head)
 }
 
 fn named_source_subject_for_builder(builder: &CardDefinitionBuilder) -> &'static str {
@@ -2082,6 +2095,12 @@ mod tests {
             ] => {
                 assert_eq!(keyword.kind, KeywordLineKindCst::AlternativeCast);
                 assert_eq!(render_token_slice(&keyword.parse_tokens), "sneak {1}{b}");
+                assert!(
+                    render_token_slice(&keyword.full_parse_tokens)
+                        .to_ascii_lowercase()
+                        .contains("you may cast this spell for"),
+                    "full Sneak parse tokens should retain reminder text"
+                );
             }
             other => panic!("expected sneak keyword plus statement line, got {other:?}"),
         }
@@ -3105,7 +3124,7 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     };
 
     let mut candidates = vec![rewritten];
-    if candidates[0].contains("this permanent") {
+    if line_mentions_this_permanent_token_phrase(candidates[0].as_str()) {
         for subject in [
             "this creature",
             "this artifact",
@@ -3129,6 +3148,12 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     }
 
     Ok(None)
+}
+
+fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
+    lex_line(text.trim(), 0).ok().is_some_and(|tokens| {
+        THIS_PERMANENT_PHRASE_PATTERN.matches_words(&token_word_refs(&tokens))
+    })
 }
 
 fn line_starts_with_lparen_token(line: &PreprocessedLine) -> bool {

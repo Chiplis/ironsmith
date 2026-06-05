@@ -1015,6 +1015,7 @@ fn parse_effect_sentence_with_where_x_lexed(
 
     let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
+    let clause_display = render_token_slice(tokens).trim().to_string();
     let Some(where_idx) =
         sentence_find_phrase_start(clause_words.as_slice(), SENTENCE_WHERE_X_IS_PREFIX_PATTERN)
     else {
@@ -1026,7 +1027,7 @@ fn parse_effect_sentence_with_where_x_lexed(
     let Some(where_token_idx) = where_token_idx else {
         return Err(CardTextError::ParseError(format!(
             "unsupported where-x clause (clause: '{}')",
-            clause_words.join(" ")
+            &clause_display
         )));
     };
     let where_tokens = &tokens[where_token_idx..];
@@ -1329,14 +1330,14 @@ fn parse_effect_sentence_with_where_x_lexed(
                     parse_value_binding_clause_lexed(trimmed).ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported where-x clause (clause: '{}')",
-                            clause_words.join(" ")
+                            &clause_display
                         ))
                     })?
                 } else {
                     parse_value_binding_clause_lexed(&primary_where_tokens).ok_or_else(|| {
                         CardTextError::ParseError(format!(
                             "unsupported where-x clause (clause: '{}')",
-                            clause_words.join(" ")
+                            &clause_display
                         ))
                     })?
                 }
@@ -1358,7 +1359,7 @@ fn parse_effect_sentence_with_where_x_lexed(
         }
         parsed
     };
-    replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_words.join(" "))?;
+    replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_display)?;
     for effect in &mut effects {
         replace_search_filter_x(effect, &where_value);
         bind_dynamic_target_counts(effect, &where_value);

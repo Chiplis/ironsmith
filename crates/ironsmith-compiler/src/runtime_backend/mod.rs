@@ -125,6 +125,7 @@ pub(crate) use effect_sentences::{
     parse_sentence_put_multiple_counters_on_target, parse_shared_color_target_fanout_sentence,
     split_choose_list,
 };
+use front_end::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 pub(crate) use grammar::filters::parse_object_filter_with_grammar_entrypoint as parse_object_filter;
 pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint as parse_spell_filter;
 pub(crate) use grammar::filters::parse_spell_filter_with_grammar_entrypoint_lexed as parse_spell_filter_lexed;
@@ -147,6 +148,7 @@ pub(crate) use leaf::{
     ActivationCostSegmentCst, lower_activation_cost_cst, parse_activation_cost_rewrite,
     parse_activation_cost_tokens_rewrite,
 };
+use lexer::LexedClause;
 pub(crate) use lexer::{OwnedLexToken, token_word_refs};
 #[cfg(test)]
 pub(crate) use lexer::{TokenWordView, lex_line, split_lexed_sentences};
@@ -179,6 +181,7 @@ pub(crate) use search_library_support::{
     SearchLibraryManaConstraint, extract_search_library_mana_constraint,
     split_search_different_name_reference_filter, split_search_same_name_reference_filter,
 };
+use sentences::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 pub(crate) use shared_types::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine,
@@ -195,6 +198,34 @@ pub(crate) use util::{
 
 #[allow(unused_imports)]
 pub(crate) use facade::{CardTextCompiler, CompilePolicy, CompiledCardText};
+
+const FIRST_TIME_EACH_OR_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["for", "the", "first", "time", "each", "turn"],
+    &["for", "the", "first", "time", "this", "turn"],
+];
+const FIRST_TIME_EACH_OR_THIS_TURN_PATTERN: ClauseShape<'static> =
+    ClauseShape::new().contains_any_phrases(&[FIRST_TIME_EACH_OR_THIS_TURN_PHRASES]);
+const BECOMES_CREWED_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["becomes", "crewed"]]);
+const KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["counter", "target", "spell"],
+            &["mana", "value"],
+            &["2", "or", "less"],
+            &["if", "this", "spell", "was", "kicked"],
+            &["counter", "that", "spell"],
+            &["4", "or", "less"],
+            &["instead"],
+        ]
+);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TriggerFrequencyTextAst {
+    first_time_each_or_this_turn: bool,
+    becomes_crewed: bool,
+    do_this_limit_each_turn: Option<u32>,
+}
 
 pub(crate) fn compile_card_text(
     builder: CardDefinitionBuilder,
@@ -236,15 +267,12 @@ pub(crate) fn trigger_frequency_condition(
     max_triggers_per_turn: Option<u32>,
 ) -> Option<crate::ConditionExpr> {
     max_triggers_per_turn.map(|limit| {
-        let text = text.unwrap_or_default();
-        if limit == 1
-            && text_uses_first_time_each_turn(text)
-            && text.to_ascii_lowercase().contains("becomes crewed")
-        {
+        let frequency = trigger_frequency_text_ast(text.unwrap_or_default());
+        if limit == 1 && frequency.first_time_each_or_this_turn && frequency.becomes_crewed {
             crate::ConditionExpr::SourceFirstCrewedThisTurn
-        } else if limit == 1 && text_uses_first_time_each_turn(text) {
+        } else if limit == 1 && frequency.first_time_each_or_this_turn {
             crate::ConditionExpr::FirstTimeThisTurn
-        } else if text_uses_do_this_only_each_turn(text) {
+        } else if frequency.do_this_limit_each_turn.is_some() {
             crate::ConditionExpr::DoThisMaxTimesEachTurn(limit)
         } else {
             crate::ConditionExpr::MaxTimesEachTurn(limit)
@@ -252,34 +280,51 @@ pub(crate) fn trigger_frequency_condition(
     })
 }
 
-fn text_uses_first_time_each_turn(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    normalized.contains("for the first time each turn")
-        || normalized.contains("for the first time this turn")
+fn lex_text_tokens(text: &str) -> Vec<OwnedLexToken> {
+    text.lines()
+        .enumerate()
+        .flat_map(|(idx, line)| lexer::lex_line(line, idx).unwrap_or_default())
+        .collect()
 }
 
-fn text_uses_do_this_only_each_turn(text: &str) -> bool {
-    let normalized = text.trim().to_ascii_lowercase();
-    normalized.contains("do this only once each turn")
-        || normalized.contains("do this only twice each turn")
+fn trigger_frequency_text_ast(text: &str) -> TriggerFrequencyTextAst {
+    let tokens = lex_text_tokens(text);
+    let words = lexer::parser_token_word_refs(&tokens);
+    TriggerFrequencyTextAst {
+        first_time_each_or_this_turn: FIRST_TIME_EACH_OR_THIS_TURN_PATTERN.matches_words(&words),
+        becomes_crewed: BECOMES_CREWED_PATTERN.matches_words(&words),
+        do_this_limit_each_turn: parse_do_this_only_each_turn_limit(&tokens),
+    }
+}
+
+fn parse_do_this_only_each_turn_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
+    let words = lexer::parser_token_word_refs(tokens);
+    let normalized_tokens = lexer::synthetic_word_tokens(&words);
+    let clause = LexedClause::new(&normalized_tokens);
+    let atoms = [
+        LexPattern::phrase(&["do", "this", "only"]),
+        LexPattern::amount("limit", LexCaptureKind::OneOf(&["once", "twice"])),
+        LexPattern::phrase(&["each", "turn"]),
+    ];
+    let matched = LexPattern::new(&atoms).find_in_clause(clause)?;
+    let limit_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    match limit_clause.word_refs().as_slice() {
+        ["once"] => Some(1),
+        ["twice"] => Some(2),
+        _ => None,
+    }
 }
 
 fn normalize_do_this_trigger_frequency_conditions(text: &str, definition: &mut CardDefinition) {
-    let normalized = text.to_ascii_lowercase();
-    let once = normalized.contains("do this only once each turn");
-    let twice = normalized.contains("do this only twice each turn");
-    if !once && !twice {
+    let Some(limit) = trigger_frequency_text_ast(text).do_this_limit_each_turn else {
         return;
-    }
+    };
     for ability in &mut definition.abilities {
         let crate::ability::AbilityKind::Triggered(triggered) = &mut ability.kind else {
             continue;
         };
-        if once && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(1)) {
-            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(1));
-        }
-        if twice && triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(2)) {
-            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(2));
+        if triggered.intervening_if == Some(crate::ConditionExpr::MaxTimesEachTurn(limit)) {
+            triggered.intervening_if = Some(crate::ConditionExpr::DoThisMaxTimesEachTurn(limit));
         }
     }
 }
@@ -288,11 +333,9 @@ fn normalize_kicked_counter_spell_mana_value_replacement(
     text: &str,
     definition: &mut CardDefinition,
 ) {
-    let normalized = text.to_ascii_lowercase();
-    if !normalized.contains("counter target spell if its mana value is 2 or less")
-        || !normalized.contains("if this spell was kicked")
-        || !normalized.contains("counter that spell if its mana value is 4 or less instead")
-    {
+    let tokens = lex_text_tokens(text);
+    let words = lexer::parser_token_word_refs(&tokens);
+    if !KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PATTERN.matches_words(&words) {
         return;
     }
 

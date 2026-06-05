@@ -9,7 +9,13 @@ use crate::triggers::{Trigger, TriggerKind};
 use crate::zone::Zone;
 
 use super::effect_sentences::clause_pattern_helpers::ClauseShape;
-use super::lexer::{lex_line, parser_token_word_refs};
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::lexer::{LexedClause, lex_line, parser_token_word_refs};
+
+const BACKUP_PLACEHOLDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("backup"),
+    LexPattern::amount("amount", LexCaptureKind::WordCount(1)),
+]);
 
 fn line_starts_with_keyword(line: &str, keyword: &str) -> bool {
     lex_line(line.trim_start(), 0).ok().is_some_and(|tokens| {
@@ -73,15 +79,11 @@ fn parse_backup_placeholder_amount(ability: &Ability) -> Option<u32> {
     };
 
     let text = static_ability.display();
-    let text = text.trim();
-    let mut parts = text.split_whitespace();
-    if !parts
-        .next()
-        .is_some_and(|part| part.eq_ignore_ascii_case("backup"))
-    {
-        return None;
-    }
-    parts.next()?.trim_end_matches(',').parse::<u32>().ok()
+    let tokens = lex_line(text.trim(), 0).ok()?;
+    let clause = LexedClause::new(&tokens);
+    let matched = BACKUP_PLACEHOLDER_PATTERN.match_prefix(clause)?;
+    let amount_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    amount_clause.word_refs().first()?.parse::<u32>().ok()
 }
 
 fn backup_granted_abilities_from_slice(abilities: &[Ability]) -> Vec<Ability> {

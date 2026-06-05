@@ -21,6 +21,8 @@ const THIS_CREATURE_SOURCE_PATTERN: ClauseShape<'static> =
 const HAS_OR_HAVE_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["has"], &["have"]]);
 const PARTNER_KEYWORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["partner"]);
+const CHARACTER_SELECT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["character", "select"]);
 const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -1825,6 +1827,7 @@ pub(crate) fn lower_rewrite_keyword_to_chunk(
             text: text.to_string(),
             kind,
             parse_tokens: parse_tokens.to_vec(),
+            full_parse_tokens: parse_tokens.to_vec(),
         },
         parse_tokens,
     )
@@ -2318,52 +2321,33 @@ fn try_lower_partner_variant_keyword(
     line: &RewriteKeywordLine,
     parse_tokens: &[OwnedLexToken],
 ) -> Option<LineAst> {
-    if let Some((label_tokens, _body_tokens)) = split_em_dash_label_prefix_tokens(parse_tokens) {
-        let label_words = parser_token_word_refs(label_tokens);
-        if !PARTNER_KEYWORD_PATTERN.matches_words(&label_words) {
-            return None;
-        }
-    } else if !PARTNER_KEYWORD_PATTERN.matches_words(&parser_token_word_refs(parse_tokens))
-        || !visible_partner_label_is_variant(line.text.as_str())
-    {
+    let visible_tokens = if line.full_parse_tokens.is_empty() {
+        parse_tokens
+    } else {
+        line.full_parse_tokens.as_slice()
+    };
+    if !visible_partner_label_is_variant_tokens(visible_tokens) {
         return None;
     }
 
-    let display = if PARTNER_KEYWORD_PATTERN.matches_words(&parser_token_word_refs(parse_tokens))
-        && visible_partner_label_is_variant(line.text.as_str())
-    {
-        visible_partner_variant_label(line.text.as_str())
-    } else {
-        render_tokens_before_reminder_or_period(parse_tokens)
-            .unwrap_or_else(|| line.text.trim().to_string())
-    };
+    let display = render_tokens_before_reminder_or_period(visible_tokens)
+        .unwrap_or_else(|| render_token_slice(parse_tokens).trim().to_string());
     Some(LineAst::StaticAbility(
         StaticAbility::partner_variant(display).into(),
     ))
 }
 
-fn visible_partner_label_is_variant(text: &str) -> bool {
-    let lower = text.trim().to_ascii_lowercase();
-    if lower == "partner" || lower.starts_with("partner with ") {
+fn visible_partner_label_is_variant_tokens(tokens: &[OwnedLexToken]) -> bool {
+    let label_tokens = tokens_before_reminder_or_period(tokens);
+    let words = parser_token_word_refs(label_tokens);
+    if PARTNER_KEYWORD_PATTERN.matches_words(&words) || PARTNER_WITH_PATTERN.matches_words(&words) {
         return false;
     }
-    let Some(rest) = lower.strip_prefix("partner") else {
-        return lower.starts_with("character select");
-    };
-    rest.trim_start()
-        .chars()
-        .next()
-        .is_some_and(|ch| matches!(ch, '-' | '\u{2013}' | '\u{2014}') || ch.is_alphanumeric())
-}
-
-fn visible_partner_variant_label(text: &str) -> String {
-    text.split_once('(')
-        .map(|(label, _)| label)
-        .unwrap_or(text)
-        .trim()
-        .trim_end_matches('.')
-        .trim()
-        .to_string()
+    CHARACTER_SELECT_PREFIX_PATTERN.matches_words(&words)
+        || matches!(
+            words.as_slice(),
+            ["partner", second, ..] if *second != "with"
+        )
 }
 
 fn try_lower_hideaway_keyword(
@@ -2503,20 +2487,60 @@ fn partner_with_name_from_tokens(tokens: &[OwnedLexToken]) -> Option<String> {
 }
 
 fn render_tokens_before_reminder_or_period(tokens: &[OwnedLexToken]) -> Option<String> {
+    let display = render_partner_label_token_slice(tokens_before_reminder_or_period(tokens))
+        .trim()
+        .to_string();
+    (!display.is_empty()).then_some(display)
+}
+
+fn tokens_before_reminder_or_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     let end = tokens
         .iter()
         .position(|token| matches!(token.kind, TokenKind::LParen | TokenKind::Period))
         .unwrap_or(tokens.len());
-    let display = normalize_dash_label_display(render_token_slice(&tokens[..end]).trim());
-    (!display.is_empty()).then_some(display)
+    &tokens[..end]
 }
 
-fn normalize_dash_label_display(display: &str) -> String {
-    display
-        .replace(" -", " - ")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ")
+fn render_partner_label_token_slice(tokens: &[OwnedLexToken]) -> String {
+    fn needs_space(prev: &OwnedLexToken, current: &OwnedLexToken) -> bool {
+        if matches!(current.kind, TokenKind::Dash) || matches!(prev.kind, TokenKind::Dash) {
+            return true;
+        }
+        if prev.span.end == current.span.start {
+            return false;
+        }
+        if matches!(
+            current.kind,
+            TokenKind::Comma
+                | TokenKind::Period
+                | TokenKind::Colon
+                | TokenKind::Semicolon
+                | TokenKind::Question
+                | TokenKind::Bang
+                | TokenKind::RParen
+                | TokenKind::RBracket
+        ) {
+            return false;
+        }
+        !matches!(
+            prev.kind,
+            TokenKind::LBracket | TokenKind::LParen | TokenKind::Quote | TokenKind::Apostrophe
+        )
+    }
+
+    let mut rendered = String::new();
+    let mut previous = None;
+    for token in tokens {
+        if let Some(prev) = previous
+            && needs_space(prev, token)
+            && !rendered.ends_with(' ')
+        {
+            rendered.push(' ');
+        }
+        rendered.push_str(&token.slice);
+        previous = Some(token);
+    }
+    rendered
 }
 
 #[test]
