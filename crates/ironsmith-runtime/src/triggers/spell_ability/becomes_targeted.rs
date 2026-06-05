@@ -16,7 +16,7 @@ impl TriggerMatcher for BecomesTargetedTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        e.target == ctx.source_id
+        e.target_object() == Some(ctx.source_id)
     }
 
     fn display(&self) -> String {

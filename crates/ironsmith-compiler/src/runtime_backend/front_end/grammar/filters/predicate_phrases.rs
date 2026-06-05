@@ -826,10 +826,18 @@ fn parse_source_crewed_by_exactly_predicate(
 
 fn parse_source_bare_state_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let clause = LexedClause::new(tokens);
-    let state_phrases: &[&[&str]] = &[&["tapped"], &["untapped"]];
+    let state_phrases: &[&[&str]] = &[
+        &["enchanted"],
+        &["equipped"],
+        &["tapped"],
+        &["untapped"],
+    ];
     let atoms = [
         LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(state_phrases)),
-        LexPattern::object("state", LexCaptureKind::OneOf(&["tapped", "untapped"])),
+        LexPattern::object(
+            "state",
+            LexCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped"]),
+        ),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
@@ -847,11 +855,17 @@ fn parse_source_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<Predicate
         LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(copula_phrases)),
         LexPattern::action(
             "copula",
-            LexCaptureKind::UntilAnyPhrase(&[&["tapped"], &["untapped"], &["saddled"]]),
+            LexCaptureKind::UntilAnyPhrase(&[
+                &["enchanted"],
+                &["equipped"],
+                &["tapped"],
+                &["untapped"],
+                &["saddled"],
+            ]),
         ),
         LexPattern::object(
             "state",
-            LexCaptureKind::OneOf(&["tapped", "untapped", "saddled"]),
+            LexCaptureKind::OneOf(&["enchanted", "equipped", "tapped", "untapped", "saddled"]),
         ),
     ];
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
@@ -895,6 +909,20 @@ fn source_state_predicate_from_clause(
             Some(PredicateAst::SourceIsTapped)
         } else {
             Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)))
+        };
+    }
+    if clause_matches_phrase(clause, &["equipped"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEquipped)))
+        } else {
+            Some(PredicateAst::SourceIsEquipped)
+        };
+    }
+    if clause_matches_phrase(clause, &["enchanted"]) {
+        return if negative {
+            Some(PredicateAst::Not(Box::new(PredicateAst::SourceIsEnchanted)))
+        } else {
+            Some(PredicateAst::SourceIsEnchanted)
         };
     }
     if clause_matches_phrase(clause, &["saddled"]) {
@@ -6960,6 +6988,14 @@ mod tests {
             (
                 "If this creature is untapped",
                 PredicateAst::Not(Box::new(PredicateAst::SourceIsTapped)),
+            ),
+            (
+                "If this creature is enchanted",
+                PredicateAst::SourceIsEnchanted,
+            ),
+            (
+                "If this creature isn't equipped",
+                PredicateAst::Not(Box::new(PredicateAst::SourceIsEquipped)),
             ),
             (
                 "If this permanent is saddled",

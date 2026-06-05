@@ -103,6 +103,15 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             target,
             source_controller,
         } => Trigger::becomes_targeted_by_source_controller(target, source_controller),
+        TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+            player,
+            object,
+            source_controller,
+        } => Trigger::player_or_object_becomes_targeted_by_source_controller(
+            player,
+            object,
+            source_controller,
+        ),
         TriggerSpec::ThisDealsDamage => Trigger::this_deals_damage(),
         TriggerSpec::ThisDealsDamageToPlayer { player, amount } => {
             Trigger::this_deals_damage_to_player(player, amount)

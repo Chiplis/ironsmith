@@ -26,7 +26,10 @@ impl TriggerMatcher for BecomesTargetedObjectTrigger {
         let Some(e) = event.downcast::<BecomesTargetedEvent>() else {
             return false;
         };
-        let Some(target) = ctx.game.object(e.target) else {
+        let Some(target_id) = e.target_object() else {
+            return false;
+        };
+        let Some(target) = ctx.game.object(target_id) else {
             return false;
         };
         self.filter.matches(target, &ctx.filter_ctx, ctx.game)

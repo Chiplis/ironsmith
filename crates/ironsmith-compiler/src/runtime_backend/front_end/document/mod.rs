@@ -1196,21 +1196,33 @@ fn normalize_named_source_trigger_for_builder(
         {
             return None;
         }
-        let rewritten_head =
-            normalize_named_source_trigger_head_for_builder(builder, trigger_head.as_str())?;
+        let mut changed = false;
+        let rewritten_head = if let Some(rewritten_head) =
+            normalize_named_source_trigger_head_for_builder(builder, trigger_head.as_str())
+        {
+            changed = true;
+            rewritten_head
+        } else {
+            trigger_head
+        };
         let names = source_name_aliases_for_builder(builder);
         let mut rewritten_body = effect_body;
         if !names.is_empty() && !mentions_named_reference(rewritten_body.as_str()) {
             let subject = named_source_subject_for_builder(builder);
             for name_lower in &names {
-                if text_contains_control_of_alias(rewritten_body.as_str(), name_lower.as_str()) {
-                    rewritten_body = replace_named_source_aliases_for_trigger_normalization(
-                        &rewritten_body,
-                        name_lower,
-                        subject,
-                    );
+                let next_body = replace_named_source_aliases_for_trigger_normalization(
+                    &rewritten_body,
+                    name_lower,
+                    subject,
+                );
+                if next_body != rewritten_body {
+                    changed = true;
                 }
+                rewritten_body = next_body;
             }
+        }
+        if !changed {
+            return None;
         }
         return Some(format!("{rewritten_head}, {rewritten_body}"));
     }
@@ -1377,24 +1389,6 @@ fn split_first_comma_lexed(text: &str) -> Option<(String, String)> {
         .trim_start()
         .to_string();
     (!head.is_empty() && !body.is_empty()).then_some((head, body))
-}
-
-fn text_contains_control_of_alias(text: &str, alias: &str) -> bool {
-    let Some(alias_words) = lexed_word_strings(alias) else {
-        return false;
-    };
-    if alias_words.is_empty() {
-        return false;
-    }
-    let Ok(tokens) = lex_line(text, 0) else {
-        return false;
-    };
-    let mut phrase = Vec::with_capacity(alias_words.len() + 2);
-    phrase.extend(["control", "of"]);
-    phrase.extend(alias_words.iter().map(String::as_str));
-    TokenWordView::new(&tokens)
-        .find_phrase_start(phrase.as_slice())
-        .is_some()
 }
 
 fn mentions_named_reference(text: &str) -> bool {
@@ -2629,6 +2623,23 @@ mod tests {
                 && rewritten.contains("if they do, you draw that many cards")
                 && rewritten.contains("lose that much life"),
             "expected source-name rewrite to normalize the whole triggered line, got {rewritten}"
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_covers_trigger_body_when_head_needs_no_rewrite() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Rayne, Academy Chancellor")
+            .card_types(vec![CardType::Creature]);
+
+        let rewritten = normalize_named_source_trigger_for_builder(
+            &builder,
+            "Whenever a permanent you control becomes the target of a spell or ability an opponent controls, you may draw a card. You may draw an additional card if Rayne is enchanted.",
+        )
+        .expect("expected body-only named source rewrite to apply");
+
+        assert!(
+            rewritten.contains("you may draw an additional card if this creature is enchanted"),
+            "expected source name in trigger body condition to normalize, got {rewritten}"
         );
     }
 

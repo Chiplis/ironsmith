@@ -187,6 +187,13 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::BecomesTargetedBySourceController { target, controller } => {
             crate::triggers::Trigger::becomes_targeted_by_source_controller(target, controller)
         }
+        TriggerKind::PlayerOrObjectBecomesTargetedBySourceController {
+            player,
+            object,
+            controller,
+        } => crate::triggers::Trigger::player_or_object_becomes_targeted_by_source_controller(
+            player, object, controller,
+        ),
         TriggerKind::ThisDealsDamage => crate::triggers::Trigger::this_deals_damage(),
         TriggerKind::ThisDealsDamageToPlayer { player, amount } => {
             crate::triggers::Trigger::this_deals_damage_to_player(player, amount)

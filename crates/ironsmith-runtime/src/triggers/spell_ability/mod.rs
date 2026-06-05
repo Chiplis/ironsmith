@@ -12,7 +12,9 @@ mod you_cast_this_spell;
 
 pub use ability_activated::AbilityActivatedTrigger;
 pub use becomes_targeted::BecomesTargetedTrigger;
-pub use becomes_targeted_by_source_controller::BecomesTargetedBySourceControllerTrigger;
+pub use becomes_targeted_by_source_controller::{
+    BecomesTargetedBySourceControllerTrigger, PlayerOrObjectBecomesTargetedBySourceControllerTrigger,
+};
 pub use becomes_targeted_by_spell::{
     BecomesTargetedBySpellTrigger, BecomesTargetedByStackObjectTrigger,
     BecomesTargetedObjectByStackObjectTrigger,

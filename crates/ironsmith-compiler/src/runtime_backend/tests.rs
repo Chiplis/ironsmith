@@ -10887,6 +10887,31 @@ fn rewrite_lexed_conditional_parser_routes_commaless_clause_through_structure_sp
 }
 
 #[test]
+fn rewrite_lexed_leading_may_trailing_if_keeps_condition_outside_permission() {
+    let text = "You may draw an additional card if this is enchanted.";
+    let lexed = lex_line(text, 0).expect("rewrite lexer should classify may-if draw sentence");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("may-if draw sentence should parse");
+
+    match parsed.as_slice() {
+        [crate::cards::builders::EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        }] => {
+            assert!(matches!(predicate, crate::cards::builders::PredicateAst::SourceIsEnchanted));
+            assert!(if_false.is_empty());
+            assert!(matches!(
+                if_true.as_slice(),
+                [crate::cards::builders::EffectAst::MayByPlayer { .. }]
+            ));
+        }
+        other => panic!("expected conditional may draw, got {other:?}"),
+    }
+}
+
+#[test]
 fn rewrite_lexed_conditional_parser_keeps_if_you_dont_result_predicate() {
     let text = "If you don't, create a Treasure token.";
     let lexed = lex_line(text, 0).expect("rewrite lexer should classify if-you-don't conditional");

@@ -164,6 +164,144 @@ fn kodama_of_the_center_tree_strict_parser_compiled_text_and_model_regression() 
 }
 
 #[test]
+fn rayne_academy_chancellor_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Rayne, Academy Chancellor");
+
+    let def = parse_oracle_card_definition("Rayne, Academy Chancellor");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "Whenever you or a permanent you control becomes the target of a spell or ability an opponent controls, you may draw a card"
+        ),
+        "expected Rayne's player-or-permanent opponent-controlled targeting trigger to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("You may draw an additional card if this creature is enchanted"),
+        "expected Rayne's enchanted additional-draw clause to render, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("SourceIsEnchanted") && abilities_debug.contains("MayEffect"),
+        "expected Rayne's additional draw to be a conditional optional effect, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
+    struct AcceptMayDecisionMaker;
+    impl crate::decision::DecisionMaker for AcceptMayDecisionMaker {
+        fn decide_boolean(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            _ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            true
+        }
+    }
+
+    fn alice_hand_count(game: &crate::game_state::GameState, alice: PlayerId) -> usize {
+        game.objects_in_zone(Zone::Hand)
+            .into_iter()
+            .filter_map(|id| game.object(id))
+            .filter(|object| game.controller_of(object) == alice)
+            .count()
+    }
+
+    fn resolve_rayne_targeting_trigger(
+        enchanted: bool,
+        target_player: bool,
+        source_controller: PlayerId,
+    ) -> (usize, usize) {
+        let def = parse_oracle_card_definition("Rayne, Academy Chancellor");
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let rayne = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+        for idx in 0..2 {
+            let draw_card = CardDefinitionBuilder::new(CardId::new(), format!("Rayne Draw {idx}"))
+                .card_types(vec![CardType::Creature])
+                .build();
+            game.create_object_from_definition(&draw_card, alice, Zone::Library);
+        }
+
+        if enchanted {
+            let aura = CardDefinitionBuilder::new(CardId::new(), "Rayne Test Aura")
+                .card_types(vec![CardType::Enchantment])
+                .subtypes(vec![Subtype::Aura])
+                .build();
+            let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
+            game.object_mut(aura_id)
+                .expect("Rayne test Aura should exist")
+                .attached_to = Some(crate::object::AttachmentTarget::Object(rayne));
+            game.object_mut(rayne)
+                .expect("Rayne should exist")
+                .attachments
+                .push(aura_id);
+        }
+
+        let spell = CardDefinitionBuilder::new(CardId::new(), "Rayne Targeting Spell")
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell_id = game.create_object_from_definition(&spell, source_controller, Zone::Stack);
+        let target = if target_player {
+            crate::game_state::Target::Player(alice)
+        } else {
+            crate::game_state::Target::Object(rayne)
+        };
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::BecomesTargetedEvent::new_target(
+                target,
+                spell_id,
+                source_controller,
+                false,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let triggers = crate::triggers::check_triggers(&game, &event);
+        let matching_count = triggers.iter().filter(|entry| entry.source == rayne).count();
+        let mut trigger_queue = crate::triggers::TriggerQueue::new();
+        for trigger in triggers.into_iter().filter(|entry| entry.source == rayne) {
+            trigger_queue.add(trigger);
+        }
+        if matching_count > 0 {
+            let mut dm = AcceptMayDecisionMaker;
+            crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+                .expect("Rayne trigger should go on the stack");
+            crate::game_loop::resolve_stack_entry_with(&mut game, &mut dm)
+                .expect("Rayne trigger should resolve");
+        }
+
+        (matching_count, alice_hand_count(&game, alice))
+    }
+
+    let bob = PlayerId::from_index(1);
+    let alice = PlayerId::from_index(0);
+
+    assert_eq!(
+        resolve_rayne_targeting_trigger(false, false, bob),
+        (1, 1),
+        "Rayne should draw one card when unenchanted and targeted by an opponent's source"
+    );
+    assert_eq!(
+        resolve_rayne_targeting_trigger(true, false, bob),
+        (1, 2),
+        "Rayne should draw the additional optional card while enchanted"
+    );
+    assert_eq!(
+        resolve_rayne_targeting_trigger(false, true, bob),
+        (1, 1),
+        "Rayne should draw when its controller becomes targeted by an opponent's source"
+    );
+    assert_eq!(
+        resolve_rayne_targeting_trigger(true, false, alice),
+        (0, 0),
+        "Rayne should not trigger from a source its controller controls"
+    );
+}
+
+#[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");
     let ability_debug = format!("{:#?}", def.abilities);

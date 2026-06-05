@@ -1470,6 +1470,24 @@ pub(crate) fn parse_trigger_clause_lexed(
         filter
     }
 
+    fn parse_you_or_controlled_object_subject(
+        subject_words: &[&str],
+    ) -> Option<(PlayerFilter, ObjectFilter)> {
+        let tail = subject_words.strip_prefix(&["you", "or"])?;
+        let tail = non_article_word_refs(tail);
+        let object_kind = tail.strip_suffix(&["you", "control"])?;
+        let filter = match object_kind {
+            ["permanent"] | ["permanents"] => ObjectFilter::permanent(),
+            ["creature"] | ["creatures"] => ObjectFilter::creature(),
+            ["artifact"] | ["artifacts"] => ObjectFilter::artifact(),
+            ["enchantment"] | ["enchantments"] => ObjectFilter::enchantment(),
+            ["land"] | ["lands"] => ObjectFilter::land(),
+            ["planeswalker"] | ["planeswalkers"] => ObjectFilter::planeswalker(),
+            _ => return None,
+        };
+        Some((PlayerFilter::You, filter.you_control()))
+    }
+
     fn parse_damage_by_dies_trigger_lexed(
         subject_tokens: &[OwnedLexToken],
         other: bool,
@@ -3319,6 +3337,16 @@ pub(crate) fn parse_trigger_clause_lexed(
         } else {
             let tail_word_start = becomes_idx + 4;
             let tail_words = &words[tail_word_start..];
+            if let Some(source_controller) = parse_spell_or_ability_controller_tail(tail_words)
+                && let Some((player, object)) =
+                    parse_you_or_controlled_object_subject(subject_words)
+            {
+                return Ok(TriggerSpec::PlayerOrObjectBecomesTargetedBySourceController {
+                    player,
+                    object,
+                    source_controller,
+                });
+            }
             if let Some(source_controller) = parse_spell_or_ability_controller_tail(tail_words)
                 && let Some(filter) = subject_filter.clone()
             {
