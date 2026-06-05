@@ -1015,12 +1015,15 @@ where
                 crate::effects::PreventNextTimeDamageSource::Filter(filter.clone())
             }
         };
-        let target = match payload.target {
+        let target = match &payload.target {
             ironsmith_core::PreventNextTimeDamageTarget::AnyTarget => {
                 crate::effects::PreventNextTimeDamageTarget::AnyTarget
             }
             ironsmith_core::PreventNextTimeDamageTarget::You => {
                 crate::effects::PreventNextTimeDamageTarget::You
+            }
+            ironsmith_core::PreventNextTimeDamageTarget::Target(spec) => {
+                crate::effects::PreventNextTimeDamageTarget::Target(spec.clone())
             }
         };
         let mut effect = crate::effects::PreventNextTimeDamageEffect::new(source, target);

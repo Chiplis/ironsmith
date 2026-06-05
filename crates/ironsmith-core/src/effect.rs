@@ -114,6 +114,7 @@ pub enum PreventNextTimeDamageSource {
 pub enum PreventNextTimeDamageTarget {
     AnyTarget,
     You,
+    Target(ChooseSpec),
 }
 
 #[derive(Debug, Clone, PartialEq)]

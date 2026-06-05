@@ -1741,12 +1741,20 @@ fn compile_subject_verb_effect(
                     )?)
                 }
             };
-            let target_spec = match target {
+            let (target_spec, mut choices) = match target {
                 PreventNextTimeDamageTargetAst::AnyTarget => {
-                    crate::effects::PreventNextTimeDamageTarget::AnyTarget
+                    (crate::effects::PreventNextTimeDamageTarget::AnyTarget, Vec::new())
                 }
                 PreventNextTimeDamageTargetAst::You => {
-                    crate::effects::PreventNextTimeDamageTarget::You
+                    (crate::effects::PreventNextTimeDamageTarget::You, Vec::new())
+                }
+                PreventNextTimeDamageTargetAst::Target(target) => {
+                    let (spec, choices) =
+                        resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                    (
+                        crate::effects::PreventNextTimeDamageTarget::Target(spec),
+                        choices,
+                    )
                 }
             };
             let mut effect = crate::effects::PreventNextTimeDamageEffect::new(
@@ -1771,7 +1779,8 @@ fn compile_subject_verb_effect(
             if *reflect_damage_to_source_controller {
                 effect = effect.reflecting_to_source_controller();
             }
-            Ok((vec![Effect::new(effect)], follow_up_choices))
+            choices.extend(follow_up_choices);
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::PreventDamage {
             amount,

@@ -1116,6 +1116,7 @@ pub(crate) enum RedirectNextTimeDamageDestinationAst {
 pub(crate) enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,
+    Target(TargetAst),
 }
 
 #[cfg(any(test, ironsmith_runtime_parser_tests))]

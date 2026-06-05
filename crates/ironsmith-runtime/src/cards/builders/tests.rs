@@ -22637,6 +22637,27 @@ fn healing_grace_runtime_only_protects_chosen_target() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_oracle_samite_blessing_strict_text_and_granted_targeted_prevention() {
+    assert_oracle_card_parses_strict("Samite Blessing");
+    let def = parse_oracle_card_definition("Samite Blessing");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Enchant creature")
+            && rendered.contains("Enchanted creature has {T}: The next time a source of your choice would deal damage to target creature this turn, prevent that damage"),
+        "expected Samite Blessing to preserve enchant creature and granted targeted prevention text, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("AttachedAbilityGrant")
+            && debug.contains("PreventNextTimeDamageEffect")
+            && debug.contains("Target(Object"),
+        "expected Samite Blessing to grant a targeted prevention activated ability, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_oracle_cho_arrim_alchemist_strict_text_and_activation_shape() {
     assert_oracle_card_parses_strict("Cho-Arrim Alchemist");
     let def = parse_oracle_card_definition("Cho-Arrim Alchemist");

@@ -158,10 +158,11 @@ pub enum RedirectNextTimeDamageDestinationAst {
     TargetObject,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PreventNextTimeDamageTargetAst {
     AnyTarget,
     You,
+    Target(TargetAst),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

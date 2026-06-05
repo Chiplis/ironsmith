@@ -2014,6 +2014,8 @@ pub(crate) fn parse_prevent_next_time_damage_sentence(
         PreventNextTimeDamageTargetAst::You
     } else if CLAUSE_ANY_TARGET_PATTERN.matches(target_clause) {
         PreventNextTimeDamageTargetAst::AnyTarget
+    } else if !target_clause.is_empty() {
+        PreventNextTimeDamageTargetAst::Target(parse_target_phrase(target_clause.tokens())?)
     } else {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-next-time damage target scope (clause: '{}')",
