@@ -9,8 +9,8 @@ use super::{
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
     GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
-    StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSourceMatcher,
+    TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -3164,6 +3164,7 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
         Some(TriggerDuplicationSpec {
             source_filter: self.source_filter.clone(),
             event_matcher: self.event_matcher.clone(),
+            source_matcher: TriggerDuplicationSourceMatcher::ObjectAbility,
             copies: self.copies,
         })
     }
@@ -3190,6 +3191,16 @@ impl StaticAbilityKind for DungeonRoomTriggerDuplication {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
+        Some(TriggerDuplicationSpec {
+            source_filter: None,
+            event_matcher: None,
+            source_matcher:
+                TriggerDuplicationSourceMatcher::DungeonRoomAbilityOwnedByStaticController,
+            copies: 1,
+        })
     }
 }
 

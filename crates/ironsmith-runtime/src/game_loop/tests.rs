@@ -13883,6 +13883,7 @@ fn put_triggers_on_stack_uses_controller_selected_order_for_simultaneous_trigger
         source_name: "Alpha Trigger".to_string(),
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
         trigger_identity: crate::triggers::compute_trigger_identity(&ability),
     });
     trigger_queue.add(TriggeredAbilityEntry {
@@ -13896,6 +13897,7 @@ fn put_triggers_on_stack_uses_controller_selected_order_for_simultaneous_trigger
         source_name: "Beta Trigger".to_string(),
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
         trigger_identity: crate::triggers::compute_trigger_identity(&ability),
     });
 
@@ -13980,6 +13982,7 @@ fn put_triggers_on_stack_orders_each_controller_in_apnap_order() {
             source_name: name.to_string(),
             source_snapshot: None,
             tagged_objects: std::collections::HashMap::new(),
+            source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
             trigger_identity: crate::triggers::compute_trigger_identity(&ability),
         }
     };
@@ -17438,6 +17441,7 @@ fn run_exchange_of_words_swapped_myr_moonvessel_dies_trigger_stacks_when_ornitho
         source_name: "Exchange of Words".to_string(),
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
         trigger_identity: crate::triggers::compute_trigger_identity(&exchange_trigger),
     });
     assert_eq!(
@@ -18064,6 +18068,7 @@ fn test_repeated_earthbend_trigger_prompts_for_each_target() {
         source_name: "Earthbend Source".to_string(),
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
+        source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
         trigger_identity: crate::triggers::compute_trigger_identity(&ability),
     });
 

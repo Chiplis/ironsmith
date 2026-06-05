@@ -60,9 +60,9 @@ pub mod zone_changes;
 // Re-export core types
 pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
-    check_delayed_triggers, check_state_triggers, check_triggers, compute_delayed_trigger_identity,
-    compute_trigger_identity, generate_step_trigger_events, player_filter_matches_with_context,
-    verify_intervening_if,
+    TriggeredAbilitySourceKind, check_delayed_triggers, check_state_triggers, check_triggers,
+    compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
+    player_filter_matches_with_context, verify_intervening_if,
 };
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
