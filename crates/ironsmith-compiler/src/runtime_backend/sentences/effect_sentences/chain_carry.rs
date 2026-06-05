@@ -2559,6 +2559,11 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     clause_tokens: &[OwnedLexToken],
 ) {
     let clause_words = clause_words_for_carry_lexed(clause_tokens);
+    if clause_words.first().is_some_and(|word| *word == "create")
+        && normalize_imperative_create_player(effect)
+    {
+        return;
+    }
     let should_skip = match carried_context {
         CarryContext::Player(_) => {
             matches!(
@@ -2598,6 +2603,25 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
         return;
     }
     maybe_apply_carried_player(effect, carried_context);
+}
+
+fn normalize_imperative_create_player(effect: &mut EffectAst) -> bool {
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::CreateTokenWithMods { player, .. },
+        ..
+    }) = effect
+    else {
+        return false;
+    };
+
+    if matches!(
+        player,
+        PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent | PlayerAst::That
+    ) {
+        *player = PlayerAst::You;
+        return true;
+    }
+    false
 }
 
 pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: PlayerAst) {

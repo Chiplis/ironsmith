@@ -497,6 +497,187 @@ fn reprocess_can_choose_zero_and_draws_no_cards() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn necromancers_covenant_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(405_317), "Necromancer's Covenant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Black],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, exile all creature cards from target player's graveyard, then create a 2/2 black Zombie creature token for each card exiled this way.\n\
+             Zombies you control have lifelink.",
+        )
+        .expect("Necromancer's Covenant should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_necromancers_covenant_graveyard_card(
+    game: &mut GameState,
+    name: &str,
+    owner: PlayerId,
+    card_types: Vec<CardType>,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::new(), name).card_types(card_types.clone());
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    let card = builder.build();
+    game.create_object_from_card(&card, owner, Zone::Graveyard)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_necromancers_covenant_etb(
+    game: &mut GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    target_player: PlayerId,
+) {
+    let covenant = necromancers_covenant_definition();
+    let triggered = covenant
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Necromancer's Covenant should have an enters trigger");
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(target_player)]);
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Necromancer's Covenant ETB effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn necromancers_covenant_zombie_tokens(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == ObjectKind::Token
+                    && game.controller_of(object) == controller
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Zombie)
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromancers_covenant_exiles_target_graveyard_creatures_and_creates_that_many_zombies() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let covenant = necromancers_covenant_definition();
+    let source = game.create_object_from_definition(&covenant, alice, Zone::Battlefield);
+
+    create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Creature One",
+        bob,
+        vec![CardType::Creature],
+    );
+    create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Creature Two",
+        bob,
+        vec![CardType::Creature],
+    );
+    let bob_noncreature = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Artifact",
+        bob,
+        vec![CardType::Artifact],
+    );
+    let alice_creature = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Alice Graveyard Creature",
+        alice,
+        vec![CardType::Creature],
+    );
+
+    resolve_necromancers_covenant_etb(&mut game, source, alice, bob);
+
+    let exiled_names = game
+        .objects_in_zone(Zone::Exile)
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
+        .collect::<Vec<_>>();
+    assert!(
+        exiled_names.iter().any(|name| name == "Bob Graveyard Creature One")
+            && exiled_names.iter().any(|name| name == "Bob Graveyard Creature Two"),
+        "target player's creature cards should be exiled, got {exiled_names:?}"
+    );
+    assert_eq!(
+        game.object(bob_noncreature).expect("Bob artifact").zone,
+        Zone::Graveyard,
+        "noncreature cards in the target graveyard should stay in the graveyard"
+    );
+    assert_eq!(
+        game.object(alice_creature).expect("Alice creature").zone,
+        Zone::Graveyard,
+        "creature cards in non-target graveyards should stay in the graveyard"
+    );
+
+    let zombies = necromancers_covenant_zombie_tokens(&game, alice);
+    assert_eq!(
+        zombies.len(),
+        2,
+        "controller should create one Zombie for each card exiled this way"
+    );
+    for zombie in zombies {
+        let object = game.object(zombie).expect("Zombie token should exist");
+        assert_eq!(object.power(), Some(2));
+        assert_eq!(object.toughness(), Some(2));
+        assert!(
+            game.current_has_static_ability_id(
+                zombie,
+                crate::static_abilities::StaticAbilityId::Lifelink,
+            ),
+            "Necromancer's Covenant should grant lifelink to Zombies you control"
+        );
+    }
+    assert!(
+        necromancers_covenant_zombie_tokens(&game, bob).is_empty(),
+        "target player should not create the Zombies"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necromancers_covenant_creates_no_zombies_when_target_graveyard_has_no_creature_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let covenant = necromancers_covenant_definition();
+    let source = game.create_object_from_definition(&covenant, alice, Zone::Battlefield);
+    let bob_artifact = create_necromancers_covenant_graveyard_card(
+        &mut game,
+        "Bob Graveyard Artifact",
+        bob,
+        vec![CardType::Artifact],
+    );
+
+    resolve_necromancers_covenant_etb(&mut game, source, alice, bob);
+
+    assert_eq!(
+        game.object(bob_artifact).expect("Bob artifact").zone,
+        Zone::Graveyard,
+        "noncreature cards should not be exiled"
+    );
+    assert!(
+        necromancers_covenant_zombie_tokens(&game, alice).is_empty(),
+        "no cards exiled this way should create no Zombie tokens"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn tide_of_war_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(78_606), "Tide of War")
         .mana_cost(ManaCost::from_pips(vec![
