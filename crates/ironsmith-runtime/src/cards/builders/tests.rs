@@ -59665,6 +59665,36 @@ fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {
 }
 
 #[test]
+fn scroll_of_isildur_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Scroll of Isildur");
+    let def = parse_oracle_card_definition("Scroll of Isildur");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "Gain control of up to one target artifact for as long as you control this Saga"
+        ),
+        "expected Scroll of Isildur chapter I to render the source-control duration, got {rendered}"
+    );
+    assert!(
+        rendered.to_ascii_lowercase().contains("ring tempts you"),
+        "expected Scroll of Isildur chapter I to render the Ring tempts clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Tap up to two target creatures. Put a stun counter on each of them"),
+        "expected Scroll of Isildur chapter II to render counters on the tapped targets, got {rendered}"
+    );
+    assert!(
+        debug.contains("YouStopControllingThis")
+            && debug.contains("RingTemptsYouEffect")
+            && debug.contains("ForEachObject")
+            && debug.contains("Stun"),
+        "expected Scroll of Isildur to keep source-control, Ring, and tagged stun-counter structures, got {debug}"
+    );
+}
+
+#[test]
 fn creepy_puppeteer_regression_renders_base_power_toughness_followup() {
     let def = parse_oracle_card_definition("Creepy Puppeteer");
     let rendered = unprocessed_compiled_lines(&def)

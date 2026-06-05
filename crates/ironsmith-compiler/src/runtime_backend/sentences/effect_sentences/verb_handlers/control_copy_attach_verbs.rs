@@ -69,7 +69,14 @@ const CCA_FOR_AS_LONG_AS_MARKER_PATTERN: ClauseShape<'static> =
 const CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN: ClauseShape<'static> =
     ClauseShape::new()
         .contains_words(&["you", "control"])
-        .contains_any_words(&[&["this"], &["thiss"], &["source"], &["creature"], &["permanent"]]);
+        .contains_any_words(&[
+            &["this"],
+            &["thiss"],
+            &["source"],
+            &["creature"],
+            &["permanent"],
+            &["saga"],
+        ]);
 const CCA_DURING_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["during", "next", "turn"]);
 const CCA_UNTIL_END_NEXT_TURN_MARKER_PATTERN: ClauseShape<'static> =
@@ -119,6 +126,20 @@ const CCA_AMONG_THEM_MARKER_PATTERN: ClauseShape<'static> =
 const CCA_PERMANENT_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["permanent"]);
 const CCA_STICKER_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["sticker"]);
+
+fn cca_words_are_you_control_source_duration(words: &[&str]) -> bool {
+    if CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN.matches_words(words) {
+        return true;
+    }
+
+    let Some(control_idx) = words.iter().position(|word| *word == "control") else {
+        return false;
+    };
+    let source_words = &words[control_idx + 1..];
+    !source_words.is_empty()
+        && (this_source_surface_for_words(source_words).is_some()
+            || source_reference_surface_for_words(source_words).is_some())
+}
 
 fn parse_put_choice_count_prefix(
     tokens: &[OwnedLexToken],
@@ -474,7 +495,7 @@ pub(crate) fn parse_control_duration(
 
     let words = crate::runtime_backend::token_word_refs(tokens);
     if CCA_FOR_AS_LONG_AS_MARKER_PATTERN.matches_words(&words)
-        && CCA_YOU_CONTROL_SOURCE_MARKER_PATTERN.matches_words(&words)
+        && cca_words_are_you_control_source_duration(&words)
     {
         return Ok(ControlDurationAst::AsLongAsYouControlSource);
     }
