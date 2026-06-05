@@ -41053,7 +41053,7 @@ fn describe_structural_exalted_keyword(
     }
 }
 
-fn describe_structural_prowess_keyword(
+pub(super) fn describe_structural_prowess_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     if triggered.intervening_if.is_some()

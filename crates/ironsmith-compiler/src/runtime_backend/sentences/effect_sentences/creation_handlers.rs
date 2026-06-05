@@ -15,17 +15,18 @@ use super::super::grammar::primitives as grammar;
 use super::super::grammar::structure::parse_who_player_predicate_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexedClause, render_token_slice, token_slice_at_is, token_slice_first_is, token_word_refs,
+    LexedClause, render_token_slice, synthetic_word_tokens, token_slice_at_is,
+    token_slice_first_is, token_word_refs,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     find_index as find_token_index, str_split_once_char, str_starts_with_char,
 };
 use super::super::util::{
-    is_article, parse_card_type, parse_color, parse_counter_type_word, parse_number,
-    parse_subtype_flexible, parse_target_phrase, parse_value, source_choose_spec_for_surface,
-    source_reference_surface_for_words, token_index_for_word_index, trim_commas,
-    value_contains_unbound_x,
+    is_article, parse_card_type, parse_color, parse_counter_type_from_tokens,
+    parse_counter_type_word, parse_number, parse_subtype_flexible, parse_target_phrase,
+    parse_value, source_choose_spec_for_surface, source_reference_surface_for_words,
+    token_index_for_word_index, trim_commas, value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
 use super::conditionals::parse_subtype_word;
@@ -1359,12 +1360,29 @@ fn parse_create_for_each_counter_count(tokens: &[OwnedLexToken]) -> Option<Value
         idx += 1;
     }
 
-    let counter_type = words
+    let counter_type = if words
         .get(idx)
-        .and_then(|word| parse_counter_type_word(word));
-    if counter_type.is_some() {
-        idx += 1;
-    }
+        .is_some_and(|word| CREATE_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+    {
+        None
+    } else if words
+        .get(idx + 1)
+        .is_some_and(|word| CREATE_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+    {
+        let descriptor_tokens = synthetic_word_tokens(&words[idx..idx + 2]);
+        let parsed_counter_type = parse_counter_type_from_tokens(&descriptor_tokens)
+            .or_else(|| words.get(idx).and_then(|word| parse_counter_type_word(word)));
+        if parsed_counter_type.is_some() {
+            idx += 1;
+        }
+        parsed_counter_type
+    } else {
+        let parsed_counter_type = words.get(idx).and_then(|word| parse_counter_type_word(word));
+        if parsed_counter_type.is_some() {
+            idx += 1;
+        }
+        parsed_counter_type
+    };
 
     if !words
         .get(idx)

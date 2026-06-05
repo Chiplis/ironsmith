@@ -38,6 +38,36 @@ fn setup_three_player_game() -> GameState {
     )
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn aligned_heart_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(836_968_406), "Aligned Heart")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::White],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Flurry — Whenever you cast your second spell each turn, put a rally counter on this enchantment. Then create a 1/1 white Monk creature token with prowess for each rally counter on it.",
+        )
+        .expect("Aligned Heart should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn aligned_heart_monk_tokens(game: &GameState, controller: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|id| {
+            game.object(*id).is_some_and(|object| {
+                object.kind == ObjectKind::Token
+                    && game.controller_of(object) == controller
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Monk)
+            })
+        })
+        .collect()
+}
+
 fn component_pouch_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(900_071), "Component Pouch")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
@@ -8063,6 +8093,146 @@ fn queue_nymris_spell_cast(
     );
     queue_triggers_from_event(game, trigger_queue, event, false);
     spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_aligned_heart_spell_cast(
+    game: &mut GameState,
+    caster: PlayerId,
+    card_types: Vec<CardType>,
+    trigger_queue: &mut TriggerQueue,
+) -> ObjectId {
+    let mut builder = CardBuilder::new(CardId::new(), "Aligned Heart Trigger Probe Spell")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .card_types(card_types.clone());
+    if card_types.contains(&CardType::Creature) {
+        builder = builder.power_toughness(PowerToughness::fixed(1, 1));
+    }
+    let spell_id = game.create_object_from_card(&builder.build(), caster, Zone::Stack);
+    let event = TriggerEvent::new_with_provenance(
+        SpellCastEvent::new(spell_id, caster, Zone::Hand),
+        crate::provenance::ProvNodeId::default(),
+    );
+    queue_triggers_from_event(game, trigger_queue, event, false);
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aligned_heart_triggers_only_on_second_spell_and_token_prowess_branches() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let aligned_heart = aligned_heart_definition();
+    let source = game.create_object_from_definition(&aligned_heart, alice, Zone::Battlefield);
+
+    let mut first_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut first_queue);
+    assert_eq!(
+        first_queue.entries.len(),
+        0,
+        "Aligned Heart should not trigger for your first spell each turn"
+    );
+
+    let mut second_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut second_queue);
+    assert_eq!(
+        second_queue.entries.len(),
+        1,
+        "Aligned Heart should trigger for your second spell each turn"
+    );
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut second_queue, &mut dm)
+        .expect("Aligned Heart trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Aligned Heart trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(source, crate::object::CounterType::Named("rally")),
+        1,
+        "Aligned Heart should put one rally counter on itself"
+    );
+    let monks = aligned_heart_monk_tokens(&game, alice);
+    assert_eq!(
+        monks.len(),
+        1,
+        "one rally counter should create one Monk token"
+    );
+    let monk = monks[0];
+    assert_eq!(game.calculated_power(monk), Some(1));
+    assert_eq!(game.calculated_toughness(monk), Some(1));
+
+    let mut third_creature_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(
+        &mut game,
+        alice,
+        vec![CardType::Creature],
+        &mut third_creature_queue,
+    );
+    assert_eq!(
+        third_creature_queue.entries.len(),
+        0,
+        "neither Aligned Heart nor prowess should trigger from a third creature spell"
+    );
+
+    let mut prowess_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut prowess_queue);
+    assert_eq!(
+        prowess_queue.entries.len(),
+        1,
+        "the Monk token's prowess should trigger from a noncreature spell"
+    );
+    put_triggers_on_stack_with_dm(&mut game, &mut prowess_queue, &mut dm)
+        .expect("Prowess trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Prowess trigger should resolve");
+    assert_eq!(
+        game.calculated_power(monk),
+        Some(2),
+        "prowess should give the Monk +1/+1 until end of turn"
+    );
+    assert_eq!(game.calculated_toughness(monk), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aligned_heart_creates_one_monk_for_each_rally_counter_on_it() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+
+    let aligned_heart = aligned_heart_definition();
+    let source = game.create_object_from_definition(&aligned_heart, alice, Zone::Battlefield);
+    game.add_counters(source, crate::object::CounterType::Named("rally"), 1)
+        .expect("preexisting rally counter should be addable");
+
+    let mut first_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut first_queue);
+    assert_eq!(first_queue.entries.len(), 0);
+
+    let mut second_queue = TriggerQueue::new();
+    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut second_queue);
+    assert_eq!(second_queue.entries.len(), 1);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut second_queue, &mut dm)
+        .expect("Aligned Heart trigger should go on the stack");
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Aligned Heart trigger should resolve");
+
+    assert_eq!(
+        game.counter_count(source, crate::object::CounterType::Named("rally")),
+        2,
+        "the trigger should add a rally counter before counting counters for tokens"
+    );
+    assert_eq!(
+        aligned_heart_monk_tokens(&game, alice).len(),
+        2,
+        "two rally counters on Aligned Heart should create two Monk tokens"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
