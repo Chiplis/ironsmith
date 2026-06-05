@@ -2242,7 +2242,8 @@ impl StaticAbilityKind for GrantAbility {
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
-        ) {
+        ) || self.ability.id() == StaticAbilityId::DungeonRoomTriggerDuplication
+        {
             ability_text = format!("\"{ability_text}\"");
         }
         let mut text = match self.ability.id() {

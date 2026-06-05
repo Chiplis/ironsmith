@@ -3961,6 +3961,32 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
+    let marker_words = crate::runtime_backend::token_word_refs(tokens)
+        .into_iter()
+        .map(|word| word.trim_matches(|ch: char| !ch.is_ascii_alphanumeric()))
+        .filter(|word| !word.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let marker_word_refs = marker_words.iter().map(String::as_str).collect::<Vec<_>>();
+    if marker_word_refs
+        == [
+            "room",
+            "abilities",
+            "of",
+            "dungeons",
+            "you",
+            "own",
+            "trigger",
+            "an",
+            "additional",
+            "time",
+        ]
+    {
+        return Some(StaticAbility::dungeon_room_trigger_duplication(
+            "Room abilities of dungeons you own trigger an additional time.",
+        ));
+    }
+
     if is_once_each_turn_play_from_exile_marker_guard_lexed(tokens) {
         return None;
     }
