@@ -37754,6 +37754,8 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn dungeon_delver_strictly_grants_room_trigger_duplication_to_commanders() {
+    assert_oracle_card_parses_strict("Dungeon Delver");
+
     let def = parse_oracle_card_definition("Dungeon Delver");
     assert!(
         def.spell_effect.is_none(),
