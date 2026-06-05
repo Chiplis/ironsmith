@@ -13945,6 +13945,23 @@ fn flycatcher_giraffid_enters_with_chosen_vigilance_counter() {
         0,
         "choosing vigilance should not also put a reach counter on Flycatcher Giraffid"
     );
+    let chars = game
+        .calculated_characteristics(giraffid_id)
+        .expect("Flycatcher Giraffid should have calculated characteristics");
+    assert!(
+        chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == StaticAbilityId::Vigilance),
+        "a vigilance counter should grant vigilance to Flycatcher Giraffid"
+    );
+    assert!(
+        chars
+            .static_abilities
+            .iter()
+            .all(|ability| ability.id() != StaticAbilityId::Reach),
+        "choosing vigilance should not grant reach to Flycatcher Giraffid"
+    );
 }
 
 #[test]
@@ -13989,6 +14006,23 @@ fn flycatcher_giraffid_enters_with_chosen_reach_counter() {
         game.counter_count(giraffid_id, crate::object::CounterType::Vigilance),
         0,
         "choosing reach should not also put a vigilance counter on Flycatcher Giraffid"
+    );
+    let chars = game
+        .calculated_characteristics(giraffid_id)
+        .expect("Flycatcher Giraffid should have calculated characteristics");
+    assert!(
+        chars
+            .static_abilities
+            .iter()
+            .any(|ability| ability.id() == StaticAbilityId::Reach),
+        "a reach counter should grant reach to Flycatcher Giraffid"
+    );
+    assert!(
+        chars
+            .static_abilities
+            .iter()
+            .all(|ability| ability.id() != StaticAbilityId::Vigilance),
+        "choosing reach should not grant vigilance to Flycatcher Giraffid"
     );
 }
 
