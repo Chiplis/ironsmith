@@ -88,7 +88,7 @@ pub enum TokenKind {
     #[regex(r"[0-9]+", priority = 3)]
     Number,
     #[regex(
-        r"(?:\+[0-9xX]+|-[0-9xX]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:[-−/](?:\+[0-9xX]+|-[0-9xX]+|[\p{L}0-9]+)))*"
+        r"(?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)(?:(?:['’‘](?:[\p{L}0-9]+)?)|(?:[-−/](?:\+[0-9xXyY]+|-[0-9xXyY]+|[\p{L}0-9]+)))*"
     )]
     Word,
 }
@@ -344,14 +344,13 @@ fn push_normalized_token_words(
             '\0'
         };
         let is_counter_char = match normalized_ch {
-            '+' | '-' => next.is_ascii_digit() || next == 'x' || next == 'X',
+            '+' | '-' => next.is_ascii_digit() || matches!(next, 'x' | 'X' | 'y' | 'Y'),
             '/' => {
-                (prev.is_ascii_digit() || prev == 'x' || prev == 'X')
+                (prev.is_ascii_digit() || matches!(prev, 'x' | 'X' | 'y' | 'Y'))
                     && (next.is_ascii_digit()
                         || next == '-'
                         || next == '+'
-                        || next == 'x'
-                        || next == 'X')
+                        || matches!(next, 'x' | 'X' | 'y' | 'Y'))
             }
             _ => false,
         };

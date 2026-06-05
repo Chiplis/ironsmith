@@ -3681,18 +3681,27 @@ pub(crate) fn parse_anthem_clause(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         ))
     })?;
-    let (raw_power, raw_toughness) = parse_pt_modifier_values(modifier_token).map_err(|_| {
-        CardTextError::ParseError(format!(
-            "invalid power/toughness modifier in anthem clause (clause: '{}')",
-            crate::runtime_backend::token_word_refs(tokens).join(" ")
-        ))
-    })?;
     let modifier_end = modifier_words.token_index_after_words(1).unwrap_or(1);
     let tail_tokens = trim_edge_punctuation(&modifier_tokens[modifier_end..]);
+    let mut explicit_values = None;
+    let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
+        Ok(values) => values,
+        Err(_) => {
+            if let Some(values) = parse_dynamic_xy_anthem_values(modifier_token, &tail_tokens) {
+                explicit_values = Some(values);
+                (Value::Fixed(0), Value::Fixed(0))
+            } else {
+                return Err(CardTextError::ParseError(format!(
+                    "invalid power/toughness modifier in anthem clause (clause: '{}')",
+                    crate::runtime_backend::token_word_refs(tokens).join(" ")
+                )));
+            }
+        }
+    };
     let mut scale: Option<AnthemCountExpression> = None;
     let mut suffix_condition: Option<crate::ConditionExpr> = None;
     let mut suffix_attached_subject: Option<ObjectFilter> = None;
-    if !tail_tokens.is_empty() {
+    if explicit_values.is_none() && !tail_tokens.is_empty() {
         if token_slice_starts_with(&tail_tokens, &["for", "each"]) {
             scale = Some(parse_anthem_for_each_expression(&tail_tokens)?);
         } else if token_slice_starts_with(&tail_tokens, &["where", "x", "is"]) {
@@ -3795,9 +3804,14 @@ pub(crate) fn parse_anthem_clause(
         }
     };
 
-    let mut power = resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?;
-    let mut toughness =
-        resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?;
+    let (mut power, mut toughness) = if let Some((power, toughness)) = explicit_values {
+        (power, toughness)
+    } else {
+        (
+            resolve_anthem_value(raw_power, scale.as_ref(), scale_fixed_components)?,
+            resolve_anthem_value(raw_toughness, scale.as_ref(), scale_fixed_components)?,
+        )
+    };
 
     // When the anthem affects multiple creatures (subject is a filter rather
     // than "this creature"), any "attached to it" count expression refers to
@@ -3816,6 +3830,49 @@ pub(crate) fn parse_anthem_clause(
         toughness,
         condition,
     })
+}
+
+fn parse_dynamic_xy_anthem_values(
+    modifier_token: &str,
+    tail_tokens: &[OwnedLexToken],
+) -> Option<(AnthemValue, AnthemValue)> {
+    let (power_raw, toughness_raw) = split_pt_modifier_components(modifier_token).ok()?;
+    let power_var = pt_modifier_variable(power_raw)?;
+    let toughness_var = pt_modifier_variable(toughness_raw)?;
+    let bindings = parse_where_x_y_bindings(tail_tokens)?;
+    let value_for = |var| match var {
+        'x' => Some(AnthemValue::Dynamic(bindings.0.clone())),
+        'y' => Some(AnthemValue::Dynamic(bindings.1.clone())),
+        _ => None,
+    };
+    Some((value_for(power_var)?, value_for(toughness_var)?))
+}
+
+fn pt_modifier_variable(raw: &str) -> Option<char> {
+    let value = strip_leading_plus_char(raw).trim();
+    match value {
+        "x" | "X" => Some('x'),
+        "y" | "Y" => Some('y'),
+        _ => None,
+    }
+}
+
+fn parse_where_x_y_bindings(tokens: &[OwnedLexToken]) -> Option<(Value, Value)> {
+    let words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    if words.get(0..3) != Some(&["where", "x", "is"]) {
+        return None;
+    }
+    let y_start = words
+        .windows(3)
+        .position(|window| window == ["and", "y", "is"])?;
+    if y_start <= 3 {
+        return None;
+    }
+    let x_words = &words[3..y_start];
+    let y_words = &words[y_start + 3..];
+    let (x_value, x_used) = parse_value_expr_words(x_words)?;
+    let (y_value, y_used) = parse_value_expr_words(y_words)?;
+    (x_used == x_words.len() && y_used == y_words.len()).then_some((x_value, y_value))
 }
 
 /// When an anthem targets a filter of creatures (not just the source),
@@ -6700,7 +6757,13 @@ pub(crate) fn parse_anthem_line(
     let Some(modifier_word) = tokens.get(modifier_idx).and_then(OwnedLexToken::as_word) else {
         return Ok(None);
     };
-    if parse_pt_modifier_values(modifier_word).is_err() {
+    if parse_pt_modifier_values(modifier_word).is_err()
+        && parse_dynamic_xy_anthem_values(
+            modifier_word,
+            &trim_edge_punctuation(tokens.get(modifier_idx + 1..).unwrap_or_default()),
+        )
+        .is_none()
+    {
         return Ok(None);
     }
     let clause = parse_anthem_clause(tokens, get_idx, tokens.len())?;
@@ -6741,7 +6804,13 @@ pub(crate) fn parse_multi_subject_anthem_line(
     let Some(modifier_word) = tokens.get(modifier_idx).and_then(OwnedLexToken::as_word) else {
         return Ok(None);
     };
-    if parse_pt_modifier_values(modifier_word).is_err() {
+    if parse_pt_modifier_values(modifier_word).is_err()
+        && parse_dynamic_xy_anthem_values(
+            modifier_word,
+            &trim_edge_punctuation(tokens.get(modifier_idx + 1..).unwrap_or_default()),
+        )
+        .is_none()
+    {
         return Ok(None);
     }
 

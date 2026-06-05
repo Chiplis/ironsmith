@@ -2861,7 +2861,7 @@ fn apply_modification_to_chars(
 }
 
 /// Resolve a Value to an i32 (direct version without CalculationContext).
-fn resolve_value_direct(
+pub(crate) fn resolve_value_direct(
     value: &Value,
     objects: &ObjectMap,
     effects: &[ContinuousEffect],

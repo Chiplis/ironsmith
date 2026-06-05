@@ -69227,6 +69227,71 @@ fn urabrask_heretic_praetor_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn aspect_of_wolf_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Aspect of Wolf");
+    let def = parse_oracle_card_definition("Aspect of Wolf");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains("Enchant creature")
+            && rendered.contains(
+                "Enchanted creature gets +X/+Y, where X is half the number of Forests you control, rounded down, and Y is half the number of Forests you control, rounded up."
+            ),
+        "Aspect of Wolf compiled text should preserve enchant creature and both half-rounded Forest-count clauses, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("Dynamic")
+            && ability_debug.contains("HalfRoundedDown")
+            && ability_debug.contains("subtypes: [Forest]"),
+        "Aspect of Wolf should structurally lower to dynamic half-rounded Forest-count anthem values, got {ability_debug}"
+    );
+}
+
+#[test]
+fn aspect_of_wolf_updates_enchanted_creature_from_controller_forest_count() {
+    let aspect = parse_oracle_card_definition("Aspect of Wolf");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Aspect Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let forest = CardDefinitionBuilder::new(CardId::new(), "Regression Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+
+    let creature_id = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    let aspect_id = game.create_object_from_definition(&aspect, alice, Zone::Battlefield);
+    assert!(
+        game.attach_object_to_target(
+            aspect_id,
+            crate::object::AttachmentTarget::Object(creature_id),
+        ),
+        "Aspect of Wolf should attach to the regression creature"
+    );
+
+    game.create_object_from_definition(&forest, bob, Zone::Battlefield);
+    assert_eq!(game.calculated_power(creature_id), Some(2));
+    assert_eq!(game.calculated_toughness(creature_id), Some(2));
+
+    game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    assert_eq!(game.calculated_power(creature_id), Some(2));
+    assert_eq!(game.calculated_toughness(creature_id), Some(3));
+
+    game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    assert_eq!(game.calculated_power(creature_id), Some(3));
+    assert_eq!(game.calculated_toughness(creature_id), Some(3));
+
+    game.create_object_from_definition(&forest, alice, Zone::Battlefield);
+    assert_eq!(game.calculated_power(creature_id), Some(3));
+    assert_eq!(game.calculated_toughness(creature_id), Some(4));
+}
+
 fn add_named_library_card(game: &mut crate::game_state::GameState, player: PlayerId, name: &str) {
     let card = CardDefinitionBuilder::new(CardId::new(), name)
         .card_types(vec![CardType::Instant])

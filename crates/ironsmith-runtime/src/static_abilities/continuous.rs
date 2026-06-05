@@ -619,6 +619,16 @@ impl AnthemValueRuntimeExt for AnthemValue {
     fn evaluate(&self, game: &GameState, source: ObjectId, controller: PlayerId) -> i32 {
         match self {
             Self::Fixed(value) => *value,
+            Self::Dynamic(value) => crate::continuous::resolve_value_direct(
+                value,
+                game.objects_map(),
+                &[],
+                &game.battlefield,
+                &game.commanders,
+                source,
+                controller,
+                game,
+            ),
             Self::PerCount { multiplier, count } => {
                 multiplier * resolve_anthem_count_expression(count, game, source, controller)
             }
@@ -1847,6 +1857,33 @@ impl StaticAbilityKind for Anthem {
                     "{subject} {verb} {}/{}",
                     signed(*power),
                     signed_toughness(*power, *toughness),
+                )
+            }
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness)) if power == toughness => {
+                format!(
+                    "{subject} {verb} +X/+X, where X is {}",
+                    crate::compiled_text::describe_value(power),
+                )
+            }
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness)) => {
+                format!(
+                    "{subject} {verb} +X/+Y, where X is {}, and Y is {}",
+                    crate::compiled_text::describe_value(power),
+                    crate::compiled_text::describe_value(toughness),
+                )
+            }
+            (AnthemValue::Dynamic(power), AnthemValue::Fixed(toughness)) => {
+                format!(
+                    "{subject} {verb} +X/{}, where X is {}",
+                    signed(*toughness),
+                    crate::compiled_text::describe_value(power),
+                )
+            }
+            (AnthemValue::Fixed(power), AnthemValue::Dynamic(toughness)) => {
+                format!(
+                    "{subject} {verb} {}/+X, where X is {}",
+                    signed(*power),
+                    crate::compiled_text::describe_value(toughness),
                 )
             }
             (
