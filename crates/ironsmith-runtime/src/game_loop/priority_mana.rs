@@ -244,6 +244,7 @@ pub(super) fn build_pip_payment_options(
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     allow_black_life: bool,
     source_for_pip_alternatives: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
     decision_maker: &mut impl DecisionMaker,
 ) -> Vec<ManaPipPaymentOption> {
     use crate::mana::ManaSymbol;
@@ -264,6 +265,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::White,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -276,6 +278,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::Blue,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -288,6 +291,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::Black,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -300,6 +304,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::Red,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -312,6 +317,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::Green,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -324,6 +330,7 @@ pub(super) fn build_pip_payment_options(
                     player,
                     ManaSymbol::Colorless,
                     source_for_pip_alternatives,
+                    payment_reason,
                     mana_spend_policy,
                     &mut options,
                     &mut index,
@@ -336,6 +343,7 @@ pub(super) fn build_pip_payment_options(
                     game,
                     player,
                     source_for_pip_alternatives,
+                    payment_reason,
                     &mut options,
                     &mut index,
                 );
@@ -419,11 +427,12 @@ pub(super) fn build_pip_payment_options(
                 perm_id,
             );
             // Check if this ability produces mana that can pay this pip
-            if mana_ability_can_pay_pip(
+            if mana_ability_can_pay_pip_with_reason(
                 game,
                 perm_id,
                 ability_index,
                 source_for_pip_alternatives,
+                payment_reason,
                 pip,
                 &source_policy,
             ) {
@@ -526,12 +535,13 @@ pub(super) fn add_any_color_pool_options(
     game: &GameState,
     player: PlayerId,
     payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
     options: &mut Vec<ManaPipPaymentOption>,
     index: &mut usize,
 ) {
     use crate::mana::ManaSymbol;
 
-    if pool_symbol_count(game, player, ManaSymbol::White, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::White, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {W} from mana pool".to_string(),
@@ -539,7 +549,7 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count(game, player, ManaSymbol::Blue, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::Blue, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {U} from mana pool".to_string(),
@@ -547,7 +557,7 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count(game, player, ManaSymbol::Black, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::Black, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {B} from mana pool".to_string(),
@@ -555,7 +565,7 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count(game, player, ManaSymbol::Red, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::Red, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {R} from mana pool".to_string(),
@@ -563,7 +573,7 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count(game, player, ManaSymbol::Green, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::Green, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {G} from mana pool".to_string(),
@@ -571,7 +581,7 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count(game, player, ManaSymbol::Colorless, payment_source) > 0 {
+    if pool_symbol_count_with_reason(game, player, ManaSymbol::Colorless, payment_source, payment_reason) > 0 {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {C} from mana pool".to_string(),
@@ -586,6 +596,7 @@ fn add_policy_pool_options_for_required(
     player: PlayerId,
     required: crate::mana::ManaSymbol,
     payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     options: &mut Vec<ManaPipPaymentOption>,
     index: &mut usize,
@@ -603,7 +614,8 @@ fn add_policy_pool_options_for_required(
     ] {
         if added_symbols.contains(&symbol)
             || !mana_spend_policy.can_pay_symbol(symbol, required)
-            || pool_symbol_count(game, player, symbol, payment_source) == 0
+            || pool_symbol_count_with_reason(game, player, symbol, payment_source, payment_reason)
+                == 0
         {
             continue;
         }
@@ -884,11 +896,45 @@ pub(super) fn restricted_unit_is_payable(
     })
 }
 
+#[cfg(test)]
 pub(super) fn pool_symbol_count(
     game: &GameState,
     player: PlayerId,
     symbol: crate::mana::ManaSymbol,
     payment_source: Option<ObjectId>,
+) -> u32 {
+    pool_symbol_count_source_only(game, player, symbol, payment_source)
+}
+
+#[cfg(test)]
+fn pool_symbol_count_source_only(
+    game: &GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+) -> u32 {
+    pool_symbol_count_filtered(game, player, symbol, |unit| {
+        restricted_unit_is_payable(game, unit, payment_source)
+    })
+}
+
+fn pool_symbol_count_with_reason(
+    game: &GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+) -> u32 {
+    pool_symbol_count_filtered(game, player, symbol, |unit| {
+        game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
+    })
+}
+
+fn pool_symbol_count_filtered(
+    game: &GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    mut restricted_is_payable: impl FnMut(&crate::ability::RestrictedManaUnit) -> bool,
 ) -> u32 {
     let Some(player_obj) = game.player(player) else {
         return 0;
@@ -908,7 +954,7 @@ pub(super) fn pool_symbol_count(
         .restricted_mana
         .iter()
         .filter(|unit| unit.symbol == symbol)
-        .filter(|unit| restricted_unit_is_payable(game, unit, payment_source))
+        .filter(|unit| restricted_is_payable(unit))
         .count() as u32;
 
     total
@@ -916,11 +962,42 @@ pub(super) fn pool_symbol_count(
         .saturating_add(restricted_payable)
 }
 
+#[cfg(test)]
 pub(super) fn spend_pool_symbol(
     game: &mut GameState,
     player: PlayerId,
     symbol: crate::mana::ManaSymbol,
     payment_source: Option<ObjectId>,
+) -> Option<SpentManaInfo> {
+    spend_pool_symbol_source_only(game, player, symbol, payment_source)
+}
+
+#[cfg(test)]
+fn spend_pool_symbol_source_only(
+    game: &mut GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+) -> Option<SpentManaInfo> {
+    spend_pool_symbol_common(game, player, symbol, payment_source, None)
+}
+
+fn spend_pool_symbol_with_reason(
+    game: &mut GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+) -> Option<SpentManaInfo> {
+    spend_pool_symbol_common(game, player, symbol, payment_source, Some(payment_reason))
+}
+
+fn spend_pool_symbol_common(
+    game: &mut GameState,
+    player: PlayerId,
+    symbol: crate::mana::ManaSymbol,
+    payment_source: Option<ObjectId>,
+    payment_reason: Option<crate::costs::PaymentReason>,
 ) -> Option<SpentManaInfo> {
     let unrestricted_available = game.player(player).is_some_and(|player_obj| {
         let total = player_obj.mana_pool.amount(symbol);
@@ -938,7 +1015,16 @@ pub(super) fn spend_pool_symbol(
             .iter()
             .enumerate()
             .filter(|(_, unit)| {
-                unit.symbol == symbol && restricted_unit_is_payable(game, unit, payment_source)
+                unit.symbol == symbol
+                    && if let Some(reason) = payment_reason {
+                        game.restricted_mana_unit_is_payable_for_reason(
+                            unit,
+                            payment_source,
+                            reason,
+                        )
+                    } else {
+                        restricted_unit_is_payable(game, unit, payment_source)
+                    }
             })
             .min_by_key(|(_, unit)| restricted_unit_priority(game, unit, payment_source))
             .map(|(idx, unit)| (idx, restricted_unit_priority(game, unit, payment_source)))
@@ -1057,6 +1143,7 @@ pub(super) fn apply_spent_mana_bonuses(
 }
 
 /// Check if a mana ability can produce mana that pays the given pip.
+#[cfg(test)]
 pub(super) fn mana_ability_can_pay_pip(
     game: &GameState,
     perm_id: ObjectId,
@@ -1064,6 +1151,71 @@ pub(super) fn mana_ability_can_pay_pip(
     payment_source: Option<ObjectId>,
     pip: &[crate::mana::ManaSymbol],
     mana_spend_policy: &crate::player::ManaSpendPolicy,
+) -> bool {
+    mana_ability_can_pay_pip_source_only(
+        game,
+        perm_id,
+        ability_index,
+        payment_source,
+        pip,
+        mana_spend_policy,
+    )
+}
+
+#[cfg(test)]
+fn mana_ability_can_pay_pip_source_only(
+    game: &GameState,
+    perm_id: ObjectId,
+    ability_index: usize,
+    payment_source: Option<ObjectId>,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+) -> bool {
+    mana_ability_can_pay_pip_filtered(
+        game,
+        perm_id,
+        ability_index,
+        payment_source,
+        pip,
+        mana_spend_policy,
+        |game, unit, payment_source| restricted_unit_is_payable(game, unit, payment_source),
+    )
+}
+
+fn mana_ability_can_pay_pip_with_reason(
+    game: &GameState,
+    perm_id: ObjectId,
+    ability_index: usize,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+) -> bool {
+    mana_ability_can_pay_pip_filtered(
+        game,
+        perm_id,
+        ability_index,
+        payment_source,
+        pip,
+        mana_spend_policy,
+        |game, unit, payment_source| {
+            game.restricted_mana_unit_is_payable_for_reason(unit, payment_source, payment_reason)
+        },
+    )
+}
+
+fn mana_ability_can_pay_pip_filtered(
+    game: &GameState,
+    perm_id: ObjectId,
+    ability_index: usize,
+    payment_source: Option<ObjectId>,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    restricted_is_payable: impl Fn(
+        &GameState,
+        &crate::ability::RestrictedManaUnit,
+        Option<ObjectId>,
+    ) -> bool,
 ) -> bool {
     use crate::ability::AbilityKind;
     use crate::mana::ManaSymbol;
@@ -1089,7 +1241,7 @@ pub(super) fn mana_ability_can_pay_pip(
             source_chosen_creature_type: game.chosen_creature_type(perm_id),
             restrictions: mana_ability.mana_usage_restrictions.clone(),
         };
-        if !restricted_unit_is_payable(game, &unit, payment_source) {
+        if !restricted_is_payable(game, &unit, payment_source) {
             return false;
         }
     }
@@ -1259,6 +1411,7 @@ pub(super) fn execute_pip_payment_action(
     trigger_queue: &mut TriggerQueue,
     player: PlayerId,
     source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
     pip: &[crate::mana::ManaSymbol],
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     action: &ManaPipPaymentAction,
@@ -1268,7 +1421,14 @@ pub(super) fn execute_pip_payment_action(
 ) -> Result<bool, GameLoopError> {
     match action {
         ManaPipPaymentAction::UseFromPool(symbol) => {
-            let spent_info = spend_pool_symbol(game, player, *symbol, source).ok_or_else(|| {
+            let spent_info = spend_pool_symbol_with_reason(
+                game,
+                player,
+                *symbol,
+                source,
+                payment_reason,
+            )
+            .ok_or_else(|| {
                 GameLoopError::InvalidState(format!(
                     "Not enough {} mana in the pool",
                     crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle()
@@ -1317,10 +1477,11 @@ pub(super) fn execute_pip_payment_action(
                 })
                 .unwrap_or_default();
 
-            if let Some(spent_info) = spend_pool_mana_for_pip(
+            if let Some(spent_info) = spend_pool_mana_for_pip_with_reason(
                 game,
                 player,
                 source,
+                payment_reason,
                 pip,
                 &source_policy,
                 &produced_symbols,
@@ -1396,13 +1557,41 @@ pub(super) fn mana_pool_delta_symbols(
     produced
 }
 
-pub(super) fn spend_pool_mana_for_pip(
+fn spend_pool_mana_for_pip_with_reason(
+    game: &mut GameState,
+    player: PlayerId,
+    payment_source: Option<ObjectId>,
+    payment_reason: crate::costs::PaymentReason,
+    pip: &[crate::mana::ManaSymbol],
+    mana_spend_policy: &crate::player::ManaSpendPolicy,
+    preferred_symbols: &[crate::mana::ManaSymbol],
+) -> Option<SpentManaInfo> {
+    spend_pool_mana_for_pip_filtered(
+        game,
+        player,
+        payment_source,
+        pip,
+        mana_spend_policy,
+        preferred_symbols,
+        |game, player, symbol, payment_source| {
+            spend_pool_symbol_with_reason(game, player, symbol, payment_source, payment_reason)
+        },
+    )
+}
+
+fn spend_pool_mana_for_pip_filtered(
     game: &mut GameState,
     player: PlayerId,
     payment_source: Option<ObjectId>,
     pip: &[crate::mana::ManaSymbol],
     mana_spend_policy: &crate::player::ManaSpendPolicy,
     preferred_symbols: &[crate::mana::ManaSymbol],
+    mut spend_symbol: impl FnMut(
+        &mut GameState,
+        PlayerId,
+        crate::mana::ManaSymbol,
+        Option<ObjectId>,
+    ) -> Option<SpentManaInfo>,
 ) -> Option<SpentManaInfo> {
     use crate::mana::ManaSymbol;
 
@@ -1439,7 +1628,7 @@ pub(super) fn spend_pool_mana_for_pip(
     }
 
     for symbol in candidates {
-        if let Some(spent_info) = spend_pool_symbol(game, player, symbol, payment_source) {
+        if let Some(spent_info) = spend_symbol(game, player, symbol, payment_source) {
             return Some(spent_info);
         }
     }
@@ -2257,6 +2446,7 @@ pub(super) fn apply_pip_payment_response_activation(
         &mana_spend_policy,
         allow_black_life,
         Some(pending.source),
+        pending.payment_reason,
         &mut *decision_maker,
     );
 
@@ -2276,6 +2466,7 @@ pub(super) fn apply_pip_payment_response_activation(
         trigger_queue,
         pending.activator,
         Some(pending.source),
+        pending.payment_reason,
         &pip,
         &mana_spend_policy,
         action,
@@ -2355,6 +2546,7 @@ pub(super) fn apply_pip_payment_response_cast(
             &mana_spend_policy,
             allow_black_life,
             Some(pending.spell_id),
+            crate::costs::PaymentReason::CastSpell,
             &mut *decision_maker,
         )
     } else {
@@ -2380,6 +2572,7 @@ pub(super) fn apply_pip_payment_response_cast(
         trigger_queue,
         pending.caster,
         Some(pending.spell_id),
+        crate::costs::PaymentReason::CastSpell,
         &pip,
         &mana_spend_policy,
         action,
@@ -5434,6 +5627,7 @@ mod priority_mana_tests {
             &mut trigger_queue,
             alice,
             None,
+            crate::costs::PaymentReason::Other,
             &black_pip,
             &crate::player::ManaSpendPolicy::default(),
             &action,
@@ -5489,6 +5683,7 @@ mod priority_mana_tests {
             &crate::player::ManaSpendPolicy::default(),
             false,
             Some(yawgmoth_id),
+            crate::costs::PaymentReason::ActivateAbility,
             &mut dm,
         );
 
@@ -5582,6 +5777,7 @@ mod priority_mana_tests {
                 crate::costs::PaymentReason::CastSpell,
             ),
             None,
+            crate::costs::PaymentReason::CastSpell,
             &mut dm,
         );
 
@@ -5607,6 +5803,7 @@ mod priority_mana_tests {
             &crate::player::ManaSpendPolicy::default(),
             true,
             None,
+            crate::costs::PaymentReason::CastSpell,
             &mut dm,
         );
 

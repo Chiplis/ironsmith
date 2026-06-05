@@ -6635,17 +6635,6 @@ impl GameState {
             && self.current_has_subtype(object_id, crate::types::Subtype::Room)
     }
 
-    pub(crate) fn activation_payment_reason(
-        &self,
-        source: ObjectId,
-    ) -> crate::costs::PaymentReason {
-        if self.object_is_room_unlock_payment_source(source) {
-            crate::costs::PaymentReason::UnlockDoor
-        } else {
-            crate::costs::PaymentReason::ActivateAbility
-        }
-    }
-
     fn required_sacrifice_count_for_cost(&self, cost: &crate::costs::Cost) -> usize {
         if cost.is_sacrifice_self() {
             return 1;
@@ -6842,7 +6831,7 @@ impl GameState {
         filter.matches(source_obj, &filter_ctx, self)
     }
 
-    fn restricted_mana_unit_is_payable_for_reason(
+    pub(crate) fn restricted_mana_unit_is_payable_for_reason(
         &self,
         unit: &crate::ability::RestrictedManaUnit,
         payment_source: Option<ObjectId>,

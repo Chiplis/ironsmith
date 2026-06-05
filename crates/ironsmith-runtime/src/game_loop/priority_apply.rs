@@ -792,7 +792,7 @@ pub fn apply_priority_response_with_dm(
             let cost = crate::decision::calculate_effective_activation_total_cost(
                 game, player, *source, &base_cost,
             );
-            let payment_reason = game.activation_payment_reason(*source);
+            let payment_reason = crate::costs::PaymentReason::ActivateAbility;
             let activation_provenance =
                 game.provenance_graph_mut()
                     .alloc_root(ProvenanceNodeKind::EffectExecution {

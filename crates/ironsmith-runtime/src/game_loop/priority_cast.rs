@@ -1805,6 +1805,7 @@ pub(super) fn continue_spell_cast_mana_payment(
         &mana_spend_policy,
         allow_black_life,
         Some(source),
+        crate::costs::PaymentReason::CastSpell,
         &mut *decision_maker,
     );
 
@@ -1823,6 +1824,7 @@ pub(super) fn continue_spell_cast_mana_payment(
             trigger_queue,
             player_id,
             Some(source),
+            crate::costs::PaymentReason::CastSpell,
             &pip,
             &mana_spend_policy,
             &action,
@@ -3350,6 +3352,7 @@ pub(super) fn continue_activation(
                 &mana_spend_policy,
                 allow_black_life,
                 Some(source),
+                pending.payment_reason,
                 &mut *decision_maker,
             );
 
@@ -3368,6 +3371,7 @@ pub(super) fn continue_activation(
                     trigger_queue,
                     player_id,
                     Some(source),
+                    pending.payment_reason,
                     &pip,
                     &mana_spend_policy,
                     &action,

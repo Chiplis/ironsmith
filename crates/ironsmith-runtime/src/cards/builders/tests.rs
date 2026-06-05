@@ -57266,7 +57266,59 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         "Creeping Peeper mana should not pay ordinary activated costs, even from a Room source"
     );
 
+    let ordinary_room = CardDefinitionBuilder::new(CardId::new(), "Ordinary Room Ability Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .parse_text("{U}: You gain 1 life.")
+        .expect("ordinary Room activated ability should parse");
+    let ordinary_room_id =
+        game.create_object_from_definition(&ordinary_room, alice, Zone::Battlefield);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let ordinary_room_ability_index = game
+        .object(ordinary_room_id)
+        .expect("ordinary Room should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("ordinary Room should have an activated ability");
+    let ordinary_room_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index }
+                    if *source == ordinary_room_id && *ability_index == ordinary_room_ability_index
+            )
+        })
+        .expect("ordinary Room activation should enter the real activation path");
     let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let room_activation = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(ordinary_room_action),
+        &mut dm,
+    );
+    assert!(
+        room_activation.is_err(),
+        "Creeping Peeper mana must not be offered for ordinary activated abilities on Room permanents"
+    );
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "failed Room activation should leave Creeping Peeper mana available for a real unlock-door payment"
+    );
+
     crate::special_actions::pay_total_cost_with_choice(
         &mut game,
         alice,

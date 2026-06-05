@@ -1470,7 +1470,7 @@ fn activation_precheck_with_view(
             return None;
         }
 
-        let reason = game.activation_payment_reason(source);
+        let reason = crate::costs::PaymentReason::ActivateAbility;
         let costs = activated.mana_cost.costs();
         if !activation_printed_costs_precheck_with_view(
             game,
@@ -1540,7 +1540,7 @@ fn activation_precheck_with_view(
         return None;
     }
 
-    let reason = game.activation_payment_reason(source);
+    let reason = crate::costs::PaymentReason::ActivateAbility;
     let costs = activated.mana_cost.costs();
     if !activation_printed_costs_precheck_with_view(
         game,
@@ -1609,7 +1609,7 @@ fn activation_cost_is_payable_with_view(
     cost: &crate::costs::Cost,
     _view: &DerivedGameView<'_>,
 ) -> bool {
-    let reason = game.activation_payment_reason(source);
+    let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
         .validate_cost_for_payment_reason(controller, source, cost, reason)
         .is_err()
