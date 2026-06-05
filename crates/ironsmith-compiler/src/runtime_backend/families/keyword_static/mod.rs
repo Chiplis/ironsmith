@@ -3136,6 +3136,7 @@ fn parse_source_characteristics_of_last_exiled_creature_card_line(
 
     let mut filter = ObjectFilter::default();
     filter.card_types.push(CardType::Creature);
+    filter.nontoken = true;
     filter.zone = Some(Zone::Exile);
     Some(StaticAbility::source_characteristics_of_last_exiled_creature_card(
         filter,

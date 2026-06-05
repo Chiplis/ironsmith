@@ -22131,6 +22131,39 @@ fn duplicant_declining_optional_exile_keeps_printed_characteristics() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn duplicant_ignores_linked_exiled_creature_tokens_for_card_characteristics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let duplicant = duplicant_definition();
+    let duplicant_id = game.create_object_from_definition(&duplicant, alice, Zone::Battlefield);
+    let token_card = CardBuilder::new(CardId::from_raw(20_514), "Exiled Zombie Token")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .build();
+    let token_id = game.create_object_from_card(&token_card, bob, Zone::Exile);
+    game.object_mut(token_id)
+        .expect("linked exiled token should exist")
+        .kind = ObjectKind::Token;
+    game.add_exiled_with_source_link(duplicant_id, token_id);
+
+    game.refresh_continuous_state();
+
+    assert_eq!(game.current_power(duplicant_id), Some(2));
+    assert_eq!(game.current_toughness(duplicant_id), Some(4));
+    let subtypes = game
+        .current_subtypes(duplicant_id)
+        .expect("Duplicant should have current subtypes");
+    assert!(subtypes.contains(&Subtype::Shapeshifter));
+    assert!(
+        !subtypes.contains(&Subtype::Zombie),
+        "Duplicant should ignore linked exiled tokens because its static ability cares about creature cards, got {subtypes:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn duplicant_enters_trigger_targets_nontoken_creatures_only() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

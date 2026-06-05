@@ -369,6 +369,17 @@ fn duplicant_strict_parser_compiled_text_and_model_regression() {
             _ => None,
         })
         .collect::<Vec<_>>();
+    let source_static_debug = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            (static_ability.id() == StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard)
+                .then(|| format!("{static_ability:#?}"))
+        })
+        .expect("Duplicant should have source-linked static characteristics");
 
     assert!(
         rendered.contains("When this creature enters, you may exile target nontoken creature"),
@@ -384,6 +395,11 @@ fn duplicant_strict_parser_compiled_text_and_model_regression() {
             && ability_debug.contains("nontoken: true")
             && static_ids.contains(&StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard),
         "expected Duplicant to model optional nontoken exile plus source-linked static characteristics, got ids {static_ids:?} and abilities {ability_debug}"
+    );
+    assert!(
+        source_static_debug.contains("nontoken: true")
+            && source_static_debug.contains("zone: Some(Exile)"),
+        "expected Duplicant's source-linked static filter to require nontoken creature cards in exile, got {source_static_debug}"
     );
 }
 

@@ -3724,7 +3724,7 @@ impl SourceCharacteristicsOfLastExiledCreatureCard {
             .iter()
             .rev()
             .filter_map(|id| game.object(*id))
-            .find(|object| self.filter.matches(object, &filter_ctx, game))
+            .find(|object| self.filter.matches_non_recursive(object, &filter_ctx, game))
             .and_then(|object| {
                 let power = object.power()?;
                 let toughness = object.toughness()?;
