@@ -282,6 +282,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         filter: ObjectFilter,
         display: String,
     },
+    AddChosenBasicLandType {
+        filter: ObjectFilter,
+        display: String,
+    },
     AddChosenColor {
         filter: ObjectFilter,
         display: String,
@@ -1054,6 +1058,9 @@ where
             }
             StaticAbilityPayload::AddChosenCreatureType { filter, display } => {
                 StaticAbilityPayload::AddChosenCreatureType { filter, display }
+            }
+            StaticAbilityPayload::AddChosenBasicLandType { filter, display } => {
+                StaticAbilityPayload::AddChosenBasicLandType { filter, display }
             }
             StaticAbilityPayload::AddChosenColor { filter, display } => {
                 StaticAbilityPayload::AddChosenColor { filter, display }
@@ -3173,6 +3180,14 @@ impl<
             id: Some(StaticAbilityId::AddChosenCreatureType),
             label: display.clone(),
             payload: StaticAbilityPayload::AddChosenCreatureType { filter, display },
+        }
+    }
+    pub fn add_chosen_basic_land_type(filter: ObjectFilter, display: impl Into<String>) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddChosenBasicLandType),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddChosenBasicLandType { filter, display },
         }
     }
     pub fn add_chosen_color(filter: ObjectFilter, display: impl Into<String>) -> Self {

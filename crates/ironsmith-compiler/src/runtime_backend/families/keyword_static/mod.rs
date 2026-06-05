@@ -151,7 +151,6 @@ use crate::zone::Zone;
 use ironsmith_core::{EffectMetric, EffectMetricSource};
 use std::sync::LazyLock;
 
-const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
 const SOURCE_CAN_BLOCK_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "creature", "can", "block"]);
 const BLOCK_ADDITIONAL_DURATION_TAIL_PATTERN: ClauseShape<'static> =
@@ -4372,7 +4371,7 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let words = parser_token_word_refs(tokens);
     let Some((idx, display_subject)) =
-        parse_as_enters_choice_subject_words(&words, AS_ENTERS_AURA_SUBJECTS)
+        parse_as_enters_choice_subject_words(&words, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
     else {
         return Ok(None);
     };
@@ -8221,6 +8220,12 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     let added_words = &tail[..addition_idx];
     if CHOSEN_TYPE_PATTERN.matches_words(added_words) {
         let filter = parse_object_filter(subject_tokens, false)?;
+        if filter.card_types.contains(&CardType::Land) {
+            return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
+                filter,
+                render_token_slice(tokens),
+            )]));
+        }
         return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
             filter,
             render_token_slice(tokens),
