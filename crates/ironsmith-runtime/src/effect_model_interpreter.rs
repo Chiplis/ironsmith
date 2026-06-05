@@ -1166,7 +1166,13 @@ where
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::ForEachCounterKindPutOrRemoveEffect>(&effect)
     {
-        let effect = if payload.all_kinds {
+        let effect = if let Some(counter_type) = payload.fixed_counter_type {
+            crate::effects::ForEachCounterKindPutOrRemoveEffect::fixed_counter_type(
+                payload.target.clone(),
+                counter_type,
+                payload.optional_action,
+            )
+        } else if payload.all_kinds {
             crate::effects::ForEachCounterKindPutOrRemoveEffect::new(payload.target.clone())
         } else {
             crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(payload.target.clone())

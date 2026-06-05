@@ -1636,6 +1636,8 @@ pub(crate) enum SubjectVerbActionAst {
     ForEachCounterKindPutOrRemove {
         target: TargetAst,
         all_kinds: bool,
+        fixed_counter_type: Option<CounterType>,
+        optional_action: bool,
     },
     PutCounterOfChosenKind {
         target: TargetAst,
@@ -3207,10 +3209,17 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("from", from)
                 .field("to", to)
                 .finish(),
-            Self::ForEachCounterKindPutOrRemove { target, all_kinds } => f
+            Self::ForEachCounterKindPutOrRemove {
+                target,
+                all_kinds,
+                fixed_counter_type,
+                optional_action,
+            } => f
                 .debug_struct("ForEachCounterKindPutOrRemove")
                 .field("target", target)
                 .field("all_kinds", all_kinds)
+                .field("fixed_counter_type", fixed_counter_type)
+                .field("optional_action", optional_action)
                 .finish(),
             Self::PutCounterOfChosenKind { target } => f
                 .debug_struct("PutCounterOfChosenKind")
@@ -6551,11 +6560,33 @@ impl EffectAst {
         Self::subject_verb_counter_kind_put_or_remove(target, false)
     }
 
+    pub(crate) fn subject_verb_fixed_counter_kind_put_or_remove(
+        target: TargetAst,
+        counter_type: CounterType,
+        optional_action: bool,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                all_kinds: false,
+                fixed_counter_type: Some(counter_type),
+                optional_action,
+            },
+        )
+    }
+
     fn subject_verb_counter_kind_put_or_remove(target: TargetAst, all_kinds: bool) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds },
+            SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+                target,
+                all_kinds,
+                fixed_counter_type: None,
+                optional_action: false,
+            },
         )
     }
 

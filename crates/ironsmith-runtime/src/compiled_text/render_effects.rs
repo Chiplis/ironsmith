@@ -88,6 +88,24 @@ fn is_target_permanent_or_suspended_card(spec: &ChooseSpec) -> bool {
         && filter.any_of.iter().any(|arm| arm == &suspended)
 }
 
+fn is_time_travel_object_set(spec: &ChooseSpec) -> bool {
+    let ChooseSpec::All(filter) = spec else {
+        return false;
+    };
+    let permanent = crate::target::ObjectFilter::permanent()
+        .you_control()
+        .with_counter_type(crate::object::CounterType::Time);
+    let suspended = crate::target::ObjectFilter::default()
+        .in_zone(crate::zone::Zone::Exile)
+        .owned_by(crate::target::PlayerFilter::You)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    filter.any_of.len() == 2
+        && filter.zone.is_none()
+        && filter.any_of.iter().any(|arm| arm == &permanent)
+        && filter.any_of.iter().any(|arm| arm == &suspended)
+}
+
 fn describe_discard_hand_add_mana_draw_sequence(effects: &[&Effect]) -> Option<String> {
     let [discard_effect, mana_effect, draw_effect] = effects else {
         return None;
@@ -37963,6 +37981,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(for_each_counter_kind) =
         effect.downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
     {
+        if for_each_counter_kind.fixed_counter_type == Some(crate::object::CounterType::Time)
+            && for_each_counter_kind.optional_action
+            && is_time_travel_object_set(&for_each_counter_kind.target)
+        {
+            return "Time travel".to_string();
+        }
         let target = describe_choose_spec(&for_each_counter_kind.target);
         if for_each_counter_kind.all_kinds {
             return format!(
