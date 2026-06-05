@@ -1406,6 +1406,20 @@ fn explicit_target_player_create_after_exile_keeps_target_controller() {
 }
 
 #[test]
+fn filtered_exiled_this_way_count_is_not_lowered_to_unfiltered_metric() {
+    let result = CardDefinitionBuilder::new(CardId::from_raw(405_319), "Filtered Count")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile all cards from target player's graveyard, then create a 2/2 black Zombie creature token for each creature card exiled this way.",
+        );
+
+    assert!(
+        result.is_err(),
+        "filtered exiled-this-way counts need filtered metric support, not an unfiltered affected-object count"
+    );
+}
+
+#[test]
 fn boss_s_chauffeur_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Boss's Chauffeur");
 

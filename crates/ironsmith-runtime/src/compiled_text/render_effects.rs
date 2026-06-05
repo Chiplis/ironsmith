@@ -9953,7 +9953,7 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     }
 
     fn prior_effect_count_metric(value: &Value) -> Option<crate::effect::EffectId> {
-        match value {
+        match value.unhinted() {
             Value::EffectValue(id)
             | Value::EffectMetric {
                 effect_id: id,
@@ -10028,7 +10028,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         }
         let (subject, action) = prior_effect_count_subject(&with_id.effect)?;
-        let subject = if action == "exiled" && subject.contains(" card") {
+        let subject = if action == "exiled"
+            && value_has_surface_hint(&create.count, ValueSurfaceHint::CardsExiledThisWay)
+        {
             "card".to_string()
         } else {
             subject
