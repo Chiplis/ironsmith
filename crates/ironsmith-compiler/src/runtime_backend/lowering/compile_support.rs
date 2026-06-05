@@ -40,7 +40,6 @@ use crate::filter::{
 use crate::ids::CardId;
 #[allow(unused_imports)]
 use crate::mana::{ManaCost, ManaSymbol};
-#[allow(unused_imports)]
 use crate::static_abilities::{CopyTriggeredAbilities, StaticAbility};
 #[allow(unused_imports)]
 use crate::target::ChooseSpec;

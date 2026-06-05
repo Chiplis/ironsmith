@@ -1385,13 +1385,21 @@ impl StaticAbilityModelInterpreter {
             ),
             ironsmith_core::StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
+                player_filter,
                 counter_type,
                 display,
-            } => StaticAbility::double_counters_replacement(
-                filter.clone(),
-                *counter_type,
-                display.clone(),
-            ),
+            } => match player_filter {
+                Some(player_filter) => StaticAbility::double_player_counters_replacement(
+                    player_filter.clone(),
+                    *counter_type,
+                    display.clone(),
+                ),
+                None => StaticAbility::double_counters_replacement(
+                    filter.clone(),
+                    *counter_type,
+                    display.clone(),
+                ),
+            },
             ironsmith_core::StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
                 display,

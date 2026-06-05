@@ -3303,6 +3303,9 @@ fn parse_static_ability_ast_line_lexed_single(
     if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
         return Ok(None);
     }
+    if let Some(ability) = parse_double_counters_replacement_line(tokens)? {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
     if looks_like_player_counter_gain_effect_tokens(tokens) {
         return Ok(None);
     }
@@ -9070,6 +9073,14 @@ pub(crate) fn parse_double_counters_replacement_line(
         )));
     }
 
+    if is_double_energy_counters_you_get_line(&line_words) {
+        return Ok(Some(StaticAbility::double_player_counters_replacement(
+            PlayerFilter::You,
+            Some(CounterType::Energy),
+            display_text_for_tokens(tokens, true),
+        )));
+    }
+
     let prefix_len = 10usize;
     if !PLUS_ONE_COUNTERS_WOULD_BE_PUT_PREFIX_PATTERN.matches_words(&line_words)
         || !TWICE_THAT_MANY_PLUS_ONE_COUNTERS_TAIL_PATTERN.matches_words(&line_words)
@@ -9094,6 +9105,47 @@ pub(crate) fn parse_double_counters_replacement_line(
         Some(crate::object::CounterType::PlusOnePlusOne),
         display_text_for_tokens(tokens, true),
     )))
+}
+
+fn is_double_energy_counters_you_get_line(line_words: &[&str]) -> bool {
+    let lowered: Vec<String> = line_words
+        .iter()
+        .copied()
+        .map(str::to_ascii_lowercase)
+        .collect();
+    let words: Vec<&str> = lowered
+        .iter()
+        .map(String::as_str)
+        .filter(|word| !matches!(*word, "," | "(" | ")"))
+        .collect();
+    let Some(you_get_idx) = words
+        .windows(2)
+        .position(|window| window == ["you", "get"])
+    else {
+        return false;
+    };
+    if you_get_idx < 7
+        || !word_slice_eq(&words[..7], &["if", "you", "would", "get", "one", "or", "more"])
+    {
+        return false;
+    }
+    let gained_counter_words = &words[7..you_get_idx];
+    // Reminder stripping can leave "one or more" with the energy symbol omitted.
+    let energy_gain = gained_counter_words.is_empty()
+        || word_slice_eq(gained_counter_words, &["{e}"])
+        || word_slice_eq(gained_counter_words, &["e"])
+        || word_slice_eq(gained_counter_words, &["{e}", "energy", "counters"])
+        || word_slice_eq(gained_counter_words, &["e", "energy", "counters"])
+        || word_slice_eq(gained_counter_words, &["energy", "counters"]);
+    energy_gain
+        && word_slice_eq_any(
+            &words[you_get_idx..],
+            &[
+                &["you", "get", "twice", "that", "many", "{e}", "instead"],
+                &["you", "get", "twice", "that", "many", "e", "instead"],
+                &["you", "get", "twice", "that", "many", "instead"],
+            ],
+        )
 }
 
 pub(crate) fn parse_double_token_creation_replacement_line(

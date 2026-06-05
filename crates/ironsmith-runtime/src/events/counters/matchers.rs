@@ -69,10 +69,12 @@ impl ReplacementMatcher for WouldPutCountersMatcher {
         }
 
         // Check if target matches the filter
-        if let Some(obj) = ctx.game.object(put_counters.target) {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-        } else {
-            false
+        match put_counters.target {
+            crate::game_state::Target::Object(object) => ctx
+                .game
+                .object(object)
+                .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game)),
+            crate::game_state::Target::Player(_) => false,
         }
     }
 
@@ -166,7 +168,7 @@ mod tests {
         // The matcher needs an actual object in the game to match against
         // This test verifies the basic structure
         let event = PutCountersEvent::with_cause(
-            ObjectId::from_raw(1),
+            crate::game_state::Target::Object(ObjectId::from_raw(1)),
             CounterType::PlusOnePlusOne,
             3,
             crate::events::cause::EventCause::effect(),
@@ -186,7 +188,7 @@ mod tests {
 
         // Test with wrong counter type
         let event = PutCountersEvent::with_cause(
-            ObjectId::from_raw(1),
+            crate::game_state::Target::Object(ObjectId::from_raw(1)),
             CounterType::Loyalty,
             3,
             crate::events::cause::EventCause::effect(),
@@ -224,7 +226,7 @@ mod tests {
         });
 
         let event = PutCountersEvent::with_cause(
-            ObjectId::from_raw(1),
+            crate::game_state::Target::Object(ObjectId::from_raw(1)),
             CounterType::PlusOnePlusOne,
             1,
             crate::events::cause::EventCause::from_combat_damage(ObjectId::from_raw(2), alice),

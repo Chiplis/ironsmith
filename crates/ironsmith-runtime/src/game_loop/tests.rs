@@ -1631,6 +1631,109 @@ fn put_rampaging_aetherhood_upkeep_trigger_on_stack(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn aether_refinery_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(74_201), "Aether Refinery")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "If you would get one or more {E} (energy counters), you get twice that many {E} instead.\n\
+             {T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way.",
+        )
+        .expect("Aether Refinery should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct AetherRefineryDecisionMaker {
+    accept_payment: bool,
+    energy_to_pay: u32,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for AetherRefineryDecisionMaker {
+    fn decide_boolean(
+        &mut self,
+        _game: &GameState,
+        _ctx: &crate::decisions::context::BooleanContext,
+    ) -> bool {
+        self.accept_payment
+    }
+
+    fn decide_number(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::NumberContext,
+    ) -> u32 {
+        self.energy_to_pay.clamp(ctx.min, ctx.max)
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn aether_refinery_activation_index(def: &crate::cards::CardDefinition) -> usize {
+    def.abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Aether Refinery should have its energy payment activation")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_aether_refinery(
+    game: &mut GameState,
+    refinery_id: ObjectId,
+    ability_index: usize,
+    dm: &mut impl DecisionMaker,
+) {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let activate_action = crate::decision::compute_legal_actions(game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == refinery_id && *idx == ability_index
+            )
+        })
+        .expect("Aether Refinery activation should be legal while untapped");
+    let mut trigger_queue = TriggerQueue::new();
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(activate_action),
+        dm,
+    )
+    .expect("Aether Refinery activation should go on the stack");
+    resolve_stack_entry_with(game, dm).expect("Aether Refinery activation should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn aetherborn_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|object| {
+                game.controller_of(object) == player
+                    && object.kind == ObjectKind::Token
+                    && object.name == "Aetherborn"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Aetherborn)
+                    && game.current_colors(id) == Some(crate::color::ColorSet::BLACK)
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn lost_monarch_of_ifnir_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(692_108), "Lost Monarch of Ifnir")
         .mana_cost(ManaCost::from_pips(vec![
@@ -2001,6 +2104,87 @@ fn lost_monarch_of_ifnir_second_main_return_is_optional() {
         game.object(creature_id).expect("creature card exists").zone,
         Zone::Graveyard,
         "declining the may choice should leave the creature card in the graveyard"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aether_refinery_replacement_doubles_player_energy_gained() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let refinery = aether_refinery_definition();
+    let refinery_id = game.create_object_from_definition(&refinery, alice, Zone::Battlefield);
+    game.refresh_continuous_state();
+
+    game.add_player_counters_with_source(
+        alice,
+        crate::object::CounterType::Energy,
+        3,
+        Some(refinery_id),
+        Some(alice),
+    )
+    .expect("adding energy should emit a marker event");
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        6,
+        "Aether Refinery should double energy counters its controller would get"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aether_refinery_activation_pays_energy_and_creates_paid_size_construct() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let refinery = aether_refinery_definition();
+    let refinery_id = game.create_object_from_definition(&refinery, alice, Zone::Battlefield);
+    let ability_index = aether_refinery_activation_index(&refinery);
+    game.refresh_continuous_state();
+
+    let mut dm = AetherRefineryDecisionMaker {
+        accept_payment: true,
+        energy_to_pay: 2,
+    };
+    activate_aether_refinery(&mut game, refinery_id, ability_index, &mut dm);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        0,
+        "the activation should get two energy after replacement, then spend the chosen two"
+    );
+    assert!(game.is_tapped(refinery_id), "activation cost should tap Aether Refinery");
+    let tokens = aetherborn_tokens_controlled_by(&game, alice);
+    assert_eq!(tokens.len(), 1, "paying energy should create one Aetherborn token");
+    let token_id = tokens[0];
+    assert_eq!(game.current_power(token_id), Some(2));
+    assert_eq!(game.current_toughness(token_id), Some(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aether_refinery_declining_payment_keeps_energy_and_creates_no_token() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let refinery = aether_refinery_definition();
+    let refinery_id = game.create_object_from_definition(&refinery, alice, Zone::Battlefield);
+    let ability_index = aether_refinery_activation_index(&refinery);
+    game.refresh_continuous_state();
+
+    let mut dm = AetherRefineryDecisionMaker {
+        accept_payment: false,
+        energy_to_pay: 2,
+    };
+    activate_aether_refinery(&mut game, refinery_id, ability_index, &mut dm);
+
+    assert_eq!(
+        game.player(alice).expect("alice exists").energy_counters,
+        2,
+        "declining payment should keep the doubled energy from the activation"
+    );
+    assert!(
+        aetherborn_tokens_controlled_by(&game, alice).is_empty(),
+        "declining the optional energy payment should skip the if-you-do token branch"
     );
 }
 

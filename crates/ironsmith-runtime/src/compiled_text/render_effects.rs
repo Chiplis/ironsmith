@@ -6630,6 +6630,70 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
+    fn describe_energy_then_pay_any_then_create_paid_x_token(
+        effects: &[&Effect],
+    ) -> Option<String> {
+        let [energy_effect, may_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let energy = unwrap_wrapped_effect(energy_effect)
+            .downcast_ref::<crate::effects::EnergyCountersEffect>()?;
+        if energy.player != PlayerFilter::You {
+            return None;
+        }
+        let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let may = may_with_id
+            .effect
+            .downcast_ref::<crate::effects::MayEffect>()?;
+        if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
+            return None;
+        }
+        let pay_any = unwrap_wrapped_effect(&may.effects[0])
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()?;
+        if !matches!(pay_any.player, ChooseSpec::Player(PlayerFilter::You)) {
+            return None;
+        }
+        let if_effect = conditional_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        if if_effect.condition != may_with_id.id
+            || if_effect.predicate != crate::effect::EffectPredicate::Happened
+            || !if_effect.else_.is_empty()
+            || if_effect.then.len() != 2
+        {
+            return None;
+        }
+        let create = unwrap_tag_wrappers(&if_effect.then[0])
+            .downcast_ref::<crate::effects::CreateTokenEffect>()?;
+        if create.count != Value::Fixed(1) || !create.token.card.is_token {
+            return None;
+        }
+        let set_pt = if_effect.then[1]
+            .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()?;
+        if !is_effect_count_reference(&set_pt.power, Some(may_with_id.id))
+            || !is_effect_count_reference(&set_pt.toughness, Some(may_with_id.id))
+        {
+            return None;
+        }
+
+        let payment = describe_pay_any_energy_amount(pay_any)?;
+        let if_text = describe_effect(conditional_effect)
+            .replace(
+                &format!("If effect #{} happened", may_with_id.id.0),
+                "If you do",
+            )
+            .replace(
+                "where X is X",
+                "where X is the amount of {E} paid this way",
+            );
+        Some(format!(
+            "{}, then you may pay {payment}. {if_text}",
+            describe_effect(energy_effect)
+        ))
+    }
+
+    if let Some(compact) = describe_energy_then_pay_any_then_create_paid_x_token(&raw_effects) {
+        return compact;
+    }
+
     fn describe_energy_then_pay_any_then_put_paid_counters(effects: &[&Effect]) -> Option<String> {
         let [energy_effect, may_effect, if_effect] = effects else {
             return None;
