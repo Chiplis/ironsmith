@@ -893,6 +893,11 @@ pub enum Condition {
         comparison: Comparison,
         display: Option<String>,
     },
+    CountParity {
+        count: AnthemCountExpression,
+        even: bool,
+        display: Option<String>,
+    },
     OwnsCardExiledWithCounter(CounterType),
     SourceAttackedThisTurn,
     SourceCameUnderYourControlThisTurn,

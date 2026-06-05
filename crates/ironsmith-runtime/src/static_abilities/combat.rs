@@ -731,6 +731,13 @@ define_combat_ability!(
     "Can attack as though it didn't have defender"
 );
 
+// Can attack as though it had haste. This is attack-only, not the haste keyword.
+define_combat_ability!(
+    CanAttackAsThoughHaste,
+    CanAttackAsThoughHaste,
+    "Can attack as though it had haste"
+);
+
 /// Must attack each combat if able.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MustAttack;

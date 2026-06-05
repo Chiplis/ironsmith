@@ -75,6 +75,7 @@ pub enum StaticAbilityId {
     CantBeBlockedByMoreThan,
     CantBeBlockedExceptByNOrMore,
     CanAttackAsThoughNoDefender,
+    CanAttackAsThoughHaste,
     MustAttack,
     GoadedBySourceController,
     MustAttackAttachedController,
@@ -343,6 +344,7 @@ impl StaticAbilityId {
             | CantBeBlockedByMoreThan
             | CantBeBlockedExceptByNOrMore
             | CanAttackAsThoughNoDefender
+            | CanAttackAsThoughHaste
             | MustAttack
             | GoadedBySourceController
             | MustAttackAttachedController
@@ -655,6 +657,7 @@ impl StaticAbilityId {
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
                 | CanAttackAsThoughNoDefender
+                | CanAttackAsThoughHaste
                 | MustAttack
                 | MustBlock
                 | CantAttack

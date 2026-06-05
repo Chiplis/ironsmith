@@ -2188,6 +2188,10 @@ impl GrantAbility {
         self.condition = Some(condition);
         self
     }
+
+    fn applies_to_source(&self) -> bool {
+        self.source_only || self.filter == ObjectFilter::source()
+    }
 }
 
 impl PartialEq for GrantAbility {
@@ -2205,11 +2209,25 @@ impl StaticAbilityKind for GrantAbility {
     }
 
     fn display(&self) -> String {
-        let subject = if self.source_only {
+        let applies_to_source = self.applies_to_source();
+        let subject = if applies_to_source {
             "this creature".to_string()
         } else {
             grant_subject_text(&self.filter)
         };
+        if applies_to_source
+            && self.ability.id() == StaticAbilityId::CanAttackAsThoughHaste
+            && let Some(crate::ConditionExpr::Not(inner)) = &self.condition
+            && matches!(
+                inner.as_ref(),
+                crate::ConditionExpr::ObjectEnteredBattlefieldThisTurn(filter)
+                    if *filter == ObjectFilter::source()
+            )
+        {
+            return format!(
+                "{subject} can attack as though it had haste unless it entered this turn"
+            );
+        }
         let raw_ability_text = self.ability.display();
         let mut ability_text = raw_ability_text.clone();
         if matches!(
@@ -2232,7 +2250,7 @@ impl StaticAbilityKind for GrantAbility {
             }
         };
         if let Some(condition) = &self.condition {
-            if self.source_only
+            if applies_to_source
                 && self.ability.is_keyword()
                 && leading_source_keyword_condition(condition)
             {
@@ -2263,6 +2281,8 @@ impl StaticAbilityKind for GrantAbility {
     ) -> Vec<ContinuousEffect> {
         let target = if self.source_only {
             EffectTarget::Source
+        } else if self.filter == ObjectFilter::source() {
+            EffectTarget::Source
         } else {
             effect_target_for_filter(source, &self.filter)
         };
@@ -2279,7 +2299,7 @@ impl StaticAbilityKind for GrantAbility {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, _source: ObjectId, controller: PlayerId) {
-        if self.source_only {
+        if self.applies_to_source() {
             self.ability.apply_restrictions(game, _source, controller);
             return;
         }

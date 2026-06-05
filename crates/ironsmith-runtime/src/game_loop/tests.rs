@@ -11988,6 +11988,178 @@ fn wild_dogs_upkeep_trigger_hands_control_to_the_life_leader() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_614), "Chaos Lord")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(4)],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+            vec![ManaSymbol::Red],
+        ]))
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Human])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "First strike\nAt the beginning of your upkeep, target opponent gains control of this creature if the number of permanents is even.\nThis creature can attack as though it had haste unless it entered this turn.",
+        )
+        .expect("Chaos Lord should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_filler_permanent_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_615), "Chaos Lord Count Filler")
+        .card_types(vec![CardType::Artifact])
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn chaos_lord_tap_ability_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(2_616), "Chaos Lord Tap Test")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .parse_text(
+            "This creature can attack as though it had haste unless it entered this turn.\n{T}: Add {R}.",
+        )
+        .expect("tap-test creature should parse")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn queue_chaos_lord_upkeep_trigger(game: &mut GameState) -> TriggerQueue {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Chaos Lord should trigger at the beginning of its controller's upkeep"
+    );
+    trigger_queue
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_upkeep_trigger_gives_target_opponent_control_when_permanent_count_is_even() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let chaos_lord = chaos_lord_definition();
+    let filler = chaos_lord_filler_permanent_definition();
+    let chaos_lord_id = game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+    game.create_object_from_definition(&filler, alice, Zone::Battlefield);
+
+    let mut trigger_queue = queue_chaos_lord_upkeep_trigger(&mut game);
+    let mut dm = SelectFirstDecisionMaker;
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Chaos Lord upkeep trigger should go on the stack with target opponent");
+    resolve_stack_entry(&mut game).expect("Chaos Lord upkeep trigger should resolve");
+
+    assert_eq!(
+        game.current_controller(chaos_lord_id),
+        Some(bob),
+        "target opponent should gain control when the number of permanents is even"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_upkeep_trigger_does_not_queue_when_permanent_count_is_odd() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let chaos_lord = chaos_lord_definition();
+    game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+
+    game.turn.phase = Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Upkeep);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(&mut game, &mut trigger_queue);
+    assert!(
+        trigger_queue.entries.is_empty(),
+        "Chaos Lord's parity gate should prevent the upkeep trigger when the number of permanents is odd"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_can_attack_as_though_hasty_only_if_it_did_not_enter_this_turn() {
+    let mut old_permanent_game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let chaos_lord = chaos_lord_definition();
+    let old_chaos_lord =
+        old_permanent_game.create_object_from_definition(&chaos_lord, alice, Zone::Battlefield);
+    old_permanent_game.set_summoning_sick(old_chaos_lord);
+    assert!(
+        crate::rules::combat::can_attack(
+            old_permanent_game
+                .object(old_chaos_lord)
+                .expect("old Chaos Lord exists"),
+            &old_permanent_game,
+        ),
+        "Chaos Lord should attack as though it had haste when it is summoning sick but did not enter this turn"
+    );
+
+    let mut entered_this_turn_game = setup_game();
+    let chaos_lord_in_hand =
+        entered_this_turn_game.create_object_from_definition(&chaos_lord, alice, Zone::Hand);
+    let entered_chaos_lord = entered_this_turn_game
+        .move_object_by_effect(chaos_lord_in_hand, Zone::Battlefield)
+        .expect("Chaos Lord should enter the battlefield");
+    assert!(
+        !crate::rules::combat::can_attack(
+            entered_this_turn_game
+                .object(entered_chaos_lord)
+                .expect("entered Chaos Lord exists"),
+            &entered_this_turn_game,
+        ),
+        "Chaos Lord should not get the as-though-haste attack permission if it entered this turn"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn chaos_lord_attack_as_haste_clause_does_not_grant_haste_for_tap_abilities() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let tap_creature = chaos_lord_tap_ability_definition();
+    let tap_creature_id =
+        game.create_object_from_definition(&tap_creature, alice, Zone::Battlefield);
+    game.set_summoning_sick(tap_creature_id);
+
+    assert!(
+        crate::rules::combat::can_attack(
+            game.object(tap_creature_id)
+                .expect("old tap-test creature exists"),
+            &game,
+        ),
+        "the as-though-haste clause should grant attack-only permission"
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            tap_creature_id,
+            crate::static_abilities::StaticAbilityId::Haste,
+        ),
+        "the as-though-haste attack permission must not become the Haste keyword"
+    );
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateManaAbility { source, .. }
+                    if *source == tap_creature_id
+            )),
+        "summoning-sick tap ability should remain illegal without true haste"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn touch_of_the_eternal_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(278_197), "Touch of the Eternal")
         .mana_cost(ManaCost::from_pips(vec![

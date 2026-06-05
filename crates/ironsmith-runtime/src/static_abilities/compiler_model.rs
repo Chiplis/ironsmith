@@ -105,6 +105,7 @@ impl StaticAbility {
             Some(StaticAbilityId::CanAttackAsThoughNoDefender) => {
                 Self::can_attack_as_though_no_defender()
             }
+            Some(StaticAbilityId::CanAttackAsThoughHaste) => Self::can_attack_as_though_haste(),
             Some(StaticAbilityId::MayAssignDamageAsUnblocked) => {
                 Self::may_assign_damage_as_unblocked()
             }

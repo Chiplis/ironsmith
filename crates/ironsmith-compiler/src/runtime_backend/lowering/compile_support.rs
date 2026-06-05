@@ -407,6 +407,15 @@ pub(crate) fn compile_condition_from_predicate_ast(
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerHasMoreLifeThanEachOtherPlayer { player }
         }
+        PredicateAst::CountParity {
+            count,
+            even,
+            display,
+        } => Condition::CountParity {
+            count: count.clone(),
+            even: *even,
+            display: display.clone(),
+        },
         PredicateAst::PlayerIsMonarch { player } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             Condition::PlayerIsMonarch { player }
