@@ -28097,6 +28097,115 @@ fn parse_enchanted_creature_doesnt_untap_during_controller_untap_step() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn fall_from_favor_runtime_game() -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+) {
+    let fall_from_favor = parse_oracle_card_definition("Fall from Favor");
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Grizzly Bears")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let enchanted_creature = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let aura = game.create_object_from_definition(&fall_from_favor, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        aura,
+        crate::object::AttachmentTarget::Object(enchanted_creature),
+    ));
+    (game, alice, bob, aura, enchanted_creature)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fall_from_favor_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Fall from Favor");
+    let def = parse_oracle_card_definition("Fall from Favor");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        rendered,
+        "Enchant creature\nWhen this aura enters, tap enchanted creature and you become the monarch.\nEnchanted creature doesnt untap during its controllers untap step unless that player is the monarch.",
+        "Fall from Favor should preserve its Aura target, ETB tap/monarch trigger, and monarch-gated untap restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fall_from_favor_enters_taps_enchanted_creature_and_makes_controller_monarch() {
+    let (mut game, alice, _bob, aura, enchanted_creature) = fall_from_favor_runtime_game();
+
+    let enters_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            aura,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let trigger_count = resolve_triggers_for_source(&mut game, aura, &enters_event);
+
+    assert_eq!(
+        trigger_count, 1,
+        "Fall from Favor entering should create exactly one trigger"
+    );
+    assert!(
+        game.is_tapped(enchanted_creature),
+        "Fall from Favor should tap the enchanted creature when its trigger resolves"
+    );
+    assert_eq!(
+        game.monarch,
+        Some(alice),
+        "Fall from Favor's controller should become the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fall_from_favor_keeps_enchanted_creature_tapped_when_controller_is_not_monarch() {
+    let (mut game, alice, bob, _aura, enchanted_creature) = fall_from_favor_runtime_game();
+    game.set_monarch(Some(alice));
+    game.tap(enchanted_creature);
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    assert!(
+        game.is_tapped(enchanted_creature),
+        "Fall from Favor should stop the enchanted creature from untapping when its controller is not the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn fall_from_favor_allows_enchanted_creature_to_untap_when_controller_is_monarch() {
+    let (mut game, _alice, bob, _aura, enchanted_creature) = fall_from_favor_runtime_game();
+    game.set_monarch(Some(bob));
+    game.tap(enchanted_creature);
+    game.turn.active_player = bob;
+    game.turn.phase = crate::game_state::Phase::Beginning;
+    game.turn.step = Some(crate::game_state::Step::Untap);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::turn::execute_untap_step_with(&mut game, &mut dm);
+
+    assert!(
+        !game.is_tapped(enchanted_creature),
+        "Fall from Favor should allow the enchanted creature to untap when its controller is the monarch"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_choose_not_to_untap_artifact_line_as_static_ability() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Endoskeleton Untap Variant")

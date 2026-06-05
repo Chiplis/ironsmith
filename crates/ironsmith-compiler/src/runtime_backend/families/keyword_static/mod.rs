@@ -9317,13 +9317,39 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_line(
                 clause_words.join(" ")
             )))
         }
-        Some(DoesntUntapDuringUntapStepSpec::Attached { subject_tokens }) => {
+        Some(DoesntUntapDuringUntapStepSpec::Attached {
+            subject_tokens,
+            tail_tokens,
+        }) => {
             let subject = crate::runtime_backend::token_word_refs(subject_tokens).join(" ");
             let text = format!("{subject} doesnt untap during its controllers untap step");
+            let condition = if tail_tokens.is_empty() {
+                None
+            } else {
+                let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+                if !tail_words.first().is_some_and(|word| *word == "unless") {
+                    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+                    return Err(CardTextError::ParseError(format!(
+                        "unsupported trailing attached untap-step clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                let condition_tokens = trim_commas(&tail_tokens[1..]);
+                if condition_tokens.is_empty() {
+                    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+                    return Err(CardTextError::ParseError(format!(
+                        "missing condition after attached untap-step unless-clause (clause: '{}')",
+                        clause_words.join(" ")
+                    )));
+                }
+                Some(crate::ConditionExpr::Not(Box::new(
+                    parse_static_condition_clause(&condition_tokens)?,
+                )))
+            };
             Ok(Some(StaticAbilityAst::AttachedStaticAbilityGrant {
                 ability: Box::new(StaticAbilityAst::Static(StaticAbility::doesnt_untap())),
                 display: text,
-                condition: None,
+                condition,
             }))
         }
         None => Ok(None),

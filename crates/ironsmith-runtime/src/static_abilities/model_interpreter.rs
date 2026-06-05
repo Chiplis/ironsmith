@@ -1691,6 +1691,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         }
     }
 
+    fn affects_untap(&self) -> bool {
+        self.leaf_static_ability()
+            .is_some_and(|ability| ability.affects_untap())
+    }
+
+    fn untap_during_each_other_players_untap_step_filter(
+        &self,
+    ) -> Option<&crate::target::ObjectFilter> {
+        self.leaf_static_ability()?
+            .untap_during_each_other_players_untap_step_filter()
+    }
+
     fn generate_replacement_effect(
         &self,
         source: ObjectId,

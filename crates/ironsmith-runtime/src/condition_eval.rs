@@ -454,6 +454,7 @@ mod tests {
             defending_player: None,
             attacking_player: None,
             filter_source: None,
+            iterated_player: None,
             triggering_event: Some(&event),
             trigger_identity: None,
             ability_index: None,
@@ -1368,6 +1369,8 @@ pub struct ExternalEvaluationContext<'a> {
     /// - Intervening-if checks historically passed `None` so `other` filters do not exclude the source.
     /// - Most other checks should pass `Some(source)`.
     pub filter_source: Option<ObjectId>,
+    /// Player bound by an enclosing iteration or attached-object context.
+    pub iterated_player: Option<PlayerId>,
     pub triggering_event: Option<&'a TriggerEvent>,
     pub trigger_identity: Option<TriggerIdentity>,
     pub ability_index: Option<usize>,
@@ -3005,6 +3008,7 @@ fn resolve_condition_player_external(
     player: &PlayerFilter,
 ) -> Option<PlayerId> {
     match player {
+        PlayerFilter::IteratedPlayer => ctx.iterated_player,
         PlayerFilter::Defending => ctx.defending_player,
         PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller)),
         _ => resolve_condition_player_simple(game, ctx.controller, player),

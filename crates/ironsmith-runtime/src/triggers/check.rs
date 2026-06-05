@@ -2367,6 +2367,7 @@ pub fn verify_intervening_if(
         attacking_player: None,
         // Legacy intervening-if checks intentionally did not provide a filter-context source.
         filter_source: None,
+        iterated_player: None,
         triggering_event: Some(event),
         trigger_identity,
         ability_index: None,

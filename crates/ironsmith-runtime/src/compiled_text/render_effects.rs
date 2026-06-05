@@ -5563,6 +5563,49 @@ fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<Stri
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    fn describe_tag_attached_tap_then_become_monarch(effects: &[Effect]) -> Option<String> {
+        fn choose_spec_references_attached_tag(spec: &ChooseSpec, tag: &str) -> bool {
+            match spec {
+                ChooseSpec::Tagged(candidate) => candidate.as_str() == tag,
+                ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+                    filter.tagged_constraints.iter().any(|constraint| {
+                        constraint.tag.as_str() == tag
+                            && matches!(
+                                constraint.relation,
+                                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            )
+                    })
+                }
+                ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
+                    choose_spec_references_attached_tag(inner, tag)
+                }
+                _ => false,
+            }
+        }
+
+        let [tag_effect, tap_effect, monarch_effect] = effects else {
+            return None;
+        };
+        let tag_attached = tag_effect.downcast_ref::<crate::effects::TagAttachedToSourceEffect>()?;
+        let tag = tag_attached.tag.as_str();
+        if !matches!(tag, "enchanted" | "equipped") {
+            return None;
+        }
+        let tap = tap_effect.downcast_ref::<crate::effects::TapEffect>()?;
+        if !choose_spec_references_attached_tag(&tap.target, tag) {
+            return None;
+        }
+        let become_monarch = monarch_effect.downcast_ref::<crate::effects::BecomeMonarchEffect>()?;
+        if become_monarch.player != PlayerFilter::You {
+            return None;
+        }
+        let attached_object = describe_attached_object_for_tag(tag, Some(&tap.target));
+        Some(format!("Tap {attached_object} and you become the monarch"))
+    }
+
+    if let Some(compact) = describe_tag_attached_tap_then_become_monarch(effects) {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()

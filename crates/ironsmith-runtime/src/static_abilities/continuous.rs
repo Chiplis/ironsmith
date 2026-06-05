@@ -1052,6 +1052,28 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             "as long as this creature didn't attack this turn".to_string()
         }
         crate::ConditionExpr::Not(inner) => {
+            if let crate::ConditionExpr::PlayerIsMonarch { player } = inner.as_ref() {
+                return match player {
+                    crate::target::PlayerFilter::You => "unless you're the monarch".to_string(),
+                    crate::target::PlayerFilter::Opponent => {
+                        "unless an opponent is the monarch".to_string()
+                    }
+                    crate::target::PlayerFilter::Any => "unless a player is the monarch".to_string(),
+                    crate::target::PlayerFilter::NotYou => {
+                        "unless another player is the monarch".to_string()
+                    }
+                    crate::target::PlayerFilter::Defending => {
+                        "unless the defending player is the monarch".to_string()
+                    }
+                    crate::target::PlayerFilter::Attacking => {
+                        "unless the attacking player is the monarch".to_string()
+                    }
+                    crate::target::PlayerFilter::IteratedPlayer => {
+                        "unless that player is the monarch".to_string()
+                    }
+                    _ => format!("unless {} is the monarch", describe_player_filter(player)),
+                };
+            }
             if let crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count: 1 } =
                 inner.as_ref()
             {
@@ -1706,12 +1728,23 @@ pub(super) fn static_condition_is_active(
     source: ObjectId,
     controller: PlayerId,
 ) -> bool {
+    static_condition_is_active_with_iterated_player(condition, game, source, controller, None)
+}
+
+fn static_condition_is_active_with_iterated_player(
+    condition: &crate::ConditionExpr,
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    iterated_player: Option<PlayerId>,
+) -> bool {
     let eval_ctx = crate::condition_eval::ExternalEvaluationContext {
         controller,
         source,
         defending_player: None,
         attacking_player: None,
         filter_source: Some(source),
+        iterated_player,
         triggering_event: None,
         trigger_identity: None,
         ability_index: None,
@@ -3941,10 +3974,21 @@ impl StaticAbilityKind for AttachedAbilityGrant {
     }
 
     fn apply_restrictions(&self, game: &mut GameState, source: ObjectId, controller: PlayerId) {
-        if let Some(condition) = &self.condition
-            && !static_condition_is_active(condition, game, source, controller)
-        {
-            return;
+        if let Some(condition) = &self.condition {
+            let iterated_player = game
+                .object(source)
+                .and_then(|object| object.attached_to.and_then(|target| target.object_id()))
+                .and_then(|attached_to| game.object(attached_to))
+                .map(|attached_object| game.controller_of(attached_object));
+            if !static_condition_is_active_with_iterated_player(
+                condition,
+                game,
+                source,
+                controller,
+                iterated_player,
+            ) {
+                return;
+            }
         }
 
         let Some(attached_to) = game

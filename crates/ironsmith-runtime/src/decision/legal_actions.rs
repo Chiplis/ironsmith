@@ -1497,6 +1497,7 @@ fn activation_precheck_with_view(
         defending_player: None,
         attacking_player: None,
         filter_source: Some(source),
+        iterated_player: None,
         triggering_event: None,
         trigger_identity: None,
         ability_index: Some(ability_index),
