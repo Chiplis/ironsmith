@@ -47,9 +47,10 @@ fn pay_selected_cost(
     >,
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
+    let processing_mode = cost.processing_mode();
     let effective_choice_tag = choice_tag
         .cloned()
-        .or_else(|| match cost.processing_mode() {
+        .or_else(|| match &processing_mode {
             crate::costs::CostProcessingMode::ExileFromHand { .. }
             | crate::costs::CostProcessingMode::ExileFromGraveyard { .. }
             | crate::costs::CostProcessingMode::ExileObjects { .. } => {
@@ -57,15 +58,23 @@ fn pay_selected_cost(
             }
             _ => None,
         });
+    let preserve_chosen_snapshot = matches!(
+        processing_mode,
+        crate::costs::CostProcessingMode::SacrificeTarget { .. }
+    );
 
     let mut cost_ctx = crate::costs::CostContext::new(source, payer, decision_maker)
         .with_reason(reason)
         .with_pre_chosen_cards(vec![chosen_id])
         .with_provenance(provenance);
     cost_ctx.tagged_objects = tagged_objects.clone();
-    let chosen_snapshot = game
-        .object(chosen_id)
-        .map(|obj| crate::snapshot::ObjectSnapshot::from_object(obj, game));
+    let chosen_snapshot = game.object(chosen_id).map(|obj| {
+        if preserve_chosen_snapshot {
+            crate::snapshot::ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
+        } else {
+            crate::snapshot::ObjectSnapshot::from_object(obj, game)
+        }
+    });
     if let Some(tag) = effective_choice_tag.as_ref()
         && let Some(snapshot) = chosen_snapshot.clone()
     {
@@ -78,7 +87,8 @@ fn pay_selected_cost(
 
     match cost.pay(game, &mut cost_ctx) {
         Ok(crate::costs::CostPaymentResult::Paid) => {
-            if let Some(tag) = effective_choice_tag.as_ref()
+            if !preserve_chosen_snapshot
+                && let Some(tag) = effective_choice_tag.as_ref()
                 && let Some(snapshot) = chosen_snapshot.as_ref()
                 && let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
                 && let Some(current) = game.object(current_id)

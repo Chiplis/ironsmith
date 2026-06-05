@@ -28691,6 +28691,7 @@ fn cast_tormented_thoughts_targeting_player(
 #[cfg(ironsmith_runtime_parser_tests)]
 fn run_tormented_thoughts_discards_by_sacrificed_power(
     sacrificed_power: i32,
+    plus_one_plus_one_counters: u32,
     target_hand_size: usize,
 ) {
     let mut game = setup_game();
@@ -28710,6 +28711,13 @@ fn run_tormented_thoughts_discards_by_sacrificed_power(
         .power_toughness(PowerToughness::fixed(sacrificed_power, 1))
         .build();
     let fodder_id = game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+    if plus_one_plus_one_counters > 0 {
+        game.add_counters(
+            fodder_id,
+            crate::object::CounterType::PlusOnePlusOne,
+            plus_one_plus_one_counters,
+        );
+    }
     let alice_hand_card = game.create_object_from_card(
         &tormented_thoughts_test_card("Alice Untouched Hand Card", vec![CardType::Instant]),
         alice,
@@ -28759,7 +28767,8 @@ fn run_tormented_thoughts_discards_by_sacrificed_power(
     };
     resolve_stack_entry_with(&mut game, &mut dm).expect("Tormented Thoughts should resolve");
 
-    let expected_discards = target_hand_size.min(sacrificed_power.max(0) as usize);
+    let battlefield_power = sacrificed_power + plus_one_plus_one_counters as i32;
+    let expected_discards = target_hand_size.min(battlefield_power.max(0) as usize);
     for (idx, card_id) in bob_hand.iter().enumerate() {
         let name = format!("Bob Tormented Card {}", idx + 1);
         if idx < expected_discards {
@@ -28780,13 +28789,19 @@ fn run_tormented_thoughts_discards_by_sacrificed_power(
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn tormented_thoughts_discards_cards_equal_to_sacrificed_creature_power() {
-    run_tormented_thoughts_discards_by_sacrificed_power(3, 4);
+    run_tormented_thoughts_discards_by_sacrificed_power(3, 0, 4);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn tormented_thoughts_discards_only_available_cards_when_power_exceeds_hand_size() {
-    run_tormented_thoughts_discards_by_sacrificed_power(4, 2);
+    run_tormented_thoughts_discards_by_sacrificed_power(4, 0, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tormented_thoughts_uses_sacrificed_creature_lki_power_after_counters() {
+    run_tormented_thoughts_discards_by_sacrificed_power(1, 3, 4);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
