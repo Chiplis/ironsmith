@@ -17681,6 +17681,31 @@ fn test_parse_cant_be_blocked_by_more_than_one_creature() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn rampaging_cyclops_parses_blocker_count_static_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rampaging Cyclops")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+        )
+        .expect("Rampaging Cyclops should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+        "expected Rampaging Cyclops compiled text to preserve its blocker-count condition"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CountComparison") && debug.contains("BlockingSource"),
+        "expected Rampaging Cyclops to lower to a structural blocking-source count condition, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_each_creature_cant_be_blocked_by_more_than_one_creature() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Familiar Ground Probe")
         .card_types(vec![CardType::Enchantment])

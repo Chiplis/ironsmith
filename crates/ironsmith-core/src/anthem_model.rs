@@ -12,6 +12,7 @@ pub enum AnthemCountExpression {
     CountersAmong(ObjectFilter, CounterType),
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
+    BlockingSource,
     CommanderCastCount(PlayerFilter),
     PlayerSpeed(PlayerFilter),
     UnspentMana {

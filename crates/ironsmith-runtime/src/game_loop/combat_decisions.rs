@@ -589,6 +589,7 @@ pub fn apply_blocker_declarations(
 
     // Block triggers can depend on the complete set of blockers declared together.
     game.combat = Some(combat.clone());
+    game.mark_continuous_state_dirty();
 
     // Emit block triggers (per declaration).
     for (blocker, attacker) in &pairs {
