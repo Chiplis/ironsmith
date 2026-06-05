@@ -1135,6 +1135,9 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
     let Some(exile_word_idx) = sentence_clause.find_word("exile") else {
         return Ok(None);
     };
+    if exile_word_idx == 0 {
+        return Ok(None);
+    }
     let Some(exile_token_idx) = sentence_clause.token_index_for_word_index(exile_word_idx) else {
         return Ok(None);
     };
