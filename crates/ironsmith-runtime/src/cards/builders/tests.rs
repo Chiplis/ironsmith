@@ -40384,6 +40384,143 @@ fn parse_deepglow_skate_strict_oracle_text() {
     assert_eq!(filter.zone, Some(Zone::Battlefield));
 }
 
+#[test]
+fn aetheric_amplifier_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Aetheric Amplifier");
+    let def = parse_oracle_card_definition("Aetheric Amplifier");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert!(
+        rendered.contains(
+            "{4}, {T}: Choose one. Activate only as a sorcery.\n\
+• Double the number of each kind of counter on target permanent.\n\
+• Double the number of each kind of counter you have."
+        ),
+        "expected Aetheric Amplifier compiled text to preserve both counter-doubling modes, got {rendered}"
+    );
+
+    let modal = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .find_map(|activated| {
+            activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<ChooseModeEffect>())
+        })
+        .expect("Aetheric Amplifier should compile its choose-one activation as a modal effect");
+    let modal_activated = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .find(|activated| {
+            activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| effect.downcast_ref::<ChooseModeEffect>().is_some())
+        })
+        .expect("Aetheric Amplifier should have a modal activated ability");
+    assert_eq!(
+        modal_activated.timing,
+        crate::ability::ActivationTiming::SorcerySpeed,
+        "Aetheric Amplifier modal activation must preserve activate-only-as-sorcery timing"
+    );
+    assert_eq!(modal.modes.len(), 2);
+
+    let doubles = modal
+        .modes
+        .iter()
+        .flat_map(|mode| mode.effects.iter())
+        .filter_map(|effect| effect.downcast_ref::<DoubleCountersEffect>())
+        .collect::<Vec<_>>();
+    assert_eq!(
+        doubles.len(),
+        2,
+        "Aetheric Amplifier should compile both modes as double-counters effects"
+    );
+    assert!(
+        doubles.iter().any(|effect| {
+            effect.counter_type.is_none()
+                && effect.target.is_target()
+                && matches!(
+                    effect.target.base(),
+                    ChooseSpec::Object(filter) if filter.zone == Some(Zone::Battlefield)
+                )
+        }),
+        "expected one mode to target a permanent"
+    );
+    assert!(
+        doubles.iter().any(|effect| {
+            effect.counter_type.is_none()
+                && matches!(effect.target.base(), ChooseSpec::SourceController)
+        }),
+        "expected one mode to double counters the controller has"
+    );
+}
+
+#[test]
+fn aetheric_amplifier_modal_activation_is_sorcery_speed() {
+    let def = parse_oracle_card_definition("Aetheric Amplifier");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.turn.step = None;
+    let amplifier_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+
+    let modal_ability_index = game
+        .object(amplifier_id)
+        .expect("Aetheric Amplifier should exist")
+        .abilities
+        .iter()
+        .position(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .any(|effect| effect.downcast_ref::<ChooseModeEffect>().is_some()),
+            _ => false,
+        })
+        .expect("Aetheric Amplifier should have a modal activated ability");
+
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    assert!(
+        crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index }
+                    if source == amplifier_id && ability_index == modal_ability_index
+            )),
+        "Aetheric Amplifier's modal activation should be legal in its controller's main phase"
+    );
+
+    game.turn.phase = crate::game_state::Phase::Combat;
+    assert!(
+        !crate::decision::compute_legal_actions(&game, alice)
+            .into_iter()
+            .any(|action| matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index }
+                    if source == amplifier_id && ability_index == modal_ability_index
+            )),
+        "Aetheric Amplifier's modal activation should not be legal outside sorcery speed"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_then_that_player_discards_clause() {
