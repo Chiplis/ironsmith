@@ -1141,6 +1141,9 @@ fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
 
     let look_clause = sentence_clause.before(exile_token_idx).trimmed();
     let exile_clause = sentence_clause.from(exile_token_idx).trimmed();
+    if look_clause.is_empty() {
+        return Ok(None);
+    }
     let look_effect = super::verb_handlers::parse_look(look_clause.tokens(), None)?;
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         subject: SubjectVerbSubjectAst { player, .. },

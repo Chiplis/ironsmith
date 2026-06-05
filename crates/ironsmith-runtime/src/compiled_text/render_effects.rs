@@ -3943,6 +3943,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
         return describe_structural_multisentence_effect_list(rest);
     }
 
+    if let Some(compact) = describe_each_opponent_exile_top_then_cast_until_eot_any_color(effects) {
+        return Some(compact);
+    }
+
     let refs = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_player_protection_from_everything_pair(&refs) {
         return Some(compact);
@@ -5653,6 +5657,44 @@ fn describe_roll_die_then_scry_result(effects: &[Effect]) -> Option<String> {
     ))
 }
 
+fn describe_each_opponent_exile_top_then_cast_until_eot_any_color(
+    effects: &[Effect],
+) -> Option<String> {
+    let [for_players_effect, grant_effect] = effects else {
+        return None;
+    };
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.filter != PlayerFilter::Opponent || for_players.effects.len() != 1 {
+        return None;
+    }
+    let exile_top = for_players.effects[0]
+        .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
+    if exile_top.player != PlayerFilter::IteratedPlayer
+        || exile_top.count != Value::Fixed(1)
+        || !exile_top.moved_tags.is_empty()
+        || exile_top.accumulated_tags.len() != 1
+    {
+        return None;
+    }
+
+    let grant = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    if grant.tag != exile_top.accumulated_tags[0]
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant.allow_land
+        || !grant.allow_any_color_for_cast
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+    {
+        return None;
+    }
+
+    Some(
+        "Exile the top card of each opponent's library. Until end of turn, you may cast spells from among those exiled cards, and you may spend mana as though it were mana of any color to cast those spells"
+            .to_string(),
+    )
+}
+
 fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<String> {
     let [pump_effect, conditional_effect] = effects else {
         return None;
@@ -5732,6 +5774,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         && let Some(compact) =
             describe_for_players_bottom_library_exile_then_look_cast(for_players, look, grant)
     {
+        return compact;
+    }
+    if let Some(compact) = describe_each_opponent_exile_top_then_cast_until_eot_any_color(effects) {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {

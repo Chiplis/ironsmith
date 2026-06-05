@@ -1233,6 +1233,158 @@ fn arvinox_the_mind_flail_exiles_bottom_cards_and_grants_only_permanent_spell_pe
 }
 
 #[test]
+fn stolen_strategy_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Stolen Strategy");
+
+    let def = parse_oracle_card_definition("Stolen Strategy");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert_eq!(def.name(), "Stolen Strategy");
+    assert_eq!(def.card.card_types, vec![CardType::Enchantment]);
+    assert!(
+        rendered.contains("At the beginning of your upkeep, exile the top card of each opponent's library. Until end of turn, you may cast spells from among those exiled cards, and you may spend mana as though it were mana of any color to cast those spells"),
+        "expected Stolen Strategy compiled text to preserve the per-opponent exile and tagged cast permission, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("BeginningOfUpkeepTrigger")
+            && ability_debug.contains("ForPlayersEffect")
+            && ability_debug.contains("filter: Opponent")
+            && ability_debug.contains("ExileTopOfLibraryEffect")
+            && ability_debug.contains("player: IteratedPlayer")
+            && ability_debug.contains("GrantPlayTaggedEffect")
+            && ability_debug.contains("duration: UntilEndOfTurn")
+            && ability_debug.contains("allow_any_color_for_cast: true"),
+        "expected Stolen Strategy to lower to upkeep-triggered per-opponent top exile plus tagged cast permission, got {ability_debug}"
+    );
+}
+
+#[test]
+fn stolen_strategy_runtime_exiles_each_opponents_top_card_and_grants_cast_permission() {
+    let def = parse_oracle_card_definition("Stolen Strategy");
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Opponent Library Spell")
+        .card_types(vec![CardType::Instant])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+    let filler = CardDefinitionBuilder::new(CardId::new(), "Library Filler")
+        .card_types(vec![CardType::Sorcery])
+        .with_spell_effect(vec![Effect::draw(1)])
+        .build();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let charlie = PlayerId::from_index(2);
+    let mut game = crate::game_state::GameState::new(
+        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        20,
+    );
+    let stolen_strategy = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let alice_top = game.create_object_from_definition(&spell, alice, Zone::Library);
+    let bob_bottom = game.create_object_from_definition(&filler, bob, Zone::Library);
+    let bob_top = game.create_object_from_definition(&spell, bob, Zone::Library);
+    let charlie_bottom = game.create_object_from_definition(&filler, charlie, Zone::Library);
+    let charlie_top = game.create_object_from_definition(&spell, charlie, Zone::Library);
+    let bob_top_stable = game.object(bob_top).expect("bob top setup").stable_id;
+    let charlie_top_stable = game
+        .object(charlie_top)
+        .expect("charlie top setup")
+        .stable_id;
+    assert!(game.set_player_library_order_with_audit(
+        bob,
+        vec![bob_bottom, bob_top],
+        "Stolen Strategy top-card regression setup",
+    ));
+    assert!(game.set_player_library_order_with_audit(
+        charlie,
+        vec![charlie_bottom, charlie_top],
+        "Stolen Strategy top-card regression setup",
+    ));
+
+    let bob_upkeep = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(bob),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, stolen_strategy, &bob_upkeep),
+        0,
+        "Stolen Strategy should not trigger on an opponent's upkeep"
+    );
+    assert_eq!(
+        game.object(bob_top).expect("bob top before upkeep").zone,
+        Zone::Library
+    );
+    assert_eq!(
+        game.object(charlie_top)
+            .expect("charlie top before upkeep")
+            .zone,
+        Zone::Library
+    );
+
+    let alice_upkeep = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, stolen_strategy, &alice_upkeep),
+        1,
+        "Stolen Strategy should trigger at the beginning of its controller's upkeep"
+    );
+
+    let bob_exiled = game
+        .find_object_by_stable_id(bob_top_stable)
+        .expect("bob top card should still exist after exile");
+    let charlie_exiled = game
+        .find_object_by_stable_id(charlie_top_stable)
+        .expect("charlie top card should still exist after exile");
+    assert_eq!(
+        game.object(alice_top).expect("alice top").zone,
+        Zone::Library
+    );
+    assert_eq!(
+        game.object(bob_bottom).expect("bob bottom").zone,
+        Zone::Library
+    );
+    assert_eq!(
+        game.object(charlie_bottom).expect("charlie bottom").zone,
+        Zone::Library
+    );
+    assert_eq!(
+        game.object(bob_exiled).expect("bob exiled").zone,
+        Zone::Exile
+    );
+    assert_eq!(
+        game.object(charlie_exiled)
+            .expect("charlie exiled")
+            .zone,
+        Zone::Exile
+    );
+
+    for exiled in [bob_exiled, charlie_exiled] {
+        assert!(
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled,
+                Zone::Exile,
+                alice,
+            ),
+            "Alice should be able to cast each card exiled by Stolen Strategy"
+        );
+        assert!(
+            game.can_spend_mana_as_any_color(alice, Some(exiled)),
+            "Alice should be able to spend mana as any color to cast each Stolen Strategy card"
+        );
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                exiled,
+                Zone::Exile,
+                bob,
+            ),
+            "Stolen Strategy should grant the cast permission only to its controller"
+        );
+    }
+}
+
+#[test]
 fn clockspinning_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Clockspinning");
 
