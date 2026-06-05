@@ -37,6 +37,7 @@ const SIDED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sided"]
 const DIE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["die"], &["dice"]]);
 const CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["card"], &["cards"]]);
+const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
 const FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["for", "each"], &["each"]]);
 const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
@@ -607,7 +608,10 @@ pub(crate) fn parse_mill(
             .filter_map(OwnedLexToken::as_word)
             .collect();
         if !trailing_words.is_empty() {
-            if matches!(count, Value::Fixed(1))
+            if INSTEAD_WORD_PATTERN.matches_words(&trailing_words) {
+                // Conditional self-replacement lowering consumes the semantic
+                // role of "instead" after the mill effect parses.
+            } else if matches!(count, Value::Fixed(1))
                 && let Some(for_each_count) = parse_trailing_for_each_count(trailing_count_tokens)
             {
                 count = for_each_count;
@@ -643,7 +647,10 @@ pub(crate) fn parse_mill(
             .filter_map(OwnedLexToken::as_word)
             .collect();
         if !trailing_words.is_empty() {
-            if matches!(count, Value::Fixed(1))
+            if INSTEAD_WORD_PATTERN.matches_words(&trailing_words) {
+                // Conditional self-replacement lowering consumes the semantic
+                // role of "instead" after the mill effect parses.
+            } else if matches!(count, Value::Fixed(1))
                 && let Some(for_each_count) = parse_trailing_for_each_count(trailing_count_tokens)
             {
                 count = for_each_count;

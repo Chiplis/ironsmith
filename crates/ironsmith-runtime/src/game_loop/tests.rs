@@ -37099,6 +37099,144 @@ fn test_flashback_exiles_after_resolution() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn increasing_confusion_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(262_860), "Increasing Confusion")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Target player mills X cards. If this spell was cast from a graveyard, that player mills twice that many cards instead.\n\
+             Flashback {X}{U}",
+        )
+        .expect("Increasing Confusion should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn add_filler_cards_to_library(game: &mut GameState, player: PlayerId, count: usize) {
+    let filler = crate::cards::definitions::basic_island();
+    for _ in 0..count {
+        game.create_object_from_definition(&filler, player, Zone::Library);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_increasing_confusion_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target: PlayerId,
+    x_value: u32,
+    casting_method: CastingMethod,
+) -> ObjectId {
+    let def = increasing_confusion_definition();
+    let (flashback_index, flashback) = def
+        .alternative_casts
+        .iter()
+        .enumerate()
+        .find(|method| {
+            matches!(
+                method.1,
+                crate::alternative_cast::AlternativeCastingMethod::Flashback { .. }
+            )
+        })
+        .expect("Increasing Confusion should expose flashback");
+    assert_eq!(
+        flashback_index, 0,
+        "flashback should be first because this test uses Alternative(0)"
+    );
+    assert_eq!(
+        flashback.cast_from_zone(),
+        Zone::Graveyard,
+        "Increasing Confusion flashback should cast from the graveyard"
+    );
+    assert!(
+        flashback.mana_cost().is_some(),
+        "Increasing Confusion flashback should have a mana cost"
+    );
+    let flashback_debug = format!("{flashback:?}");
+    assert!(
+        flashback_debug.contains("X") && flashback_debug.contains("Blue"),
+        "Increasing Confusion flashback should preserve {{X}}{{U}}, got {flashback_debug}"
+    );
+
+    let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.object_mut(spell_id)
+        .expect("Increasing Confusion on stack")
+        .x_value = Some(x_value);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller)
+            .with_x(x_value)
+            .with_targets(vec![Target::Player(target)])
+            .with_casting_method(casting_method),
+    );
+    spell_id
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn increasing_confusion_normal_cast_mills_only_x_cards() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_filler_cards_to_library(&mut game, bob, 5);
+
+    put_increasing_confusion_on_stack(&mut game, alice, bob, 3, CastingMethod::Normal);
+    resolve_stack_entry(&mut game).expect("Increasing Confusion should resolve normally");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        3,
+        "normal cast should mill exactly X cards"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "normal cast should leave the un-milled cards in the target player's library"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn increasing_confusion_flashback_mills_twice_x_and_exiles_spell() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    add_filler_cards_to_library(&mut game, bob, 8);
+
+    let spell_id = put_increasing_confusion_on_stack(
+        &mut game,
+        alice,
+        bob,
+        3,
+        CastingMethod::Alternative(0),
+    );
+    let spell_stable = game
+        .object(spell_id)
+        .expect("Increasing Confusion on stack")
+        .stable_id;
+    resolve_stack_entry(&mut game).expect("Increasing Confusion should resolve with flashback");
+
+    assert_eq!(
+        game.player(bob).expect("bob exists").graveyard.len(),
+        6,
+        "flashback cast should mill twice X cards"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").library.len(),
+        2,
+        "flashback cast should leave only the cards not milled by twice X"
+    );
+    let resolved_spell = game
+        .find_object_by_stable_id(spell_stable)
+        .expect("resolved Increasing Confusion should still be tracked");
+    assert!(
+        game.exile.contains(&resolved_spell),
+        "flashback cast should exile Increasing Confusion after resolution"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn the_sixth_doctor_copies_historic_spells_without_legendary_and_only_once_each_turn() {
     use crate::PriorityResponse;
