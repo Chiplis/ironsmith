@@ -35424,6 +35424,205 @@ fn zone_has_named_object(game: &crate::game_state::GameState, zone: Zone, name: 
         .any(|id| game.object(*id).is_some_and(|object| object.name == name))
 }
 
+fn glissa_sunseeker_conditional_destroy_effect(def: &CardDefinition) -> Effect {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated.effects.segments[0]
+                .default_effects
+                .iter()
+                .find(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::ConditionalEffect>()
+                        .is_some()
+                })
+                .cloned(),
+            _ => None,
+        })
+        .expect("Glissa Sunseeker should have a conditional destroy effect")
+}
+
+fn glissa_sunseeker_target_only_effect(
+    def: &CardDefinition,
+) -> &crate::effects::TargetOnlyEffect {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated.effects.segments[0]
+                .default_effects
+                .iter()
+                .find_map(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()
+                        .and_then(|tagged| {
+                            tagged
+                                .effect
+                                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        })
+                }),
+            _ => None,
+        })
+        .expect("Glissa Sunseeker should require an artifact target")
+}
+
+fn create_glissa_runtime_artifact(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+    mana_value: u8,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+            mana_value,
+        )]]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+fn create_glissa_runtime_creature(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    name: &str,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+fn resolve_glissa_conditional_destroy(
+    game: &mut crate::game_state::GameState,
+    glissa_id: ObjectId,
+    controller: PlayerId,
+    target_id: ObjectId,
+) {
+    let def = parse_oracle_card_definition("Glissa Sunseeker");
+    let effect = glissa_sunseeker_conditional_destroy_effect(&def);
+    let target_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(target_id)
+            .expect("Glissa Sunseeker target should exist"),
+        game,
+    );
+    let tagged = HashMap::from([(
+        crate::tag::TagKey::from("targeted_0"),
+        vec![target_snapshot],
+    )]);
+    let mut ctx = crate::effects::ExecutionContext::new_default(glissa_id, controller)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(target_id)])
+        .with_tagged_objects(tagged);
+    crate::effects::execute_effect(game, &effect, &mut ctx)
+        .expect("Glissa Sunseeker conditional destroy should resolve");
+}
+
+#[test]
+fn glissa_sunseeker_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Glissa Sunseeker");
+    let def = parse_oracle_card_definition("Glissa Sunseeker");
+    let rendered = crate::compiled_text::compiled_text_lines(&def);
+    let ability_debug = format!("{:?}", def.abilities);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "First strike".to_string(),
+            "{T}: Destroy target artifact if its mana value is equal to the amount of unspent mana you have.".to_string(),
+        ],
+        "Glissa Sunseeker compiled text should preserve the conditional unspent-mana destroy clause"
+    );
+    assert!(
+        ability_debug.contains("ConditionalEffect")
+            && ability_debug.contains("EqualExpr")
+            && ability_debug.contains("UnspentMana"),
+        "Glissa Sunseeker should structurally compare target mana value to unspent mana, got {ability_debug}"
+    );
+}
+
+#[test]
+fn glissa_sunseeker_targets_artifacts_only() {
+    let def = parse_oracle_card_definition("Glissa Sunseeker");
+    let target_only = glissa_sunseeker_target_only_effect(&def);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let glissa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact_id = create_glissa_runtime_artifact(&mut game, bob, "Matching Artifact", 3);
+    let creature_id = create_glissa_runtime_creature(&mut game, bob, "Nonartifact Creature");
+    let ctx = crate::effects::ExecutionContext::new_default(glissa_id, alice);
+
+    assert!(
+        crate::effects::validate_target(
+            &game,
+            &crate::effects::ResolvedTarget::Object(artifact_id),
+            &target_only.target,
+            &ctx,
+        ),
+        "Glissa Sunseeker should allow artifact targets"
+    );
+    assert!(
+        !crate::effects::validate_target(
+            &game,
+            &crate::effects::ResolvedTarget::Object(creature_id),
+            &target_only.target,
+            &ctx,
+        ),
+        "Glissa Sunseeker should not allow nonartifact targets"
+    );
+}
+
+#[test]
+fn glissa_sunseeker_destroys_artifact_when_mana_value_equals_unspent_mana() {
+    let def = parse_oracle_card_definition("Glissa Sunseeker");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let glissa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact_id = create_glissa_runtime_artifact(&mut game, bob, "Matching Artifact", 3);
+    let artifact_stable = game.object(artifact_id).expect("artifact exists").stable_id;
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 3);
+
+    resolve_glissa_conditional_destroy(&mut game, glissa_id, alice, artifact_id);
+    let moved_id = game
+        .find_object_by_stable_id(artifact_stable)
+        .expect("destroyed artifact should still be tracked");
+    assert!(
+        game.player(bob)
+            .expect("Bob exists")
+            .graveyard
+            .contains(&moved_id),
+        "Glissa Sunseeker should destroy the artifact when its mana value equals your unspent mana"
+    );
+}
+
+#[test]
+fn glissa_sunseeker_leaves_artifact_when_unspent_mana_differs() {
+    let def = parse_oracle_card_definition("Glissa Sunseeker");
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let glissa_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let artifact_id = create_glissa_runtime_artifact(&mut game, bob, "Mismatched Artifact", 3);
+    game.player_mut(alice)
+        .expect("Alice exists")
+        .mana_pool
+        .add(ManaSymbol::Green, 2);
+
+    resolve_glissa_conditional_destroy(&mut game, glissa_id, alice, artifact_id);
+    assert!(
+        game.objects_in_zone(Zone::Battlefield).contains(&artifact_id),
+        "Glissa Sunseeker should leave the artifact on the battlefield when unspent mana differs"
+    );
+    assert!(
+        !zone_has_named_object(&game, Zone::Graveyard, "Mismatched Artifact"),
+        "the failed conditional branch should not move the artifact to a graveyard"
+    );
+}
+
 #[test]
 fn death_rattle_oni_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Death-Rattle Oni");

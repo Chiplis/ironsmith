@@ -7326,6 +7326,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_targeted_most_common_color_conditional_destroy(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_targeted_conditional_destroy(&filtered) {
+        return compact;
+    }
 
     fn describe_search_two_split_hand_graveyard(effects: &[&Effect]) -> Option<String> {
         let [
@@ -9259,6 +9262,42 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             ));
         }
         if downcast_destroy(true_effect).is_some() {
+            return Some(format!("Destroy {target_text} if {condition_text}"));
+        }
+        None
+    }
+
+    fn describe_targeted_conditional_destroy(effects: &[&Effect]) -> Option<String> {
+        let [target_effect, conditional_effect] = effects else {
+            return None;
+        };
+        let target_tag = effect_tag(target_effect)?;
+        let target_only = downcast_target_only(target_effect)?;
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        if !conditional.if_false.is_empty() || conditional.if_true.len() != 1 {
+            return None;
+        }
+        let crate::effect::Condition::TaggedObjectMatches(condition_tag, _) = &conditional.condition
+        else {
+            return None;
+        };
+        if condition_tag != target_tag {
+            return None;
+        }
+
+        let target_text = describe_choose_spec(&target_only.target);
+        let condition_text = describe_condition(&conditional.condition);
+        let true_effect = conditional.if_true.first()?;
+        if let Some(destroy) = downcast_destroy_no_regeneration(true_effect)
+            && destroy.spec == target_only.target
+        {
+            return Some(format!(
+                "Destroy {target_text} if {condition_text}. A creature destroyed this way can't be regenerated"
+            ));
+        }
+        if let Some(destroy) = downcast_destroy(true_effect)
+            && destroy.spec == target_only.target
+        {
             return Some(format!("Destroy {target_text} if {condition_text}"));
         }
         None

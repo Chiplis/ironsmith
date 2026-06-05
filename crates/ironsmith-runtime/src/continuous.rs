@@ -4441,6 +4441,16 @@ fn resolve_value_with_context(
                 .map(|player| ctx.game.devotion_to_color(player.id, chosen) as i32)
                 .sum()
         }
+        Value::UnspentMana(player_filter) => {
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+            ctx.game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .map(|player| player.mana_pool.total() as i32)
+                .sum()
+        }
         Value::GreatestToughness(filter) => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut max_toughness = 0i32;

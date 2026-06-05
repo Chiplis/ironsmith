@@ -2566,6 +2566,15 @@ fn describe_comparison(cmp: &Comparison) -> String {
                     "that card's mana value".to_string()
                 }
             }
+            Value::UnspentMana(player) => {
+                let subject = player.description();
+                let verb = if matches!(player, PlayerFilter::You) {
+                    "have"
+                } else {
+                    "has"
+                };
+                format!("the amount of unspent mana {subject} {verb}")
+            }
             Value::Add(left, right) => {
                 format!(
                     "{} plus {}",
