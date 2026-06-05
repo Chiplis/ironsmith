@@ -32799,6 +32799,49 @@ fn parse_the_mana_rig_tracks_trigger_and_xxx_tap_activation_shape() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_black_cat_cunning_thief_oracle_text_strictly() {
+    let oracle = "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Black Cat, Cunning Thief")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Rogue, Subtype::Villain])
+        .parse_text(oracle)
+        .expect("Black Cat, Cunning Thief should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_black_cat_cunning_thief_tracks_targets_and_exiled_card_grants() {
+    let oracle = "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Black Cat, Cunning Thief")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Black Cat, Cunning Thief should parse strictly");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("Target(")
+            && debug.contains("Opponent")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("count: ChoiceCount")
+            && debug.contains("min: 2")
+            && debug.contains("max: Some")
+            && debug.contains("ExileEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect")
+            && debug.contains("GrantPlayTaggedEffect")
+            && debug.contains("allow_land: true")
+            && debug.contains("allow_any_color_for_cast: true"),
+        "expected Black Cat target, two-card face-down exile, remainder, and any-mana grants, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_token_with_banding_keyword_modifier() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
         .parse_text("Create a 1/1 white Knight creature token with banding.");

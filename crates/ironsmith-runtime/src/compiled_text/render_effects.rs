@@ -15593,6 +15593,80 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 3;
             continue;
         }
+        if idx + 4 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(exile) = filtered[idx + 2].downcast_ref::<crate::effects::ExileEffect>()
+            && let Some(rest) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(grant) =
+                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) =
+                describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_while_exiled(
+                    look_at_top,
+                    choose,
+                    exile,
+                    rest,
+                    grant,
+                )
+        {
+            parts.push(compact);
+            idx += 5;
+            continue;
+        }
+        if idx + 5 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(exile) = filtered[idx + 2].downcast_ref::<crate::effects::ExileEffect>()
+            && let Some(rest) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(play_grant) =
+                filtered[idx + 4].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(any_mana_grant) =
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) =
+                describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
+                    look_at_top,
+                    choose,
+                    exile,
+                    rest,
+                    play_grant,
+                    any_mana_grant,
+                )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
+        if idx + 5 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(exile) = filtered[idx + 2].downcast_ref::<crate::effects::ExileEffect>()
+            && let Some(rest) = filtered[idx + 3]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
+            && let Some(may_play) = filtered[idx + 4].downcast_ref::<crate::effects::MayEffect>()
+            && let Some(any_mana_grant) =
+                filtered[idx + 5].downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+            && let Some(compact) =
+                describe_look_at_top_choose_exile_rest_bottom_play_and_any_mana_while_exiled(
+                    look_at_top,
+                    choose,
+                    exile,
+                    rest,
+                    may_play,
+                    any_mana_grant,
+                )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
         if idx + 7 < filtered.len()
             && let Some(look_at_top) =
                 filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
@@ -18552,6 +18626,16 @@ fn normalize_redundant_short_name_etb_surface(
             .filter(|start| *start == 0 || line[..*start].ends_with(": "))
             .map(|start| (start, prefix.len()))
     }) else {
+        for generic_subject in [subject, "this creature", "this permanent", "this artifact"] {
+            let generic_prefix = format!("When {generic_subject} enters,");
+            if let Some(start) = line
+                .find(generic_prefix.as_str())
+                .filter(|start| *start == 0 || line[..*start].ends_with(": "))
+            {
+                let rest = &line[start + generic_prefix.len()..];
+                return format!("{}When {surface} enters,{rest}", &line[..start]);
+            }
+        }
         return line;
     };
     let rest = &line[start + prefix_len..];
@@ -18568,7 +18652,7 @@ fn normalize_redundant_short_name_etb_surface(
     {
         return line;
     }
-    format!("{}When {subject} enters,{rest}", &line[..start])
+    format!("{}When {surface} enters,{rest}", &line[..start])
 }
 
 fn normalize_spellcast_trigger_mana_value_surface(
@@ -26039,6 +26123,149 @@ pub(super) fn describe_look_at_top_exile_face_down_then_play_while_exiled(
 
     Some(format!(
         "{look_clause}, then exile {object_ref} face down. For as long as {duration_ref} remains exiled, {player} may {verb} {object_ref}{mana_suffix}"
+    ))
+}
+
+fn describe_look_at_top_choose_exile_face_down_rest_bottom_then_play_while_exiled(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    exile: &crate::effects::ExileEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+    grant: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    if look_at_top.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look_at_top.tag
+        })
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !exile.face_down
+        || rest.tag != look_at_top.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
+        || grant.tag != choose.tag
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+    {
+        return None;
+    }
+
+    let chosen_ref = if choose.count.is_single() {
+        "one of them".to_string()
+    } else if choose.count.min == 0 {
+        let max = choose.count.max?;
+        let count_text = small_number_word(max as u32).unwrap_or_else(|| max.to_string());
+        format!("up to {count_text} of them")
+    } else if choose.count.max == Some(choose.count.min) {
+        let count_text = small_number_word(choose.count.min as u32)
+            .unwrap_or_else(|| choose.count.min.to_string());
+        format!("{count_text} of them")
+    } else {
+        return None;
+    };
+
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, singular_count) = describe_look_count_and_noun(&look_at_top.count);
+    if singular_count {
+        return None;
+    }
+    let player = describe_player_filter(&grant.player);
+    let verb = if grant.allow_land { "play" } else { "cast" };
+    let mana_sentence = if grant.allow_any_color_for_cast {
+        ". Mana of any type can be spent to cast them"
+    } else {
+        ""
+    };
+
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library, exile {chosen_ref} face down, then put the rest on the bottom of {owner} library in a random order. {player} may {verb} the exiled cards for as long as they remain exiled{mana_sentence}"
+    ))
+}
+
+fn describe_look_at_top_choose_exile_rest_bottom_play_and_any_mana_while_exiled(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    exile: &crate::effects::ExileEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+    may_play: &crate::effects::MayEffect,
+    any_mana_grant: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    let [play_effect] = may_play.effects.as_slice() else {
+        return None;
+    };
+    let play_grant = play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
+        look_at_top,
+        choose,
+        exile,
+        rest,
+        play_grant,
+        any_mana_grant,
+    )
+}
+
+fn describe_look_at_top_choose_exile_rest_bottom_play_grants_and_any_mana_while_exiled(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    exile: &crate::effects::ExileEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+    play_grant: &crate::effects::GrantPlayTaggedEffect,
+    any_mana_grant: &crate::effects::GrantPlayTaggedEffect,
+) -> Option<String> {
+    let exiled_tag = rest.keep_tagged.as_ref()?;
+    if look_at_top.reveal
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag == look_at_top.tag
+        })
+        || !matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || !exile.face_down
+        || rest.tag != look_at_top.tag
+        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
+        || play_grant.tag != *exiled_tag
+        || any_mana_grant.tag != *exiled_tag
+        || play_grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || any_mana_grant.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || !play_grant.allow_land
+        || play_grant.allow_any_color_for_cast
+        || any_mana_grant.allow_land
+        || !any_mana_grant.allow_any_color_for_cast
+    {
+        return None;
+    }
+
+    let chosen_ref = if choose.count.is_single() {
+        "one of them".to_string()
+    } else if choose.count.min == 0 {
+        let max = choose.count.max?;
+        let count_text = small_number_word(max as u32).unwrap_or_else(|| max.to_string());
+        format!("up to {count_text} of them")
+    } else if choose.count.max == Some(choose.count.min) {
+        let count_text = small_number_word(choose.count.min as u32)
+            .unwrap_or_else(|| choose.count.min.to_string());
+        format!("{count_text} of them")
+    } else {
+        return None;
+    };
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let remainder_owner = if matches!(
+        look_at_top.player,
+        PlayerFilter::Target(_) | PlayerFilter::DamagedPlayer | PlayerFilter::ChosenPlayer
+    ) {
+        "their".to_string()
+    } else {
+        owner.clone()
+    };
+    let (count_text, noun, singular_count) = describe_look_count_and_noun(&look_at_top.count);
+    if singular_count {
+        return None;
+    }
+
+    Some(format!(
+        "Look at the top {count_text} {noun} of {owner} library, exile {chosen_ref} face down, then put the rest on the bottom of {remainder_owner} library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way"
     ))
 }
 

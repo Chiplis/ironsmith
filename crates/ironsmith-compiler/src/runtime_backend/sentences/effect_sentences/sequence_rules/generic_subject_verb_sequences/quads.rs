@@ -15,6 +15,7 @@ use crate::runtime_backend::effect_sentences::SentenceInput;
 use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
+use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, non_article_token_word_refs, parse_choice_count_token_prefix_consumed,
     trim_commas,
@@ -137,6 +138,16 @@ const EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN: ClauseShape<'static> 
     contains_phrases & [&["put", "rest"], &["bottom", "of", "your", "library"]]
 );
 
+const EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["of", "them", "face", "down"],
+            &["of", "those", "cards", "face", "down"],
+            &["them", "face", "down"],
+            &["those", "cards", "face", "down"],
+        ]
+);
+
 const CAST_EXILED_CARD_FREE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -203,6 +214,48 @@ fn exiles_one_looked_card_face_down_and_bottoms_rest(tokens: &[OwnedLexToken]) -
     let trimmed = trim_commas(tokens);
     let words = non_article_token_word_refs(&trimmed);
     EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN.matches_words(&words)
+}
+
+fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    !phrase.is_empty()
+        && words
+            .windows(phrase.len())
+            .any(|window| window == phrase)
+}
+
+fn parse_counted_looked_cards_exile_face_down(
+    tokens: &[OwnedLexToken],
+) -> Option<(ChoiceCount, bool)> {
+    let trimmed = trim_commas(tokens);
+    let clause = LexedClause::new(&trimmed).trimmed();
+    if clause.word_refs().first().copied() != Some("exile") {
+        return None;
+    }
+
+    let count_start = clause.token_index_for_word_index(1)?;
+    let count_tokens = trim_commas(&clause.tokens()[count_start..]);
+    let (count, used) = parse_choice_count_token_prefix_consumed(&count_tokens)?;
+    let tail_tokens = trim_commas(&count_tokens[used..]);
+    let tail_words = non_article_token_word_refs(&tail_tokens);
+    if !EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PATTERN.matches_words(&tail_words) {
+        return None;
+    }
+    let includes_remainder = words_contain_phrase(&tail_words, &["put", "rest"])
+        || words_contain_phrase(&tail_words, &["put", "the", "rest"]);
+    Some((count, includes_remainder))
+}
+
+fn puts_looked_remainder_on_bottom(tokens: &[OwnedLexToken]) -> Option<LibraryBottomOrderAst> {
+    let trimmed = trim_commas(tokens);
+    let words = non_article_token_word_refs(&trimmed);
+    let puts_rest = words_contain_phrase(&words, &["put", "rest", "on", "bottom"])
+        || words_contain_phrase(&words, &["put", "rest", "onto", "bottom"])
+        || words_contain_phrase(&words, &["put", "the", "rest", "on", "bottom"])
+        || words_contain_phrase(&words, &["put", "the", "rest", "onto", "bottom"]);
+    if !puts_rest || !words.iter().any(|word| *word == "library") {
+        return None;
+    }
+    effect_sentences::parse_consult_remainder_order(&LexedClause::new(&trimmed).word_refs())
 }
 
 fn parse_exiled_card_cast_filter(
@@ -510,6 +563,124 @@ pub(crate) fn parse_look_at_top_exile_one_rest_bottom_cast_else_hand(
                 None,
             )],
         },
+    ]))
+}
+
+pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
+    let (look_tokens, exile_count, bottom_order) =
+        if let Some(exile_word_idx) = first_clause.find_word("exile") {
+            let Some(exile_token_idx) = first_clause.token_index_for_word_index(exile_word_idx)
+            else {
+                return Ok(None);
+            };
+            let look_clause = first_clause.before(exile_token_idx).trimmed();
+            let exile_clause = first_clause.from(exile_token_idx).trimmed();
+            let Some((count, includes_remainder)) =
+                parse_counted_looked_cards_exile_face_down(exile_clause.tokens())
+            else {
+                return Ok(None);
+            };
+            let order = if includes_remainder {
+                puts_looked_remainder_on_bottom(exile_clause.tokens())
+            } else {
+                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+            };
+            let Some(order) = order else {
+                return Ok(None);
+            };
+            (look_clause.tokens(), count, order)
+        } else {
+            let Some((count, includes_remainder)) =
+                parse_counted_looked_cards_exile_face_down(sentences[sentence_idx + 1].lowered())
+            else {
+                return Ok(None);
+            };
+            let order = if includes_remainder {
+                puts_looked_remainder_on_bottom(sentences[sentence_idx + 1].lowered())
+            } else {
+                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+            };
+            let Some(order) = order else {
+                return Ok(None);
+            };
+            (first_clause.tokens(), count, order)
+        };
+
+    let Ok(look_effects) = effect_sentences::parse_effect_sentence_lexed(look_tokens) else {
+        return Ok(None);
+    };
+    let [look_effect] = look_effects.as_slice() else {
+        return Ok(None);
+    };
+    let Some(library_owner) = look_at_top_cards_player(look_effect) else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
+        ..
+    }) = look_effect
+    else {
+        return Ok(None);
+    };
+
+    let Some(permission_effect) =
+        parse_cast_or_play_tagged_clause(sentences[sentence_idx + 3].lowered())?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                player: permission_player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                filter,
+                ..
+            },
+        ..
+    }) = permission_effect
+    else {
+        return Ok(None);
+    };
+
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
+    let exiled_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "exiled");
+    let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
+    choice_filter.zone = Some(Zone::Library);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(
+            library_owner,
+            count.clone(),
+            looked_tag.clone(),
+        ),
+        EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: exile_count,
+            count_value: None,
+            player: PlayerAst::You,
+            tag: exiled_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(exiled_tag.clone()),
+            bottom_order,
+            PlayerAst::You,
+        ),
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            exiled_tag,
+            permission_player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+            filter,
+        ),
     ]))
 }
 
