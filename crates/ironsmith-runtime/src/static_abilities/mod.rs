@@ -3003,6 +3003,18 @@ impl StaticAbility {
         ))
     }
 
+    pub fn double_player_counters_replacement(
+        player_filter: crate::target::PlayerFilter,
+        counter_type: Option<crate::object::CounterType>,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleCountersReplacement::new_for_player(
+            player_filter,
+            counter_type,
+            display,
+        ))
+    }
+
     pub fn double_token_creation_replacement(
         controller: crate::target::PlayerFilter,
         display: String,

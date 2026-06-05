@@ -2729,6 +2729,34 @@ pub fn process_put_counters_with_event(
     }
 }
 
+/// Process a player counter event through replacement effects.
+///
+/// Returns the final number of counters to give that player.
+pub fn process_player_counters_with_event(
+    game: &mut GameState,
+    target: PlayerId,
+    counter_type: CounterType,
+    count: u32,
+    cause: crate::events::cause::EventCause,
+) -> u32 {
+    use crate::events::{PutCountersEvent, downcast_event};
+
+    let event = Event::put_player_counters(target, counter_type, count, cause);
+    let result = process_trait_event(game, event);
+
+    match result {
+        TraitEventResult::Prevented => 0,
+        TraitEventResult::Proceed(e) | TraitEventResult::Modified(e) => {
+            if let Some(put_counters) = downcast_event::<PutCountersEvent>(e.inner()) {
+                put_counters.count
+            } else {
+                count
+            }
+        }
+        _ => count,
+    }
+}
+
 /// Process a token creation event through replacement effects.
 ///
 /// Returns the final number of tokens to create.

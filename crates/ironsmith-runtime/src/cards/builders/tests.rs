@@ -383,6 +383,31 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn aether_refinery_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Aether Refinery");
+
+    let def = parse_oracle_card_definition("Aether Refinery");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("DoubleCountersReplacement")
+            && ability_debug.contains("Energy")
+            && ability_debug.contains("PayAnyEnergyEffect")
+            && ability_debug.contains("min_amount: 1")
+            && ability_debug.contains("CreateTokenEffect"),
+        "expected player energy replacement and paid-energy token activation, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("If you would get one or more {E}, you get twice that many {E} instead.")
+            && rendered.contains(
+                "{T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way."
+            ),
+        "expected Aether Refinery compiled text to preserve energy replacement and activation surface, got {rendered}"
+    );
+}
+
+#[test]
 fn wondrous_crucible_strict_parser_compiled_text_and_model_regression() {
     assert_oracle_card_parses_strict("Wondrous Crucible");
 

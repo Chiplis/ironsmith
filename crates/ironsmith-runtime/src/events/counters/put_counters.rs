@@ -11,8 +11,8 @@ use crate::object::CounterType;
 /// A put counters event that can be processed through the replacement effect system.
 #[derive(Debug, Clone)]
 pub struct PutCountersEvent {
-    /// The permanent receiving counters
-    pub target: ObjectId,
+    /// The object or player receiving counters.
+    pub target: Target,
     /// The type of counter
     pub counter_type: CounterType,
     /// Number of counters to add
@@ -24,7 +24,7 @@ pub struct PutCountersEvent {
 impl PutCountersEvent {
     /// Create a new put counters event with an explicit cause.
     pub fn with_cause(
-        target: ObjectId,
+        target: Target,
         counter_type: CounterType,
         count: u32,
         cause: EventCause,
@@ -62,7 +62,7 @@ impl PutCountersEvent {
     }
 
     /// Return a new event with a different target.
-    pub fn with_target(&self, target: ObjectId) -> Self {
+    pub fn with_target(&self, target: Target) -> Self {
         Self {
             target,
             ..self.clone()
@@ -76,28 +76,36 @@ impl GameEventType for PutCountersEvent {
     }
 
     fn affected_player(&self, game: &GameState) -> PlayerId {
-        game.object(self.target)
-            .map(|o| game.controller_of(o))
-            .unwrap_or(game.turn.active_player)
+        match self.target {
+            Target::Object(object) => game
+                .object(object)
+                .map(|o| game.controller_of(o))
+                .unwrap_or(game.turn.active_player),
+            Target::Player(player) => player,
+        }
     }
 
     fn redirectable_targets(&self) -> Vec<RedirectableTarget> {
         vec![RedirectableTarget {
-            target: Target::Object(self.target),
+            target: self.target,
             description: "counter recipient",
-            valid_redirect_types: RedirectValidTypes::ObjectsOnly,
+            valid_redirect_types: match self.target {
+                Target::Object(_) => RedirectValidTypes::ObjectsOnly,
+                Target::Player(_) => RedirectValidTypes::PlayersOnly,
+            },
         }]
     }
 
     fn with_target_replaced(&self, old: &Target, new: &Target) -> Option<Box<dyn GameEventType>> {
-        if &Target::Object(self.target) != old {
+        if &self.target != old {
             return None;
         }
 
-        if let Target::Object(new_obj) = new {
-            Some(Box::new(self.with_target(*new_obj)))
-        } else {
-            None
+        match (self.target, *new) {
+            (Target::Object(_), Target::Object(_)) | (Target::Player(_), Target::Player(_)) => {
+                Some(Box::new(self.with_target(*new)))
+            }
+            _ => None,
         }
     }
 
@@ -124,7 +132,7 @@ mod tests {
 
     fn effect_counters(count: u32) -> PutCountersEvent {
         PutCountersEvent::with_cause(
-            ObjectId::from_raw(1),
+            Target::Object(ObjectId::from_raw(1)),
             CounterType::PlusOnePlusOne,
             count,
             EventCause::effect(),
@@ -176,11 +184,11 @@ mod tests {
             .as_any()
             .downcast_ref::<PutCountersEvent>()
             .unwrap();
-        assert_eq!(replaced_counters.target, ObjectId::from_raw(2));
+        assert_eq!(replaced_counters.target, Target::Object(ObjectId::from_raw(2)));
     }
 
     #[test]
-    fn test_put_counters_redirect_to_player_fails() {
+    fn test_put_counters_redirect_to_player() {
         let event = effect_counters(3);
 
         let old_target = Target::Object(ObjectId::from_raw(1));
@@ -188,6 +196,22 @@ mod tests {
 
         let replaced = event.with_target_replaced(&old_target, &new_target);
         assert!(replaced.is_none());
+    }
+
+    #[test]
+    fn test_put_player_counters_redirect_to_player() {
+        let event = PutCountersEvent::with_cause(
+            Target::Player(PlayerId::from_index(0)),
+            CounterType::Energy,
+            3,
+            EventCause::effect(),
+        );
+
+        let old_target = Target::Player(PlayerId::from_index(0));
+        let new_target = Target::Player(PlayerId::from_index(1));
+
+        let replaced = event.with_target_replaced(&old_target, &new_target);
+        assert!(replaced.is_some());
     }
 
     #[test]

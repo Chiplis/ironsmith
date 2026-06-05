@@ -3696,6 +3696,7 @@ impl StaticAbilityKind for DoubleDamageAmountReplacement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleCountersReplacement {
     pub filter: ObjectFilter,
+    pub player_filter: Option<PlayerFilter>,
     pub counter_type: Option<CounterType>,
     pub display: String,
 }
@@ -3704,6 +3705,20 @@ impl DoubleCountersReplacement {
     pub fn new(filter: ObjectFilter, counter_type: Option<CounterType>, display: String) -> Self {
         Self {
             filter,
+            player_filter: None,
+            counter_type,
+            display,
+        }
+    }
+
+    pub fn new_for_player(
+        player_filter: PlayerFilter,
+        counter_type: Option<CounterType>,
+        display: String,
+    ) -> Self {
+        Self {
+            filter: ObjectFilter::default(),
+            player_filter: Some(player_filter),
             counter_type,
             display,
         }
@@ -3713,7 +3728,9 @@ impl DoubleCountersReplacement {
 #[derive(Debug, Clone)]
 struct WouldPutCountersOrEnterWithCountersMatcher {
     ability_source: ObjectId,
+    controller: PlayerId,
     filter: ObjectFilter,
+    player_filter: Option<PlayerFilter>,
     counter_type: Option<CounterType>,
 }
 
@@ -3735,9 +3752,19 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                 {
                     return false;
                 }
-                ctx.game
-                    .object(put_counters.target)
-                    .is_some_and(|obj| self.filter.matches(obj, &ctx.filter_ctx, ctx.game))
+                match put_counters.target {
+                    crate::game_state::Target::Object(object) => self.player_filter.is_none()
+                        && ctx.game.object(object).is_some_and(|obj| {
+                            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                        }),
+                    crate::game_state::Target::Player(player) => self
+                        .player_filter
+                        .as_ref()
+                        .is_some_and(|filter| {
+                            player_ids_for_filter(ctx.game, filter.clone(), self.controller)
+                                .contains(&player)
+                        }),
+                }
             }
             EventKind::EnterBattlefield => {
                 let Some(etb) = downcast_event::<EnterBattlefieldEvent>(event) else {
@@ -3792,7 +3819,9 @@ impl StaticAbilityKind for DoubleCountersReplacement {
             controller,
             WouldPutCountersOrEnterWithCountersMatcher {
                 ability_source: source,
+                controller,
                 filter: self.filter.clone(),
+                player_filter: self.player_filter.clone(),
                 counter_type: self.counter_type,
             },
             ReplacementAction::DoubleCounters {

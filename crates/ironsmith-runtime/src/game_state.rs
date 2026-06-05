@@ -5551,6 +5551,23 @@ impl GameState {
             return None;
         }
 
+        let cause = match (source, source_controller) {
+            (Some(source), Some(controller)) => {
+                crate::events::cause::EventCause::from_effect(source, controller)
+            }
+            _ => crate::events::cause::EventCause::effect(),
+        };
+        let amount = crate::events::processing::process_player_counters_with_event(
+            self,
+            player_id,
+            counter_type,
+            amount,
+            cause,
+        );
+        if amount == 0 {
+            return None;
+        }
+
         let player = self.player_mut(player_id)?;
         match counter_type {
             crate::object::CounterType::Poison => {

@@ -8558,6 +8558,48 @@ fn rewrite_grammar_living_conundrum_empty_library_draw_skip_matches_static_shape
 }
 
 #[test]
+fn aether_refinery_energy_doubling_static_line_parses_as_replacement() {
+    let tokens = lex_line(
+        "if you would get one or more {e} (energy counters), you get twice that many {e} instead.",
+        0,
+    )
+    .expect("Aether Refinery energy replacement line should lex");
+
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(&tokens)
+        .expect("Aether Refinery energy replacement static parser should not error");
+    let direct = super::keyword_static::parse_double_counters_replacement_line(&tokens)
+        .expect("Aether Refinery direct energy replacement parser should not error");
+    assert!(
+        matches!(
+            parsed.as_deref(),
+            Some([crate::cards::builders::StaticAbilityAst::Static(ability)])
+                if ability.id() == crate::static_abilities::StaticAbilityId::DoubleCountersReplacement
+        ),
+        "expected player energy double-counters replacement, words={:?}, direct={direct:?}, got {parsed:?}",
+        super::token_word_refs(&tokens)
+    );
+}
+
+#[test]
+fn aether_refinery_oracle_dispatches_energy_doubling_line_as_static() {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Aether Refinery")
+        .card_types(vec![CardType::Artifact]);
+    let preprocessed = super::preprocess::preprocess_document(
+        builder,
+        "If you would get one or more {E} (energy counters), you get twice that many {E} instead.\n\
+         {T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way.",
+    )
+    .expect("Aether Refinery oracle should preprocess");
+    let cst = super::document_parser::parse_document_cst(&preprocessed, false)
+        .expect("Aether Refinery oracle should dispatch");
+
+    assert!(
+        matches!(cst.lines.first(), Some(super::cst::RewriteLineCst::Static(_))),
+        "expected Aether Refinery energy replacement to dispatch as static, got {cst:?}"
+    );
+}
+
+#[test]
 fn parse_sages_of_the_anima_draw_replacement_static_line() {
     let tokens = lex_line(
         "If you would draw a card, instead reveal the top three cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.",

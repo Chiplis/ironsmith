@@ -131,6 +131,7 @@ pub use tokens::matchers::*;
 pub use zones::matchers::*;
 
 use crate::ids::{ObjectId, PlayerId};
+use crate::game_state::Target;
 use crate::object::CounterType;
 use crate::provenance::ProvNodeId;
 pub use crate::snapshot::ObjectSnapshot;
@@ -360,7 +361,20 @@ impl Event {
         cause: EventCause,
     ) -> Self {
         Self::new_with_provenance(
-            PutCountersEvent::with_cause(target, counter_type, count, cause),
+            PutCountersEvent::with_cause(Target::Object(target), counter_type, count, cause),
+            ProvNodeId::default(),
+        )
+    }
+
+    /// Create a player counter event.
+    pub fn put_player_counters(
+        target: PlayerId,
+        counter_type: CounterType,
+        count: u32,
+        cause: EventCause,
+    ) -> Self {
+        Self::new_with_provenance(
+            PutCountersEvent::with_cause(Target::Player(target), counter_type, count, cause),
             ProvNodeId::default(),
         )
     }

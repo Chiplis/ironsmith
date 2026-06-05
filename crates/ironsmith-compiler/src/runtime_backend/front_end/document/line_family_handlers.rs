@@ -1551,6 +1551,9 @@ fn statement_probe_shape_prefers_statement(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if parse_static_line_cst(ctx.line)?.is_some() {
+        return Ok(None);
+    }
     if (matches!(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens
