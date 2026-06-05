@@ -53979,6 +53979,182 @@ fn test_read_ahead_enters_with_choice_and_skips_lower_chapters() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn scroll_of_isildur_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(993_001), "Scroll of Isildur")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Saga])
+        .parse_text(
+            "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\n\
+             I — Gain control of up to one target artifact for as long as you control this Saga. The Ring tempts you.\n\
+             II — Tap up to two target creatures. Put a stun counter on each of them.\n\
+             III — Draw a card for each tapped creature target opponent controls.",
+        )
+        .expect("Scroll of Isildur should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scroll_of_isildur_chapter_one_steals_artifact_until_saga_not_controlled_and_tempts_ring() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let scroll_id = game.create_object_from_definition(
+        &scroll_of_isildur_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    let relic = CardBuilder::new(CardId::from_raw(993_002), "Bob's Relic")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let relic_id = game.create_object_from_card(&relic, bob, Zone::Battlefield);
+    let bearer = CardBuilder::new(CardId::from_raw(993_003), "Ring Candidate")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let bearer_id = game.create_object_from_card(&bearer, alice, Zone::Battlefield);
+
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Scroll of Isildur chapter I should go on the stack with an artifact target");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Scroll of Isildur chapter I should resolve");
+
+    assert_eq!(
+        game.current_controller(relic_id),
+        Some(alice),
+        "chapter I should give Alice control of the targeted artifact"
+    );
+    assert_eq!(
+        game.ring_temptations(alice),
+        1,
+        "chapter I should make the Ring tempt Alice"
+    );
+    assert_eq!(
+        game.current_ring_bearer(alice),
+        Some(bearer_id),
+        "chapter I should choose Alice's only creature as Ring-bearer"
+    );
+
+    game.set_current_controller(scroll_id, bob);
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.current_controller(relic_id),
+        Some(bob),
+        "the control-changing effect should expire once Alice no longer controls the Saga"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn scroll_of_isildur_chapters_two_and_three_target_tap_stun_and_draw_count() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+    let mut dm = SelectFirstDecisionMaker;
+
+    let scroll_id = game.create_object_from_definition(
+        &scroll_of_isildur_definition(),
+        alice,
+        Zone::Battlefield,
+    );
+    game.object_mut(scroll_id)
+        .expect("Scroll of Isildur should exist")
+        .add_counters(crate::object::CounterType::Lore, 1);
+
+    let creature = |id, name| {
+        CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    };
+    let bob_first = game.create_object_from_card(
+        &creature(993_004, "First Bob Creature"),
+        bob,
+        Zone::Battlefield,
+    );
+    let bob_second = game.create_object_from_card(
+        &creature(993_005, "Second Bob Creature"),
+        bob,
+        Zone::Battlefield,
+    );
+    let bob_third = game.create_object_from_card(
+        &creature(993_006, "Third Bob Creature"),
+        bob,
+        Zone::Battlefield,
+    );
+    let alice_creature = game.create_object_from_card(
+        &creature(993_007, "Alice Creature"),
+        alice,
+        Zone::Battlefield,
+    );
+    for idx in 0..4 {
+        let card = CardBuilder::new(CardId::from_raw(993_010 + idx), &format!("Draw Card {idx}"))
+            .build();
+        game.create_object_from_card(&card, alice, Zone::Library);
+    }
+    let initial_hand_size = game.player(alice).expect("Alice exists").hand.len();
+
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Scroll of Isildur chapter II should go on the stack with creature targets");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Scroll of Isildur chapter II should resolve");
+
+    assert!(
+        game.is_tapped(bob_first),
+        "chapter II should tap the first chosen creature"
+    );
+    assert!(
+        game.is_tapped(bob_second),
+        "chapter II should tap the second chosen creature"
+    );
+    assert!(
+        !game.is_tapped(bob_third),
+        "chapter II is up to two targets and should not tap a third creature"
+    );
+    assert!(
+        !game.is_tapped(alice_creature),
+        "chapter II should only affect the two targets chosen by the decision maker"
+    );
+    assert_eq!(
+        game.counter_count(bob_first, crate::object::CounterType::Stun),
+        1,
+        "chapter II should put a stun counter on the first tapped target"
+    );
+    assert_eq!(
+        game.counter_count(bob_second, crate::object::CounterType::Stun),
+        1,
+        "chapter II should put a stun counter on the second tapped target"
+    );
+    assert_eq!(
+        game.counter_count(bob_third, crate::object::CounterType::Stun),
+        0,
+        "chapter II should not put a stun counter on an unchosen creature"
+    );
+
+    game.tap(alice_creature);
+    add_lore_counter_and_check_chapters(&mut game, scroll_id, &mut trigger_queue);
+    put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Scroll of Isildur chapter III should go on the stack");
+    resolve_stack_entry_with_dm_and_triggers(&mut game, &mut dm, &mut trigger_queue)
+        .expect("Scroll of Isildur chapter III should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        initial_hand_size + 2,
+        "chapter III should draw for tapped creatures the target opponent controls, not Alice's tapped creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn the_aesir_escape_valhalla_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(992_001), "The Aesir Escape Valhalla")
         .mana_cost(ManaCost::from_pips(vec![

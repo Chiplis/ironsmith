@@ -6395,6 +6395,7 @@ where
     let you_value = per_player_partition_value_for_filter(you_value, &PlayerFilter::You);
     let mut prelude_effects = Vec::new();
     let mut merged_choices = choices.clone();
+    collect_value_player_target_choices(&value, &mut merged_choices);
     if let Some(spec) = value_object_target_spec(&value)
         && ctx.auto_tag_object_targets
     {
@@ -6418,6 +6419,137 @@ where
         push_choice(&mut merged_choices, choice);
     }
     Ok((prelude_effects, merged_choices))
+}
+
+fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSpec>) {
+    match value {
+        Value::SurfaceHinted { value, .. } => collect_value_player_target_choices(value, choices),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            collect_value_player_target_choices(left, choices);
+            collect_value_player_target_choices(right, choices);
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner) => collect_value_player_target_choices(inner, choices),
+        Value::Count(filter)
+        | Value::CountScaled(filter, _)
+        | Value::GreatestCount(filter)
+        | Value::TotalPower(filter)
+        | Value::TotalToughness(filter)
+        | Value::TotalManaValue(filter)
+        | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
+        | Value::GreatestManaValue(filter)
+        | Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
+        | Value::ColorsAmong(filter)
+        | Value::DistinctNames(filter)
+        | Value::DistinctPowers(filter)
+        | Value::PlayersWhoControlMoreThanYou(filter) => {
+            collect_object_filter_player_target_choices(filter, choices);
+        }
+        Value::SpellsCastThisTurnMatching { player, filter, .. } => {
+            collect_player_filter_target_choice(player, choices);
+            collect_object_filter_player_target_choices(filter, choices);
+        }
+        Value::Devotion { player, .. }
+        | Value::CountPlayers(player)
+        | Value::PartySize(player)
+        | Value::LifeTotal(player)
+        | Value::LifeTotalAsTurnBegan(player)
+        | Value::LifeTotalDifference(player)
+        | Value::Speed(player)
+        | Value::StartingLifeTotal(player)
+        | Value::DevotionToChosenColor(player)
+        | Value::LifeGainedThisTurn(player)
+        | Value::LifeLostThisTurn(player)
+        | Value::CardsDiscardedThisTurn(player)
+        | Value::DamageDealtToPlayersThisTurn(player)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(player)
+        | Value::MaxCardsDrawnThisTurn(player)
+        | Value::LandsEnteredBattlefieldThisTurn(player)
+        | Value::MaxCardsInHand(player)
+        | Value::CardsInHand(player)
+        | Value::CardsInLibrary(player)
+        | Value::CardsInGraveyard(player)
+        | Value::SpellsCastThisTurn(player)
+        | Value::SpellsCastBeforeThisTurn(player)
+        | Value::CommanderCastCount(player)
+        | Value::CardTypesInGraveyard(player)
+        | Value::HalfLifeTotalRoundedUp(player)
+        | Value::HalfLifeTotalRoundedDown(player)
+        | Value::HalfStartingLifeTotalRoundedUp(player)
+        | Value::HalfStartingLifeTotalRoundedDown(player)
+        | Value::CreaturesDiedThisTurnControlledBy(player)
+        | Value::PlayerCounters(player, _)
+        | Value::PlayerVoteCount(player) => {
+            collect_player_filter_target_choice(player, choices);
+        }
+        Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. } => {
+            collect_player_filter_target_choice(player, choices);
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
+        _ => {}
+    }
+}
+
+fn collect_choose_spec_player_target_choices(spec: &ChooseSpec, choices: &mut Vec<ChooseSpec>) {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
+        ChooseSpec::Player(player)
+        | ChooseSpec::PlayerOrPlaneswalker(player)
+        | ChooseSpec::EachPlayer(player) => collect_player_filter_target_choice(player, choices),
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            collect_object_filter_player_target_choices(filter, choices)
+        }
+        _ => {}
+    }
+}
+
+fn collect_object_filter_player_target_choices(
+    filter: &ObjectFilter,
+    choices: &mut Vec<ChooseSpec>,
+) {
+    for player in [
+        filter.controller.as_ref(),
+        filter.cast_by.as_ref(),
+        filter.owner.as_ref(),
+        filter.targets_player.as_ref(),
+        filter.targets_only_player.as_ref(),
+        filter.attacking_player_or_planeswalker_controlled_by.as_ref(),
+        filter.attached_to_player.as_ref(),
+        filter.entered_battlefield_controller.as_ref(),
+        filter.dealt_damage_to_player_this_turn.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        collect_player_filter_target_choice(player, choices);
+    }
+    if let Some(targets) = filter.targets_object.as_deref() {
+        collect_object_filter_player_target_choices(targets, choices);
+    }
+    if let Some(targets) = filter.targets_only_object.as_deref() {
+        collect_object_filter_player_target_choices(targets, choices);
+    }
+    for option in &filter.any_of {
+        collect_object_filter_player_target_choices(option, choices);
+    }
+}
+
+fn collect_player_filter_target_choice(player: &PlayerFilter, choices: &mut Vec<ChooseSpec>) {
+    if let PlayerFilter::Target(inner) = player {
+        push_choice(
+            choices,
+            ChooseSpec::target(ChooseSpec::Player((**inner).clone())),
+        );
+    }
 }
 
 fn value_object_target_spec(value: &Value) -> Option<ChooseSpec> {

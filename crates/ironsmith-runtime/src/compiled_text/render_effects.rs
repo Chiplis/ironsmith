@@ -3894,6 +3894,39 @@ fn describe_choose_then_put_counter_on_each(effects: &[&Effect]) -> Option<Strin
     }
 }
 
+fn describe_tagged_effect_then_put_counter_on_each(effects: &[Effect]) -> Option<String> {
+    let [tagged_effect, for_each_effect] = effects else {
+        return None;
+    };
+    let tagged = tagged_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    let [put_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if !matches!(put.target, ChooseSpec::Iterated)
+        || put.target_count.is_some()
+        || put.distributed
+    {
+        return None;
+    }
+    if !for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == tagged.tag
+            && matches!(
+                constraint.relation,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            )
+    }) {
+        return None;
+    }
+
+    Some(format!(
+        "{}. Put {} on each of them",
+        describe_effect(&tagged.effect),
+        describe_put_counter_phrase(&put.amount, put.counter_type)
+    ))
+}
+
 fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<String> {
     if let [first, rest @ ..] = effects
         && first
@@ -3944,6 +3977,10 @@ fn describe_structural_multisentence_effect_list(effects: &[Effect]) -> Option<S
     }
 
     if let Some(compact) = describe_put_counters_then_gain_suspend(effects) {
+        return Some(compact);
+    }
+
+    if let Some(compact) = describe_tagged_effect_then_put_counter_on_each(effects) {
         return Some(compact);
     }
 
