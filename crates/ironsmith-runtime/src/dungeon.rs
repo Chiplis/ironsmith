@@ -1,3 +1,8 @@
+use crate::cards::tokens::treasure_token_definition;
+use crate::effect::Effect;
+use crate::ids::PlayerId;
+use crate::target::{ChooseSpec, PlayerFilter};
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveDungeonProgress {
     pub dungeon_name: String,
@@ -218,4 +223,49 @@ pub fn next_room_names(dungeon_name: &str, room_name: &str) -> Option<Vec<String
             .map(|room_name| (*room_name).to_string())
             .collect(),
     )
+}
+
+pub fn dungeon_room_effects(
+    dungeon_name: &str,
+    room_name: &str,
+    owner: PlayerId,
+) -> Option<Vec<Effect>> {
+    let owner_filter = PlayerFilter::Specific(owner);
+    let owner_choice = ChooseSpec::SpecificPlayer(owner);
+
+    match (dungeon_name, room_name) {
+        ("Lost Mine of Phandelver", "Cave Entrance") => {
+            Some(vec![Effect::scry_player(1, owner_filter)])
+        }
+        ("Lost Mine of Phandelver", "Mine Tunnels")
+        | ("Dungeon of the Mad Mage", "Goblin Bazaar") => Some(vec![
+            Effect::create_tokens_player(treasure_token_definition(), 1, owner_filter),
+        ]),
+        ("Lost Mine of Phandelver", "Dark Pool") => Some(vec![
+            Effect::for_players(
+                PlayerFilter::Opponent,
+                vec![Effect::lose_life_player(1, PlayerFilter::IteratedPlayer)],
+            ),
+            Effect::gain_life_player(1, owner_choice),
+        ]),
+        ("Lost Mine of Phandelver", "Temple of Dumathoin")
+        | ("Undercity", "Archives") => Some(vec![Effect::target_draws(1, owner_filter)]),
+        ("Dungeon of the Mad Mage", "Yawning Portal") => {
+            Some(vec![Effect::gain_life_player(1, owner_choice)])
+        }
+        ("Dungeon of the Mad Mage", "Dungeon Level") => {
+            Some(vec![Effect::scry_player(1, owner_filter)])
+        }
+        ("Dungeon of the Mad Mage", "Lost Level") | ("Undercity", "Lost Well") => {
+            Some(vec![Effect::scry_player(2, owner_filter)])
+        }
+        ("Dungeon of the Mad Mage", "Deep Mines") => {
+            Some(vec![Effect::scry_player(3, owner_filter)])
+        }
+        ("Tomb of Annihilation", "Trapped Entry") => Some(vec![Effect::for_players(
+            PlayerFilter::Any,
+            vec![Effect::lose_life_player(1, PlayerFilter::IteratedPlayer)],
+        )]),
+        _ => None,
+    }
 }
