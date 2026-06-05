@@ -1154,6 +1154,11 @@ fn compile_subject_verb_effect(
             }
             Ok((vec![Effect::attach_objects(objects, target)], choices))
         }
+        SubjectVerbActionAst::Unattach { object } => {
+            let (objects, choices) =
+                resolve_target_spec_with_choices(object, &current_reference_env(ctx))?;
+            Ok((vec![Effect::unattach_objects(objects)], choices))
+        }
         SubjectVerbActionAst::Enchant { filter } => {
             let spec = filter.target_spec();
             let effect = Effect::attach_to(spec.clone());

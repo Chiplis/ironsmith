@@ -865,8 +865,14 @@ const REST_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
 );
 const EQUIPPED_OBJECT_TARGET_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["equipped", "creature"], &["equipped", "permanent"]]);
-const ENCHANTED_OBJECT_TARGET_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enchanted", "creature"], &["enchanted", "permanent"]]);
+const ENCHANTED_OBJECT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["enchanted", "creature"],
+            &["enchanted", "permanent"],
+            &["enchanted", "equipment"],
+        ]
+);
 const CREATURE_TAPPED_FOR_THIS_SPELL_COST_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix & ["creature", "tapped", "to", "pay", "this"];
     suffix_any

@@ -456,6 +456,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
             | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
+            | SubjectVerbActionAst::Unattach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }

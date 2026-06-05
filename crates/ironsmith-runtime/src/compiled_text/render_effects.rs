@@ -14869,6 +14869,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(tag_attached) =
+                filtered[idx].downcast_ref::<crate::effects::TagAttachedToSourceEffect>()
+            && let Some(compact) =
+                describe_tag_attached_then_unattach(tag_attached, filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 3 < filtered.len()
             && let Some(compact) = describe_exile_then_return_transformed_with_counter(
                 filtered[idx],
@@ -34632,6 +34642,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             describe_attach_objects_spec(&attach.objects),
             describe_choose_spec(&attach.target)
         );
+    }
+    if let Some(unattach) = effect.downcast_ref::<crate::effects::UnattachObjectsEffect>() {
+        return format!("Unattach {}", describe_choose_spec(&unattach.objects));
     }
     if let Some(sacrifice) = sacrifice_view(effect) {
         return describe_sacrifice_effect(sacrifice);

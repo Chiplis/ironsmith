@@ -20715,6 +20715,170 @@ fn parse_equipped_activated_grant_with_unattach_cost_compiles() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn carry_away_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Carry Away");
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unattachobjectseffect") && debug.contains("controlattachedpermanent"),
+        "Carry Away should lower to unattach effect plus attached control static ability, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("unattach enchanted equipment"),
+        "Carry Away compiled text should preserve the unattach enchanted Equipment clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you control enchanted equipment"),
+        "Carry Away compiled text should preserve the control-attached Equipment clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn carry_away_runtime_setup(
+    equipment_starts_attached: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+    ObjectId,
+) {
+    let carry_away = parse_oracle_card_definition("Carry Away");
+    let equipment = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_id = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let equipment_id = game.create_object_from_definition(&equipment, bob, Zone::Battlefield);
+    if equipment_starts_attached {
+        assert!(game.attach_object_to_target(
+            equipment_id,
+            crate::object::AttachmentTarget::Object(creature_id),
+        ));
+    }
+    let carry_away_id = game.create_object_from_definition(&carry_away, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        carry_away_id,
+        crate::object::AttachmentTarget::Object(equipment_id),
+    ));
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+
+    (game, alice, bob, carry_away_id, equipment_id, creature_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_carry_away_enter_trigger(
+    game: &mut crate::game_state::GameState,
+    carry_away_id: ObjectId,
+) {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(carry_away_id)
+            .expect("Carry Away should exist on battlefield"),
+        game,
+    );
+    let enters_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            carry_away_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &enters_event)
+        .into_iter()
+        .filter(|entry| entry.source == carry_away_id)
+    {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Carry Away enters trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Carry Away entering should create exactly one unattach trigger"
+    );
+    crate::game_loop::resolve_stack_entry(game)
+        .expect("Carry Away unattach trigger should resolve");
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_unattaches_enchanted_equipment_and_controls_it() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(true);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        Some(crate::object::AttachmentTarget::Object(creature_id)),
+        "test setup should start with the enchanted Equipment attached to the creature"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "Carry Away should unattach the enchanted Equipment from the creature"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "Carry Away should remain attached to the Equipment it enchants"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_does_not_detach_aura_when_equipment_is_already_unattached() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(false);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "test setup should start with unattached enchanted Equipment"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "already-unattached Equipment should remain unattached"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "the unattach effect should not detach Carry Away itself"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_auriok_steelshaper_strict_and_preserves_equip_cost_modifier_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Auriok Steelshaper")
         .card_types(vec![CardType::Creature])

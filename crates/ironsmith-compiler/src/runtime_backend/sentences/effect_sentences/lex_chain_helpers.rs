@@ -160,6 +160,10 @@ const VERB_SHAPES: &[VerbShapeEntry] = &[
         verb: Verb::Attach,
     },
     VerbShapeEntry {
+        pattern: clause_shape!(exact_any & [&["unattaches"], &["unattach"]]),
+        verb: Verb::Unattach,
+    },
+    VerbShapeEntry {
         pattern: clause_shape!(exact_any & [&["untaps"], &["untap"]]),
         verb: Verb::Untap,
     },

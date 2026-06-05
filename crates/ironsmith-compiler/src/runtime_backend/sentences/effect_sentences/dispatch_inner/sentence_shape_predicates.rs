@@ -947,6 +947,7 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Connive { target, .. }
             | SubjectVerbActionAst::ExchangeTextBoxes { target }
             | SubjectVerbActionAst::Attach { target, .. }
+            | SubjectVerbActionAst::Unattach { object: target }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }

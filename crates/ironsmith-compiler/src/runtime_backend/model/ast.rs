@@ -923,6 +923,9 @@ pub(crate) enum SubjectVerbActionAst {
         object: TargetAst,
         target: TargetAst,
     },
+    Unattach {
+        object: TargetAst,
+    },
     Enchant {
         filter: AuraAttachmentFilter,
     },
@@ -2075,6 +2078,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("object", object)
                 .field("target", target)
                 .finish(),
+            Self::Unattach { object } => {
+                f.debug_struct("Unattach").field("object", object).finish()
+            }
             Self::Enchant { filter } => f.debug_tuple("Enchant").field(filter).finish(),
             Self::ExileWhenSourceLeaves { target } => f
                 .debug_tuple("ExileWhenSourceLeaves")
@@ -5272,6 +5278,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Attach { object, target },
+        )
+    }
+
+    pub(crate) fn subject_verb_unattach(object: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Unattach { object },
         )
     }
 
