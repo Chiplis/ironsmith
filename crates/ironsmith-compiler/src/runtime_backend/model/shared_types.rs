@@ -42,6 +42,7 @@ pub(crate) struct LoweringFrame {
     pub(crate) last_effect_id: Option<EffectId>,
     pub(crate) last_library_search_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
+    pub(crate) last_created_token_tag: Option<String>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_revealed_tag: Option<String>,
     pub(crate) last_exiled_collection_tag: Option<String>,
@@ -164,6 +165,7 @@ impl EffectLoweringContext {
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
         self.last_object_tag = frame.last_object_tag;
+        self.last_created_token_tag = frame.last_created_token_tag;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
         self.last_exiled_collection_tag = frame.last_exiled_collection_tag;
         self.last_player_filter = frame.last_player_filter;

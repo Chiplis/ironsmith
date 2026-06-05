@@ -5,6 +5,7 @@ type EffectCompileHandler = fn(
     &EffectAst,
     &mut EffectLoweringContext,
 ) -> Result<Option<EffectCompileOutcome>, CardTextError>;
+const ATTACH_CREATED_TOKEN_TAG: &str = "__created_token__";
 
 #[derive(Clone, Copy)]
 struct EffectCompileHandlerDef {
@@ -1143,8 +1144,19 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::Attach { object, target } => {
             let (objects, object_choices) =
                 resolve_attach_object_spec(object, &current_reference_env(ctx))?;
-            let (target, target_choices) =
-                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let (target, target_choices) = if matches!(
+                target,
+                TargetAst::Tagged(tag, _) if tag.as_str() == ATTACH_CREATED_TOKEN_TAG
+            ) {
+                let tag = ctx.last_created_token_tag.clone().ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "missing created token antecedent for attach target".to_string(),
+                    )
+                })?;
+                (ChooseSpec::Tagged(TagKey::from(tag)), Vec::new())
+            } else {
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?
+            };
             let mut choices = Vec::new();
             for choice in object_choices {
                 push_choice(&mut choices, choice);
@@ -3765,6 +3777,7 @@ fn compile_subject_verb_effect(
                 let tag = ctx.next_tag("created");
                 effect = effect.tag(tag.clone());
                 ctx.last_object_tag = Some(tag.clone());
+                ctx.last_created_token_tag = Some(tag.clone());
                 created_tag = Some(tag);
             }
 

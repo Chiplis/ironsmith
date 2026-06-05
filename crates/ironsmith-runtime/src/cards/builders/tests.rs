@@ -302,6 +302,195 @@ fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
 }
 
 #[test]
+fn ratonhnhake_ton_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Ratonhnhaké꞉ton");
+
+    let def = parse_oracle_card_definition("Ratonhnhaké꞉ton");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "As long as Ratonhnhaké꞉ton hasn't dealt damage yet, Ratonhnhaké꞉ton has hexproof and can't be blocked."
+        ),
+        "expected Ratonhnhake ton's damage-yet static condition to render as one conditional keyword line, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "return target Equipment card from your graveyard to the battlefield, then attach it to that token"
+        ),
+        "expected Ratonhnhake ton's reflexive Equipment return to attach to the created token, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("Not(SourceDealtDamage)")
+            && abilities_debug.contains("ReflexiveTriggerEffect")
+            && abilities_debug.contains("created_0")
+            && abilities_debug.contains("returned_1"),
+        "expected Ratonhnhake ton to structurally track source damage and created/returned object tags, got {abilities_debug}"
+    );
+}
+
+#[test]
+fn ratonhnhake_ton_loses_hexproof_and_unblockable_after_dealing_damage() {
+    let def = parse_oracle_card_definition("Ratonhnhaké꞉ton");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let raton = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let bob_source = CardDefinitionBuilder::new(CardId::new(), "Bob Targeting Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let bob_source = game.create_object_from_definition(&bob_source, bob, Zone::Battlefield);
+    let damage_target = CardDefinitionBuilder::new(CardId::new(), "Damage Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let damage_target = game.create_object_from_definition(&damage_target, bob, Zone::Battlefield);
+
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_blocked(raton),
+        "Ratonhnhake ton should be unblockable before it has dealt damage"
+    );
+    assert!(
+        !crate::targeting::can_target_object(&game, raton, bob_source, bob).is_legal(),
+        "Ratonhnhake ton should have hexproof from opponents before it has dealt damage"
+    );
+
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            raton,
+            crate::events::DamageTarget::Object(damage_target),
+            1,
+            false,
+            crate::events::cause::EventCause::effect(),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&damage_event);
+    game.update_cant_effects();
+
+    assert!(
+        game.can_be_blocked(raton),
+        "Ratonhnhake ton should be blockable after it has dealt any damage"
+    );
+    assert!(
+        crate::targeting::can_target_object(&game, raton, bob_source, bob).is_legal(),
+        "Ratonhnhake ton should lose hexproof from opponents after it has dealt damage"
+    );
+
+    game.turn_store.turn_history.clear_for_new_turn();
+    game.update_cant_effects();
+    assert!(
+        game.can_be_blocked(raton)
+            && crate::targeting::can_target_object(&game, raton, bob_source, bob).is_legal(),
+        "the damage-yet condition should remain false after turn history clears"
+    );
+
+    let exiled_raton = game
+        .move_object_by_effect(raton, Zone::Exile)
+        .expect("Ratonhnhake ton should move to exile");
+    let returned_raton = game
+        .move_object_by_effect(exiled_raton, Zone::Battlefield)
+        .expect("Ratonhnhake ton should return as a new object");
+    game.update_cant_effects();
+    assert!(
+        !game.can_be_blocked(returned_raton)
+            && !crate::targeting::can_target_object(&game, returned_raton, bob_source, bob)
+                .is_legal(),
+        "a new Ratonhnhake ton object should not inherit the old object's damage history"
+    );
+}
+
+#[test]
+fn ratonhnhake_ton_combat_damage_trigger_returns_and_attaches_equipment_to_token() {
+    struct ChooseEquipment {
+        equipment: ObjectId,
+    }
+    impl crate::decision::DecisionMaker for ChooseEquipment {
+        fn decide_targets(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::TargetsContext,
+        ) -> Vec<crate::game_state::Target> {
+            ctx.requirements
+                .iter()
+                .filter_map(|requirement| {
+                    requirement.legal_targets.iter().find_map(|target| match target {
+                        crate::game_state::Target::Object(object) if *object == self.equipment => {
+                            Some(*target)
+                        }
+                        _ => None,
+                    })
+                })
+                .collect()
+        }
+    }
+
+    let def = parse_oracle_card_definition("Ratonhnhaké꞉ton");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let raton = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let equipment_def = CardDefinitionBuilder::new(CardId::new(), "Hidden Blade")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let equipment = game.create_object_from_definition(&equipment_def, alice, Zone::Graveyard);
+    let equipment_stable = game.object(equipment).expect("Equipment should exist").stable_id;
+
+    let damage_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::DamageEvent::with_cause(
+            raton,
+            crate::events::DamageTarget::Player(bob),
+            3,
+            true,
+            crate::events::cause::EventCause::combat_damage(raton),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for trigger in crate::triggers::check_triggers(&game, &damage_event) {
+        trigger_queue.add(trigger);
+    }
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Ratonhnhake ton should trigger once"
+    );
+
+    let mut dm = ChooseEquipment { equipment };
+    crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Ratonhnhake ton trigger should go on the stack");
+    game.turn.priority_player = Some(game.turn.active_player);
+    crate::game_loop::run_priority_loop_with(&mut game, &mut trigger_queue, &mut dm)
+        .expect("Ratonhnhake ton trigger and reflexive trigger should resolve");
+
+    let assassin = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|object_id| {
+            game.object(*object_id).is_some_and(|object| {
+                object.name == "Assassin" && game.controller_of(object) == alice
+            })
+        })
+        .expect("Ratonhnhake ton should create an Assassin token");
+    let returned_equipment = game
+        .find_object_by_stable_id(equipment_stable)
+        .expect("Equipment should still exist after returning");
+    let equipment_object = game
+        .object(returned_equipment)
+        .expect("returned Equipment should exist");
+    assert_eq!(equipment_object.zone, Zone::Battlefield);
+    assert_eq!(
+        equipment_object.attached_to,
+        Some(crate::object::AttachmentTarget::Object(assassin)),
+        "returned Equipment should attach to the Assassin token, not to itself"
+    );
+}
+
+#[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");
     let ability_debug = format!("{:#?}", def.abilities);

@@ -12793,6 +12793,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             counter.description()
         ),
         Condition::SourceAttackedThisTurn => "this creature attacked this turn".to_string(),
+        Condition::SourceDealtDamage => "this creature has dealt damage".to_string(),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             "it dealt combat damage to a player this turn".to_string()
         }

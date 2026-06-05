@@ -815,6 +815,7 @@ pub enum Condition {
     },
     SourceHasCountersAtLeast(u32),
     SourcePowerAtLeast(u32),
+    SourceDealtDamage,
     SourceDealtCombatDamageToPlayerThisTurn,
     PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn {
         player: PlayerFilter,

@@ -3686,6 +3686,7 @@ fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<Predic
 fn parse_combat_damage_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     parse_source_dealt_combat_damage_this_turn_shape(&tokens)
+        .or_else(|| parse_source_dealt_damage_shape(&tokens))
         .or_else(|| parse_player_dealt_combat_damage_by_subtype_this_turn_shape(&tokens))
 }
 
@@ -3795,6 +3796,34 @@ fn parse_source_dealt_combat_damage_this_turn_shape(
         return None;
     }
     Some(PredicateAst::SourceDealtCombatDamageToPlayerThisTurn)
+}
+
+fn parse_source_dealt_damage_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrase = &["dealt", "damage"];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilPhrase(action_phrase)),
+        LexPattern::action("action", LexCaptureKind::WordCount(action_phrase.len())),
+        LexPattern::modifier("tail", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !clause_matches_any_phrase(
+        subject_clause,
+        &[
+            &["it"],
+            &["this"],
+            &["this", "creature"],
+            &["this", "permanent"],
+        ],
+    ) {
+        return None;
+    }
+    let tail_clause = matched.capture_clause("tail", clause)?;
+    if !tail_clause.tokens().is_empty() {
+        return None;
+    }
+    Some(PredicateAst::SourceDealtDamage)
 }
 
 fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(

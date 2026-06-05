@@ -2091,6 +2091,9 @@ pub struct GameState {
     /// Used for "one or more ... deal combat damage to a player" trigger matching.
     pub combat_damage_player_batch_hits: Vec<(ObjectId, PlayerId)>,
 
+    /// Object instances that have dealt damage this game.
+    pub sources_dealt_damage: HashSet<ObjectId>,
+
     /// Players whose inherent speed trigger has already fired this turn.
     pub speed_increase_triggered_this_turn: HashSet<PlayerId>,
 
@@ -2290,6 +2293,7 @@ impl GameState {
             soulbond_pairs: HashMap::new(),
             ninjutsu_attack_targets: HashMap::new(),
             combat_damage_player_batch_hits: Vec::new(),
+            sources_dealt_damage: HashSet::new(),
             speed_increase_triggered_this_turn: HashSet::new(),
             draft_noted_highest_numbers: HashMap::new(),
             noted_life_totals: HashMap::new(),
@@ -8518,6 +8522,10 @@ impl GameState {
             .source_dealt_damage_to_player_this_turn(source, stable_id, player)
     }
 
+    pub fn source_dealt_damage(&self, source: ObjectId) -> bool {
+        self.sources_dealt_damage.contains(&source)
+    }
+
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
         self.damage_marked.remove(&id);
@@ -9530,6 +9538,18 @@ impl GameState {
 
     pub(crate) fn record_turn_history_event(&mut self, event: &crate::triggers::TriggerEvent) {
         let (object_snapshot, source_snapshot) = self.projected_turn_event_snapshots(event);
+        if let Some(damage) = event.downcast::<crate::events::DamageEvent>()
+            && damage.amount > 0
+        {
+            if let Some(source_id) = source_snapshot
+                .as_ref()
+                .or(object_snapshot.as_ref())
+                .map(|snapshot| snapshot.object_id)
+                .or_else(|| self.object(damage.source).map(|obj| obj.id))
+            {
+                self.sources_dealt_damage.insert(source_id);
+            }
+        }
         self.turn_store
             .turn_history
             .record_event(event, object_snapshot, source_snapshot);

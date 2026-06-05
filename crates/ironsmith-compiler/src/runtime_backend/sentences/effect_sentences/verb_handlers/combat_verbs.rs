@@ -9,7 +9,10 @@ const ATTACH_TAGGED_ARTIFACT_PATTERN: ClauseShape<'static> =
 const ATTACH_TAGGED_ENCHANTMENT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["that", "enchantment"]);
 const ATTACH_IT_TO_TOKEN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
-const ATTACH_TOKEN_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "token"]);
+const ATTACH_THE_TOKEN_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the", "token"]);
+const ATTACH_TOKEN_TARGET_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["the", "token"], &["that", "token"]]);
+pub(crate) const ATTACH_CREATED_TOKEN_TAG: &str = "__created_token__";
 const DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix &["damage", "to", "each", "opponent", "equal", "to"];
     contains_words &["number", "cards", "hand"]
@@ -253,7 +256,7 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let object = parse_attach_object_phrase(&object_tokens)?;
     let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
     if ATTACH_IT_TO_TOKEN_PATTERN.matches_words(&object_words)
-        && ATTACH_TOKEN_TARGET_PATTERN.matches_words(&target_words)
+        && ATTACH_THE_TOKEN_TARGET_PATTERN.matches_words(&target_words)
     {
         return Ok(EffectAst::subject_verb_attach(
             TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(&object_tokens)),
@@ -262,6 +265,11 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     let target = if ATTACH_TAGGED_OBJECT_PATTERN.matches_words(&target_words) {
         TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&target_tokens))
+    } else if ATTACH_TOKEN_TARGET_PATTERN.matches_words(&target_words) {
+        TargetAst::Tagged(
+            TagKey::from(ATTACH_CREATED_TOKEN_TAG),
+            span_from_tokens(&target_tokens),
+        )
     } else {
         parse_target_phrase(&target_tokens)?
     };

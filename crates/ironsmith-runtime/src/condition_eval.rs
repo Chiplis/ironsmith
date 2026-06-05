@@ -1108,6 +1108,7 @@ fn evaluate_condition_shared_core(
                 .or_else(|| game.object(ctx.source).and_then(|obj| obj.power()))
                 .is_some_and(|power| power >= *min_power as i32),
         ),
+        Condition::SourceDealtDamage => Some(game.source_dealt_damage(ctx.source)),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Some(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
         }
@@ -1249,6 +1250,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::SourceHasCounterAtLeast { .. } => {}
         Condition::SourceHasCountersAtLeast(..) => {}
         Condition::SourcePowerAtLeast(..) => {}
+        Condition::SourceDealtDamage => {}
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {}
         Condition::PlayerWasDealtCombatDamageByCreatureSubtypeThisTurn { .. } => {}
         Condition::SourceAttackedOrBlockedThisTurn => {}
@@ -2154,6 +2156,7 @@ pub fn evaluate_condition_external(
         | Condition::SpellsWereCastLastTurnOrMore(_)
         | Condition::SourceHasNoCounter(_)
         | Condition::SourceHasCounterAtLeast { .. }
+        | Condition::SourceDealtDamage
         | Condition::SourceIsInZone(_)
         | Condition::ManaSpentToCastThisSpellAtLeast { .. }
         | Condition::SameColorManaSpentToCastThisSpellAtLeast(_)
@@ -2820,6 +2823,7 @@ fn evaluate_condition_simple(
         | Condition::CountParity { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
+        | Condition::SourceDealtDamage
         | Condition::SourceDealtCombatDamageToPlayerThisTurn
         | Condition::SourceCameUnderYourControlThisTurn
         | Condition::SourceAttackedOrBlockedThisTurn
@@ -3985,6 +3989,7 @@ fn evaluate_condition(
             })
         })),
         Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
+        Condition::SourceDealtDamage => Ok(game.source_dealt_damage(ctx.source)),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Ok(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
         }

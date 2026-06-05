@@ -1029,6 +1029,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
         crate::ConditionExpr::SourceAttackedThisTurn => {
             "as long as this creature attacked this turn".to_string()
         }
+        crate::ConditionExpr::SourceDealtDamage => {
+            "as long as this creature has dealt damage".to_string()
+        }
         crate::ConditionExpr::OpponentLostLifeThisTurn => {
             "as long as an opponent lost life this turn".to_string()
         }
@@ -1050,6 +1053,11 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if matches!(inner.as_ref(), crate::ConditionExpr::SourceAttackedThisTurn) =>
         {
             "as long as this creature didn't attack this turn".to_string()
+        }
+        crate::ConditionExpr::Not(inner)
+            if matches!(inner.as_ref(), crate::ConditionExpr::SourceDealtDamage) =>
+        {
+            "as long as this creature hasn't dealt damage yet".to_string()
         }
         crate::ConditionExpr::Not(inner) => {
             if let crate::ConditionExpr::PlayerCastSpellsThisTurnOrMore { player, count: 1 } =

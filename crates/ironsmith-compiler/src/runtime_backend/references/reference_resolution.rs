@@ -405,7 +405,9 @@ fn advance_reference_frame_for_effect(
                 }
                 SubjectVerbActionAst::Populate { .. } => {
                     if frame.auto_tag_object_targets {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                        let tag = next_reference_tag(id_gen, "created");
+                        frame.last_object_tag = Some(tag.clone());
+                        frame.last_created_token_tag = Some(tag);
                     }
                 }
                 SubjectVerbActionAst::Amass { .. } => {
@@ -958,7 +960,9 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::CreateTokenCopyFromSource { player, .. } => {
                     track_effect_player(*player, frame, true, true)?;
                     if frame.auto_tag_object_targets {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                        let tag = next_reference_tag(id_gen, "created");
+                        frame.last_object_tag = Some(tag.clone());
+                        frame.last_created_token_tag = Some(tag);
                     }
                 }
                 SubjectVerbActionAst::CreateTokenWithMods {
@@ -972,7 +976,9 @@ fn advance_reference_frame_for_effect(
                         || attached_to.is_some()
                         || dynamic_power_toughness.is_some()
                     {
-                        frame.last_object_tag = Some(next_reference_tag(id_gen, "created"));
+                        let tag = next_reference_tag(id_gen, "created");
+                        frame.last_object_tag = Some(tag.clone());
+                        frame.last_created_token_tag = Some(tag);
                     }
                     if frame.auto_tag_object_targets && attached_to.is_some() {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "attachment_target"));
@@ -1888,6 +1894,10 @@ fn advance_reference_env_for_effect(
                 last_object_tag: RefState::join(
                     &true_sequence.final_env.last_object_tag,
                     &false_sequence.final_env.last_object_tag,
+                ),
+                last_created_token_tag: RefState::join(
+                    &true_sequence.final_env.last_created_token_tag,
+                    &false_sequence.final_env.last_created_token_tag,
                 ),
                 last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
                     && false_sequence.final_env.last_it_choice_is_set,

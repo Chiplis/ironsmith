@@ -619,6 +619,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             display: Some(display.clone()),
         },
         PredicateAst::SourcePowerAtLeast(count) => Condition::SourcePowerAtLeast(*count),
+        PredicateAst::SourceDealtDamage => Condition::SourceDealtDamage,
         PredicateAst::SourceDealtCombatDamageToPlayerThisTurn => {
             Condition::SourceDealtCombatDamageToPlayerThisTurn
         }

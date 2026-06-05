@@ -770,6 +770,12 @@ fn normalize_compile_effect_list_surface(line: &str) -> String {
     {
         return "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control".to_string();
     }
+    if lower.contains(" to the battlefield. attach it to that token") {
+        return line.replace(
+            " to the battlefield. Attach it to that token",
+            " to the battlefield, then attach it to that token",
+        );
+    }
     line.to_string()
 }
 
@@ -5656,6 +5662,10 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         }
         return format!("{}. {compact_tail}", prefix.trim_end_matches('.'));
     }
+    let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_put_onto_battlefield_attached(&raw_effects) {
+        return compact;
+    }
     if let [for_players_effect, look_effect, grant_effect] = effects
         && let Some(for_players) =
             for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
@@ -5676,7 +5686,6 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
 
-    let raw_effects = effects.iter().collect::<Vec<_>>();
     if let Some(compact) = describe_discard_reveal_hand_choose_discard_chosen(&raw_effects) {
         return compact;
     }
@@ -6402,13 +6411,16 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         };
 
         let tagged_move = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-        let move_to_zone = tagged_move
+        let moves_to_battlefield = tagged_move
             .effect
-            .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|move_to_zone| move_to_zone.zone == Zone::Battlefield)
+            || tagged_move
+                .effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                .is_some_and(|return_to_battlefield| !return_to_battlefield.tapped);
         let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
-        if move_to_zone.zone != Zone::Battlefield
-            || !choose_spec_references_exact_tag(&attach.objects, &tagged_move.tag)
-        {
+        if !moves_to_battlefield || !choose_spec_references_exact_tag(&attach.objects, &tagged_move.tag) {
             return None;
         }
 
@@ -6420,14 +6432,17 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             return None;
         }
 
-        Some(format!(
-            "{move_text} attached to {}",
-            describe_choose_spec(&attach.target)
-        ))
-    }
-
-    if let Some(compact) = describe_put_onto_battlefield_attached(&raw_effects) {
-        return compact;
+        let target_text = match &attach.target {
+            ChooseSpec::Tagged(tag) if tag.as_str().starts_with("created_") => "that token".to_string(),
+            _ => describe_choose_spec(&attach.target),
+        };
+        if move_text.to_ascii_lowercase().contains("onto the battlefield") {
+            Some(format!("{move_text} attached to {target_text}"))
+        } else if move_text.to_ascii_lowercase().contains("to the battlefield") {
+            Some(format!("{move_text}, then attach it to {target_text}"))
+        } else {
+            None
+        }
     }
 
     fn describe_exile_then_incubate_count(effects: &[&Effect]) -> Option<String> {
@@ -29546,7 +29561,13 @@ pub(super) fn describe_with_id_then_reflexive_trigger(
     }
 
     let setup = describe_effect(&with_id.effect);
-    let triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    let mut triggered = lowercase_first(&describe_effect_list(&reflexive.effects));
+    if triggered.contains(" to the battlefield. attach it to that token") {
+        triggered = triggered.replace(
+            " to the battlefield. attach it to that token",
+            " to the battlefield, then attach it to that token",
+        );
+    }
     let condition = if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
         let who = may
             .decider
@@ -31502,6 +31523,11 @@ fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) -> bool {
         ChooseSpec::Tagged(candidate) => candidate == tag,
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
             filter == &ObjectFilter::tagged(tag.clone())
+                || filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag == *tag
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
         }
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_references_exact_tag(inner, tag)
@@ -34260,6 +34286,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             && matches!(&attach.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("created_"))
         {
             return "Attach it to the token".to_string();
+        }
+        if matches!(&attach.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("created_"))
+            && matches!(&attach.objects, ChooseSpec::All(filter) | ChooseSpec::Object(filter) if filter.tagged_constraints.iter().any(|constraint| constraint.tag.as_str().starts_with("returned_") && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject))
+        {
+            return "Attach it to that token".to_string();
         }
         return format!(
             "Attach {} to {}",

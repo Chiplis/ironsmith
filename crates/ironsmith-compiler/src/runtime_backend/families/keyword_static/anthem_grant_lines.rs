@@ -589,6 +589,19 @@ const SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause
             &["that", "creature", "attacked", "this", "turn"],
         ]
 );
+const SOURCE_HAS_NOT_DEALT_DAMAGE_YET_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it", "hasnt", "dealt", "damage", "yet"],
+            &["it", "hasn't", "dealt", "damage", "yet"],
+            &["this", "hasnt", "dealt", "damage", "yet"],
+            &["this", "hasn't", "dealt", "damage", "yet"],
+            &["this", "creature", "hasnt", "dealt", "damage", "yet"],
+            &["this", "creature", "hasn't", "dealt", "damage", "yet"],
+            &["this", "permanent", "hasnt", "dealt", "damage", "yet"],
+            &["this", "permanent", "hasn't", "dealt", "damage", "yet"],
+        ]
+);
 const YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "attacked", "this", "turn"]);
 const SOURCE_ENTERED_THIS_TURN_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -2894,6 +2907,11 @@ pub(crate) fn parse_static_condition_clause(
     }
     if SOURCE_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::SourceAttackedThisTurn);
+    }
+    if SOURCE_HAS_NOT_DEALT_DAMAGE_YET_CONDITION_PATTERN.matches_words(&clause_words) {
+        return Ok(crate::ConditionExpr::Not(Box::new(
+            crate::ConditionExpr::SourceDealtDamage,
+        )));
     }
     if YOU_ATTACKED_THIS_TURN_CONDITION_PATTERN.matches_words(&clause_words) {
         return Ok(crate::ConditionExpr::AttackedThisTurn);

@@ -18,10 +18,44 @@ impl DebugSafeLine {
 }
 
 pub(super) fn normalize_debug_safe_surface(lines: Vec<RawRenderedLine>) -> Vec<DebugSafeLine> {
-    lines
+    let lines = lines
         .into_iter()
         .filter_map(DebugSafeLine::from_raw)
-        .collect()
+        .collect::<Vec<_>>();
+    merge_matching_conditional_keyword_and_unblockable(lines)
+}
+
+fn merge_matching_conditional_keyword_and_unblockable(
+    lines: Vec<DebugSafeLine>,
+) -> Vec<DebugSafeLine> {
+    let mut merged = Vec::new();
+    let mut iter = lines.into_iter().peekable();
+    while let Some(line) = iter.next() {
+        if let Some(next) = iter.peek()
+            && let Some(combined) = conditional_keyword_unblockable_line(&line.0, &next.0)
+        {
+            merged.push(DebugSafeLine(combined));
+            iter.next();
+            continue;
+        }
+        merged.push(line);
+    }
+    merged
+}
+
+fn conditional_keyword_unblockable_line(first: &str, second: &str) -> Option<String> {
+    let (keyword_prefix, condition) = first.strip_suffix('.')?.split_once(" as long as ")?;
+    let keyword = keyword_prefix.strip_prefix("This creature has ")?;
+    let unblockable_condition = second
+        .strip_suffix('.')?
+        .strip_prefix("This creature can't be blocked as long as ")?;
+    if condition != unblockable_condition {
+        return None;
+    }
+    Some(format!(
+        "As long as {condition}, this creature has {} and can't be blocked.",
+        keyword.to_ascii_lowercase()
+    ))
 }
 
 fn mechanical_cleanup(line: String) -> String {
@@ -127,6 +161,10 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("enter the battlefield", "enter")
         .replace("Enters the battlefield", "Enters")
         .replace("Enter the battlefield", "Enter")
+        .replace(
+            "to the battlefield. Attach it to that token",
+            "to the battlefield, then attach it to that token",
+        )
         .replace(" in the battlefield", " on the battlefield")
         .replace(" In the battlefield", " On the battlefield")
         .replace("Cascade and Cascade", "Cascade, cascade")
