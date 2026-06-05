@@ -8249,6 +8249,17 @@ pub(crate) fn describe_value(value: &Value) -> String {
                         describe_count_filter_value_subject(filter)
                     );
                 }
+                let library_filter = match (left.as_ref(), right.as_ref()) {
+                    (Value::CardsInLibrary(filter), Value::Fixed(1))
+                    | (Value::Fixed(1), Value::CardsInLibrary(filter)) => Some(filter),
+                    _ => None,
+                };
+                if let Some(filter) = library_filter {
+                    return format!(
+                        "half the number of cards in {} library, rounded up",
+                        describe_possessive_player_filter(filter)
+                    );
+                }
             }
             format!("half {}, rounded down", describe_value(value))
         }

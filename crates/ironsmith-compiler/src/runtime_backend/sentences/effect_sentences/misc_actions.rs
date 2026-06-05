@@ -95,6 +95,64 @@ fn subject_verb_player_effect(
     })
 }
 
+fn player_filter_for_library_count(player: PlayerAst) -> Option<PlayerFilter> {
+    let filter = match player {
+        PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+        PlayerAst::Opponent => PlayerFilter::Opponent,
+        PlayerAst::NotYou => PlayerFilter::NotYou,
+        PlayerAst::Any => PlayerFilter::Any,
+        PlayerAst::Target => PlayerFilter::target_player(),
+        PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+        PlayerAst::That => PlayerFilter::IteratedPlayer,
+        PlayerAst::ThatPlayerOrTargetController => PlayerFilter::target_player(),
+        PlayerAst::Defending => PlayerFilter::Defending,
+        PlayerAst::Attacking => PlayerFilter::Attacking,
+        PlayerAst::Chosen => PlayerFilter::ChosenPlayer,
+        PlayerAst::MostCardsInHand => PlayerFilter::MostCardsInHand,
+        PlayerAst::MostLifeTied => PlayerFilter::MostLifeTied,
+        PlayerAst::LowestLifeTied => PlayerFilter::LowestLifeTied,
+        PlayerAst::ItsController | PlayerAst::ItsOwner => return None,
+    };
+    Some(filter)
+}
+
+fn parse_half_library_count_value(
+    words: &[&str],
+    subject_player: PlayerAst,
+) -> Option<(Value, usize)> {
+    if words.first().copied() != Some("half") {
+        return None;
+    }
+
+    let (player, library_idx) = match words.get(1..4) {
+        Some(["their", "library", _]) => (player_filter_for_library_count(subject_player)?, 2),
+        Some(["your", "library", _]) => (PlayerFilter::You, 2),
+        Some(["target", "player", "library"]) | Some(["target", "players", "library"]) => {
+            (PlayerFilter::target_player(), 3)
+        }
+        Some(["target", "opponent", "library"])
+        | Some(["target", "opponents", "library"]) => (PlayerFilter::target_opponent(), 3),
+        Some(["that", "player", "library"]) | Some(["that", "players", "library"]) => {
+            (player_filter_for_library_count(subject_player)?, 3)
+        }
+        _ => return None,
+    };
+
+    let round_words = words.get(library_idx + 1..library_idx + 3)?;
+    let base = Value::CardsInLibrary(player);
+    match round_words {
+        ["rounded", "down"] => Some((Value::HalfRoundedDown(Box::new(base)), library_idx + 3)),
+        ["rounded", "up"] => Some((
+            Value::HalfRoundedDown(Box::new(Value::Add(
+                Box::new(base),
+                Box::new(Value::Fixed(1)),
+            ))),
+            library_idx + 3,
+        )),
+        _ => None,
+    }
+}
+
 pub(crate) fn parse_become(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -494,28 +552,43 @@ pub(crate) fn parse_mill(
         .and_then(OwnedLexToken::as_word)
         .is_some_and(|word| CARD_OR_CARDS_PATTERN.matches_word(word));
 
-    let (mut count, used) =
+    let subject_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let (mut count, used, count_includes_library_noun) =
         if let Some((prefix, _)) = grammar::words_match_any_prefix(tokens, THAT_MANY_PREFIXES) {
-            (Value::EventValue(EventValueSpec::Amount), prefix.len())
+            (Value::EventValue(EventValueSpec::Amount), prefix.len(), false)
         } else if starts_with_card_keyword {
             if let Some((count, used_after_cards)) = parse_value(&tokens[1..]) {
-                (count, 1 + used_after_cards)
+                (count, 1 + used_after_cards, false)
+            } else if let Some((count, used_after_cards)) =
+                parse_half_library_count_value(&clause_words[1..], subject_player)
+            {
+                let used_words = 1 + used_after_cards;
+                let used = crate::runtime_backend::token_index_for_word_index(tokens, used_words)
+                    .unwrap_or(tokens.len());
+                (count, used, true)
             } else if let Some(count) = parse_add_mana_equal_amount_value(&tokens[1..]) {
                 // Mill clauses like "cards equal to its toughness" place the amount after "cards".
-                (count, tokens.len())
+                (count, tokens.len(), false)
             } else {
                 return Err(CardTextError::ParseError(format!(
                     "missing mill count (clause: '{}')",
                     clause_words.join(" ")
                 )));
             }
+        } else if let Some((count, used)) =
+            parse_half_library_count_value(&clause_words, subject_player)
+        {
+            let used = crate::runtime_backend::token_index_for_word_index(tokens, used)
+                .unwrap_or(tokens.len());
+            (count, used, true)
         } else {
-            parse_value(tokens).ok_or_else(|| {
+            let (count, used) = parse_value(tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing mill count (clause: '{}')",
                     clause_words.join(" ")
                 ))
-            })?
+            })?;
+            (count, used, false)
         };
 
     let rest = &tokens[used..];
@@ -546,6 +619,11 @@ pub(crate) fn parse_mill(
             }
         }
     } else {
+        if rest.is_empty() && !count_includes_library_noun {
+            return Err(CardTextError::ParseError(
+                "missing card keyword".to_string(),
+            ));
+        }
         if rest
             .first()
             .and_then(OwnedLexToken::as_word)
@@ -555,7 +633,11 @@ pub(crate) fn parse_mill(
                 "missing card keyword".to_string(),
             ));
         }
-        let trailing_count_tokens = &rest[1..];
+        let trailing_count_tokens = if rest.is_empty() {
+            rest
+        } else {
+            &rest[1..]
+        };
         let trailing_words: Vec<&str> = trailing_count_tokens
             .iter()
             .filter_map(OwnedLexToken::as_word)
@@ -574,11 +656,9 @@ pub(crate) fn parse_mill(
         }
     }
 
-    let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-
     Ok(subject_verb_player_effect(
         SubjectVerbRoleAst::AffectedPlayer,
-        player,
+        subject_player,
         SubjectVerbActionAst::Mill { count },
     ))
 }
