@@ -125,6 +125,8 @@ pub enum EventKind {
     CardRevealed,
     /// A state-triggered ability's condition became true
     StateTrigger,
+    /// A player moved into a dungeon room.
+    DungeonRoomEntered,
     /// A Saga chapter ability resolved
     ChapterAbilityResolved,
     /// A player lost the game

@@ -3165,6 +3165,7 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
             source_filter: self.source_filter.clone(),
             event_matcher: self.event_matcher.clone(),
             copies: self.copies,
+            requires_dungeon_room_ability: false,
         })
     }
 }
@@ -3190,6 +3191,15 @@ impl StaticAbilityKind for DungeonRoomTriggerDuplication {
 
     fn display(&self) -> String {
         self.display.clone()
+    }
+
+    fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
+        Some(TriggerDuplicationSpec {
+            source_filter: None,
+            event_matcher: None,
+            copies: 1,
+            requires_dungeon_room_ability: true,
+        })
     }
 }
 

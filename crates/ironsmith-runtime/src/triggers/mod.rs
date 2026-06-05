@@ -1052,6 +1052,11 @@ impl Trigger {
         Self::keyword_action(crate::events::KeywordActionKind::Vote, PlayerFilter::Any)
     }
 
+    /// Create a room ability trigger for a dungeon owned by a matching player.
+    pub fn dungeon_room_ability(owner: PlayerFilter) -> Self {
+        Self::new(DungeonRoomAbilityTrigger::new(owner))
+    }
+
     /// Create a "whenever day becomes night or night becomes day" trigger.
     pub fn day_night_changed() -> Self {
         Self::new(EventKindTrigger::new(
