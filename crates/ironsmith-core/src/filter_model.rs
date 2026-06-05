@@ -411,6 +411,7 @@ pub struct ObjectFilter {
     pub nonblocking: bool,
     pub blocked: bool,
     pub blocked_by: Option<ObjectRef>,
+    pub blocked_by_source: bool,
     pub unblocked: bool,
     pub in_combat_with_source: bool,
     pub entered_since_your_last_turn_ended: bool,
@@ -1577,6 +1578,9 @@ impl ObjectFilter {
                 ObjectRef::Tagged(_) => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
+        }
+        if self.blocked_by_source {
+            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
         if self.tapped && self.untapped {
             parts.push("tapped/untapped".to_string());

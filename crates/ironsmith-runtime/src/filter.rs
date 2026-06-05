@@ -2311,6 +2311,19 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.blocked_by_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(combat) = &game.combat else {
+                return false;
+            };
+            if !crate::combat_state::get_blocked_attacker(combat, source_id)
+                .is_some_and(|attacker| attacker == object.id)
+            {
+                return false;
+            }
+        }
         if self.in_combat_with_source {
             let Some(source_id) = ctx.source else {
                 return false;
@@ -2913,6 +2926,19 @@ impl ObjectFilterExt for ObjectFilter {
             && !creature_was_blocked_by_ref(game, ctx, snapshot.object_id, blocker_ref)
         {
             return false;
+        }
+        if self.blocked_by_source {
+            let Some(source_id) = ctx.source else {
+                return false;
+            };
+            let Some(combat) = &game.combat else {
+                return false;
+            };
+            if !crate::combat_state::get_blocked_attacker(combat, source_id)
+                .is_some_and(|attacker| attacker == snapshot.object_id)
+            {
+                return false;
+            }
         }
 
         // Power check
@@ -3535,6 +3561,9 @@ impl ObjectFilterExt for ObjectFilter {
                 ObjectRef::Tagged(_) => "one of those creatures",
             };
             post_noun_qualifiers.push(format!("blocked by {blocker_text} this turn"));
+        }
+        if self.blocked_by_source {
+            post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
         if self.tapped && self.untapped {
             parts.push("tapped/untapped".to_string());
