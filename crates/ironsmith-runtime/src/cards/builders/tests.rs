@@ -16464,6 +16464,131 @@ fn parse_oracle_tainted_sigil_strictly_parses_and_renders_total_life_lost() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+struct DustAnimusNoopDecisionMaker;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl crate::decision::DecisionMaker for DustAnimusNoopDecisionMaker {}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_dust_animus_strictly_parses_and_renders_conditional_counters() {
+    assert_oracle_card_parses_strict("Dust Animus");
+
+    let def = parse_oracle_card_definition("Dust Animus");
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Flying"),
+        "expected Dust Animus to render flying, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If you control five or more untapped lands, this creature enters with two +1/+1 counters and a lifelink counter on it"
+        ),
+        "expected Dust Animus to render the combined conditional counter clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Plot {1}{W}"),
+        "expected Dust Animus to keep plot text, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.matches("EnterWithCountersIfCondition").count() >= 2
+            && debug.contains("PlusOnePlusOne")
+            && debug.contains("Lifelink")
+            && debug.contains("untapped: true"),
+        "expected Dust Animus to structurally model both conditional counters against untapped lands, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dust_animus_enters_with_both_counters_when_untapped_land_condition_is_met() {
+    let def = parse_oracle_card_definition("Dust Animus");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut dm = DustAnimusNoopDecisionMaker;
+
+    for idx in 0..5 {
+        let land = CardDefinitionBuilder::new(CardId::new(), format!("Untapped Land {idx}"))
+            .card_types(vec![CardType::Land])
+            .build();
+        game.create_object_from_definition(&land, alice, Zone::Battlefield);
+    }
+
+    let old_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let animus_id = game
+        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm)
+        .expect("Dust Animus should enter")
+        .new_id;
+
+    let animus = game.object(animus_id).expect("Dust Animus should exist");
+    assert_eq!(
+        animus
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or_default(),
+        2,
+        "Dust Animus should enter with two +1/+1 counters when the land condition is met"
+    );
+    assert_eq!(
+        animus
+            .counters
+            .get(&CounterType::Lifelink)
+            .copied()
+            .unwrap_or_default(),
+        1,
+        "Dust Animus should enter with a lifelink counter when the land condition is met"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dust_animus_enters_without_counters_when_fewer_than_five_lands_are_untapped() {
+    let def = parse_oracle_card_definition("Dust Animus");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut dm = DustAnimusNoopDecisionMaker;
+
+    for idx in 0..5 {
+        let land = CardDefinitionBuilder::new(CardId::new(), format!("Untapped Land {idx}"))
+            .card_types(vec![CardType::Land])
+            .build();
+        let land_id = game.create_object_from_definition(&land, alice, Zone::Battlefield);
+        if idx == 4 {
+            game.tap(land_id);
+        }
+    }
+
+    let old_id = game.create_object_from_definition(&def, alice, Zone::Hand);
+    let animus_id = game
+        .move_object_with_etb_processing_with_dm(old_id, Zone::Battlefield, &mut dm)
+        .expect("Dust Animus should enter")
+        .new_id;
+
+    let animus = game.object(animus_id).expect("Dust Animus should exist");
+    assert_eq!(
+        animus
+            .counters
+            .get(&CounterType::PlusOnePlusOne)
+            .copied()
+            .unwrap_or_default(),
+        0,
+        "Dust Animus should not get +1/+1 counters with only four untapped lands"
+    );
+    assert_eq!(
+        animus
+            .counters
+            .get(&CounterType::Lifelink)
+            .copied()
+            .unwrap_or_default(),
+        0,
+        "Dust Animus should not get a lifelink counter with only four untapped lands"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_oracle_final_punishment_strictly_parses_and_renders_damage_dealt_this_turn() {
     assert_oracle_card_parses_strict("Final Punishment");
