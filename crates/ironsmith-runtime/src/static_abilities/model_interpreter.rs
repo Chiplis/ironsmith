@@ -1551,6 +1551,10 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbility::enters_with_counters_value(*counter, count.clone())
             }
+            ironsmith_core::StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+            } => StaticAbility::enters_with_counter_choice(counter_types.clone(), count.clone()),
             ironsmith_core::StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbility::enters_tapped_for_filter(filter.clone())
             }

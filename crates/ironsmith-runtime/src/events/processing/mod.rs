@@ -105,6 +105,35 @@ fn tribute_source_name(game: &GameState, source: ObjectId) -> String {
         .unwrap_or_else(|| "this creature".to_string())
 }
 
+pub(super) fn counter_choice_context(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    counter_types: &[CounterType],
+) -> crate::decisions::context::DecisionContext {
+    let source_name = tribute_source_name(game, source);
+    let options = counter_types
+        .iter()
+        .enumerate()
+        .map(|(index, counter_type)| {
+            crate::decisions::context::SelectableOption::new(
+                index,
+                format!("{} counter", counter_type.description()),
+            )
+        })
+        .collect();
+    crate::decisions::context::DecisionContext::SelectOptions(
+        crate::decisions::context::SelectOptionsContext::new(
+            controller,
+            Some(source),
+            format!("Choose a counter type for {source_name}"),
+            options,
+            1,
+            1,
+        ),
+    )
+}
+
 pub(super) fn tribute_boolean_context(
     game: &GameState,
     source: ObjectId,

@@ -1002,7 +1002,8 @@ fn parse_enters_with_counter_choice_tokens(
         break;
     }
 
-    let mut tail = trim_commas(&tokens[idx..]);
+    let tail_tokens = trim_commas(&tokens[idx..]);
+    let mut tail = tail_tokens.as_slice();
     if token_slice_first_is(tail, "on") {
         tail = &tail[1..];
     }

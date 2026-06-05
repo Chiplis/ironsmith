@@ -562,6 +562,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         counter: CounterType,
         count: Value,
     },
+    EntersWithCounterChoice {
+        counter_types: Vec<CounterType>,
+        count: Value,
+    },
     EntersTappedForFilter(ObjectFilter),
     EntersUntappedForFilter(ObjectFilter),
     EntersWithCountersAndSubtypesForFilter {
@@ -1590,6 +1594,13 @@ where
             StaticAbilityPayload::EntersWithCountersValue { counter, count } => {
                 StaticAbilityPayload::EntersWithCountersValue { counter, count }
             }
+            StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+            } => StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+            },
             StaticAbilityPayload::EntersTappedForFilter(filter) => {
                 StaticAbilityPayload::EntersTappedForFilter(filter)
             }
@@ -4085,6 +4096,18 @@ impl<
             payload: StaticAbilityPayload::EntersWithCountersValue { counter, count },
         }
     }
+
+    pub fn enters_with_counter_choice(counter_types: Vec<CounterType>, count: Value) -> Self {
+        Self {
+            id: Some(StaticAbilityId::EnterWithCounters),
+            label: "enters with counter choice".to_string(),
+            payload: StaticAbilityPayload::EntersWithCounterChoice {
+                counter_types,
+                count,
+            },
+        }
+    }
+
     pub fn enters_tapped_for_filter(filter: ObjectFilter) -> Self {
         Self {
             id: Some(StaticAbilityId::EnterTappedForFilter),

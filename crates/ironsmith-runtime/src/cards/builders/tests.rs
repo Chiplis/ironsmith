@@ -13876,6 +13876,122 @@ fn test_rix_maadi_reveler_etb_uses_spectacle_branch_when_paid() {
     );
 }
 
+#[test]
+fn flycatcher_giraffid_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Flycatcher Giraffid");
+    let def = parse_oracle_card_definition("Flycatcher Giraffid");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("EntersWithCounterChoice")
+            && debug.contains("Vigilance")
+            && debug.contains("Reach")
+            && !debug.contains("KeywordFallbackText")
+            && !debug.contains("RuleFallbackText")
+            && !debug.contains("UnsupportedParserLine"),
+        "expected Flycatcher Giraffid to lower its ETB counter choice without unsupported placeholders, got {debug}"
+    );
+
+    let rendered = compiled_text_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "This creature enters with your choice of a vigilance counter or a reach counter on it"
+        ),
+        "expected Flycatcher Giraffid compiled text to preserve its counter-choice clause, got {rendered}"
+    );
+}
+
+#[test]
+fn flycatcher_giraffid_enters_with_chosen_vigilance_counter() {
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    struct ChooseCounter(usize);
+    impl crate::decision::DecisionMaker for ChooseCounter {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert!(
+                ctx.description.contains("Flycatcher Giraffid"),
+                "counter choice should name the entering creature, got {:?}",
+                ctx.description
+            );
+            assert_eq!(ctx.min, 1);
+            assert_eq!(ctx.max, 1);
+            assert_eq!(ctx.options.len(), 2);
+            vec![self.0]
+        }
+    }
+
+    let def = parse_oracle_card_definition("Flycatcher Giraffid");
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let stack_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = ChooseCounter(0);
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .expect("Flycatcher Giraffid should enter the battlefield");
+    let giraffid_id = result.new_id;
+
+    assert_eq!(
+        game.counter_count(giraffid_id, crate::object::CounterType::Vigilance),
+        1,
+        "choosing the first option should put one vigilance counter on Flycatcher Giraffid"
+    );
+    assert_eq!(
+        game.counter_count(giraffid_id, crate::object::CounterType::Reach),
+        0,
+        "choosing vigilance should not also put a reach counter on Flycatcher Giraffid"
+    );
+}
+
+#[test]
+fn flycatcher_giraffid_enters_with_chosen_reach_counter() {
+    use crate::tests::test_helpers::setup_two_player_game;
+
+    struct ChooseCounter(usize);
+    impl crate::decision::DecisionMaker for ChooseCounter {
+        fn decide_options(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            assert!(
+                ctx.options
+                    .iter()
+                    .any(|option| option.description == "reach counter"),
+                "counter choice should include a reach-counter option, got {:?}",
+                ctx.options
+            );
+            vec![self.0]
+        }
+    }
+
+    let def = parse_oracle_card_definition("Flycatcher Giraffid");
+    let mut game = setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let stack_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let mut dm = ChooseCounter(1);
+
+    let result = game
+        .move_object_with_etb_processing_with_dm(stack_id, Zone::Battlefield, &mut dm)
+        .expect("Flycatcher Giraffid should enter the battlefield");
+    let giraffid_id = result.new_id;
+
+    assert_eq!(
+        game.counter_count(giraffid_id, crate::object::CounterType::Reach),
+        1,
+        "choosing the second option should put one reach counter on Flycatcher Giraffid"
+    );
+    assert_eq!(
+        game.counter_count(giraffid_id, crate::object::CounterType::Vigilance),
+        0,
+        "choosing reach should not also put a vigilance counter on Flycatcher Giraffid"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn thunder_brute_strict_parser_and_compiled_text_regression() {
