@@ -85,6 +85,58 @@ const CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static>
             ],
         ]
 );
+const CONTROLLER_SUFFIX_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(
+        prefix_any
+            & [
+                &[
+                    "the",
+                    "graveyard",
+                    "hand",
+                    "and",
+                    "library",
+                    "of",
+                    "that",
+                    "spells",
+                    "controller",
+                    "for"
+                ],
+                &[
+                    "graveyard",
+                    "hand",
+                    "and",
+                    "library",
+                    "of",
+                    "that",
+                    "spells",
+                    "controller",
+                    "for"
+                ],
+                &[
+                    "the",
+                    "graveyard",
+                    "hand",
+                    "and",
+                    "library",
+                    "of",
+                    "that",
+                    "objects",
+                    "controller",
+                    "for"
+                ],
+                &[
+                    "graveyard",
+                    "hand",
+                    "and",
+                    "library",
+                    "of",
+                    "that",
+                    "objects",
+                    "controller",
+                    "for"
+                ],
+            ]
+    );
 const OWNER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -932,6 +984,8 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
     } else if YOUR_OR_THEIR_LIBRARY_FOR_PREFIX_PATTERN.matches_words(search_body_words) {
         // Keep player from parsed subject/default context.
     } else if CONTROLLER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN.matches_words(search_body_words)
+        || CONTROLLER_SUFFIX_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN
+            .matches_words(search_body_words)
     {
         player = PlayerAst::ItsController;
         forced_library_owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));

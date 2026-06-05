@@ -5857,6 +5857,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "Counter target instant or sorcery spell",
         )
         .replace("Counter target sorcery", "Counter target sorcery spell")
+        .replace("Counter target instant spell spell", "Counter target instant spell")
+        .replace("Counter target sorcery spell spell", "Counter target sorcery spell")
         .replace(
             "Counter target enchantment or instant or sorcery",
             "Counter target enchantment, instant, or sorcery spell",

@@ -1557,6 +1557,18 @@ pub(crate) fn split_if_clause_lexed(
                     effects,
                 });
             }
+            if effect_tokens
+                .first()
+                .is_some_and(|token| token.is_word("search") || token.is_word("searches"))
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && !effects.is_empty()
+            {
+                return Ok(IfClauseSplitSpec {
+                    predicate: IfClausePredicateSpec::Conditional(predicate),
+                    effects,
+                });
+            }
             let comma_fragment_looks_like_effect = if comma_indices.len() > 1 {
                 let fragment_tokens = &tokens[first_comma_idx + 1..comma_indices[1]];
                 parse_effects_with_leading_instead(fragment_tokens, &mut parse_effects)
