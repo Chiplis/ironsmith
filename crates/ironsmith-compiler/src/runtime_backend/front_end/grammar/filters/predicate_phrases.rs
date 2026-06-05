@@ -3130,6 +3130,40 @@ fn parse_player_life_relation_predicate(words: &[&str]) -> Option<PredicateAst> 
     }
 }
 
+fn parse_count_parity_predicate(words: &[&str]) -> Option<PredicateAst> {
+    let words = match words {
+        ["number", "of", rest @ ..] => rest,
+        ["count", "of", rest @ ..] => rest,
+        _ => return None,
+    };
+    let (scope, parity) = words.split_at(words.len().checked_sub(2)?);
+    if parity.first().copied() != Some("is") {
+        return None;
+    }
+    let even = match parity.get(1).copied()? {
+        "even" => true,
+        "odd" => false,
+        _ => return None,
+    };
+    let count = match scope {
+        ["permanent"] | ["permanents"] => {
+            crate::static_abilities::AnthemCountExpression::MatchingFilter(
+                crate::target::ObjectFilter::permanent(),
+            )
+        }
+        _ => return None,
+    };
+    Some(PredicateAst::CountParity {
+        count,
+        even,
+        display: Some(format!(
+            "the number of {} is {}",
+            scope.join(" "),
+            if even { "even" } else { "odd" }
+        )),
+    })
+}
+
 fn parse_player_cards_in_hand_relation_predicate(words: &[&str]) -> Option<PredicateAst> {
     let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let relation =
@@ -5838,6 +5872,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_player_life_relation_predicate(&filtered) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_count_parity_predicate(&filtered) {
         return Ok(predicate);
     }
 

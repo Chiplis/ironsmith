@@ -1294,6 +1294,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::EquippedCreatureAttacking => {}
         Condition::SourceChosenOption(..) => {}
         Condition::CountComparison { .. } => {}
+        Condition::CountParity { .. } => {}
         Condition::OwnsCardExiledWithCounter(..) => {}
         Condition::SourceAttackedThisTurn => {}
         Condition::SourceCameUnderYourControlThisTurn => {}
@@ -2014,6 +2015,15 @@ pub fn evaluate_condition_external(
             ctx.source,
             ctx.controller,
         )),
+        Condition::CountParity { count, even, .. } => {
+            let value = crate::static_abilities::resolve_anthem_count_expression(
+                count,
+                game,
+                ctx.source,
+                ctx.controller,
+            );
+            value % 2 == if *even { 0 } else { 1 }
+        }
         Condition::OwnsCardExiledWithCounter(counter) => game.exile.iter().any(|&id| {
             game.object(id).is_some_and(|obj| {
                 obj.owner == ctx.controller && obj.counters.get(counter).copied().unwrap_or(0) > 0
@@ -2807,6 +2817,7 @@ fn evaluate_condition_simple(
         | Condition::EquippedCreatureAttacking
         | Condition::SourceChosenOption(_)
         | Condition::CountComparison { .. }
+        | Condition::CountParity { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
         | Condition::SourceDealtCombatDamageToPlayerThisTurn
@@ -3951,6 +3962,15 @@ fn evaluate_condition(
                 ctx.controller,
             )),
         ),
+        Condition::CountParity { count, even, .. } => {
+            let value = crate::static_abilities::resolve_anthem_count_expression(
+                count,
+                game,
+                ctx.source,
+                ctx.controller,
+            );
+            Ok(value % 2 == if *even { 0 } else { 1 })
+        }
         Condition::ValueComparison {
             left,
             operator,

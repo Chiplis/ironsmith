@@ -2042,6 +2042,13 @@ impl<
         )
     }
 
+    pub fn can_attack_as_though_haste() -> Self {
+        Self::identified(
+            StaticAbilityId::CanAttackAsThoughHaste,
+            "can attack as though haste",
+        )
+    }
+
     pub fn set_colors(filter: ObjectFilter, colors: ColorSet) -> Self {
         Self {
             id: Some(StaticAbilityId::SetColors),

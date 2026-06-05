@@ -3984,7 +3984,13 @@ pub(crate) fn parse_static_text_marker_line(tokens: &[OwnedLexToken]) -> Option<
     }
 
     if is_attack_as_haste_unless_entered_this_turn_marker_line_lexed(tokens) {
-        return Some(keyword_static_marker(tokens));
+        let condition = Condition::Not(Box::new(Condition::ObjectEnteredBattlefieldThisTurn(
+            ObjectFilter::source(),
+        )));
+        return Some(StaticAbility::new(
+            GrantAbility::source(StaticAbility::can_attack_as_though_haste())
+                .with_condition(condition),
+        ));
     }
 
     if is_sab_sunen_cant_attack_or_block_unless_line_lexed(tokens) {

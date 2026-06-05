@@ -2058,6 +2058,10 @@ impl StaticAbility {
         Self::new(CanAttackAsThoughNoDefender)
     }
 
+    pub fn can_attack_as_though_haste() -> Self {
+        Self::new(CanAttackAsThoughHaste)
+    }
+
     pub fn doesnt_untap() -> Self {
         Self::new(DoesntUntap)
     }

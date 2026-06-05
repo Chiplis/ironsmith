@@ -65384,6 +65384,40 @@ fn parse_wild_dogs_keeps_unique_life_leader_upkeep_trigger() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn chaos_lord_parses_even_permanent_control_trigger_and_haste_as_though_text() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(2_614), "Chaos Lord")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![crate::types::Subtype::Human])
+        .power_toughness(PowerToughness::fixed(7, 7))
+        .parse_text(
+            "First strike\nAt the beginning of your upkeep, target opponent gains control of this creature if the number of permanents is even.\nThis creature can attack as though it had haste unless it entered this turn.",
+        )
+        .expect("Chaos Lord should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("First strike")
+            && rendered.contains(
+                "At the beginning of your upkeep, if the number of permanents is even, target opponent gains control of this creature."
+            )
+            && rendered.contains(
+                "This creature can attack as though it had haste unless it entered this turn."
+            ),
+        "expected Chaos Lord to render its even-permanent control trigger and as-though attack clause, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CountParity")
+            && debug.contains("ChangeControllerToPlayer")
+            && debug.contains("CanAttackAsThoughHaste")
+            && debug.contains("ObjectEnteredBattlefieldThisTurn"),
+        "expected Chaos Lord to lower parity and haste-unless-entered structurally, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lulu, Loyal Hollyphant")
         .card_types(vec![CardType::Creature])

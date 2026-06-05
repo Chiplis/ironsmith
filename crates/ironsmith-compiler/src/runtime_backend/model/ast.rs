@@ -472,6 +472,11 @@ pub(crate) enum PredicateAst {
     PlayerHasMoreLifeThanEachOtherPlayer {
         player: PlayerAst,
     },
+    CountParity {
+        count: crate::static_abilities::AnthemCountExpression,
+        even: bool,
+        display: Option<String>,
+    },
     PlayerIsMonarch {
         player: PlayerAst,
     },

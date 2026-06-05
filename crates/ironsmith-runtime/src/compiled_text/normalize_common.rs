@@ -9721,6 +9721,23 @@ pub(super) fn describe_apply_continuous_effect(
     if let Some(text) = describe_apply_continuous_animation_effect(effect, &target, plural_target) {
         return Some(text);
     }
+    if matches!(effect.target, crate::continuous::EffectTarget::Source)
+        && effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && matches!(effect.until, Until::Forever)
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.id() == crate::static_abilities::StaticAbilityId::CanAttackAsThoughHaste
+        && let Some(Condition::Not(inner)) = &effect.condition
+        && matches!(
+            inner.as_ref(),
+            Condition::ObjectEnteredBattlefieldThisTurn(filter) if *filter == ObjectFilter::source()
+        )
+    {
+        return Some(
+            "This creature can attack as though it had haste unless it entered this turn"
+                .to_string(),
+        );
+    }
     if effect.modification.is_none()
         && effect.additional_modifications.is_empty()
         && matches!(
@@ -12550,6 +12567,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             .as_ref()
             .map(|s| s.to_string())
             .unwrap_or_else(|| "count comparison".to_string()),
+        Condition::CountParity { display, even, .. } => display
+            .as_ref()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| format!("count is {}", if *even { "even" } else { "odd" })),
         Condition::ValueComparison {
             left,
             operator,
