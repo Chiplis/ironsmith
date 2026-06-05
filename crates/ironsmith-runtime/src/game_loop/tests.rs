@@ -44180,6 +44180,23 @@ fn frightful_delusion_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn thassas_intervention_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(76_304), "Thassa's Intervention")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::X],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Choose one —\n\
+             • Look at the top X cards of your library. Put up to two of them into your hand and the rest on the bottom of your library in a random order.\n\
+             • Counter target spell unless its controller pays twice {X}.",
+        )
+        .expect("Thassa's Intervention should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn stack_spell_probe_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(76_302), "Stack Spell Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
@@ -44217,6 +44234,27 @@ fn put_frightful_delusion_on_stack(
     let source = game.create_object_from_definition(&def, controller, Zone::Stack);
     game.push_to_stack(
         StackEntry::new(source, controller).with_targets(vec![Target::Object(target_spell)]),
+    );
+    source
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_thassas_intervention_counter_mode_on_stack(
+    game: &mut GameState,
+    controller: PlayerId,
+    target_spell: ObjectId,
+    x_value: u32,
+) -> ObjectId {
+    let def = thassas_intervention_definition();
+    let source = game.create_object_from_definition(&def, controller, Zone::Stack);
+    if let Some(spell) = game.object_mut(source) {
+        spell.x_value = Some(x_value);
+    }
+    game.push_to_stack(
+        StackEntry::new(source, controller)
+            .with_x(x_value)
+            .with_chosen_modes(Some(vec![1]))
+            .with_targets(vec![Target::Object(target_spell)]),
     );
     source
 }
@@ -44668,6 +44706,93 @@ fn spell_contortion_two_kicks_draws_two_cards_when_target_controller_pays() {
         game.player(alice).expect("alice exists").hand.len(),
         alice_hand_before + 2,
         "Spell Contortion kicked twice should draw two cards"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thassas_intervention_counter_mode_counters_when_target_controller_cannot_pay_twice_x() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let thassas_intervention =
+        put_thassas_intervention_counter_mode_on_stack(&mut game, alice, target_spell, 2);
+
+    resolve_stack_entry(&mut game).expect("Thassa's Intervention should resolve");
+
+    let countered_target = game
+        .current_object_id_after_zone_change(target_spell)
+        .expect("target spell should still be tracked after zone change");
+    assert_eq!(
+        game.object(countered_target)
+            .expect("target spell exists")
+            .zone,
+        Zone::Graveyard,
+        "the target spell should be countered when its controller cannot pay twice X"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == thassas_intervention)
+            && game.objects_in_zone(Zone::Graveyard).iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Thassa's Intervention")
+            }),
+        "Thassa's Intervention should leave the stack and go to its owner's graveyard after resolving"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn thassas_intervention_counter_mode_does_not_counter_when_target_controller_pays_twice_x() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.player_mut(bob)
+        .expect("bob exists")
+        .mana_pool
+        .add(ManaSymbol::Colorless, 4);
+
+    let target_def = stack_spell_probe_definition();
+    let target_spell = game.create_object_from_definition(&target_def, bob, Zone::Stack);
+    game.push_to_stack(StackEntry::new(target_spell, bob));
+    let thassas_intervention =
+        put_thassas_intervention_counter_mode_on_stack(&mut game, alice, target_spell, 2);
+
+    let mut dm = SelectFirstDecisionMaker;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Thassa's Intervention should resolve");
+
+    assert_eq!(
+        game.object(target_spell).expect("target spell exists").zone,
+        Zone::Stack,
+        "the target spell should remain on the stack when its controller pays twice X"
+    );
+    assert!(
+        game.stack
+            .iter()
+            .any(|entry| entry.object_id == target_spell),
+        "the paid-for target spell should still have a stack entry"
+    );
+    assert_eq!(
+        game.player(bob).expect("bob exists").mana_pool.total(),
+        0,
+        "the target spell's controller should spend four mana when X is 2"
+    );
+    assert!(
+        !game
+            .stack
+            .iter()
+            .any(|entry| entry.object_id == thassas_intervention)
+            && game.objects_in_zone(Zone::Graveyard).iter().any(|id| {
+                game.object(*id)
+                    .is_some_and(|obj| obj.name == "Thassa's Intervention")
+            }),
+        "Thassa's Intervention should leave the stack and go to its owner's graveyard after resolving"
     );
 }
 
