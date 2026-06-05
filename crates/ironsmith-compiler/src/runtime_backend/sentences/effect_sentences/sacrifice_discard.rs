@@ -114,6 +114,53 @@ fn trim_trailing_discard_alternative_action(tokens: &[OwnedLexToken]) -> Vec<Own
     trim_commas(tokens)
 }
 
+fn parse_trailing_discard_unless_predicate(
+    trailing_tokens: &[OwnedLexToken],
+    player: PlayerAst,
+    count: Value,
+    any_number: bool,
+    discard_filter: Option<ObjectFilter>,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let trailing_tokens =
+        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+            trailing_tokens,
+        );
+    let Some((first, predicate_tokens)) = trailing_tokens.split_first() else {
+        return Ok(None);
+    };
+    if !SACRIFICE_UNLESS_WORD_PATTERN.matches_token(first) {
+        return Ok(None);
+    }
+
+    let predicate_tokens =
+        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+            predicate_tokens,
+        );
+    if predicate_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "missing predicate after trailing discard unless".to_string(),
+        ));
+    }
+    let predicate =
+        crate::runtime_backend::front_end::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
+            predicate_tokens,
+        )?;
+    let discard = EffectAst::subject_verb_discard(
+        player,
+        count,
+        false,
+        any_number,
+        discard_filter,
+        None,
+    );
+
+    Ok(Some(EffectAst::Conditional {
+        predicate: PredicateAst::Not(Box::new(predicate)),
+        if_true: vec![discard],
+        if_false: Vec::new(),
+    }))
+}
+
 fn discard_value_from_choice_count(count: crate::effect::ChoiceCount) -> Option<(Value, bool)> {
     if count.is_any_number() {
         return Some((Value::Fixed(0), true));
@@ -589,6 +636,15 @@ pub(crate) fn parse_discard(
         ));
     }
     let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
+    if let Some(effect) = parse_trailing_discard_unless_predicate(
+        trailing_tokens,
+        player,
+        count.clone(),
+        any_number,
+        discard_filter.clone(),
+    )? {
+        return Ok(effect);
+    }
     let random = DISCARD_AT_RANDOM_PATTERN.matches_words(&trailing_words);
     if !trailing_words.is_empty() && !random {
         let trailing_filter = if let Ok(filter) = parse_object_filter(trailing_tokens, false) {

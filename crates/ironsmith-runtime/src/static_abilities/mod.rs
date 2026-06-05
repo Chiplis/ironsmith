@@ -749,6 +749,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         false
     }
 
+    /// Returns structured anthem data when this ability is backed by the core anthem model.
+    fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
+        None
+    }
+
     /// Returns true if this grants abilities to other permanents.
     fn grants_abilities(&self) -> bool {
         false
@@ -1580,6 +1585,10 @@ impl StaticAbility {
 
     pub fn is_anthem(&self) -> bool {
         self.0.is_anthem()
+    }
+
+    pub fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
+        self.0.anthem_payload()
     }
 
     pub fn grants_abilities(&self) -> bool {

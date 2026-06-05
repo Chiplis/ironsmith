@@ -50,6 +50,8 @@ const ADDITIONAL_LAND_PLAY_STATIC_TAIL_PATTERN: ClauseShape<'static> = clause_sh
             &["additional", "lands", "on", "each", "of", "your", "turns"],
         ]
 );
+const OPTIONAL_WATERBEND_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["you", "may", "waterbend"]);
 const SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2305,6 +2307,9 @@ pub(crate) fn lower_keyword_special_cases(
     if let Some(chunk) = try_lower_optional_behold_additional_cost(line, parse_tokens)? {
         return Ok(Some(chunk));
     }
+    if let Some(chunk) = try_lower_optional_waterbend_additional_cost(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
     Ok(None)
 }
 
@@ -2663,6 +2668,69 @@ pub(crate) fn try_lower_optional_behold_additional_cost(
     Ok(Some(LineAst::OptionalCost(
         OptionalCost::custom(line.info.raw_line.trim(), total_cost).into(),
     )))
+}
+
+pub(crate) fn try_lower_optional_waterbend_additional_cost(
+    line: &RewriteKeywordLine,
+    parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    if line.kind != RewriteKeywordLineKind::AdditionalCost {
+        return Ok(None);
+    }
+
+    let Some(effect_tokens) = additional_cost_tail_tokens(parse_tokens) else {
+        return Ok(None);
+    };
+    let stripped = trim_lexed_commas(effect_tokens);
+    let words = token_word_refs(stripped);
+    if !OPTIONAL_WATERBEND_PREFIX_PATTERN.matches_words(&words) {
+        return Ok(None);
+    }
+
+    let total_cost = parse_activation_cost(&stripped[2..])?;
+    let Some(mana_cost) = total_cost.mana_cost().cloned() else {
+        return Ok(None);
+    };
+    let generic = mana_cost.generic_mana_total();
+    if generic == 0 || mana_cost.reduce_generic(generic).pip_count() != 0 {
+        return Ok(None);
+    }
+
+    let mut branches = Vec::new();
+    for tapped in 0..=generic {
+        let mut costs = Vec::new();
+        let remaining_mana = mana_cost.reduce_generic(tapped);
+        if !remaining_mana.is_empty() {
+            costs.push(Cost::mana(remaining_mana));
+        }
+        if tapped > 0 {
+            costs.extend(waterbend_tap_costs(tapped));
+        }
+        branches.push(TotalCost::from_costs(costs));
+    }
+
+    Ok(Some(LineAst::OptionalCost(
+        OptionalCost::custom(line.info.raw_line.trim(), TotalCost::one_of(branches)).into(),
+    )))
+}
+
+fn waterbend_tap_costs(count: u32) -> Vec<Cost> {
+    let tag = format!("waterbend_cost_{count}");
+    let mut filter = ObjectFilter::default();
+    filter.controller = Some(PlayerFilter::You);
+    filter.zone = Some(Zone::Battlefield);
+    filter.untapped = true;
+    filter.any_of = vec![ObjectFilter::artifact(), ObjectFilter::creature()];
+
+    vec![
+        Cost::validated_effect(crate::effect::Effect::choose_objects(
+            filter,
+            ChoiceCount::exactly(count as usize),
+            PlayerFilter::You,
+            tag.clone(),
+        )),
+        Cost::validated_effect(crate::effect::Effect::tap(ChooseSpec::tagged(tag))),
+    ]
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {

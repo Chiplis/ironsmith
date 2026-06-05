@@ -17649,6 +17649,9 @@ fn describe_static_ability_with_subject(
     static_ability: &crate::static_abilities::StaticAbility,
     subject: &str,
 ) -> String {
+    if let Some(line) = describe_anthem_static_ability_with_subject(static_ability, subject) {
+        return line;
+    }
     if static_ability.id() == crate::static_abilities::StaticAbilityId::ChooseColorAsEnters {
         let mut line = format!("As {subject} enters, choose a color");
         if let Some(excluded) = static_ability
@@ -17769,6 +17772,56 @@ fn describe_static_ability_with_subject(
     }
 
     line
+}
+
+fn describe_anthem_static_ability_with_subject(
+    static_ability: &crate::static_abilities::StaticAbility,
+    subject: &str,
+) -> Option<String> {
+    let anthem = static_ability.anthem_payload()?;
+    if anthem.filter.is_some() || anthem.condition.is_some() {
+        return None;
+    }
+    let (
+        crate::static_abilities::AnthemValue::PerCount {
+            multiplier: power_multiplier,
+            count: power_count,
+        },
+        crate::static_abilities::AnthemValue::PerCount {
+            multiplier: toughness_multiplier,
+            count: toughness_count,
+        },
+    ) = (&anthem.power, &anthem.toughness)
+    else {
+        return None;
+    };
+    if *power_multiplier != 1 || *toughness_multiplier != 1 || power_count != toughness_count {
+        return None;
+    }
+
+    let for_each_text = match power_count {
+        crate::static_abilities::AnthemCountExpression::MatchingFilter(filter) => {
+            describe_for_each_count_filter(filter)
+        }
+        crate::static_abilities::AnthemCountExpression::BasicLandTypesAmong(filter) => {
+            describe_basic_land_types_among(filter).replace("basic land types", "basic land type")
+        }
+        crate::static_abilities::AnthemCountExpression::CreatureTypesAmong(filter) => {
+            format!(
+                "creature type among {}",
+                describe_count_filter_value_subject(filter)
+            )
+        }
+        crate::static_abilities::AnthemCountExpression::CountersOnSource(counter_type) => {
+            format!("{} counter on it", counter_type.description())
+        }
+        _ => return None,
+    };
+
+    Some(format!(
+        "{} gets +1/+1 for each {for_each_text}",
+        capitalize_first(subject)
+    ))
 }
 
 fn subject_text_uses_have(subject: &str) -> bool {
@@ -18395,6 +18448,24 @@ fn normalize_redundant_short_name_etb_surface(
     };
     if triggered_has_you_difference_draw(triggered) {
         return line;
+    }
+
+    for prefix in [
+        "When this creature enters,",
+        "When this permanent enters,",
+        "When this enters the battlefield,",
+    ] {
+        if let Some(start) = line.find(prefix)
+            && (start == 0 || line[..start].ends_with(": "))
+        {
+            let rest = &line[start + prefix.len()..];
+            if !rest
+                .to_ascii_lowercase()
+                .contains(surface.to_ascii_lowercase().as_str())
+            {
+                return format!("{}When {surface} enters,{rest}", &line[..start]);
+            }
+        }
     }
 
     let Some((start, prefix_len)) = [
@@ -35099,6 +35170,29 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                     describe_condition(&conditional.condition)
                 );
             }
+            if let crate::effect::Condition::Not(inner) = &conditional.condition
+                && matches!(inner.as_ref(), crate::effect::Condition::ThisSpellPaidLabel(_))
+                && !true_branch.contains(". ")
+                && !true_branch.starts_with("If ")
+                && !true_branch.starts_with("When ")
+                && !true_branch.starts_with("Whenever ")
+                && !true_branch.starts_with("At ")
+            {
+                let branch = true_branch
+                    .strip_prefix("You discard ")
+                    .or_else(|| true_branch.strip_prefix("you discard "))
+                    .map(|rest| format!("discard {rest}"))
+                    .unwrap_or_else(|| true_branch.clone());
+                let condition = match inner.as_ref() {
+                    crate::effect::Condition::ThisSpellPaidLabel(label)
+                        if label.eq_ignore_ascii_case("additional") =>
+                    {
+                        "its additional cost was paid".to_string()
+                    }
+                    _ => describe_condition(inner),
+                };
+                return format!("{branch} unless {condition}");
+            }
             let condition_text = describe_condition(&conditional.condition);
             if condition_text.starts_with("the sacrificed ")
                 && !true_branch.contains(". ")
@@ -42296,6 +42390,7 @@ pub(super) fn describe_ability(
             line = normalize_ability_self_reference_surface(&line, subject);
             line = normalize_graveyard_source_return_surface(&line, ability);
             line = normalize_ability_self_reference_surface(&line, subject);
+            line = normalize_redundant_short_name_etb_surface(line, triggered, subject);
             vec![line]
         }
         AbilityKind::Activated(activated) if activated.is_mana_ability() => {
@@ -43201,7 +43296,6 @@ pub(super) fn describe_imprint_from_hand_phrase(
 
 pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
     let label = cost.label.as_str();
-    let cost_text = describe_cost_list(cost.cost.costs());
     if label
         .to_ascii_lowercase()
         .starts_with("as an additional cost to cast this spell")
@@ -43211,6 +43305,7 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     if label.to_ascii_lowercase().starts_with("gift ") {
         return label.trim().to_string();
     }
+    let cost_text = describe_cost_list(cost.cost.costs());
     if label == "Conspire" || label.starts_with("Conspire ") {
         let reminder_cost = cost_text
             .trim()

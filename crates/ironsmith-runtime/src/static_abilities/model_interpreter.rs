@@ -2103,6 +2103,13 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         )
     }
 
+    fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
+        match self.payload() {
+            ironsmith_core::StaticAbilityPayload::Anthem(anthem) => Some(anthem),
+            _ => None,
+        }
+    }
+
     fn grants_abilities(&self) -> bool {
         matches!(
             self.payload(),
