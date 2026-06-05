@@ -1235,7 +1235,7 @@ fn nicol_bolas_dragon_god_strict_parser_compiled_text_and_model_regression() {
     );
     assert!(
         rendered.contains(
-            "has all loyalty abilities of all other planeswalkers on the battlefield"
+            "Nicol Bolas has all loyalty abilities of all other planeswalkers on the battlefield"
         ),
         "expected compiled text to preserve loyalty-copy clause, got {rendered}"
     );
