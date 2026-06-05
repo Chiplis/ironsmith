@@ -165,6 +165,11 @@ pub(crate) enum TriggerSpec {
         target: ObjectFilter,
         source_controller: PlayerFilter,
     },
+    PlayerOrObjectBecomesTargetedBySourceController {
+        player: PlayerFilter,
+        object: ObjectFilter,
+        source_controller: PlayerFilter,
+    },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
         player: PlayerFilter,
@@ -559,6 +564,8 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
     },
     SourceIsTapped,
+    SourceIsEquipped,
+    SourceIsEnchanted,
     SourceIsSaddled,
     SourceCrewedByExactly {
         count: u32,
@@ -646,6 +653,8 @@ impl PredicateAst {
         match self {
             PredicateAst::SourceChosenOption(_)
             | PredicateAst::SourceIsTapped
+            | PredicateAst::SourceIsEquipped
+            | PredicateAst::SourceIsEnchanted
             | PredicateAst::SourceIsSaddled
             | PredicateAst::SourceCrewedByExactly { .. }
             | PredicateAst::SourceMatches(_)

@@ -540,6 +540,43 @@ pub(crate) fn parse_effect_chain_lexed(
     let starts_with_each_player =
         grammar::words_match_any_prefix(tokens, EACH_PLAYER_PREFIXES).is_some();
 
+    if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
+        if let Some(player) = parse_leading_player_may_lexed(trailing_if.leading_tokens) {
+            let mut stripped = remove_through_first_word(trailing_if.leading_tokens, "may");
+            if stripped
+                .first()
+                .is_some_and(|token| CHAIN_HAVE_OR_HAS_WORD_PATTERN.matches_token(token))
+            {
+                stripped.remove(0);
+            }
+            if CHAIN_CHOOSE_TO_PREFIX_PATTERN.matches_words(&token_word_refs(&stripped)) {
+                stripped = remove_through_first_word_tokens(&stripped, "to");
+            }
+            let mut effects = parse_effect_chain_lexed(&stripped)?;
+            for effect in &mut effects {
+                bind_implicit_player_context(effect, player);
+            }
+            return Ok(vec![EffectAst::Conditional {
+                predicate: trailing_if.predicate,
+                if_true: vec![EffectAst::MayByPlayer { player, effects }],
+                if_false: Vec::new(),
+            }]);
+        }
+
+        if token_slice_first_is(trailing_if.leading_tokens, "may")
+            && !starts_with_each_opponent
+            && !starts_with_each_player
+        {
+            let stripped = remove_first_word(trailing_if.leading_tokens, "may");
+            let effects = parse_effect_chain_lexed(&stripped)?;
+            return Ok(vec![EffectAst::Conditional {
+                predicate: trailing_if.predicate,
+                if_true: vec![EffectAst::May { effects }],
+                if_false: Vec::new(),
+            }]);
+        }
+    }
+
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
         if stripped

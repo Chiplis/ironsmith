@@ -659,6 +659,36 @@ fn describe_copy_tagged_then_may_cast_copy(effects: &[Effect]) -> Option<String>
     Some(text)
 }
 
+fn may_draws_one_for_you(effect: &Effect) -> Option<()> {
+    let may = effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if !matches!(may.decider, Some(PlayerFilter::You)) || may.effects.len() != 1 {
+        return None;
+    }
+    let draw = may.effects[0].downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    (draw.player == PlayerFilter::You && draw.count == Value::Fixed(1)).then_some(())
+}
+
+fn describe_may_draw_then_source_enchanted_additional_draw(effects: &[Effect]) -> Option<String> {
+    let [first, second] = effects else {
+        return None;
+    };
+    may_draws_one_for_you(first)?;
+
+    let conditional = second.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if conditional.condition != crate::effect::Condition::SourceIsEnchanted
+        || !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+    {
+        return None;
+    }
+    may_draws_one_for_you(&conditional.if_true[0])?;
+
+    Some(format!(
+        "You may draw a card. You may draw an additional card if {}",
+        lowercase_first(&describe_condition(&conditional.condition))
+    ))
+}
+
 fn describe_spell_mastery_reanimation_effects(effects: &[&Effect]) -> Option<String> {
     let [move_effect, conditional_effect] = effects else {
         return None;
@@ -5577,6 +5607,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     if let Some(compact) = describe_copy_tagged_then_may_cast_copy(effects) {
+        return compact;
+    }
+    if let Some(compact) = describe_may_draw_then_source_enchanted_additional_draw(effects) {
         return compact;
     }
     if effects.len() > 2

@@ -110,6 +110,11 @@ pub enum TriggerKind {
         target: ObjectFilter,
         controller: PlayerFilter,
     },
+    PlayerOrObjectBecomesTargetedBySourceController {
+        player: PlayerFilter,
+        object: ObjectFilter,
+        controller: PlayerFilter,
+    },
     ThisDealsDamage,
     ThisDealsDamageToPlayer {
         player: PlayerFilter,
@@ -594,6 +599,31 @@ impl Trigger {
         Self::typed(
             "becomes_targeted_by_source_controller",
             TriggerKind::BecomesTargetedBySourceController { target, controller },
+        )
+    }
+    pub fn player_or_object_becomes_targeted_by_source_controller(
+        player: PlayerFilter,
+        object: ObjectFilter,
+        controller: PlayerFilter,
+    ) -> Self {
+        let controller_text = match controller {
+            PlayerFilter::You => "you",
+            PlayerFilter::Opponent => "an opponent",
+            PlayerFilter::Any => "a player",
+            _ => "a player",
+        };
+        Self::typed(
+            format!(
+                "Whenever {} or {} becomes the target of a spell or ability {} controls",
+                crate::filter_model::describe_player_filter(&player),
+                object.description(),
+                controller_text
+            ),
+            TriggerKind::PlayerOrObjectBecomesTargetedBySourceController {
+                player,
+                object,
+                controller,
+            },
         )
     }
     pub fn this_deals_damage() -> Self {
