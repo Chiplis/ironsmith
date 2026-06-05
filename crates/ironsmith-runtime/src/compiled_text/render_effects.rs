@@ -31805,6 +31805,68 @@ fn prevent_next_time_tagged_source_text(filter: &ObjectFilter) -> Option<String>
     }
 }
 
+fn singularize_plural_object_phrase(phrase: &str) -> String {
+    phrase
+        .split_whitespace()
+        .map(|word| {
+            let (core, suffix) = word
+                .strip_suffix(',')
+                .map(|core| (core, ","))
+                .unwrap_or((word, ""));
+            if matches!(core, "and" | "or") {
+                return word.to_string();
+            }
+            let singular = if let Some(stem) = core.strip_suffix("ies") {
+                format!("{stem}y")
+            } else if let Some(stem) = core.strip_suffix('s') {
+                if core.ends_with("ss") {
+                    core.to_string()
+                } else {
+                    stem.to_string()
+                }
+            } else {
+                core.to_string()
+            };
+            format!("{singular}{suffix}")
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn describe_dynamic_count_tap(tap: &crate::effects::TapEffect) -> Option<String> {
+    let ChooseSpec::WithCountValue(inner, count, count_value) = &tap.target else {
+        return None;
+    };
+    if !count.is_dynamic_x() || count.is_up_to_dynamic_x() || count.is_random() {
+        return None;
+    }
+    let (counter_type, source_text) = match count_value {
+        Value::CountersOnSource(counter_type) => (*counter_type, "this permanent".to_string()),
+        Value::CountersOn(spec, Some(counter_type)) => (*counter_type, describe_choose_spec(spec)),
+        _ => return None,
+    };
+    let ChooseSpec::Object(filter) = inner.base() else {
+        return None;
+    };
+
+    let description = filter.description();
+    let (prefix, object_phrase, control_tail) = if filter.controller == Some(PlayerFilter::Active) {
+        let stripped = description
+            .strip_prefix("the active player's ")
+            .or_else(|| description.strip_prefix("active player's "))
+            .unwrap_or_else(|| strip_leading_article(&description));
+        ("That player taps", stripped, " they control")
+    } else {
+        ("Tap", strip_leading_article(&description), "")
+    };
+    let object_phrase = singularize_plural_object_phrase(object_phrase);
+    Some(format!(
+        "{prefix} {}{control_tail} for each {} counter on {source_text}",
+        with_indefinite_article(&object_phrase),
+        describe_counter_type(counter_type)
+    ))
+}
+
 pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if effect
         .downcast_ref::<crate::effects::TagTriggeringSourceEffect>()
@@ -34210,6 +34272,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(tap) = effect.downcast_ref::<crate::effects::TapEffect>() {
+        if let Some(text) = describe_dynamic_count_tap(tap) {
+            return text;
+        }
         return format!("Tap {}", describe_choose_spec(&tap.target));
     }
     if let Some(untap) = effect.downcast_ref::<crate::effects::UntapEffect>() {

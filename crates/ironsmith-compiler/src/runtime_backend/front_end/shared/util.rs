@@ -1416,6 +1416,40 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             filter_end,
         ));
     }
+    if let Some(counter_idx) = find_index(count_words, |word| {
+        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+    }) && count_words
+        .get(counter_idx + 1)
+        .is_some_and(|word| ON_WORD_PATTERN.matches_word(word))
+    {
+        let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(count_words);
+        if let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) {
+            let reference = &count_words[counter_idx + 2..];
+            if SOURCE_COUNTER_REFERENCE_PATTERN.matches_words(reference) {
+                if let Some(surface) = this_source_surface_for_words(reference) {
+                    return Some((
+                        Value::CountersOn(
+                            Box::new(source_choose_spec_for_surface(surface)),
+                            Some(counter_type),
+                        ),
+                        filter_end,
+                    ));
+                }
+                return Some((Value::CountersOnSource(counter_type), filter_end));
+            }
+            if TAGGED_COUNTER_REFERENCE_PATTERN.matches_words(reference) {
+                return Some((
+                    Value::CountersOn(
+                        Box::new(ChooseSpec::Tagged(TagKey::from(
+                            crate::cards::builders::IT_TAG,
+                        ))),
+                        Some(counter_type),
+                    ),
+                    filter_end,
+                ));
+            }
+        }
+    }
 
     let filter_tokens =
         crate::runtime_backend::lexer::synthetic_word_tokens(&words[idx..filter_end]);
@@ -2355,6 +2389,7 @@ pub(crate) fn parse_counter_type_word(word: &str) -> Option<CounterType> {
         "blood" => Some(CounterType::Blood),
         "ice" => Some(CounterType::Ice),
         "finality" => Some(CounterType::Finality),
+        "fade" => Some(CounterType::Fade),
         "time" => Some(CounterType::Time),
         "brain" => Some(CounterType::Brain),
         "burden" => Some(CounterType::Named(intern_counter_name("burden"))),
@@ -3868,6 +3903,67 @@ mod tests {
         assert_eq!(used_words, words.len());
         assert_eq!(value, Value::MaxCardsDrawnThisTurn(PlayerFilter::You));
     }
+
+    #[test]
+    fn parse_for_each_count_value_words_handles_fade_counters_on_source() {
+        let words = ["for", "each", "fade", "counter", "on", "this", "artifact"];
+
+        let (value, used_words) =
+            parse_for_each_count_value_words(&words).expect("fade counter count should parse");
+
+        assert_eq!(used_words, words.len());
+        let Value::CountersOn(spec, Some(CounterType::Fade)) = value else {
+            panic!("expected source fade counter count, got {value:?}");
+        };
+        assert_eq!(describe_choose_spec_for_test(&spec), "this artifact");
+    }
+
+    #[test]
+    fn parse_target_phrase_handles_dynamic_count_for_each_source_counter() {
+        let tokens = lex_line(
+            "an untapped artifact, creature, or land they control for each fade counter on this artifact",
+            0,
+        )
+        .unwrap();
+
+        let target = parse_target_phrase(&tokens).expect("dynamic counted target should parse");
+
+        let TargetAst::WithCountValue(inner, count, value) = target else {
+            panic!("expected dynamic-count target, got {target:?}");
+        };
+        assert!(count.is_dynamic_x());
+        let Value::CountersOn(spec, Some(CounterType::Fade)) = value else {
+            panic!("expected source fade counter count, got {value:?}");
+        };
+        assert_eq!(describe_choose_spec_for_test(&spec), "this artifact");
+        let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+            panic!("expected object target, got {inner:?}");
+        };
+        assert!(filter.untapped, "expected untapped filter, got {filter:?}");
+        assert!(
+            filter.controller.is_some(),
+            "expected controller filter, got {filter:?}"
+        );
+        assert!(filter.card_types.contains(&CardType::Artifact));
+        assert!(filter.card_types.contains(&CardType::Creature));
+        assert!(filter.card_types.contains(&CardType::Land));
+    }
+
+    fn describe_choose_spec_for_test(spec: &ChooseSpec) -> String {
+        match spec {
+            ChooseSpec::SurfaceHinted { hints, .. } => hints
+                .iter()
+                .find_map(|hint| match hint {
+                    ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::FullName(text))
+                    | ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ShortName(text))
+                    | ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType(text),
+                    ) => Some(text.clone()),
+                })
+                .unwrap_or_else(|| format!("{spec:?}")),
+            _ => format!("{spec:?}"),
+        }
+    }
 }
 
 pub(crate) fn wrap_target_count(target: TargetAst, target_count: Option<ChoiceCount>) -> TargetAst {
@@ -4793,6 +4889,30 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
             "unsupported creature-token/player/planeswalker target phrase (clause: '{}')",
             remaining_words.join(" ")
         )));
+    }
+
+    let remaining_word_view = UtilWordView::new(remaining);
+    let remaining_words_with_articles = remaining_word_view.to_word_refs();
+    if target_count.is_none_or(|count| count.is_single())
+        && let Some(for_each_word_idx) = remaining_words_with_articles
+            .windows(2)
+            .position(|window| window == ["for", "each"])
+        && for_each_word_idx > 0
+        && let Some((count_value, used_words)) =
+            parse_for_each_count_value_words(&remaining_words_with_articles[for_each_word_idx..])
+        && for_each_word_idx + used_words == remaining_words_with_articles.len()
+        && let Some(for_each_token_idx) =
+            remaining_word_view.token_index_for_word_index(for_each_word_idx)
+    {
+        let object_tokens = trim_commas(&remaining[..for_each_token_idx]);
+        if !object_tokens.is_empty() {
+            let filter = parse_object_filter(&object_tokens, other)?;
+            return Ok(TargetAst::WithCountValue(
+                Box::new(TargetAst::Object(filter, target_span, None)),
+                ChoiceCount::dynamic_x(),
+                count_value,
+            ));
+        }
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
