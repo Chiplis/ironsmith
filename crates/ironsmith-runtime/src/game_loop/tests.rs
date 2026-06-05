@@ -19084,6 +19084,154 @@ fn test_beast_within_target_requirements_include_enchantments() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resculpt_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(724_001), "Resculpt")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target artifact or creature. Its controller creates a 4/4 blue and red Elemental creature token.",
+        )
+        .expect("Resculpt oracle text should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_strict_parser_and_compiled_text_regression() {
+    let def = resculpt_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Exile target artifact or creature"),
+        "Resculpt should render the artifact-or-creature exile target, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "that object's controller creates a 4/4 blue and red Elemental creature token"
+        ),
+        "Resculpt should render the target controller token clause, got {rendered}"
+    );
+    assert!(
+        debug.contains("Exile") && debug.contains("CreateTokenEffect"),
+        "Resculpt should lower to exile plus token creation effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_targets_artifacts_and_creatures_but_not_other_permanents() {
+    let def = resculpt_definition();
+    let effects = def.spell_effect.as_ref().expect("Resculpt should be a spell");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_002), "Target Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let creature = create_creature(&mut game, "Target Creature", bob, 2, 2);
+    let enchantment = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_003), "Target Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Resculpt should have one target requirement, got {requirements:?}"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(artifact)),
+        "Resculpt should be able to target artifacts, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(creature)),
+        "Resculpt should be able to target creatures, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(enchantment)),
+        "Resculpt should not be able to target nonartifact noncreature permanents, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Player(bob)),
+        "Resculpt should not be able to target players, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_exiles_target_and_gives_elemental_to_targets_controller() {
+    let def = resculpt_definition();
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_004), "Bob's Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let target_stable = game.object(target).expect("target exists").stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target)]),
+    );
+    resolve_stack_entry(&mut game).expect("Resculpt should resolve");
+
+    let exiled_target = game
+        .find_object_by_stable_id(target_stable)
+        .expect("exiled target should still exist");
+    assert!(
+        game.exile.contains(&exiled_target),
+        "Resculpt should exile its artifact target"
+    );
+
+    let elemental_tokens: Vec<_> = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| {
+            let object = game.object(*id).expect("battlefield object exists");
+            object.kind == ObjectKind::Token
+                && object.name == "Elemental"
+                && object.subtypes.contains(&Subtype::Elemental)
+        })
+        .collect();
+    assert_eq!(
+        elemental_tokens.len(),
+        1,
+        "Resculpt should create exactly one Elemental token, got {elemental_tokens:?}"
+    );
+    let token = elemental_tokens[0];
+    assert_eq!(
+        game.controller_of(game.object(token).expect("token exists")),
+        bob,
+        "the target's controller should control the Elemental token"
+    );
+    assert_eq!(game.current_power(token), Some(4));
+    assert_eq!(game.current_toughness(token), Some(4));
+    assert_eq!(
+        game.current_colors(token),
+        Some(crate::color::ColorSet::BLUE.union(crate::color::ColorSet::RED)),
+        "the Elemental token should be blue and red"
+    );
+}
+
 #[test]
 fn test_non_target_put_onto_battlefield_choice_does_not_create_target_requirement() {
     let mut game = setup_game();
