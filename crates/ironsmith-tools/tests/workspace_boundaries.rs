@@ -720,6 +720,44 @@ fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
 }
 
 #[test]
+fn runtime_backend_facade_frequency_and_kicker_postpasses_use_token_shapes() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "pub(crate) fn trigger_frequency_condition",
+        "#[cfg(test)]\n#[path = \"tests.rs\"]",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "runtime backend facade trigger-frequency/kicker postpasses should use lexed tokens and grammar shapes, not raw source-text checks"
+    );
+
+    for required in [
+        "trigger_frequency_text_ast",
+        "parser_token_word_refs",
+        "FIRST_TIME_EACH_OR_THIS_TURN_PATTERN.matches_words",
+        "BECOMES_CREWED_PATTERN.matches_words",
+        "parse_do_this_only_each_turn_limit",
+        "LexPattern::amount(\"limit\", LexCaptureKind::OneOf(&[\"once\", \"twice\"]))",
+        "capture_clause_by_role(LexCaptureRole::Amount",
+        "KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PATTERN.matches_words",
+    ] {
+        assert!(
+            helper.contains(required),
+            "{relative} should preserve facade postpass semantics through token-backed shape/capture helpers: missing `{required}`"
+        );
+    }
+}
+
+#[test]
 fn middle_parser_production_raw_text_checks_are_classified() {
     let root = workspace_root();
     let scan_roots = [
@@ -1183,7 +1221,7 @@ fn modal_mode_cst_uses_token_text_not_raw_bullet_stripping() {
     let original_text_helper = function_source(
         &document_content,
         "fn render_original_text_for_token_slice",
-        "fn try_parse_triggered_line_with_named_source_rewrite",
+        "fn line_starts_with_lparen_token",
     );
 
     for required in [
@@ -1214,6 +1252,63 @@ fn modal_mode_cst_uses_token_text_not_raw_bullet_stripping() {
         assert!(
             original_text_helper.contains(required),
             "{document_relative} should map token slices back to original text with token spans: missing `{required}`"
+        );
+    }
+    for required in [
+        "line_mentions_this_permanent_token_phrase(candidates[0].as_str())",
+        "THIS_PERMANENT_PHRASE_PATTERN.matches_words(&token_word_refs(&tokens))",
+    ] {
+        assert!(
+            original_text_helper.contains(required),
+            "{document_relative} should fan out this-permanent named-source candidates through token-backed phrase helpers: missing `{required}`"
+        );
+    }
+    assert!(
+        !original_text_helper.contains("candidates[0].contains(\"this permanent\")"),
+        "{document_relative} should not detect this-permanent fallback candidates with raw substring checks"
+    );
+}
+
+#[test]
+fn weighted_modal_header_detection_uses_tokens_and_shapes() {
+    let root = workspace_root();
+    let relative =
+        "crates/ironsmith-compiler/src/runtime_backend/lowering/lower/modal_and_level_lowering.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn header_mentions_modal_point_cost",
+        "fn parse_leading_modal_point_cost",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "{relative} should detect weighted modal headers from lexed tokens and ClauseShape helpers, not raw `{{P}}` text probes"
+    );
+
+    for required in [
+        "header_mentions_modal_point_cost_lexed(&tokens)",
+        "pawprint_modal_label_count(token)",
+        "MODAL_POINT_COST_HEADER_TAIL_PATTERN.matches_words",
+        "parser_token_word_refs(tokens)",
+    ] {
+        assert!(
+            helper.contains(required),
+            "{relative} should preserve weighted modal header detection through token-backed grammar helpers: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "text.to_ascii_lowercase().contains(\"{p} worth of modes\")",
+        ".contains(\"{p} worth of modes\")",
+    ] {
+        assert!(
+            !helper.contains(forbidden),
+            "{relative} should not detect weighted modal headers with raw text branch `{forbidden}`"
         );
     }
 }
@@ -1394,6 +1489,41 @@ fn grammar_effect_labeled_prefix_classifiers_use_parser_token_words() {
 }
 
 #[test]
+fn labeled_mana_value_bound_uses_parse_tokens_not_synthetic_words() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/labeled_prefixes.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn labeled_mana_value_or_less_bound",
+        "pub(crate) fn parse_effect_sentence_inner_lexed",
+    );
+
+    for required in [
+        "fn labeled_mana_value_or_less_bound(tokens: &[OwnedLexToken])",
+        "find_token_word_sequence(&tokens[search_start..], &[\"mana\", \"value\"])",
+        "parse_less_than_or_equal_quantity_prefix(\n                tail,",
+        "labeled_mana_value_or_less_bound(tokens)",
+    ] {
+        assert!(
+            helper.contains(required) || content.contains(required),
+            "{relative} should parse labeled mana-value bounds from captured parse tokens: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "fn labeled_mana_value_or_less_bound(words: &[&str])",
+        "synthetic_word_tokens(tail)",
+        "let count_tokens",
+        "labeled_mana_value_or_less_bound(sentence_words.as_slice())",
+    ] {
+        assert!(
+            !helper.contains(forbidden) && !content.contains(forbidden),
+            "{relative} should not reconstruct mana-value bound tails with synthetic word tokens `{forbidden}`"
+        );
+    }
+}
+
+#[test]
 fn strict_unsupported_preflight_uses_tokens_not_raw_text() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/document/mod.rs";
@@ -1436,11 +1566,17 @@ fn named_source_alias_guards_use_tokens_not_raw_text() {
         "fn replace_named_source_aliases_with_options",
         "fn normalize_named_source_enter_agreement",
     );
-    let actual =
-        non_test_raw_text_check_literals(&format!("{prefix_guard}\n{marker}\n{alias_rewriter}"))
-            .into_iter()
-            .map(|literal| format!("{relative} -> {literal}"))
-            .collect::<BTreeSet<_>>();
+    let trigger_guard = function_source(
+        &content,
+        "fn normalize_named_source_trigger_for_builder",
+        "fn named_source_subject_for_builder",
+    );
+    let actual = non_test_raw_text_check_literals(&format!(
+        "{prefix_guard}\n{marker}\n{alias_rewriter}\n{trigger_guard}"
+    ))
+    .into_iter()
+    .map(|literal| format!("{relative} -> {literal}"))
+    .collect::<BTreeSet<_>>();
 
     let expected = BTreeSet::new();
 
@@ -1459,6 +1595,7 @@ fn named_source_alias_guards_use_tokens_not_raw_text() {
         "lower[cursor..].find(alias)",
         "lower.as_bytes()",
         "source_alias_occurrence_should_preserve_surface(bytes",
+        "trigger_head.contains(\" leaves the battlefield\")",
     ] {
         assert!(
             !content.contains(forbidden),
@@ -1474,6 +1611,16 @@ fn named_source_alias_guards_use_tokens_not_raw_text() {
         assert!(
             alias_rewriter.contains(required),
             "{relative} should rewrite dynamic named-source aliases through lexed word-piece spans: missing `{required}`"
+        );
+    }
+
+    for required in [
+        "trigger_head_is_source_alias_leaves_battlefield(builder, trigger_head.as_str())",
+        "SOURCE_LEAVES_BATTLEFIELD_PATTERN.matches_words(&token_word_refs(&tokens))",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve named-source leaves-battlefield guards through token-backed shape helpers: missing `{required}`"
         );
     }
 }
@@ -2018,6 +2165,145 @@ fn predicate_control_conditions_use_shared_capture_parser() {
             && parser.contains("PredicateAst::PlayerControls {"),
         "{relative} should lower captured control-condition pieces into the full predicate AST family"
     );
+    for required in ["let filter_tokens = &tokens[filter_range]"] {
+        assert!(
+            parser.contains(required),
+            "{relative} should parse player-control fallback filters from original token ranges: missing `{required}`"
+        );
+    }
+    for required in [
+        "parse_player_controls_no_predicate(predicate_tokens)",
+        "parse_you_control_or_graveyard_predicate(predicate_tokens)",
+        "parse_you_control_conjoined_predicate(predicate_tokens)",
+        "parse_player_controls_predicate(\n            predicate_tokens",
+        "YOU_CONTROL_PREFIX_PATTERN.matches_non_article_tokens(predicate_tokens)",
+        "THAT_PLAYER_CONTROLS_PREFIX_PATTERN.matches_non_article_tokens(predicate_tokens)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should route control predicate matching through captured predicate tokens: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "parse_player_controls_no_predicate(&filtered)",
+        "parse_you_control_or_graveyard_predicate(&filtered)",
+        "parse_you_control_conjoined_predicate(&filtered)",
+        "parse_player_controls_predicate(\n            &filtered",
+        "YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered)",
+        "THAT_PLAYER_CONTROLS_PREFIX_PATTERN.matches_words(&filtered)",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not route player-control predicate calls through filtered raw words: found `{forbidden}`"
+        );
+    }
+    for forbidden in [
+        "let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words)",
+        "let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered)",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not rebuild player-control predicate tokens from filtered raw words: found `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn predicate_own_control_and_conjoined_shapes_use_predicate_tokens() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "fn parse_attacking_you_own_control_predicate",
+        "fn player_filter_for_turn_value",
+    );
+
+    for required in [
+        "fn parse_attacking_you_own_control_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_you_both_own_and_control_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_implicit_subject_and_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_while_conjoined_predicate(\n    tokens: &[OwnedLexToken]",
+        "let clause = LexedClause::new(tokens)",
+        "parse_attacking_you_own_control_predicate(predicate_tokens)",
+        "parse_you_both_own_and_control_predicate(predicate_tokens)",
+        "parse_implicit_subject_and_predicate(predicate_tokens)",
+        "parse_while_conjoined_predicate(predicate_tokens)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should route own/control and conjoined predicate shapes through captured predicate tokens: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "parse_attacking_you_own_control_predicate(&filtered)",
+        "parse_you_both_own_and_control_predicate(&filtered)",
+        "parse_implicit_subject_and_predicate(&filtered)",
+        "parse_while_conjoined_predicate(&filtered)",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not route own/control and conjoined predicate calls through filtered raw words: found `{forbidden}`"
+        );
+    }
+    for forbidden in [
+        "let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered)",
+        "filtered.join(\" \")",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not rebuild own/control and conjoined predicate tokens from filtered words: found `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn predicate_this_way_shapes_use_predicate_tokens() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "fn parse_this_way_object_filter_clause",
+        "fn active_discard_player_subject_clause",
+    );
+
+    for required in [
+        "fn parse_passive_this_way_tagged_object_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_active_this_way_discard_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken])",
+        "fn parse_active_this_way_battlefield_predicate(\n    tokens: &[OwnedLexToken]",
+        "fn parse_passive_this_way_battlefield_predicate(\n    tokens: &[OwnedLexToken]",
+        "parse_passive_this_way_tagged_object_predicate(predicate_tokens)",
+        "parse_active_this_way_discard_predicate(predicate_tokens)",
+        "parse_active_this_way_battlefield_predicate(predicate_tokens)",
+        "parse_passive_this_way_battlefield_predicate(predicate_tokens)",
+        "parse_negative_put_tagged_object_predicate(predicate_tokens)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should route this-way predicate shapes through captured predicate tokens: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "parse_passive_this_way_tagged_object_predicate(&filtered)",
+        "parse_active_this_way_discard_predicate(&filtered)",
+        "parse_active_this_way_battlefield_predicate(&filtered)",
+        "parse_passive_this_way_battlefield_predicate(&filtered)",
+        "parse_negative_put_tagged_object_predicate(&filtered)",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not route this-way predicate calls through filtered raw words: found `{forbidden}`"
+        );
+    }
+    for forbidden in ["let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered)"]
+    {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not rebuild this-way predicate tokens from filtered words: found `{forbidden}`"
+        );
+    }
 }
 
 #[test]
@@ -2193,7 +2479,12 @@ fn subject_descriptor_conditions_use_shared_capture_parser() {
     assert!(
         conditions_content.contains("pub(crate) fn parse_subject_descriptor_condition")
             && conditions_content.contains("SubjectDescriptorConditionAst")
-            && conditions_content.contains("ObjectDescriptorAst"),
+            && conditions_content.contains("ObjectDescriptorAst")
+            && conditions_content.contains("fn parse_object_descriptor_clause")
+            && conditions_content
+                .contains("token_slice_first_is_any(tokens, &[\"a\", \"an\", \"the\"])")
+            && !conditions_content.contains("descriptor_clause.word_refs()")
+            && !conditions_content.contains("strip_optional_article(&descriptor_word_refs)"),
         "{conditions_relative} should expose a captured subject-descriptor condition AST parser"
     );
 }
@@ -2245,9 +2536,18 @@ fn player_status_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_status_predicate",
+        "fn parse_world_state_or_timing_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_status_predicate(&filtered)")
-            && predicate_content.contains("grammar::conditions::parse_player_status_condition"),
+        predicate_parser.contains("parse_player_status_predicate(predicate_tokens)")
+            && predicate_content.contains("grammar::conditions::parse_player_status_condition")
+            && predicate_helper
+                .contains("fn parse_player_status_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_status_predicate(&filtered)"),
         "{predicate_relative} should route predicate monarch/initiative/max-speed phrases through the shared player-status parser"
     );
     for forbidden in [
@@ -2291,6 +2591,61 @@ fn player_status_conditions_use_shared_capture_parser() {
 }
 
 #[test]
+fn world_state_timing_predicates_use_token_shapes() {
+    let root = workspace_root();
+    let predicate_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let predicate_content = read_repo_file(&root, predicate_relative);
+    let predicate_parser = function_source(
+        &predicate_content,
+        "pub(crate) fn parse_predicate",
+        "#[cfg(test)]",
+    );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_world_state_or_timing_predicate",
+        "fn parse_empty_battlefield_predicate",
+    );
+    assert!(
+        predicate_parser.contains("parse_world_state_or_timing_predicate(predicate_tokens)")
+            && predicate_helper
+                .contains("fn parse_world_state_or_timing_predicate(tokens: &[OwnedLexToken])")
+            && predicate_helper.contains("parse_initiative_choice_predicate_shape(tokens)")
+            && predicate_helper.contains("parse_night_state_predicate_shape(tokens)")
+            && predicate_helper.contains("parse_first_combat_phase_predicate_shape(tokens)")
+            && predicate_helper.contains("parse_cast_this_spell_during_main_phase_shape(tokens)")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_world_state_or_timing_predicate(&filtered)"),
+        "{predicate_relative} should route world-state/timing predicates through lexed token shape parsers"
+    );
+}
+
+#[test]
+fn empty_battlefield_predicates_use_token_shapes() {
+    let root = workspace_root();
+    let predicate_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let predicate_content = read_repo_file(&root, predicate_relative);
+    let predicate_parser = function_source(
+        &predicate_content,
+        "pub(crate) fn parse_predicate",
+        "#[cfg(test)]",
+    );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_empty_battlefield_predicate",
+        "fn is_battlefield_zone_clause",
+    );
+    assert!(
+        predicate_parser.contains("parse_empty_battlefield_predicate(predicate_tokens)")
+            && predicate_helper
+                .contains("fn parse_empty_battlefield_predicate(tokens: &[OwnedLexToken])")
+            && predicate_helper.contains("let clause = LexedClause::new(tokens)")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_empty_battlefield_predicate(&filtered)"),
+        "{predicate_relative} should route empty-battlefield predicates through lexed token shape parsers"
+    );
+}
+
+#[test]
 fn player_achievement_conditions_use_shared_capture_parser() {
     let root = workspace_root();
     let static_relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/anthem_grant_lines.rs";
@@ -2325,7 +2680,7 @@ fn player_achievement_conditions_use_shared_capture_parser() {
         "#[cfg(test)]",
     );
     assert!(
-        predicate_parser.contains("parse_player_achievement_predicate(&filtered)")
+        predicate_parser.contains("parse_player_achievement_predicate(predicate_tokens)")
             && predicate_content
                 .contains("grammar::conditions::parse_player_achievement_condition"),
         "{predicate_relative} should route predicate city-blessing/completed-dungeon phrases through the shared player-achievement parser"
@@ -2340,6 +2695,8 @@ fn player_achievement_conditions_use_shared_capture_parser() {
         "YOU_HAVE_NOT_COMPLETED_PREFIX_PATTERN",
         "YOU_HAVE_FULL_PARTY_PATTERN",
         "let name_start = if HAVE_WORD_PATTERN.matches_word(filtered[1])",
+        "fn parse_player_achievement_predicate(words: &[&str])",
+        "parse_player_achievement_predicate(&filtered)",
     ] {
         assert!(
             !predicate_content.contains(forbidden),
@@ -2355,9 +2712,24 @@ fn player_achievement_conditions_use_shared_capture_parser() {
             && conditions_content.contains("PlayerAchievementConditionAst")
             && conditions_content.contains("PlayerAchievementAst")
             && conditions_content.contains("FullParty")
-            && conditions_content.contains("negated"),
+            && conditions_content.contains("negated")
+            && conditions_content.contains("const DUNGEON_PHRASES: &[&[&str]]")
+            && conditions_content.contains("clause_matches_any_phrase(clause, DUNGEON_PHRASES)")
+            && conditions_content
+                .contains("let dungeon_name_tokens = dungeon_name_clause.trimmed().tokens()")
+            && conditions_content
+                .contains("render_token_slice(dungeon_name_tokens).trim().to_string()"),
         "{conditions_relative} should expose a captured player-achievement condition AST parser"
     );
+    for forbidden in [
+        "let words = dungeon_name_clause.word_refs()",
+        "dungeon_name: Some(words.join(\" \"))",
+    ] {
+        assert!(
+            !conditions_content.contains(forbidden),
+            "{conditions_relative} should render captured dungeon names from token spans, not word joins `{forbidden}`"
+        );
+    }
 }
 
 #[test]
@@ -2371,10 +2743,19 @@ fn player_cards_in_hand_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_cards_in_hand_predicate",
+        "fn parse_player_life_total_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_cards_in_hand_predicate(&filtered)")
+        predicate_parser.contains("parse_player_cards_in_hand_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_cards_in_hand_condition"),
+                .contains("grammar::conditions::parse_player_cards_in_hand_condition")
+            && predicate_helper
+                .contains("fn parse_player_cards_in_hand_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_cards_in_hand_predicate(&filtered)"),
         "{predicate_relative} should route cards-in-hand count predicates through the shared captured parser"
     );
     assert!(
@@ -2437,10 +2818,22 @@ fn player_cards_in_hand_relation_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let relation_helper = function_source(
+        &predicate_content,
+        "fn parse_player_cards_in_hand_relation_predicate",
+        "fn parse_player_turn_event_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_cards_in_hand_relation_predicate(&filtered)")
+        predicate_parser
+            .contains("parse_player_cards_in_hand_relation_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_cards_in_hand_relation_condition"),
+                .contains("grammar::conditions::parse_player_cards_in_hand_relation_condition")
+            && relation_helper.contains(
+                "fn parse_player_cards_in_hand_relation_predicate(tokens: &[OwnedLexToken])"
+            )
+            && !relation_helper.contains("synthetic_word_tokens")
+            && !predicate_parser
+                .contains("parse_player_cards_in_hand_relation_predicate(&filtered)"),
         "{predicate_relative} should route cards-in-hand relation predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2462,7 +2855,14 @@ fn player_cards_in_hand_relation_conditions_use_shared_capture_parser() {
     assert!(
         conditions_content.contains("pub(crate) fn parse_player_cards_in_hand_relation_condition")
             && conditions_content.contains("PlayerCardsInHandRelationConditionAst")
-            && conditions_content.contains("PlayerCardsInHandRelationAst"),
+            && conditions_content.contains("PlayerCardsInHandRelationAst")
+            && conditions_content
+                .contains("MORE_CARDS_IN_HAND_THAN_YOU_PATTERN.matches(relation_clause)")
+            && conditions_content.contains(
+                "MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause)"
+            )
+            && !conditions_content.contains("let relation_words = relation_clause.word_refs()")
+            && !conditions_content.contains("matches_words(&relation_words)"),
         "{conditions_relative} should expose a captured cards-in-hand relation condition AST parser"
     );
 }
@@ -2478,9 +2878,18 @@ fn player_turn_event_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_turn_event_predicate",
+        "fn parse_turn_timing_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_turn_event_predicate(&filtered)")
-            && predicate_content.contains("grammar::conditions::parse_player_turn_event_condition"),
+        predicate_parser.contains("parse_player_turn_event_predicate(predicate_tokens)")
+            && predicate_content.contains("grammar::conditions::parse_player_turn_event_condition")
+            && predicate_helper
+                .contains("fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_turn_event_predicate(&filtered)"),
         "{predicate_relative} should route turn-event count predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2521,9 +2930,18 @@ fn spell_context_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_spell_context_predicate",
+        "fn parse_player_spell_cast_this_turn_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_spell_context_predicate(&filtered)")
-            && predicate_content.contains("grammar::conditions::parse_spell_context_condition"),
+        predicate_parser.contains("parse_spell_context_predicate(predicate_tokens)")
+            && predicate_content.contains("grammar::conditions::parse_spell_context_condition")
+            && predicate_helper
+                .contains("fn parse_spell_context_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_spell_context_predicate(&filtered)"),
         "{predicate_relative} should route target-spell context predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2559,10 +2977,20 @@ fn player_spell_cast_this_turn_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_spell_cast_this_turn_predicate",
+        "fn parse_player_life_change_this_turn_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_spell_cast_this_turn_predicate(&filtered)")
+        predicate_parser.contains("parse_player_spell_cast_this_turn_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_spell_cast_this_turn_condition"),
+                .contains("grammar::conditions::parse_player_spell_cast_this_turn_condition")
+            && predicate_helper.contains(
+                "fn parse_player_spell_cast_this_turn_predicate(tokens: &[OwnedLexToken])"
+            )
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_spell_cast_this_turn_predicate(&filtered)"),
         "{predicate_relative} should route player spell-cast-this-turn predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2608,10 +3036,21 @@ fn player_life_change_this_turn_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_life_change_this_turn_predicate",
+        "fn parse_object_death_this_turn_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_life_change_this_turn_predicate(&filtered)")
+        predicate_parser.contains("parse_player_life_change_this_turn_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_life_change_this_turn_condition"),
+                .contains("grammar::conditions::parse_player_life_change_this_turn_condition")
+            && predicate_helper.contains(
+                "fn parse_player_life_change_this_turn_predicate(tokens: &[OwnedLexToken])"
+            )
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser
+                .contains("parse_player_life_change_this_turn_predicate(&filtered)"),
         "{predicate_relative} should route player life-change-this-turn predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2649,10 +3088,19 @@ fn player_would_action_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_would_action_predicate",
+        "fn parse_battlefield_entry_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_would_action_predicate(&filtered)")
+        predicate_parser.contains("parse_player_would_action_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_would_action_condition"),
+                .contains("grammar::conditions::parse_player_would_action_condition")
+            && predicate_helper
+                .contains("fn parse_player_would_action_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_would_action_predicate(&filtered)"),
         "{predicate_relative} should route player-would-action predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2688,10 +3136,21 @@ fn battlefield_change_this_turn_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_battlefield_change_this_turn_predicate",
+        "fn parse_combat_damage_this_turn_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_battlefield_change_this_turn_predicate(&filtered)")
+        predicate_parser.contains("parse_battlefield_change_this_turn_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_battlefield_change_this_turn_condition"),
+                .contains("grammar::conditions::parse_battlefield_change_this_turn_condition")
+            && predicate_helper.contains(
+                "fn parse_battlefield_change_this_turn_predicate(tokens: &[OwnedLexToken])"
+            )
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser
+                .contains("parse_battlefield_change_this_turn_predicate(&filtered)"),
         "{predicate_relative} should route battlefield-change-this-turn predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2728,10 +3187,19 @@ fn object_death_this_turn_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_object_death_this_turn_predicate",
+        "fn parse_player_would_action_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_object_death_this_turn_predicate(&filtered)")
+        predicate_parser.contains("parse_object_death_this_turn_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_object_death_this_turn_condition"),
+                .contains("grammar::conditions::parse_object_death_this_turn_condition")
+            && predicate_helper
+                .contains("fn parse_object_death_this_turn_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_object_death_this_turn_predicate(&filtered)"),
         "{predicate_relative} should route object-death-this-turn predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2756,6 +3224,36 @@ fn object_death_this_turn_conditions_use_shared_capture_parser() {
 }
 
 #[test]
+fn combat_damage_this_turn_predicates_use_token_shapes() {
+    let root = workspace_root();
+
+    let predicate_relative = "crates/ironsmith-compiler/src/runtime_backend/front_end/grammar/filters/predicate_phrases.rs";
+    let predicate_content = read_repo_file(&root, predicate_relative);
+    let predicate_parser = function_source(
+        &predicate_content,
+        "pub(crate) fn parse_predicate",
+        "#[cfg(test)]",
+    );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_combat_damage_this_turn_predicate",
+        "fn is_player_object_clause",
+    );
+    assert!(
+        predicate_parser.contains("parse_combat_damage_this_turn_predicate(predicate_tokens)")
+            && predicate_helper
+                .contains("fn parse_combat_damage_this_turn_predicate(tokens: &[OwnedLexToken])")
+            && predicate_helper
+                .contains("parse_source_dealt_combat_damage_this_turn_shape(tokens)")
+            && predicate_helper
+                .contains("parse_player_dealt_combat_damage_by_subtype_this_turn_shape(tokens)")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_combat_damage_this_turn_predicate(&filtered)"),
+        "{predicate_relative} should route combat-damage-this-turn predicates through lexed token shape parsers"
+    );
+}
+
+#[test]
 fn battlefield_entry_conditions_use_shared_capture_parser() {
     let root = workspace_root();
 
@@ -2766,9 +3264,18 @@ fn battlefield_entry_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_battlefield_entry_predicate",
+        "fn parse_battlefield_change_this_turn_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_battlefield_entry_predicate(&filtered)")
-            && predicate_content.contains("grammar::conditions::parse_battlefield_entry_condition"),
+        predicate_parser.contains("parse_battlefield_entry_predicate(predicate_tokens)")
+            && predicate_content.contains("grammar::conditions::parse_battlefield_entry_condition")
+            && predicate_helper
+                .contains("fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_battlefield_entry_predicate(&filtered)"),
         "{predicate_relative} should route battlefield-entry predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2788,7 +3295,10 @@ fn battlefield_entry_conditions_use_shared_capture_parser() {
     assert!(
         conditions_content.contains("pub(crate) fn parse_battlefield_entry_condition")
             && conditions_content.contains("BattlefieldEntryConditionAst")
-            && conditions_content.contains("BattlefieldEntryTurnWindowAst"),
+            && conditions_content.contains("BattlefieldEntryTurnWindowAst")
+            && conditions_content
+                .contains("token_slice_first_is_any(object_clause.trimmed().tokens(), &[\"another\", \"other\"])")
+            && !conditions_content.contains("object_clause.word_refs().first()"),
         "{conditions_relative} should expose a captured battlefield-entry condition AST parser"
     );
 }
@@ -2804,9 +3314,18 @@ fn player_life_total_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let predicate_helper = function_source(
+        &predicate_content,
+        "fn parse_player_life_total_predicate",
+        "fn parse_player_life_relation_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_life_total_predicate(&filtered)")
-            && predicate_content.contains("grammar::conditions::parse_player_life_total_condition"),
+        predicate_parser.contains("parse_player_life_total_predicate(predicate_tokens)")
+            && predicate_content.contains("grammar::conditions::parse_player_life_total_condition")
+            && predicate_helper
+                .contains("fn parse_player_life_total_predicate(tokens: &[OwnedLexToken])")
+            && !predicate_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_life_total_predicate(&filtered)"),
         "{predicate_relative} should route player life-total numeric predicates through the shared captured parser"
     );
     assert!(
@@ -2854,10 +3373,19 @@ fn player_life_relation_conditions_use_shared_capture_parser() {
         "pub(crate) fn parse_predicate",
         "#[cfg(test)]",
     );
+    let relation_helper = function_source(
+        &predicate_content,
+        "fn parse_player_life_relation_predicate",
+        "fn parse_player_cards_in_hand_relation_predicate",
+    );
     assert!(
-        predicate_parser.contains("parse_player_life_relation_predicate(&filtered)")
+        predicate_parser.contains("parse_player_life_relation_predicate(predicate_tokens)")
             && predicate_content
-                .contains("grammar::conditions::parse_player_life_relation_condition"),
+                .contains("grammar::conditions::parse_player_life_relation_condition")
+            && relation_helper
+                .contains("fn parse_player_life_relation_predicate(tokens: &[OwnedLexToken])")
+            && !relation_helper.contains("synthetic_word_tokens")
+            && !predicate_parser.contains("parse_player_life_relation_predicate(&filtered)"),
         "{predicate_relative} should route player life-relation predicates through the shared captured parser"
     );
     for forbidden in [
@@ -2879,7 +3407,23 @@ fn player_life_relation_conditions_use_shared_capture_parser() {
     assert!(
         conditions_content.contains("pub(crate) fn parse_player_life_relation_condition")
             && conditions_content.contains("PlayerLifeRelationConditionAst")
-            && conditions_content.contains("PlayerLifeRelationAst"),
+            && conditions_content.contains("PlayerLifeRelationAst")
+            && conditions_content.contains("MORE_LIFE_THAN_PLAYER_PATTERN")
+            && conditions_content.contains("MORE_LIFE_THAN_YOU_PATTERN.matches(relation_clause)")
+            && conditions_content
+                .contains("MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause)")
+            && conditions_content
+                .contains("MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches(relation_clause)")
+            && conditions_content
+                .contains("MORE_LIFE_THAN_PLAYER_PATTERN.match_clause(relation_clause)")
+            && conditions_content.contains(
+                "matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)"
+            )
+            && !conditions_content.contains("MORE_LIFE_THAN_PREFIX_PATTERN")
+            && !conditions_content.contains("parse_life_relation_player_subject_words")
+            && !conditions_content.contains("let relation_words = relation_clause.word_refs()")
+            && !conditions_content.contains("matched_prefix_len(&relation_words)")
+            && !conditions_content.contains("matches_words(&relation_words)"),
         "{conditions_relative} should expose a captured life-relation condition AST parser"
     );
 }
@@ -3585,6 +4129,50 @@ fn delayed_trigger_postpass_uses_typed_triggers_and_tokens() {
 }
 
 #[test]
+fn backup_postpass_placeholder_detection_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/postpasses/mod.rs";
+    let content = read_repo_file(&root, relative);
+    let helper = function_source(
+        &content,
+        "fn parse_backup_placeholder_amount",
+        "fn backup_granted_abilities_from_slice",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "backup postpass should parse placeholder amount from lexed tokens and role captures, not rendered whitespace splits"
+    );
+    for required in [
+        "BACKUP_PLACEHOLDER_PATTERN.match_prefix(clause)",
+        "LexPattern::amount(\"amount\", LexCaptureKind::WordCount(1))",
+        "capture_clause_by_role(LexCaptureRole::Amount",
+        "amount_clause.word_refs().first()?.parse::<u32>()",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve backup postpass placeholder parsing through LexPattern captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "text.split_whitespace()",
+        "let mut parts = text.split_whitespace()",
+        "eq_ignore_ascii_case(\"backup\")",
+        "trim_end_matches(',')",
+    ] {
+        assert!(
+            !helper.contains(forbidden),
+            "{relative} should not parse backup placeholder text with raw branch `{forbidden}`"
+        );
+    }
+}
+
+#[test]
 fn future_zone_replacement_recognizer_uses_tokens_not_raw_text() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_entry.rs";
@@ -3605,6 +4193,2494 @@ fn future_zone_replacement_recognizer_uses_tokens_not_raw_text() {
         actual, expected,
         "future zone replacement recognition should use token phrase helpers, not raw oracle-text searches"
     );
+}
+
+#[test]
+fn target_controlled_pump_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "struct TargetControlledPumpProgram",
+        "pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "target-controlled pump parsing should use LexPattern role captures, not fixed phrase indexing"
+    );
+    for required in [
+        "TARGET_CONTROLLED_PUMP_PATTERN",
+        "LexPattern::subject(",
+        "LexPattern::condition(",
+        "\"controller\"",
+        "LexCaptureKind::OneOfPhrase(TARGET_CONTROLLED_PUMP_CONTROLLER_PHRASES)",
+        "LexPattern::amount(\"modifier\", LexCaptureKind::WordCount(1))",
+        "TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PATTERN",
+        "TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PATTERN",
+        "capture_clause_by_role(LexCaptureRole::Subject",
+        "capture_clause_by_role(LexCaptureRole::Condition",
+        "target_controlled_pump_controller(controller_clause.trimmed())",
+        "TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PATTERN.matches_clause(controller_clause)",
+        "TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PATTERN.matches_clause(controller_clause)",
+        "TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN",
+        "TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN.match_clause(tail_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, tail_clause)",
+        "parse_pt_modifier_capture(modifier_clause)",
+        "fn parse_pt_modifier_capture",
+        "keyword_abilities_from_clause(ability_clause.trimmed())",
+        "ABILITY_FIRST_STRIKE_PATTERN",
+        ".find_in_clause(ability_clause)",
+        "ABILITY_HASTE_PATTERN.find_in_clause(ability_clause)",
+        "ABILITY_TRAMPLE_PATTERN",
+        "TargetControlledPumpProgram",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve target-controlled pump parsing through captured roles: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "TARGET_PLAYER_CONTROLS_PATTERN",
+        "find_generic_phrase_start(&words, TARGET_PLAYER_CONTROLS_PATTERN)",
+        "words[target_idx + 3..]",
+        "target_idx + 3 + offset",
+        "synthetic_word_tokens(&words[..target_idx])",
+        "AND_GAIN_HAVE_TAIL_PATTERN",
+        "tail[2..]",
+        "target_controlled_pump_controller(controller_clause.word_refs().as_slice())",
+        "modifier_clause.word_refs().first()",
+        "OPPONENT_OR_OPPONENTS_WORD_PATTERN",
+        "LexCaptureKind::WordCount(3)",
+        "ABILITY_HASTE_WORD_PATTERN",
+        "ABILITY_TRAMPLE_WORD_PATTERN",
+        "ABILITY_FIRST_STRIKE_PATTERN.matches_words",
+        "ability_clause.word_refs()",
+        "matches_words(&ability_tail)",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse target-controlled pump clauses by exact phrase indexing `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn source_gets_unblockable_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const SOURCE_GETS_SUBJECT_PHRASES",
+        "const TARGET_CONTROLLED_PUMP_CONTROLLER_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_source_gets_unblockable_subject_verb",
+        "fn parse_source_gets_filter_gains_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "source pump plus unblockable parsing should capture subject/modifier/tail spans instead of slicing after get/gets"
+    );
+    for required in [
+        "SOURCE_GETS_UNBLOCKABLE_PATTERN",
+        "LexPattern::subject(",
+        "LexPattern::modifier(\"modifier\", LexCaptureKind::WordCount(1))",
+        "LexPattern::tail(\"tail\", LexCaptureKind::Rest)",
+        "SOURCE_GETS_UNBLOCKABLE_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Modifier, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "SOURCE_GETS_SUBJECT_PHRASES",
+        "LexCaptureKind::OneOfPhrase(SOURCE_GETS_SUBJECT_PHRASES)",
+        "SOURCE_GETS_UNBLOCKABLE_TAIL_PHRASES",
+        "LexCaptureKind::OneOfPhrase(SOURCE_GETS_UNBLOCKABLE_TAIL_PHRASES)",
+        "SOURCE_GETS_SUBJECT_PATTERN.matches_clause(subject_clause.trimmed())",
+        "parse_pt_modifier_capture(modifier_clause)",
+        "UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN.matches_clause(tail_clause.trimmed())",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve source pump/unblockable parsing through captured roles: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(get_idx)",
+        "GET_OR_GETS_WORD_PATTERN",
+        "tokens[get_idx + 1..]",
+        "collapse_leading_signed_pt_modifier_tokens",
+        "modifier_words[1..]",
+        "modifier_clause.word_refs().first()",
+        "SOURCE_GETS_SUBJECT_PATTERN.matches_words",
+        "UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN.matches_words",
+        "subject_clause.word_refs()",
+        "tail_clause.word_refs()",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse source pump/unblockable clauses with fixed indexes `{forbidden}`"
+        );
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not keep retired source pump/unblockable helper `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn source_gets_filter_gains_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const SOURCE_GETS_SUBJECT_PHRASES",
+        "const TARGET_GAINS_THEN_GETS_PUMP_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_source_gets_filter_gains_subject_verb",
+        "fn parse_target_gains_then_gets_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "source pump plus filter-grant parsing should capture subject/modifier/filter/ability spans instead of walking get/and/gain indexes"
+    );
+    for required in [
+        "SOURCE_GETS_FILTER_GAINS_PATTERN",
+        "LexPattern::subject(",
+        "LexPattern::modifier(\"modifier\", LexCaptureKind::WordCount(1))",
+        "LexPattern::object(",
+        "LexPattern::tail(\"ability\", LexCaptureKind::Rest)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Modifier, clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "SOURCE_GETS_SUBJECT_PATTERN.matches_clause(subject_clause.trimmed())",
+        "parse_pt_modifier_capture(modifier_clause)",
+        "keyword_abilities_from_clause(ability_clause.trimmed())",
+        "parse_object_filter(granted_filter_clause.trimmed().tokens(), false)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve source pump/filter-grant parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(get_idx)",
+        "words.get(get_idx + 1)",
+        "get_idx + 2",
+        "let Some(and_idx)",
+        "let Some(gain_idx)",
+        "words[and_idx + 1..gain_idx]",
+        "words[gain_idx + 1..]",
+        "synthetic_word_tokens",
+        "modifier_clause.word_refs().first()",
+        "SOURCE_GETS_SUBJECT_PATTERN.matches_words",
+        "subject_clause.trimmed().word_refs()",
+        "ability_clause.trimmed().word_refs()",
+        "ABILITY_HASTE_WORD_PATTERN",
+        "ABILITY_TRAMPLE_WORD_PATTERN",
+        "ABILITY_FIRST_STRIKE_PATTERN.matches_words",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse source pump/filter-grant clauses with fixed indexes `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn target_gains_then_gets_gate_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const TARGET_GAINS_THEN_GETS_PUMP_PHRASES",
+        "const TARGET_GETS_THEN_GAINS_GRANT_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_target_gains_then_gets_subject_verb",
+        "fn parse_target_gets_then_gains_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "target gain-then-pump routing should capture subject/ability/pump spans instead of walking gain/get indexes"
+    );
+    for required in [
+        "TARGET_GAINS_THEN_GETS_PATTERN",
+        "LexPattern::subject(",
+        "LexPattern::capture(",
+        "\"ability_clause\"",
+        "LexPattern::any_phrase(TARGET_GAINS_THEN_GETS_PUMP_PHRASES)",
+        "LexPattern::tail(\"pump_tail\", LexCaptureKind::Rest)",
+        "TARGET_GAINS_THEN_GETS_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause(\"ability_clause\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve target gain-then-pump routing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(gain_idx)",
+        "GAIN_OR_GAINS_WORD_PATTERN",
+        "AND_GET_OR_GETS_PATTERN",
+        "words[gain_idx + 1..]",
+        "has_get_tail",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse target gain-then-pump clauses with fixed indexes `{forbidden}`"
+        );
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not keep retired target gain-then-pump helper `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn target_gets_then_gains_gate_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const TARGET_GETS_THEN_GAINS_GRANT_PHRASES",
+        "const TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_target_gets_then_gains_subject_verb",
+        "fn parse_target_player_controls_get_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "target pump-then-gain routing should capture subject/pump/ability spans instead of walking get indexes"
+    );
+    for required in [
+        "TARGET_GETS_THEN_GAINS_PATTERN",
+        "LexPattern::subject(",
+        "LexPattern::capture(",
+        "\"pump_clause\"",
+        "LexPattern::any_phrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES)",
+        "LexPattern::tail(\"ability_tail\", LexCaptureKind::Rest)",
+        "TARGET_GETS_THEN_GAINS_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause(\"pump_clause\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve target pump-then-gain routing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(get_idx)",
+        "AND_GAIN_OR_GAINS_PATTERN",
+        "words[get_idx + 1..]",
+        "has_gain_tail",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse target pump-then-gain clauses with fixed indexes `{forbidden}`"
+        );
+    }
+    for forbidden in ["AND_GAIN_OR_GAINS_PATTERN"] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not keep retired target pump-then-gain helper `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn damage_replacement_counter_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "fn parse_generic_damage_replacement_counters_subject_verb",
+        "fn tokens_contain_relative_lesser_mana_value",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "damage-replacement counter parsing should capture the protected target from a grammar pattern, not fixed word offsets"
+    );
+    for required in [
+        "LexPattern::object(",
+        "LexCaptureKind::UntilPhrase(DAMAGE_REPLACEMENT_COUNTER_DURATION_PHRASE)",
+        "LexPattern::phrase(DAMAGE_REPLACEMENT_COUNTER_PREVENT_PUT_PHRASE)",
+        "LexPattern::any_word(&[\"counter\", \"counters\"])",
+        "LexPattern::any_phrase(DAMAGE_REPLACEMENT_COUNTER_RECIPIENT_PHRASES)",
+        "capture_clause_by_role(LexCaptureRole::Object",
+        "parse_target_phrase(target_tokens)",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve damage replacement counter parsing through captured roles: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "grammar::words_match_prefix(tokens, &[\"if\", \"damage\", \"would\", \"be\", \"dealt\", \"to\"])",
+        "find_phrase_start(&tokens[6..], &[\"this\", \"turn\"])",
+        "let this_turn_idx = 6 + this_turn_rel",
+        "let target_tokens = &tokens[6..this_turn_idx]",
+        "let tail = &clause_words[this_turn_idx + 2..]",
+        "let valid_tail = matches!",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse damage replacement counters by fixed offsets or exact tail arrays `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn play_permission_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const PLAY_PERMISSION_DURATION_PHRASES",
+        "const EXILE_THAT_CARD_INSTEAD_PHRASE",
+    );
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_play_permission_subject_verb",
+        "pub(crate) fn parse_zone_replacement_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "graveyard play-permission parsing should capture duration/permission clauses instead of counting duration words"
+    );
+    for required in [
+        "PLAY_PERMISSION_GRAVEYARD_PATTERN",
+        "LexCaptureKind::OneOfPhrase(PLAY_PERMISSION_DURATION_PHRASES)",
+        "LexPattern::tail(\"permission\", LexCaptureKind::Rest)",
+        "PLAY_PERMISSION_GRAVEYARD_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Modifier, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "trim_commas(permission_clause.tokens())",
+        "PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN.matches_clause(permission_clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve play-permission parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "duration_words",
+        "token_index_for_word_index(tokens, duration_words)",
+        "tokens[tail_idx..]",
+        "UNTIL_END_OF_TURN_PREFIX_PATTERN",
+        "THIS_TURN_PREFIX_PATTERN",
+        "non_article_token_word_refs(&rest)",
+        "PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN.matches_words",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse play-permission clauses by fixed duration word counts `{forbidden}`"
+        );
+        assert!(
+            !content.contains("UNTIL_END_OF_TURN_PREFIX_PATTERN")
+                && !content.contains("THIS_TURN_PREFIX_PATTERN"),
+            "{relative} should not keep retired play-permission duration prefix helpers"
+        );
+    }
+}
+
+#[test]
+fn secret_number_choice_vote_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const VOTE_REVEAL_TAIL_PREFIX_PHRASES",
+        "const GENERIC_VOTE_START_PATTERN",
+    );
+    let tail_helper = function_source(
+        &content,
+        "fn vote_options_clause_before_reveal_tail",
+        "fn parse_vote_reveal_sentence",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_secret_number_choice_vote_start",
+        "fn parse_generic_vote_start",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "secret numeric vote parsing should capture participants/options instead of slicing around choose"
+    );
+    for required in [
+        "SECRET_NUMBER_CHOICE_PATTERN",
+        "LexPattern::subject(\"participants\", LexCaptureKind::UntilPhrase(&[\"choose\"]))",
+        "LexPattern::action(\"choose\", LexCaptureKind::OneOf(&[\"choose\"]))",
+        "LexPattern::tail(\"options\", LexCaptureKind::Rest)",
+        "SECRET_NUMBER_CHOICE_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "SECRET_CHOICE_PARTICIPANTS_PATTERN",
+        "SECRET_CHOICE_PARTICIPANTS_PATTERN.matches_clause(participants_clause.trimmed())",
+        "vote_options_clause_before_reveal_tail(options_clause)",
+        "VOTE_REVEAL_TAIL_PATTERN.find_in_clause(options_clause)",
+        "between_word_range(0, matched.word_range.start)",
+        "split_vote_option_clauses(option_clause)",
+        "captured_numeric_label",
+    ] {
+        assert!(
+            shape.contains(required) || tail_helper.contains(required) || parser.contains(required),
+            "{relative} should preserve secret numeric vote parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(choose_idx)",
+        "clause_words[..choose_idx]",
+        "clause_words[choose_idx + 1..]",
+        "find_index(&clause_words",
+        "truncate_vote_reveal_tail",
+        "THEN_THOSE_VOTES_ARE_PREFIX_PATTERN.matches_words",
+        "THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN.matches_words",
+        "fn vote_options_before_reveal_tail",
+        "let participant_words = participants_clause.word_refs()",
+        "participant_words.starts_with",
+        "participant_words.contains(&\"each\")",
+        "SECRET_OR_SECRETLY_WORD_PATTERN.matches_word",
+        ".filter(|word| !OR_WORD_PATTERN.matches_word(word))",
+    ] {
+        assert!(
+            !tail_helper.contains(forbidden) && !parser.contains(forbidden),
+            "{relative} should not parse secret numeric vote clauses by choose-index slicing `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn generic_vote_start_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const VOTE_REVEAL_TAIL_PREFIX_PHRASES",
+        "const GENERIC_VOTE_OPTION_EFFECT_PATTERN",
+    );
+    let tail_helper = function_source(
+        &content,
+        "fn vote_options_clause_before_reveal_tail",
+        "fn parse_vote_reveal_sentence",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_vote_start",
+        "fn parse_generic_vote_option_effects",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "generic vote-start parsing should capture voters/options instead of slicing around vote/for"
+    );
+    for required in [
+        "GENERIC_VOTE_START_PATTERN",
+        "LexPattern::subject(",
+        "\"voters\"",
+        "LexCaptureKind::UntilAnyPhrase(&[&[\"vote\"], &[\"votes\"]])",
+        "LexPattern::action(\"vote\", LexCaptureKind::OneOf(&[\"vote\", \"votes\"]))",
+        "LexPattern::word(\"for\")",
+        "LexPattern::tail(\"options\", LexCaptureKind::Rest)",
+        "GENERIC_VOTE_START_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "EACH_PLAYER_VOTER_PATTERN",
+        ".find_in_clause(voters_clause)",
+        "SECRET_VOTER_PATTERN.find_in_clause(voters_clause)",
+        "vote_options_clause_before_reveal_tail(options_clause)",
+        "option_clause.tokens().to_vec()",
+        "VOTE_OPTION_DELIMITER_PATTERN",
+        "split_vote_option_clauses(option_clause)",
+        "captured_non_article_label",
+    ] {
+        assert!(
+            shape.contains(required) || tail_helper.contains(required) || parser.contains(required),
+            "{relative} should preserve generic vote-start parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(vote_idx)",
+        "clause_words[..vote_idx]",
+        "find_index(&clause_words",
+        "let for_idx",
+        "clause_words[for_idx + 1..]",
+        "FOR_WORD_PATTERN",
+        "truncate_vote_reveal_tail",
+        "THEN_THOSE_VOTES_ARE_PREFIX_PATTERN.matches_words",
+        "THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN.matches_words",
+        "fn vote_options_before_reveal_tail",
+        "synthetic_word_tokens(&option_words)",
+        "let voter_words = voters_clause.word_refs()",
+        "EACH_WORD_PATTERN.matches_words",
+        "PLAYER_OR_PLAYERS_WORD_PATTERN.matches_word",
+        "SECRET_OR_SECRETLY_WORD_PATTERN.matches_word(word)",
+        "OR_WORD_PATTERN",
+        "let mut current",
+        "current.join(\" \")",
+    ] {
+        assert!(
+            !tail_helper.contains(forbidden) && !parser.contains(forbidden),
+            "{relative} should not parse generic vote-start clauses by vote/for index slicing `{forbidden}`"
+        );
+        assert!(
+            !content.contains("FOR_WORD_PATTERN"),
+            "{relative} should not keep retired generic vote-start helper FOR_WORD_PATTERN"
+        );
+    }
+}
+
+#[test]
+fn generic_vote_option_effects_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const GENERIC_VOTE_OPTION_EFFECT_PATTERN",
+        "const OPTIONAL_AN_PATTERN_ATOMS",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_vote_option_effects",
+        "fn parse_generic_extra_vote",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "vote-option effect parsing should capture option/player/effect clauses instead of slicing around vote and comma"
+    );
+    for required in [
+        "GENERIC_VOTE_OPTION_EFFECT_PATTERN",
+        "GENERIC_PLAYER_VOTE_RECEIVED_PATTERN",
+        "LexPattern::capture(",
+        "\"option\"",
+        "LexPattern::subject(",
+        "\"player\"",
+        "LexPattern::tail(\"effects\", LexCaptureKind::Rest)",
+        "GENERIC_VOTE_OPTION_EFFECT_PATTERN.match_clause(clause)",
+        "GENERIC_PLAYER_VOTE_RECEIVED_PATTERN.match_clause(clause)",
+        "capture_clause(\"option\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "captured_non_article_label(option_clause)",
+        "captured_non_article_tokens(player_clause)",
+        "fn captured_non_article_label",
+        "fn captured_non_article_tokens",
+        ".filter(|token| token.as_word().is_none_or(|word| !is_article(word)))",
+        "render_token_slice(&tokens).trim().to_string()",
+        "parse_target_phrase(&player_tokens)",
+        "let effect_tokens = trim_commas(effect_clause.tokens())",
+        "parse_effect_chain_lexed(&effect_tokens)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve vote-option effect parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(vote_idx)",
+        "words[2..vote_idx]",
+        "words[vote_idx + 1..]",
+        "let Some(received_idx)",
+        "split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)",
+        "VOTE_OR_VOTES_WORD_PATTERN",
+        "let option_word_storage = option_clause.word_refs()",
+        "let player_word_storage = player_clause.word_refs()",
+        "crate::runtime_backend::util::non_article_word_refs(&option_word_storage)",
+        "crate::runtime_backend::util::non_article_word_refs(&player_word_storage)",
+        "non_article_token_word_refs(clause.trimmed().tokens())",
+        "synthetic_word_tokens",
+        "words.join(\" \")",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse vote-option clauses by vote-index/comma splitting `{forbidden}`"
+        );
+        assert!(
+            !content.contains("VOTE_OR_VOTES_WORD_PATTERN"),
+            "{relative} should not keep retired vote word helper VOTE_OR_VOTES_WORD_PATTERN"
+        );
+    }
+}
+
+#[test]
+fn generic_extra_vote_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const OPTIONAL_AN_PATTERN_ATOMS",
+        "const DAMAGE_REPLACEMENT_COUNTER_TARGET_PHRASE",
+    );
+    let parser = function_source(&content, "fn parse_generic_extra_vote", "#[cfg(test)]");
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "extra-vote parsing should match optional/required vote shapes instead of probing loose words"
+    );
+    for required in [
+        "OPTIONAL_EXTRA_VOTE_PATTERN",
+        "REQUIRED_EXTRA_VOTE_PATTERN",
+        "LexPattern::subject(\"voter\", LexCaptureKind::OneOf(&[\"you\"]))",
+        "LexPattern::capture(\"may\", LexCaptureKind::OneOf(&[\"may\"]))",
+        "LexPattern::action(\"vote\", LexCaptureKind::OneOf(&[\"vote\", \"votes\"]))",
+        "LexPattern::optional(OPTIONAL_AN_PATTERN_ATOMS)",
+        "LexPattern::word(\"additional\")",
+        "LexPattern::amount(\"time\", LexCaptureKind::OneOf(&[\"time\", \"times\"]))",
+        "OPTIONAL_EXTRA_VOTE_PATTERN.match_clause(clause)",
+        "REQUIRED_EXTRA_VOTE_PATTERN.match_clause(clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve extra-vote parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "VOTE_EXTRA_MARKER_PATTERN",
+        "TIME_OR_TIMES_MARKER_PATTERN",
+        "grammar::contains_word(tokens, \"additional\")",
+        "grammar::contains_word(tokens, \"may\")",
+        "has_vote",
+        "has_additional",
+        "has_time",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse extra-vote clauses through loose word checks `{forbidden}`"
+        );
+    }
+    for retired in ["VOTE_EXTRA_MARKER_PATTERN", "TIME_OR_TIMES_MARKER_PATTERN"] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired extra-vote helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn vote_reveal_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const OPTIONAL_THEN_PATTERN_ATOMS",
+        "const EACH_PLAYER_VOTER_PATTERN",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_vote_reveal_sentence",
+        "fn parse_secret_number_choice_vote_start",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "vote reveal parsing should capture revealed choice shapes instead of matching raw word slices"
+    );
+    for required in [
+        "VOTE_REVEAL_PATTERN",
+        "LexPattern::optional(OPTIONAL_THEN_PATTERN_ATOMS)",
+        "LexPattern::subject(\"choices\", LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES))",
+        "LexPattern::word(\"are\")",
+        "LexPattern::action(\"reveal\", LexCaptureKind::OneOf(&[\"revealed\"]))",
+        "VOTE_REVEAL_PATTERN",
+        "match_clause(LexedClause::new(tokens).trimmed())",
+        "EffectAst::SecretChoiceReveal",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve vote-reveal parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "words.as_slice()",
+        "[\"then\", \"those\", \"choices\", \"are\", \"revealed\"]",
+        "[\"those\", \"choices\", \"are\", \"revealed\"]",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse vote reveal clauses through raw word-slice matching `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn zone_replacement_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const EXILE_THAT_CARD_INSTEAD_PHRASE",
+        "const EACH_PLAYER_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_zone_replacement_subject_verb",
+        "pub(crate) fn parse_choice_complement_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "future zone replacement parsing should capture condition/replacement clauses instead of splitting at a comma"
+    );
+    for required in [
+        "ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN",
+        "LexPattern::condition(",
+        "LexCaptureKind::UntilPhrase(EXILE_THAT_CARD_INSTEAD_PHRASE)",
+        "LexPattern::tail(\"replacement\", LexCaptureKind::Rest)",
+        "ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Condition, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "FUTURE_GRAVEYARD_EXILE_CONDITION_PATTERN",
+        "FUTURE_GRAVEYARD_EXILE_CONDITION_PATTERN.match_clause(condition_clause)",
+        "capture_clause(\"destination\", condition_clause)",
+        "FUTURE_GRAVEYARD_DESTINATION_PATTERN.matches_clause(destination_clause.trimmed())",
+        "EXILE_THAT_CARD_INSTEAD_PATTERN.matches_clause(replacement_clause.trimmed())",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve zone replacement parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "split_once_on_comma(tokens)",
+        "let Some((_, remainder))",
+        "non_article_token_word_refs(remainder)",
+        "crate::runtime_backend::lexer::find_token_kind",
+        "TokenKind::Comma",
+        "condition_clause.word_refs()",
+        "IF_WORD_PATTERN.matches_words",
+        "YOUR_GRAVEYARD_MARKER_PATTERN.matches_words",
+        "CARD_WOULD_BE_PUT_MARKER_PATTERN.matches_words",
+        "THIS_TURN_MARKER_PATTERN.matches_words",
+        "EXILE_THAT_CARD_INSTEAD_PATTERN.matches_words",
+        "non_article_token_word_refs(replacement_clause.tokens())",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse future zone replacement clauses with comma helper `{forbidden}`"
+        );
+        assert!(
+            !content.contains("fn split_once_on_comma"),
+            "{relative} should not keep the retired comma-split helper"
+        );
+    }
+}
+
+#[test]
+fn choice_complement_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const EACH_PLAYER_PHRASES",
+        "const WHERE_X_IS_PHRASE",
+    );
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_choice_complement_subject_verb",
+        "pub(crate) fn parse_vote_affinity_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "choice-complement parsing should capture chooser/choice/sacrifice spans instead of splitting around then and fixed offsets"
+    );
+    for required in [
+        "CHOICE_COMPLEMENT_PATTERN",
+        "LexPattern::subject(\"chooser\", LexCaptureKind::OneOfPhrase(EACH_PLAYER_PHRASES))",
+        "LexPattern::action(\"choose\", LexCaptureKind::OneOf(&[\"choose\", \"chooses\"]))",
+        "LexPattern::object(\"choice_clause\", LexCaptureKind::UntilPhrase(&[\"then\"]))",
+        "LexPattern::word(\"then\")",
+        "LexPattern::action(\"sacrifice\", LexCaptureKind::OneOf(&[\"sacrifice\", \"sacrifices\"]))",
+        "LexPattern::phrase(&[\"the\", \"rest\"])",
+        "CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN",
+        "LexPattern::object(\"choice_list\", LexCaptureKind::UntilPhrase(&[\"from\", \"among\"]))",
+        "LexPattern::tail(\"base_filter\", LexCaptureKind::Rest)",
+        "CHOICE_COMPLEMENT_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "render_token_slice(clause.tokens())",
+        "CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN.match_clause(choice_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, choice_clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve choice-complement parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "EACH_PLAYER_CHOOSES_PREFIX_PATTERN",
+        "SACRIFICE_THE_REST_PREFIX_PATTERN",
+        "split_lexed_once_on_separator(tokens",
+        "grammar::kw(\"then\")",
+        "let then_idx = before_then.len()",
+        "&tokens[3..then_idx]",
+        "after_then",
+        "clause.word_refs().join",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse choice-complement clauses with top-level raw splitting `{forbidden}`"
+        );
+    }
+    for retired in [
+        "EACH_PLAYER_CHOOSES_PREFIX_PATTERN",
+        "SACRIFICE_THE_REST_PREFIX_PATTERN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired choice-complement helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn meld_result_parser_uses_lex_pattern_capture() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "fn parse_generic_meld_subject_verb",
+        "fn parse_generic_control_combat_choices_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "meld-result parsing should capture the melded object name from the grammar pattern, not slice after a phrase window"
+    );
+    for required in [
+        "MELD_RESULT_PATTERN.match_clause(clause)",
+        "LexPattern::object(\"result\", LexCaptureKind::OneOrMoreWords)",
+        "capture_clause_by_role(LexCaptureRole::Object",
+        "render_token_slice(result_clause.tokens())",
+        "EffectAst::subject_verb_meld(result_name, false, false)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve meld result parsing through captured roles: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "THEN_MELD_THEM_INTO_PATTERN",
+        "find_window_by(&clause_words, 4",
+        "let result_words = &clause_words[meld_idx + 4..]",
+        "let result_words = result_clause.word_refs()",
+        "clause.word_refs()",
+        "result_words.as_slice().join",
+        "grammar::words_match_prefix(tokens, &[\"exile\", \"them\"])",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse meld result clauses by fixed phrase windows `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn control_combat_choices_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const CONTROL_COMBAT_CHOICE_OBJECT_PHRASES",
+        "const DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_control_combat_choices_subject_verb",
+        "fn parse_generic_damage_replacement_counters_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "combat choice parsing should capture chooser/object/action/scope instead of matching whole raw sentences"
+    );
+    for required in [
+        "CONTROL_COMBAT_CHOICES_PATTERN",
+        "LexPattern::subject(\"chooser\", LexCaptureKind::OneOf(&[\"you\"]))",
+        "LexPattern::phrase(&[\"choose\", \"which\"])",
+        "LexPattern::object(",
+        "\"objects\"",
+        "LexPattern::action(\"combat_action\", LexCaptureKind::OneOf(&[\"attack\", \"block\"]))",
+        "LexPattern::tail(\"choice_scope\", LexCaptureKind::Rest)",
+        "CONTROL_COMBAT_ATTACK_ACTION_PATTERN",
+        "CONTROL_COMBAT_BLOCK_ACTION_PATTERN",
+        "CONTROL_COMBAT_ATTACK_SCOPE_PATTERN",
+        "CONTROL_COMBAT_BLOCK_SCOPE_PATTERN",
+        "CONTROL_COMBAT_CHOICES_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Action, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "CONTROL_COMBAT_ATTACK_ACTION_PATTERN.matches_clause(action_clause)",
+        "CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.matches_clause(scope_clause)",
+        "CONTROL_COMBAT_BLOCK_ACTION_PATTERN.matches_clause(action_clause)",
+        "CONTROL_COMBAT_BLOCK_SCOPE_PATTERN.matches_clause(scope_clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve combat-choice parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "CHOOSE_ATTACK_THIS_TURN_PATTERN",
+        "CHOOSE_BLOCK_THIS_TURN_PATTERN",
+        "[\"you\", \"choose\", \"which\", \"creatures\", \"attack\"",
+        "[\"you\", \"choose\", \"which\", \"creatures\", \"block\"",
+        "action_clause.word_refs().as_slice()",
+        "CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.matches_words",
+        "CONTROL_COMBAT_BLOCK_SCOPE_PATTERN.matches_words",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse combat choices through whole-sentence word checks `{forbidden}`"
+        );
+    }
+    for retired in [
+        "CHOOSE_ATTACK_THIS_TURN_PATTERN",
+        "CHOOSE_BLOCK_THIS_TURN_PATTERN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired combat-choice helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn deferred_mana_value_clause_strip_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES",
+        "const PLAY_PERMISSION_DURATION_PHRASES",
+    );
+    let helper = function_source(
+        &content,
+        "fn without_deferred_mana_value_clause",
+        "pub(crate) fn parse_play_permission_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "deferred mana-value stripping should capture the effect prefix instead of scanning four-word windows"
+    );
+    for required in [
+        "DEFERRED_MANA_VALUE_CLAUSE_PATTERN",
+        "LexCaptureKind::UntilAnyPhrase(DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES)",
+        "LexPattern::any_phrase(DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES)",
+        "LexPattern::tail(\"constraint_tail\", LexCaptureKind::Rest)",
+        "DEFERRED_MANA_VALUE_CLAUSE_PATTERN.match_clause(clause)",
+        "capture_word_range(\"effect\")",
+        "clause.token_index_after_words(effect_range.end)",
+    ] {
+        assert!(
+            shape.contains(required) || helper.contains(required),
+            "{relative} should preserve deferred mana-value stripping through captured ranges: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "find_window_by(tokens, 4",
+        "TokenWordView::new(window).word_refs()",
+        "WITH_LESSER_MANA_VALUE_PATTERN.matches_words",
+        "WITH_MANA_VALUE_EQUAL_PATTERN.matches_words",
+    ] {
+        assert!(
+            !helper.contains(forbidden),
+            "{relative} should not strip deferred mana-value clauses by fixed word windows `{forbidden}`"
+        );
+    }
+    for retired in [
+        "const WITH_LESSER_MANA_VALUE_PATTERN",
+        "const WITH_MANA_VALUE_EQUAL_PATTERN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired deferred mana-value helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn where_x_value_binding_probe_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const WHERE_X_IS_PHRASE",
+        "const SOURCE_GETS_SUBJECT_PATTERN",
+    );
+    let helper = function_source(
+        &content,
+        "fn has_where_x_value_binding",
+        "pub(crate) fn parse_top_level_subject_verb_recognition",
+    );
+    let dispatch = function_source(
+        &content,
+        "pub(crate) fn parse_top_level_subject_verb_recognition",
+        "fn parse_source_gets_unblockable_subject_verb",
+    );
+    let gain_gates = function_source(
+        &content,
+        "fn parse_target_gains_then_gets_subject_verb",
+        "fn parse_target_player_controls_get_subject_verb",
+    );
+    let checked_source = format!("{helper}{dispatch}{gain_gates}");
+    let actual = non_test_raw_text_check_literals(&checked_source)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "where-X value binding detection should capture effect/definition spans instead of broad phrase probing"
+    );
+    for required in [
+        "WHERE_X_VALUE_BINDING_PATTERN",
+        "LexPattern::condition(\"effect\", LexCaptureKind::UntilPhrase(WHERE_X_IS_PHRASE))",
+        "LexPattern::phrase(WHERE_X_IS_PHRASE)",
+        "LexPattern::tail(\"definition\", LexCaptureKind::Rest)",
+        "WHERE_X_VALUE_BINDING_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Condition, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "has_where_x_value_binding(tokens)",
+        "parse_effect_sentence_with_where_x_lexed(tokens)",
+    ] {
+        assert!(
+            shape.contains(required)
+                || helper.contains(required)
+                || dispatch.contains(required)
+                || gain_gates.contains(required),
+            "{relative} should preserve where-X value-binding detection through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "WHERE_X_IS_PATTERN",
+        "DispatchInnerNormalizedWords::new(tokens)",
+        "WHERE_X_IS_PATTERN.matches_words",
+        "clause_words.as_slice()",
+        "clause.word_refs()",
+    ] {
+        assert!(
+            !helper.contains(forbidden)
+                && !dispatch.contains(forbidden)
+                && !gain_gates.contains(forbidden),
+            "{relative} should not detect where-X value bindings through raw phrase probes `{forbidden}`"
+        );
+    }
+    assert!(
+        !content.contains("const WHERE_X_IS_PATTERN"),
+        "{relative} should not keep retired WHERE_X_IS_PATTERN"
+    );
+}
+
+#[test]
+fn where_x_effect_sentence_uses_token_rendered_clause_surface() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/sentence_shape_predicates.rs";
+    let content = read_repo_file(&root, relative);
+    let start_marker = "fn parse_effect_sentence_with_where_x_lexed";
+    let start = content
+        .find(start_marker)
+        .unwrap_or_else(|| panic!("missing function start marker: {start_marker}"));
+    let parser = &content[start..];
+
+    for required in [
+        "let clause_display = render_token_slice(tokens).trim().to_string()",
+        "replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_display)",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve where-X clause surfaces from parse tokens: missing `{required}`"
+        );
+    }
+    for forbidden in ["clause_words.join(\" \")"] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not rebuild where-X clause surfaces by joining word refs `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn top_cards_hand_remainder_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES",
+        "fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "top-card hand/remainder parsing should capture grammar spans instead of walking raw word indexes"
+    );
+    for required in [
+        "PUT_COUNTED_TOP_CARDS_VIEW_THEN_REMAINDER_PATTERN",
+        "LexPattern::capture(\"view_clause\", LexCaptureKind::UntilPhrase(&[\"then\"]))",
+        "LexPattern::tail(\"remainder\", LexCaptureKind::Rest)",
+        "PUT_COUNTED_TOP_CARDS_VIEW_THEN_REMAINDER_PATTERN.match_clause(clause)",
+        "capture_clause(\"view_clause\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "PUT_COUNTED_TOP_CARDS_REMAINDER_PATTERN.match_clause(tail_clause)",
+        "LexPattern::amount(",
+        "\"put_count\"",
+        "LexCaptureKind::UntilAnyPhrase(PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES)",
+        "PUT_COUNTED_TOP_CARDS_YOU_OWNER_PATTERN",
+        "PUT_COUNTED_TOP_CARDS_THAT_OWNER_PATTERN",
+        "LexCaptureKind::OneOfPhrase(PUT_COUNTED_TOP_CARDS_YOU_OWNER_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(PUT_COUNTED_TOP_CARDS_THAT_OWNER_PHRASES)",
+        "PUT_COUNTED_TOP_CARDS_YOU_OWNER_PATTERN.matches_clause(owner_clause)",
+        "PUT_COUNTED_TOP_CARDS_THAT_OWNER_PATTERN.matches_clause(owner_clause)",
+        "LexPattern::capture(",
+        "\"hand_owner\"",
+        "\"graveyard_owner\"",
+        "capture_clause(\"put_count\", tail_clause)",
+        "capture_clause(\"hand_owner\", tail_clause)",
+        "put_counted_top_cards_owner(hand_owner_clause, player)",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve top-card hand/remainder parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let mut idx = 0usize",
+        "OF_WORD_PATTERN.matches_word_at(&tail_refs, idx)",
+        "THOSE_CARD_OR_CARDS_PATTERN.matches_words(&tail_refs[idx..])",
+        "let chooser = if YOUR_WORD_PATTERN.matches_word_at(&tail_refs, idx)",
+        "YOUR_OR_THEIR_WORD_PATTERN.matches_word_at(&tail_refs, idx)",
+        "GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN.matches_word_at(&tail_refs, idx)",
+        "idx += 1",
+        "idx += 2",
+        "find_generic_word_matching_shape",
+        "then_word_idx",
+        "token_index_for_word_index",
+        "token_index_after_words",
+        "owner_clause.trimmed().word_refs()",
+        "words.as_slice()",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse top-card hand/remainder tails with fixed index walking `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn consult_reveal_until_hand_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const CONSULT_REVEAL_UNTIL_HAND_PATTERN",
+        "const MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb",
+        "fn parse_generic_consult_reveal_until_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "consult all-revealed-to-hand parsing should capture consult/followup clauses instead of slicing around then"
+    );
+    for required in [
+        "CONSULT_REVEAL_UNTIL_HAND_PATTERN",
+        "LexPattern::capture(\"consult_clause\", LexCaptureKind::UntilPhrase(&[\"then\"]))",
+        "LexPattern::word(\"then\")",
+        "LexPattern::tail(\"followup\", LexCaptureKind::Rest)",
+        "CONSULT_REVEAL_UNTIL_HAND_PATTERN.match_clause(sentence_clause)",
+        "capture_clause(\"consult_clause\", sentence_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)",
+        "trim_commas(consult_clause.tokens())",
+        "trim_commas(followup_clause.tokens())",
+        "ALL_REVEALED_INTO_HAND_PHRASES",
+        "LexCaptureKind::OneOfPhrase",
+        "ALL_REVEALED_INTO_HAND_PATTERN.matches_clause(followup_clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve consult all-revealed-to-hand parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(then_idx)",
+        "sentence_tokens[..then_idx]",
+        "sentence_tokens[then_idx + 1..]",
+        "find_index(&sentence_tokens",
+        "followup_words",
+        "ALL_REVEALED_INTO_HAND_PATTERN.matches_words",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not split consult all-revealed-to-hand clauses with fixed token indexes `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn consult_reveal_until_battlefield_bottom_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN",
+        "const EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PHRASES",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb",
+        "fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "consult battlefield-bottom parsing should capture consult/followup clauses instead of splitting at the comma"
+    );
+    for required in [
+        "CONSULT_REVEAL_UNTIL_BATTLEFIELD_BOTTOM_PATTERN",
+        "MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN",
+        "LexCaptureKind::UntilAnyPhrase(MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES)",
+        "LexPattern::tail(\"followup\", LexCaptureKind::Rest)",
+        "REST_BOTTOM_LIBRARY_WITH_ORDER_PATTERN",
+        "REST_BOTTOM_LIBRARY_ORDER_PHRASES",
+        "LexCaptureKind::UntilAnyPhrase(REST_BOTTOM_LIBRARY_ORDER_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(REST_BOTTOM_LIBRARY_ORDER_PHRASES)",
+        "REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN",
+        "REST_BOTTOM_LIBRARY_ANY_ORDER_PATTERN",
+        "CONSULT_REVEAL_UNTIL_BATTLEFIELD_BOTTOM_PATTERN.match_clause(sentence_clause)",
+        "capture_clause(\"consult_clause\", sentence_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)",
+        "trim_commas(consult_clause.tokens())",
+        "trim_commas(followup_clause.tokens())",
+        "MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN.match_clause(followup_clause)",
+        "followup_match.capture_clause_by_role(LexCaptureRole::Tail, followup_clause)",
+        "consult_remainder_order_from_capture(remainder_clause.trimmed())",
+        "fn consult_remainder_order_from_capture",
+        "REST_BOTTOM_LIBRARY_WITH_ORDER_PATTERN.find_in_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Amount, clause)",
+        "REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN.matches_clause(order_clause)",
+        "REST_BOTTOM_LIBRARY_ANY_ORDER_PATTERN.matches_clause(order_clause)",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve consult battlefield-bottom parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "split_once_on_comma(&sentence_tokens)",
+        "let Some((consult_tokens, followup_tokens))",
+        "trim_commas(consult_tokens)",
+        "trim_commas(followup_tokens)",
+        "MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN.matches_words",
+        "REST_BOTTOM_LIBRARY_PATTERN.matches_words",
+        "followup_words.as_slice()",
+        "let followup_words = followup_clause.word_refs()",
+        "parse_consult_remainder_order(&followup_words)",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not split consult battlefield-bottom clauses with comma helper `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn each_player_exile_top_cast_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
+    let content = read_repo_file(&root, relative);
+    let shape = function_source(
+        &content,
+        "const EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PHRASES",
+        "const MELD_RESULT_PATTERN",
+    );
+    let parser = function_source(
+        &content,
+        "fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb",
+        "fn parse_generic_meld_subject_verb",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "each-player exile-top/cast parsing should capture exile/cast clauses instead of slicing around then"
+    );
+    for required in [
+        "EACH_PLAYER_EXILE_TOP_CAST_PATTERN",
+        "LexPattern::capture(\"exile_clause\", LexCaptureKind::UntilPhrase(&[\"then\"]))",
+        "LexPattern::word(\"then\")",
+        "LexPattern::tail(\"cast_clause\", LexCaptureKind::Rest)",
+        "EACH_PLAYER_EXILE_TOP_CAST_PATTERN.match_clause(sentence_clause)",
+        "capture_clause(\"exile_clause\", sentence_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)",
+        "trim_commas(exile_clause.tokens())",
+        "trim_commas(cast_clause.tokens())",
+        "EACH_PLAYER_EXILE_TOP_CARD_PATTERN",
+        "LexCaptureKind::OneOfPhrase(EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PHRASES)",
+        "EACH_PLAYER_EXILE_UNTIL_NONLAND_PATTERN.matches_clause(exile_clause)",
+        "EACH_PLAYER_EXILE_TOP_CARD_PATTERN.match_clause(exile_clause)",
+        "PLAYER_LIBRARY_PATTERN",
+        ".find_in_clause(library_clause.trimmed())",
+        "CAST_ANY_NUMBER_FREE_PATTERN.match_clause(cast_clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, cast_clause)",
+        "FROM_THOSE_OR_THEM_SCOPE_PATTERN",
+        "FROM_NONLAND_EXILED_THIS_WAY_PATTERN",
+        ".find_in_clause(cast_scope_clause.trimmed())",
+    ] {
+        assert!(
+            shape.contains(required) || parser.contains(required),
+            "{relative} should preserve each-player exile-top/cast parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let Some(then_idx)",
+        "sentence_tokens[..then_idx]",
+        "sentence_tokens[then_idx + 1..]",
+        "find_index(&sentence_tokens",
+        "TokenWordView::new(&exile_tokens)",
+        "TokenWordView::new(&cast_tokens)",
+        "EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PATTERN.matches_words",
+        "EACH_PLAYER_EXILE_UNTIL_NONLAND_PREFIX_PATTERN.matches_words",
+        "PLAYER_LIBRARY_MARKER_PATTERN.matches_words",
+        "CAST_ANY_NUMBER_FREE_PREFIX_PATTERN.matches_words",
+        "FROM_THOSE_OR_THEM_MARKER_PATTERN.matches_words",
+        "WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN.matches_words",
+        "FROM_NONLAND_EXILED_THIS_WAY_PATTERN.matches_words",
+        "cast_words.as_slice()",
+        "exile_words.as_slice()",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not split each-player exile-top/cast clauses with fixed token indexes `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn delayed_end_step_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const DELAYED_END_STEP_OPTIONAL_THE_ATOMS",
+        "fn retarget_source_copy_spell_to_delayed_triggering_object",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "delayed end-step parsing should capture timing owner/effect spans instead of walking token offsets"
+    );
+    for required in [
+        "DELAYED_END_STEP_HEADER_PATTERN.match_clause(clause)",
+        "LexPattern::capture(",
+        "\"step_owner\"",
+        "\"turn_owner\"",
+        "LexPattern::token(TokenKind::Comma)",
+        "LexPattern::tail(\"effect\", LexCaptureKind::Rest)",
+        "capture_clause(\"step_owner\", clause)",
+        "capture_clause(\"turn_owner\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "delayed_end_step_player_from_owner",
+        "DELAYED_END_STEP_YOUR_OWNER_PATTERN.matches_clause(owner_clause)",
+        "DELAYED_END_STEP_THAT_PLAYER_OWNER_PATTERN.matches_clause(owner_clause)",
+        "DELAYED_END_STEP_TARGET_PLAYER_OWNER_PATTERN.matches_clause(owner_clause)",
+        "delayed_end_step_player_from_owner(matched.capture_clause(\"step_owner\", clause))",
+        "delayed_end_step_player_from_owner(Some(turn_owner))",
+        "render_token_slice(tokens).trim()",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve delayed end-step parsing through captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "let mut idx = 0usize",
+        "token_slice_at_is(tokens, idx",
+        "idx += 1",
+        "idx += 2",
+        "idx += 3",
+        "let remainder = trim_commas(&tokens[idx..])",
+        "let remainder = trim_commas(effect_clause.tokens())",
+        "owner.word_refs()",
+        "turn_owner.trimmed().word_refs()",
+        "token_word_refs(tokens).join(\" \")",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse delayed end-step headers with fixed token index walking `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn this_turn_delayed_trigger_parser_uses_outer_lex_pattern_capture() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const DELAYED_ATTACKS_UNBLOCKED_PHRASES",
+        "pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_sentence_delayed_trigger_this_turn",
+        "pub(crate) fn parse_delayed_when_that_dies_this_turn_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "this-turn delayed trigger parsing should capture duration/tail spans before splitting trigger/effect clauses"
+    );
+    for required in [
+        "DELAYED_TARGET_ATTACK_UNBLOCKED_TRIGGER_PATTERN",
+        "DELAYED_TAGGED_DEALT_DAMAGE_TRIGGER_PATTERN",
+        "COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN",
+        "DELAYED_TRIGGER_THIS_TURN_SUFFIX_PATTERN",
+        "DELAYED_NEXT_TRIGGER_MARKER_PATTERN",
+        "LexPattern::object(",
+        "LexCaptureKind::UntilAnyPhrase(",
+        "DELAYED_ATTACKS_UNBLOCKED_PHRASES",
+        "LexPattern::any_phrase(DELAYED_ATTACKS_UNBLOCKED_PHRASES)",
+        "LexPattern::object(\"kind\", LexCaptureKind::OneOf(&[\"creature\", \"permanent\"]))",
+        "LexPattern::optional(DELAYED_TAGGED_DEALT_DAMAGE_OPTIONAL_COMBAT_ATOMS)",
+        "DELAYED_TAGGED_DAMAGE_CREATURE_KIND_PATTERN.matches_clause(kind_clause)",
+        "DELAYED_TAGGED_DAMAGE_PERMANENT_KIND_PATTERN.matches_clause(kind_clause)",
+        "delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)",
+        "capture_clause_by_role(LexCaptureRole::Object, trigger_clause)",
+        "matched.capture(\"combat\").is_some()",
+        "LexPattern::modifier(\"duration\", LexCaptureKind::OneOfPhrase(&[&[\"this\", \"turn\"]]))",
+        "LexPattern::action(\"intro\", LexCaptureKind::OneOf(&[\"when\", \"whenever\"]))",
+        "LexPattern::condition(\"trigger\", LexCaptureKind::UntilToken(TokenKind::Comma))",
+        "LexCaptureKind::UntilLastPhraseBeforeToken(&[\"this\", \"turn\"], TokenKind::Comma)",
+        "LexPattern::token(TokenKind::Comma)",
+        "LexPattern::tail(\"effect\", LexCaptureKind::Rest)",
+        "delayed_attack_unblocked_filter_from_trigger(trigger_tokens, tokens)",
+        "COPY_NEXT_THIS_TURN_DELAYED_TRIGGER_PATTERN.match_clause(clause)",
+        "DELAYED_TRIGGER_THIS_TURN_SUFFIX_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Condition, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "delayed_trigger_is_one_shot(trigger_clause)",
+        "DELAYED_NEXT_TRIGGER_MARKER_PATTERN",
+        ".find_in_clause(trigger_clause.trimmed())",
+        "render_token_slice(clause.tokens())",
+        "render_token_slice(full_sentence_tokens)",
+        "let trigger_tokens = trigger_clause.trimmed().tokens()",
+        "let trigger_core_tokens = trigger_clause.trimmed().tokens()",
+        "let trigger_clause = LexedClause::new(trigger_tokens)",
+        "parse_effect_chain(effect_clause.trimmed().tokens())",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve this-turn delayed trigger parsing through delimiter-aware captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "ATTACKS_AND_ISNT_BLOCKED_SUFFIX_PATTERN",
+        "TARGET_WORD_PATTERN",
+        "TAGGED_DEALT_DAMAGE_TRIGGER_CORE_PATTERN",
+        "CREATURE_WORD_PATTERN",
+        "COMBAT_WORD_PATTERN",
+        "const THIS_TURN_SUFFIX_PATTERN",
+        "COPY_NEXT_THIS_TURN_PREFIX_PATTERN",
+        "COPY_NEXT_THIS_TURN_PREFIX_PATTERN.matches_words",
+        "let attack_unblocked_suffix",
+        "let subject_len",
+        "trigger_tokens[1..subject_len]",
+        "token_index_for_word_index(trigger_words.len() - 2)",
+        "trigger_tokens[..trim_start]",
+        "trigger_core_words.get(1)",
+        "token_word_refs(\n        tokens",
+        "token_word_refs(tokens).join(\" \")",
+        "token_word_refs(full_sentence_tokens).join(\" \")",
+        "kind_clause.trimmed().word_refs()",
+        "let Some(delayed_clause)",
+        "let delayed_clause = trim_commas",
+        "let Some((trigger_part, effect_part))",
+        "let Some((before_comma, after_comma))",
+        "let Some((_duration, delayed_clause))",
+        "split_lexed_once_on_delimiter",
+        "trigger_words.contains(&\"next\")",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden)
+                && !content.contains("COPY_NEXT_THIS_TURN_PREFIX_PATTERN"),
+            "{relative} should not route this-turn delayed triggers through raw prefix checks `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn delayed_dies_this_turn_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/copy_and_next_spell_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const DELAYED_DIES_INTRO_WORDS",
+        "const DELAYED_END_STEP_OPTIONAL_THE_ATOMS",
+    );
+    let parser_body = function_source(
+        &content,
+        "fn delayed_dies_this_way_filter",
+        "pub(crate) fn find_from_among",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "delayed dies-this-turn parsing should capture subject/effect spans instead of searching fixed phrase windows"
+    );
+    for required in [
+        "DELAYED_THAT_DIES_THIS_TURN_PATTERN",
+        "DELAYED_DIES_THIS_WAY_PATTERN",
+        "LexPattern::object(",
+        "LexCaptureKind::UntilAnyPhrase(DELAYED_DIES_THIS_WAY_PHRASES)",
+        "LexPattern::token(TokenKind::Comma)",
+        "LexPattern::tail(\"effect\", LexCaptureKind::Rest)",
+        "DELAYED_THAT_DIES_THIS_TURN_PATTERN.match_clause(clause)",
+        "DELAYED_DIES_THIS_WAY_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Object",
+        "capture_clause_by_role(LexCaptureRole::Tail",
+        "render_token_slice(clause.tokens())",
+        "delayed_dies_this_way_filter(&matched, clause)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve delayed dies-this-turn parsing through captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "copy_next_find_phrase_start",
+        "DEALT_DAMAGE_THIS_WAY_DIES_THIS_TURN_PATTERN",
+        "DEALT_DAMAGE_THIS_WAY_WOULD_DIE_THIS_TURN_PATTERN",
+        "let split_after_word_idx",
+        "token_slice_first_kind(remainder, TokenKind::Comma)",
+        "remainder = &remainder[1..]",
+        "let mut remainder = effect_clause.tokens()",
+        "clause.between_word_range(1, dealt_idx)",
+        "dealt_idx + 6",
+        "dealt_idx + 7",
+        "let clause_words = clause.word_refs()",
+        "clause_words.join(\" \")",
+        "delayed_dies_this_way_filter(&matched, clause, &clause_words)",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden) && !parser.contains(forbidden),
+            "{relative} should not parse delayed dies-this-turn clauses with fixed phrase windows `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn look_top_exile_one_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_LOOK_TOP_COUNT_CARD_OF_SEQUENCE",
+        "pub(crate) fn parse_gain_life_equal_to_age_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "look-top exile-one parsing should capture count/owner/followup spans instead of walking token offsets"
+    );
+    for required in [
+        "REPLACE_LOOK_TOP_THEN_EXILE_PATTERN.match_clause(clause)",
+        "LexPattern::amount(",
+        "\"count\"",
+        "LexPattern::object(\"owner\", LexCaptureKind::UntilPhrase(&[\"library\"]))",
+        "LexPattern::tail(\"followup\", LexCaptureKind::Rest)",
+        "capture_clause_by_role(LexCaptureRole::Amount",
+        "capture_clause_by_role(LexCaptureRole::Object",
+        "capture_clause_by_role(LexCaptureRole::Tail",
+        "REPLACE_LOOK_TOP_EXILE_FOLLOWUP_PATTERN.matches_prefix",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve look-top exile-one parsing through captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_LOOK_TOP_PREFIX_PATTERN",
+        "REPLACE_EXILE_ONE_OF_LOOKED_PREFIX_PATTERN",
+        "REPLACE_TOP_WORD_PATTERN",
+        "REPLACE_LIBRARY_WORD_PATTERN",
+        "let Some(top_idx)",
+        "parse_number(&tokens[top_idx + 1..])",
+        "let mut idx = top_idx + 1 + used_count",
+        "idx += 1",
+        "let owner_tokens = trim_commas(&tokens[idx..library_idx])",
+        "let trimmed_tail_tokens = trim_commas(&tokens[library_idx + 1..])",
+    ] {
+        assert!(
+            !parser.contains(forbidden),
+            "{relative} should not parse look-top exile-one clauses with fixed token indexes `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn exile_then_return_same_object_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_exile_then_return_same_object_sentence",
+        "pub(crate) fn parse_exile_up_to_one_each_target_type_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "exile-then-return parsing should capture clause spans instead of searching comma/then windows"
+    );
+    for required in [
+        "REPLACE_EXILE_THEN_RETURN_SAME_OBJECT_PATTERN",
+        "REPLACE_RETURN_WITH_COUNTER_ON_OBJECT_PATTERN",
+        "LexPattern::action(\"exile_clause\", LexCaptureKind::UntilPhrase(&[\"then\"]))",
+        "LexPattern::tail(\"return_clause\", LexCaptureKind::OneOrMoreWords)",
+        "LexPattern::modifier(\"counter\", LexCaptureKind::UntilLastPhrase(&[\"on\"]))",
+        "capture_clause(\"exile_clause\", clause)",
+        "capture_clause(\"return_clause\", clause)",
+        "capture_clause_by_role(LexCaptureRole::Modifier, return_clause)",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve exile/return parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_THEN_RETURN_MARKER_PATTERN",
+        "REPLACE_WITH_WORD_PATTERN",
+        "REPLACE_ON_WORD_PATTERN",
+        "REPLACE_IT_OR_THEM_WORD_PATTERN",
+        "let mut clause_tokens = tokens",
+        "clause_tokens = &clause_tokens[1..]",
+        "clause_tokens = &clause_tokens[2..]",
+        "find_window_by(clause_tokens, 3",
+        "token_slice_first_kind(window, TokenKind::Comma)",
+        "token_slice_starts_with(&window[1..], &[\"then\", \"return\"])",
+        "let second_clause = &clause_tokens[split_idx + 2..]",
+        "let on_idx = with_idx + 1 + on_rel_idx",
+        "let counter_tokens = trim_commas(&second_clause[with_idx + 1..on_idx])",
+    ] {
+        assert!(
+            !parser.contains(forbidden) && !content.contains(forbidden),
+            "{relative} should not parse exile/return clauses with fixed token windows `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn token_end_of_combat_recognizer_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_TOKEN_END_COMBAT_OBJECT_PHRASES",
+        "pub(crate) fn parse_take_extra_turn_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "token end-of-combat routing should capture verb/object/timing spans instead of checking fixed word positions"
+    );
+    for required in [
+        "REPLACE_EXILE_TOKEN_END_COMBAT_PATTERN",
+        "REPLACE_SACRIFICE_TOKEN_END_COMBAT_PATTERN",
+        "LexPattern::action(\"verb\", LexCaptureKind::OneOf(&[\"exile\"]))",
+        "LexPattern::action(\"verb\", LexCaptureKind::OneOf(&[\"sacrifice\"]))",
+        "LexPattern::object(",
+        "\"object\"",
+        "LexCaptureKind::OneOfPhrase(REPLACE_TOKEN_END_COMBAT_OBJECT_PHRASES)",
+        "LexPattern::modifier(",
+        "\"timing\"",
+        "LexCaptureKind::OneOfPhrase(REPLACE_TOKEN_END_COMBAT_TIMING_PHRASES)",
+        "REPLACE_EXILE_TOKEN_END_COMBAT_PATTERN",
+        ".match_clause(clause)",
+        "REPLACE_SACRIFICE_TOKEN_END_COMBAT_PATTERN",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve token end-of-combat routing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_THAT_THE_THOSE_WORD_PATTERN",
+        "REPLACE_TOKEN_OR_TOKENS_WORD_PATTERN",
+        "REPLACE_AT_WORD_PATTERN",
+        "REPLACE_IT_WORD_PATTERN",
+        "REPLACE_END_OF_COMBAT_TAIL_PATTERN",
+        "matches_word_at(words, 1)",
+        "matches_word_at(words, 2)",
+        "let at_idx =",
+        "has_end_of_combat_tail",
+        "words.get(at_idx + 1..)",
+        "REPLACE_TOKEN_END_COMBAT_OBJECT_PATTERN",
+        "REPLACE_TOKEN_END_COMBAT_TIMING_PATTERN",
+        ".matches_words(&object_clause",
+        ".matches_words(&timing_clause",
+    ] {
+        assert!(
+            !parser.contains(forbidden) && !content.contains(forbidden),
+            "{relative} should not parse token end-of-combat routing with fixed word offsets `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn extra_turn_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_TAKE_EXTRA_TURN_YOU_PATTERN",
+        "pub(crate) fn parse_additional_phase_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_take_extra_turn_sentence",
+        "pub(crate) fn parse_additional_phase_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "extra-turn parsing should capture subject/action/anchor spans instead of matching raw word slices"
+    );
+    for required in [
+        "REPLACE_TAKE_EXTRA_TURN_YOU_PATTERN",
+        "REPLACE_TAKE_EXTRA_TURN_CHOSEN_PATTERN",
+        "REPLACE_TAKE_EXTRA_TURN_THAT_AFTER_REFERENCED_PATTERN",
+        "LexPattern::action(\"take\", LexCaptureKind::OneOf(&[\"take\"])",
+        "LexPattern::subject(",
+        "LexPattern::modifier(\"anchor\", LexCaptureKind::OneOfPhrase",
+        "LexCaptureKind::OneOfPhrase(&[&[\"after\", \"this\", \"one\"]])",
+        "REPLACE_TAKE_EXTRA_TURN_YOU_PATTERN",
+        ".match_clause(clause)",
+        "REPLACE_TAKE_EXTRA_TURN_CHOSEN_PATTERN",
+        "subject_verb_extra_turn_after_turn",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve extra-turn parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "words.as_slice()",
+        "[\"take\", \"an\", \"extra\", \"turn\", \"after\", \"this\", \"one\"]",
+        "[\"the\", \"chosen\", \"player\", \"takes\", \"an\", \"extra\", \"turn\"",
+        "[\"after\", \"that\", \"turn\", \"that\", \"player\", \"takes\"",
+        "REPLACE_EXTRA_TURN_AFTER_THIS_ONE_PATTERN",
+        "matches_words(&anchor_clause.word_refs())",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden),
+            "{relative} should not parse extra-turn clauses through raw word-slice matching `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn additional_phase_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_ADDITIONAL_PHASE_EXISTENCE_PHRASES",
+        "pub(crate) fn parse_destroy_or_exile_all_split_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_additional_phase_sentence",
+        "pub(crate) fn parse_destroy_or_exile_all_split_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "additional-phase parsing should capture intro/count/phase/tail spans instead of selecting from whole-clause phrase buckets"
+    );
+    for required in [
+        "REPLACE_ADDITIONAL_PHASE_PATTERN",
+        "LexPattern::condition(",
+        "\"intro\"",
+        "LexCaptureKind::UntilAnyPhrase(REPLACE_ADDITIONAL_PHASE_EXISTENCE_PHRASES)",
+        "LexPattern::any_phrase(REPLACE_ADDITIONAL_PHASE_EXISTENCE_PHRASES)",
+        "LexPattern::amount(\"count\", LexCaptureKind::OneOf(&[\"an\", \"two\"]))",
+        "LexPattern::object(",
+        "\"phase\"",
+        "LexPattern::tail(\"tail\", LexCaptureKind::Rest)",
+        "REPLACE_ADDITIONAL_PHASE_AFTER_THIS_PHASE_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_AFTER_THIS_COMBAT_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_AFTER_THIS_MAIN_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_IF_MAIN_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_FOLLOWED_BY_MAIN_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_AFTER_THIS_FOLLOWED_BY_MAIN_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_ONE_COUNT_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_TWO_COUNT_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_COMBAT_SINGULAR_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_COMBAT_PLURAL_PATTERN",
+        "REPLACE_ADDITIONAL_PHASE_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Condition, clause)",
+        "capture_clause_by_role(LexCaptureRole::Amount, clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "REPLACE_ADDITIONAL_PHASE_AFTER_THIS_PHASE_PATTERN.matches_clause(intro_clause)",
+        "REPLACE_ADDITIONAL_PHASE_FOLLOWED_BY_MAIN_PATTERN.matches_clause(tail_clause)",
+        "REPLACE_ADDITIONAL_PHASE_ONE_COUNT_PATTERN.matches_clause(count_clause)",
+        "REPLACE_ADDITIONAL_PHASE_COMBAT_SINGULAR_PATTERN.matches_clause(phase_clause)",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve additional-phase parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "parser_token_word_refs(tokens)",
+        "REPLACE_ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PATTERN",
+        "REPLACE_TWO_ADDITIONAL_COMBATS_PATTERN",
+        "REPLACE_ADDITIONAL_COMBAT_THEN_MAIN_PATTERN",
+        "AdditionalPhasePattern",
+        "matches_words(&words)",
+        "intro_clause.trimmed().word_refs()",
+        "tail_clause.trimmed().word_refs()",
+        "count_clause.trimmed().word_refs()",
+        "phase_clause.trimmed().word_refs()",
+        "phase_words.as_slice()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden),
+            "{relative} should not parse additional phases through whole-clause phrase buckets `{forbidden}`"
+        );
+    }
+    for retired in [
+        "REPLACE_ADDITIONAL_COMBAT_AFTER_THIS_PHASE_PATTERN",
+        "REPLACE_TWO_ADDITIONAL_COMBATS_PATTERN",
+        "REPLACE_ADDITIONAL_COMBAT_THEN_MAIN_PATTERN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired additional-phase helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn counter_removed_pump_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_FOR_EACH_COUNTER_REMOVED_THIS_WAY_PATTERN",
+        "pub(crate) fn is_exile_that_token_at_end_of_combat",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "counter-removed pump parsing should capture subject/action/modifier spans instead of splitting on comma and searching for gets"
+    );
+    for required in [
+        "REPLACE_FOR_EACH_COUNTER_REMOVED_THIS_WAY_PATTERN",
+        "LexPattern::phrase(&[\"for\", \"each\", \"counter\", \"removed\", \"this\", \"way\"])",
+        "LexPattern::subject(",
+        "LexCaptureKind::UntilAnyPhrase(&[&[\"get\"], &[\"gets\"]])",
+        "LexPattern::action(\"action\", LexCaptureKind::OneOf(&[\"get\", \"gets\"]))",
+        "LexPattern::modifier(\"modifier\", LexCaptureKind::WordCount(1))",
+        "capture_clause_by_role(LexCaptureRole::Subject, clause)",
+        "capture_clause_by_role(LexCaptureRole::Modifier, clause)",
+        "parse_subject(subject_clause.trimmed().tokens())",
+        "render_token_slice(clause.tokens()).trim()",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve counter-removed pump parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_FOR_EACH_COUNTER_REMOVED_THIS_WAY_PREFIX_PATTERN",
+        "REPLACE_GET_OR_GETS_WORD_PATTERN",
+        "REPLACE_UNTIL_END_TURN_MARKER_PATTERN",
+        "split_lexed_once_on_delimiter",
+        "&tokens[6..]",
+        "let gets_idx",
+        "remainder[..gets_idx]",
+        "remainder[gets_idx + 1..]",
+        "let after_gets",
+        "clause.text()",
+    ] {
+        assert!(
+            !parser.contains(forbidden) && !content.contains(forbidden),
+            "{relative} should not parse counter-removed pumps with fixed offsets `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn destroy_or_exile_all_split_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_DESTROY_ALL_SPLIT_PATTERN",
+        "pub(crate) fn parse_exile_then_return_same_object_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_destroy_or_exile_all_split_sentence",
+        "pub(crate) fn parse_exile_then_return_same_object_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "destroy/exile-all split parsing should capture verb and object-list spans instead of checking fixed prefix offsets"
+    );
+    for required in [
+        "REPLACE_DESTROY_ALL_SPLIT_PATTERN",
+        "REPLACE_EXILE_ALL_SPLIT_PATTERN",
+        "LexPattern::action(\"verb\", LexCaptureKind::OneOf(&[\"destroy\"]))",
+        "LexPattern::action(\"verb\", LexCaptureKind::OneOf(&[\"exile\"]))",
+        "LexPattern::word(\"all\")",
+        "LexPattern::object(\"objects\", LexCaptureKind::Rest)",
+        "REPLACE_DESTROY_EXILE_ALL_OBJECT_LIST_PATTERN",
+        "LexPattern::object(\"first_objects\", LexCaptureKind::UntilPhrase(&[\"and\"]))",
+        "LexPattern::word(\"and\")",
+        "LexPattern::tail(\"remaining_objects\", LexCaptureKind::OneOrMoreWords)",
+        "REPLACE_DESTROY_EXILE_ALL_OBJECT_LIST_PATTERN",
+        ".match_clause(objects_clause.trimmed())",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "objects_clause.trimmed_and_comma_segments()",
+        "render_token_slice(clause.tokens()).trim()",
+        "Verb::Destroy",
+        "Verb::Exile",
+        "destroy_exile_split_has_exception(clause)",
+        "destroy_exile_split_is_temporary_exile_until_leaves_battlefield(clause, verb)",
+        "destroy_exile_split_is_multi_zone_card_exile(clause)",
+        "REPLACE_EXILE_ALL_CARDS_FROM_ZONES_PATTERN",
+        "LexPattern::tail(\"zones\", LexCaptureKind::Rest)",
+        "REPLACE_ZONE_LIST_PATTERN",
+        "LexPattern::capture(\"first_zone\", LexCaptureKind::UntilPhrase(&[\"and\"]))",
+        "LexPattern::tail(\"second_zone\", LexCaptureKind::OneOrMoreWords)",
+        "REPLACE_HAND_ZONE_PATTERN",
+        "REPLACE_GRAVEYARD_ZONE_PATTERN",
+        "REPLACE_ZONE_LIST_PATTERN.match_clause(zones_clause)",
+        "capture_clause(\"first_zone\", zones_clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+    ] {
+        assert!(
+            parser.contains(required) || content.contains(required),
+            "{relative} should preserve destroy/exile-all split parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_DESTROY_WORD_PATTERN",
+        "REPLACE_ALL_WORD_PATTERN",
+        "matches_word_at(&words, 0)",
+        "matches_word_at(&words, 1)",
+        "for token in &tokens[2..]",
+        "let verb = if",
+        "verb_clause.trimmed().word_refs()",
+        "capture_clause_by_role(LexCaptureRole::Action, clause)",
+        "REPLACE_DESTROY_EXILE_ALL_SPLIT_PATTERN",
+        "let object_words = objects_clause.word_refs()",
+        "let words = clause.word_refs()",
+        "REPLACE_EXILE_ALL_CARDS_FROM_PREFIX_PATTERN",
+        "REPLACE_EXCEPT_MARKER_PATTERN.matches_words(&words)",
+        "REPLACE_HAND_MARKER_PATTERN.matches_words(&words)",
+        "REPLACE_GRAVEYARD_MARKER_PATTERN.matches_words(&words)",
+        "REPLACE_HAND_MARKER_PATTERN",
+        "REPLACE_GRAVEYARD_MARKER_PATTERN",
+        "let zone_words = zones_clause.word_refs()",
+        "REPLACE_AND_MARKER_PATTERN",
+        "words.iter().any(|word| *word == \"until\")",
+        "words.ends_with(&[\"leaves\", \"the\", \"battlefield\"])",
+        "let mut raw_segments",
+        "let mut current",
+        "clause.text()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden)
+                && !content.contains("REPLACE_DESTROY_WORD_PATTERN")
+                && !content.contains("REPLACE_ALL_WORD_PATTERN")
+                && !content.contains("REPLACE_DESTROY_EXILE_ALL_SPLIT_PATTERN"),
+            "{relative} should not parse destroy/exile-all split prefixes with fixed offsets `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn monstrosity_parser_uses_lex_pattern_amount_capture() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_MONSTROSITY_PATTERN",
+        "pub(crate) fn parse_for_each_counter_removed_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_monstrosity_sentence",
+        "pub(crate) fn parse_for_each_counter_removed_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "monstrosity parsing should capture the amount span instead of slicing after the keyword"
+    );
+    for required in [
+        "REPLACE_MONSTROSITY_PATTERN",
+        "LexPattern::word(\"monstrosity\")",
+        "LexPattern::amount(\"amount\", LexCaptureKind::Rest)",
+        "REPLACE_MONSTROSITY_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Amount, clause)",
+        "parse_value(amount_clause.trimmed().tokens())",
+        "render_token_slice(clause.tokens()).trim()",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve monstrosity parsing through named amount captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_MONSTROSITY_WORD_PATTERN",
+        "matches_word_at(&words, 0)",
+        "let amount_tokens = &tokens[1..]",
+        "parse_value(amount_tokens)",
+        "clause.text()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden)
+                && !content.contains("REPLACE_MONSTROSITY_WORD_PATTERN"),
+            "{relative} should not parse monstrosity with fixed keyword offsets `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn exile_up_to_one_each_target_type_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_EXILE_UP_TO_ONE_EACH_TARGET_TYPE_PATTERN",
+        "pub(crate) fn parse_look_at_hand_sentence",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_exile_up_to_one_each_target_type_sentence",
+        "pub(crate) fn parse_look_at_hand_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "exile repeated target-type parsing should capture the target-clause tail instead of slicing after the verb"
+    );
+    for required in [
+        "REPLACE_EXILE_UP_TO_ONE_EACH_TARGET_TYPE_PATTERN",
+        "LexPattern::word(\"exile\")",
+        "LexPattern::object(\"target_clauses\", LexCaptureKind::Rest)",
+        "REPLACE_EXILE_UP_TO_ONE_EACH_TARGET_TYPE_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "let target_tokens = target_clauses.trimmed().tokens()",
+        "replace_up_to_one_target_segments(target_clauses.trimmed())",
+        ".trimmed_and_comma_segments()",
+        "split_lexed_slices_on_or(segment.tokens())",
+        "render_token_slice(clause.tokens()).trim()",
+    ] {
+        assert!(
+            parser.contains(required),
+            "{relative} should preserve repeated target-type parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "REPLACE_EXILE_WORD_PATTERN",
+        "words.len() < 6",
+        "words[..1]",
+        "tokens.get(1..)",
+        "for token in &tokens[1..]",
+        "for token in target_tokens",
+        "let mut raw_segments",
+        "let mut current",
+        "clause.text()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden) && !content.contains("REPLACE_EXILE_WORD_PATTERN"),
+            "{relative} should not parse repeated target-type exile clauses with fixed verb offsets `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn look_at_hand_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_LOOK_HAND_PATTERN",
+        "const REPLACE_LOOK_TOP_COUNT_CARD_OF_SEQUENCE",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_look_at_hand_sentence",
+        "pub(crate) fn parse_look_at_top_then_exile_one_sentence",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "look-at-hand parsing should capture player/followup spans instead of matching whole-clause phrase buckets"
+    );
+    for required in [
+        "REPLACE_LOOK_HAND_PATTERN",
+        "LexPattern::phrase(&[\"look\", \"at\"])",
+        "LexPattern::object(\"player\", LexCaptureKind::UntilPhrase(&[\"hand\"]))",
+        "LexPattern::word(\"hand\")",
+        "LexPattern::tail(\"followup\", LexCaptureKind::Rest)",
+        "REPLACE_LOOK_HAND_TARGET_PLAYER_PATTERN",
+        "REPLACE_LOOK_HAND_TARGET_OPPONENT_PATTERN",
+        "REPLACE_LOOK_HAND_OPPONENT_PATTERN",
+        "REPLACE_LOOK_HAND_ITERATED_PLAYER_PATTERN",
+        "LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_TARGET_PLAYER_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_TARGET_OPPONENT_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_OPPONENT_PHRASES)",
+        "LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_ITERATED_PLAYER_PHRASES)",
+        "REPLACE_LOOK_HAND_CHOOSE_NAME_PATTERN",
+        "LexPattern::action(\"choose\", LexCaptureKind::OneOf(&[\"choose\"]))",
+        "LexPattern::object(",
+        "\"name\"",
+        "LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_CHOOSE_NAME_OBJECT_PHRASES)",
+        "REPLACE_LOOK_HAND_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Object, clause)",
+        "capture_clause_by_role(LexCaptureRole::Tail, clause)",
+        "REPLACE_LOOK_HAND_CHOOSE_NAME_PATTERN",
+        ".match_clause(followup_clause)",
+    ] {
+        assert!(
+            parser.contains(required) || parser_body.contains(required),
+            "{relative} should preserve look-at-hand parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "REPLACE_LOOK_OPPONENT_HAND_THEN_CHOOSE_NAME_PATTERN",
+        "REPLACE_LOOK_TARGET_PLAYER_HAND_PATTERN",
+        "REPLACE_LOOK_TARGET_OPPONENT_HAND_PATTERN",
+        "REPLACE_LOOK_OPPONENT_HAND_PATTERN",
+        "REPLACE_LOOK_THAT_PLAYER_HAND_PATTERN",
+        "matches_words(&words)",
+        "REPLACE_LOOK_HAND_CHOOSE_NAME_PATTERN.matches_words",
+        "followup_words",
+        "player_clause.trimmed().word_refs().as_slice()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden),
+            "{relative} should not parse look-at-hand clauses through whole-clause phrase checks `{forbidden}`"
+        );
+    }
+    for retired in [
+        "REPLACE_LOOK_OPPONENT_HAND_THEN_CHOOSE_NAME_PATTERN",
+        "REPLACE_LOOK_TARGET_PLAYER_HAND_PATTERN",
+        "REPLACE_LOOK_TARGET_OPPONENT_HAND_PATTERN",
+        "REPLACE_LOOK_OPPONENT_HAND_PATTERN",
+        "REPLACE_LOOK_THAT_PLAYER_HAND_PATTERN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired look-at-hand helper {retired}"
+        );
+    }
+}
+
+#[test]
+fn voted_with_you_scry_parser_uses_lex_pattern_captures() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/replacement_and_prevention_shapes.rs";
+    let content = read_repo_file(&root, relative);
+    let parser = function_source(
+        &content,
+        "const REPLACE_VOTED_WITH_YOU_SCRY_PATTERN",
+        "const REPLACE_TOKEN_END_COMBAT_OBJECT_PHRASES",
+    );
+    let parser_body = function_source(
+        &content,
+        "pub(crate) fn parse_you_and_each_opponent_voted_with_you_sentence",
+        "#[cfg(test)]",
+    );
+    let actual = non_test_raw_text_check_literals(parser_body)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        actual, expected,
+        "voted-with-you scry parsing should capture the scry count instead of slicing after a fixed prefix length"
+    );
+    for required in [
+        "REPLACE_VOTED_WITH_YOU_SCRY_PATTERN",
+        "LexPattern::subject(",
+        "\"voters\"",
+        "LexPattern::capture(\"may\", LexCaptureKind::OneOf(&[\"may\"]))",
+        "LexPattern::action(\"scry\", LexCaptureKind::OneOf(&[\"scry\"]))",
+        "LexPattern::amount(\"count\", LexCaptureKind::Rest)",
+        "REPLACE_VOTED_WITH_YOU_SCRY_PATTERN.match_clause(clause)",
+        "capture_clause_by_role(LexCaptureRole::Amount, clause)",
+        "parse_value(count_clause.trimmed().tokens())",
+        "render_token_slice(clause.tokens()).trim()",
+    ] {
+        assert!(
+            parser.contains(required) || parser_body.contains(required),
+            "{relative} should preserve voted-with-you scry parsing through named captures: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "token_word_refs(tokens)",
+        "REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_PATTERN",
+        "REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_LEN",
+        "words.len() <",
+        "let scry_index",
+        "tokens[(scry_index + 1)..]",
+        "matches_words(&words)",
+        "clause.text()",
+    ] {
+        assert!(
+            !parser_body.contains(forbidden),
+            "{relative} should not parse voted-with-you scry clauses through fixed prefix slicing `{forbidden}`"
+        );
+    }
+    for retired in [
+        "REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_PATTERN",
+        "REPLACE_VOTED_WITH_YOU_SCRY_PREFIX_LEN",
+    ] {
+        assert!(
+            !content.contains(retired),
+            "{relative} should not keep retired voted-with-you scry helper {retired}"
+        );
+    }
 }
 
 #[test]
@@ -3827,6 +6903,62 @@ fn keyword_registry_additional_cost_lowering_uses_lexed_tail_tokens() {
         assert!(
             !helper.contains(forbidden),
             "{relative} should not recover additional-cost tails by splitting rendered text with `{forbidden}`"
+        );
+    }
+}
+
+#[test]
+fn sneak_keyword_support_gate_uses_token_shapes_not_raw_text() {
+    let root = workspace_root();
+    let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_registry.rs";
+    let content = read_repo_file(&root, relative);
+    let lowering = function_source(
+        &content,
+        "if SNEAK_KEYWORD_PREFIX_PATTERN.matches_words",
+        "if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words",
+    );
+    let helper = function_source(
+        &content,
+        "fn is_supported_spell_sneak_line",
+        "pub(super) fn lower_bestow",
+    );
+    let helper_raw_checks = non_test_raw_text_check_literals(helper)
+        .into_iter()
+        .map(|literal| format!("{relative} -> {literal}"))
+        .collect::<BTreeSet<_>>();
+    let expected = BTreeSet::new();
+
+    assert_eq!(
+        helper_raw_checks, expected,
+        "{relative} should classify supported Sneak reminder forms through parser tokens and grammar shapes, not raw lowercase text probes"
+    );
+    assert!(
+        lowering.contains("is_supported_spell_sneak_line(&line.full_parse_tokens)"),
+        "{relative} should pass the Sneak support gate the full keyword parse tokens"
+    );
+    for required in [
+        "parser_token_word_refs(tokens)",
+        "SNEAK_SPELL_FORM_PATTERN.matches_words(&words)",
+        "SNEAK_PERMANENT_FORM_PATTERN.matches_words(&words)",
+        "SNEAK_KEYWORD_PREFIX_PATTERN.matches_words",
+        "full_parse_tokens",
+    ] {
+        assert!(
+            content.contains(required),
+            "{relative} should preserve Sneak classification through token-backed ClauseShape helpers: missing `{required}`"
+        );
+    }
+    for forbidden in [
+        "is_supported_spell_sneak_line(line.info.raw_line.as_str())",
+        "fn is_supported_spell_sneak_line(raw_line: &str)",
+        "raw_line.to_ascii_lowercase()",
+        ".contains(\"you may cast this spell for\")",
+        ".contains(\"enters tapped and attacking\")",
+        "token_slice_first_is(tokens, \"sneak\")",
+    ] {
+        assert!(
+            !content.contains(forbidden),
+            "{relative} should not classify Sneak through raw/text-specific branch `{forbidden}`"
         );
     }
 }
@@ -4191,13 +7323,36 @@ fn parser_semantic_partner_static_display_uses_parse_tokens() {
             && helper.contains("render_tokens_before_reminder_or_period(&line.parse_tokens)"),
         "{relative} should derive Partner display text from stored static parse tokens"
     );
+    let keyword_partner_helper = function_source(
+        &content,
+        "fn try_lower_partner_variant_keyword",
+        "fn try_lower_optional_cost_with_cast_trigger",
+    );
+    for required in [
+        "line.full_parse_tokens.as_slice()",
+        "visible_partner_label_is_variant_tokens(visible_tokens)",
+        "tokens_before_reminder_or_period(tokens)",
+        "render_partner_label_token_slice(tokens_before_reminder_or_period(tokens))",
+        "CHARACTER_SELECT_PREFIX_PATTERN.matches_words(&words)",
+        "PARTNER_WITH_PATTERN.matches_words(&words)",
+    ] {
+        assert!(
+            keyword_partner_helper.contains(required),
+            "{relative} should classify Partner variant labels through full parse tokens and grammar shapes: missing `{required}`"
+        );
+    }
     for forbidden in [
         "let raw = line.info.raw_line.trim()",
         "lex_line(raw",
         "render_source_before_reminder_or_period",
+        "visible_partner_label_is_variant(text: &str)",
+        "visible_partner_variant_label(text: &str)",
+        "text.trim().to_ascii_lowercase()",
+        "split_once('(')",
+        "split_whitespace()",
     ] {
         assert!(
-            !helper.contains(forbidden),
+            !helper.contains(forbidden) && !keyword_partner_helper.contains(forbidden),
             "{relative} should not re-lex raw oracle text for Partner display with `{forbidden}`"
         );
     }

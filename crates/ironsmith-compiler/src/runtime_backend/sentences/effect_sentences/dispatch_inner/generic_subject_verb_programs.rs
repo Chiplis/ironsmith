@@ -83,6 +83,33 @@ impl GenericChoiceComplementProgram {
 }
 
 #[derive(Debug, Clone)]
+struct TargetControlledPumpProgram {
+    filter: ObjectFilter,
+    power: Value,
+    toughness: Value,
+    abilities: Vec<GrantedAbilityAst>,
+}
+
+impl TargetControlledPumpProgram {
+    fn lower(self) -> Vec<EffectAst> {
+        let mut effects = vec![EffectAst::subject_verb_pump_all(
+            self.filter.clone(),
+            self.power,
+            self.toughness,
+            Until::EndOfTurn,
+        )];
+        if !self.abilities.is_empty() {
+            effects.push(EffectAst::subject_verb_grant_abilities_all(
+                self.filter,
+                self.abilities,
+                Until::EndOfTurn,
+            ));
+        }
+        effects
+    }
+}
+
+#[derive(Debug, Clone)]
 enum GenericVoteProgram {
     Start {
         options: Vec<String>,
@@ -168,232 +195,513 @@ impl GenericTopLevelProgram {
     }
 }
 
-const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
-const ALL_REVEALED_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "put", "all", "cards", "revealed", "this", "way", "into", "your", "hand",
-            ],
-            &["put", "all", "revealed", "cards", "into", "your", "hand"],
-        ]
-);
-const MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["put", "it", "onto", "the", "battlefield"],
-            &["put", "that", "card", "onto", "the", "battlefield"],
-        ]
-);
-const REST_BOTTOM_LIBRARY_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["rest", "bottom", "library"]);
-const EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["exile", "the", "top", "card", "of", "each"],
-            &["exile", "top", "card", "of", "each"],
-        ]
-);
-const EACH_PLAYER_EXILE_UNTIL_NONLAND_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "each",
-            "player",
-            "exiles",
-            "cards",
-            "from",
-            "the",
-            "top",
-            "of",
-            "their",
-            "library",
-            "until",
-            "they",
-            "exile",
-            "a",
-            "nonland",
-            "card",
-        ]
-);
-const PLAYER_LIBRARY_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["player", "players"]]; contains_words & ["library"]);
-const CAST_ANY_NUMBER_FREE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "may", "cast", "any", "number", "of", "spells"]);
-const FROM_THOSE_OR_THEM_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["among"]; contains_any_words & [&["those", "them"]]);
-const WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["without", "paying", "their", "mana", "costs"]);
-const FROM_NONLAND_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases & [&["from", "among", "the", "nonland", "cards", "exiled", "this", "way"]]
-);
-const THEN_MELD_THEM_INTO_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["then", "meld", "them", "into"]);
-const CHOOSE_ATTACK_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you",
-            "choose",
-            "which",
-            "creatures",
-            "attack",
-            "this",
-            "turn",
-        ]
-);
-const CHOOSE_BLOCK_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you",
-            "choose",
-            "which",
-            "creatures",
-            "block",
-            "this",
-            "turn",
-            "and",
-            "how",
-            "those",
-            "creatures",
-            "block",
-        ]
-);
-const WITH_LESSER_MANA_VALUE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["with", "lesser", "mana", "value"]);
-const WITH_MANA_VALUE_EQUAL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["with", "mana", "value", "equal"]);
-const UNTIL_END_OF_TURN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["until", "end", "of", "turn"]);
-const THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "turn"]);
-const PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you",
-            "may",
-            "play",
-            "lands",
-            "and",
-            "cast",
-            "spells",
-            "from",
-            "your",
-            "graveyard",
-        ]
-);
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const EXILE_THAT_CARD_INSTEAD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["exile", "that", "card", "instead"]);
-const YOUR_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["your", "graveyard"]);
-const CARD_WOULD_BE_PUT_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["card", "would", "be", "put"]]);
-const THIS_TURN_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["this", "turn"]);
-const EACH_PLAYER_CHOOSES_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["each", "player", "chooses"], &["each", "player", "choose"]]);
-const SACRIFICE_THE_REST_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["sacrifice", "the", "rest"], &["sacrifices", "the", "rest"]]);
-const WHERE_X_IS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["where", "x", "is"]]);
-const SOURCE_GETS_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this"], &["this", "creature"], &["this", "permanent"]]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["get"], &["gets"]]);
-const GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["gain"], &["gains"]]);
-const GAIN_HAVE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["gain"], &["gains"], &["have"], &["has"]]);
-const ABILITY_HASTE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["haste"]);
-const ABILITY_TRAMPLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["trample"]);
-const ABILITY_FIRST_STRIKE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["first", "strike"]]);
-const AND_GET_OR_GETS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["and", "get"], &["and", "gets"]]]);
-const AND_GAIN_OR_GAINS_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["and", "gain"],
-            &["and", "gains"],
-            &["and", "have"],
-            &["and", "has"],
-        ]]
-);
-const AND_GAIN_HAVE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["and", "gain"],
-            &["and", "gains"],
-            &["and", "have"],
-            &["and", "has"],
-        ]
-);
-const UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "until", "end", "of", "turn", "and", "cant", "be", "blocked", "this", "turn",
-            ],
-            &[
-                "until", "end", "of", "turn", "and", "can't", "be", "blocked", "this", "turn",
-            ],
-        ]
-);
-const TARGET_PLAYER_CONTROLS_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["target", "player", "controls"],
-            &["target", "players", "control"],
-            &["target", "opponent", "controls"],
-            &["target", "opponents", "control"],
-        ]
-);
-const PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
-const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const THOSE_CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["those", "card"], &["those", "cards"]]);
-const THEM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["them"]);
-const INTO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["into"]);
-const YOUR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["your"]);
-const THEIR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["their"]);
-const YOUR_OR_THEIR_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["your"], &["their"]]);
-const HAND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["hand"]);
-const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const REST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["rest"]);
-const GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["graveyard"], &["graveyards"]]);
-const THAT_PLAYER_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "player"]);
-const THEN_THOSE_VOTES_ARE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["then", "those", "votes", "are"]);
-const THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["then", "those", "choices", "are"]);
-const VOTE_OR_VOTES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["vote"], &["votes"]]);
-const CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
-const EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["each"]);
-const PLAYER_OR_PLAYERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["player"], &["players"]]);
-const SECRET_OR_SECRETLY_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["secret"], &["secretly"]]);
-const FOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["for"]);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const VOTE_EXTRA_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["vote", "votes"]]);
-const TIME_OR_TIMES_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["time", "times"]]);
-const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
-const OPPONENT_OR_OPPONENTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["opponent"], &["opponents"]]);
+const CONSULT_REVEAL_UNTIL_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture("consult_clause", LexCaptureKind::UntilPhrase(&["then"])),
+    LexPattern::word("then"),
+    LexPattern::tail("followup", LexCaptureKind::Rest),
+]);
+const ALL_REVEALED_INTO_HAND_PHRASES: &[&[&str]] = &[
+    &[
+        "put", "all", "cards", "revealed", "this", "way", "into", "your", "hand",
+    ],
+    &["put", "all", "revealed", "cards", "into", "your", "hand"],
+];
+const ALL_REVEALED_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::object(
+        "revealed_cards_destination",
+        LexCaptureKind::OneOfPhrase(ALL_REVEALED_INTO_HAND_PHRASES),
+    ),
+]);
+const MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES: &[&[&str]] = &[
+    &["put", "it", "onto", "the", "battlefield"],
+    &["put", "that", "card", "onto", "the", "battlefield"],
+];
+const MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::object(
+        "battlefield_destination",
+        LexCaptureKind::OneOfPhrase(MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES),
+    ),
+    LexPattern::tail("remainder", LexCaptureKind::Rest),
+]);
+const CONSULT_REVEAL_UNTIL_BATTLEFIELD_BOTTOM_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture(
+        "consult_clause",
+        LexCaptureKind::UntilAnyPhrase(MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES),
+    ),
+    LexPattern::tail("followup", LexCaptureKind::Rest),
+]);
+const REST_BOTTOM_LIBRARY_ORDER_PHRASES: &[&[&str]] =
+    &[&["random", "order"], &["any", "order"]];
+const REST_BOTTOM_LIBRARY_WITH_ORDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("rest"),
+    LexPattern::capture("before_bottom", LexCaptureKind::UntilPhrase(&["bottom"])),
+    LexPattern::word("bottom"),
+    LexPattern::capture("before_library", LexCaptureKind::UntilPhrase(&["library"])),
+    LexPattern::word("library"),
+    LexPattern::capture(
+        "before_order",
+        LexCaptureKind::UntilAnyPhrase(REST_BOTTOM_LIBRARY_ORDER_PHRASES),
+    ),
+    LexPattern::amount(
+        "order",
+        LexCaptureKind::OneOfPhrase(REST_BOTTOM_LIBRARY_ORDER_PHRASES),
+    ),
+]);
+const REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["random", "order"])]);
+const REST_BOTTOM_LIBRARY_ANY_ORDER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["any", "order"])]);
+const EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PHRASES: &[&[&str]] = &[
+    &["exile", "the", "top", "card", "of", "each"],
+    &["exile", "top", "card", "of", "each"],
+];
+const EACH_PLAYER_EXILE_TOP_CARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action(
+        "exile_top_action",
+        LexCaptureKind::OneOfPhrase(EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PHRASES),
+    ),
+    LexPattern::tail("library_clause", LexCaptureKind::Rest),
+]);
+const EACH_PLAYER_EXILE_UNTIL_NONLAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&[
+        "each", "player", "exiles", "cards", "from", "the", "top", "of", "their", "library",
+        "until", "they", "exile", "a", "nonland", "card",
+    ]),
+]);
+const PLAYER_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_word(&["player", "players"]),
+    LexPattern::capture("owner_library_gap", LexCaptureKind::UntilPhrase(&["library"])),
+    LexPattern::word("library"),
+]);
+const WITHOUT_PAYING_THEIR_MANA_COSTS_PHRASE: &[&str] =
+    &["without", "paying", "their", "mana", "costs"];
+const CAST_ANY_NUMBER_FREE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["you", "may", "cast", "any", "number", "of", "spells"]),
+    LexPattern::object(
+        "cast_scope",
+        LexCaptureKind::UntilPhrase(WITHOUT_PAYING_THEIR_MANA_COSTS_PHRASE),
+    ),
+    LexPattern::phrase(WITHOUT_PAYING_THEIR_MANA_COSTS_PHRASE),
+]);
+const FROM_THOSE_OR_THEM_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("among"),
+    LexPattern::capture("chosen_cards", LexCaptureKind::UntilAnyPhrase(&[&["those"], &["them"]])),
+    LexPattern::any_word(&["those", "them"]),
+]);
+const FROM_NONLAND_EXILED_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&[
+        "from", "among", "the", "nonland", "cards", "exiled", "this", "way",
+    ]),
+]);
+const EACH_PLAYER_EXILE_TOP_CAST_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture("exile_clause", LexCaptureKind::UntilPhrase(&["then"])),
+    LexPattern::word("then"),
+    LexPattern::tail("cast_clause", LexCaptureKind::Rest),
+]);
+const MELD_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["exile", "them"]),
+    LexPattern::phrase(&["then", "meld", "them", "into"]),
+    LexPattern::object("result", LexCaptureKind::OneOrMoreWords),
+]);
+const CONTROL_COMBAT_CHOICE_OBJECT_PHRASES: &[&[&str]] = &[&["creatures"]];
+const CONTROL_COMBAT_CHOICES_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("chooser", LexCaptureKind::OneOf(&["you"])),
+    LexPattern::phrase(&["choose", "which"]),
+    LexPattern::object(
+        "objects",
+        LexCaptureKind::OneOfPhrase(CONTROL_COMBAT_CHOICE_OBJECT_PHRASES),
+    ),
+    LexPattern::action("combat_action", LexCaptureKind::OneOf(&["attack", "block"])),
+    LexPattern::tail("choice_scope", LexCaptureKind::Rest),
+]);
+const CONTROL_COMBAT_ATTACK_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action("combat_action", LexCaptureKind::OneOf(&["attack"])),
+]);
+const CONTROL_COMBAT_BLOCK_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action("combat_action", LexCaptureKind::OneOf(&["block"])),
+]);
+const CONTROL_COMBAT_ATTACK_SCOPE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["this", "turn"])]);
+const CONTROL_COMBAT_BLOCK_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["this", "turn"]),
+    LexPattern::phrase(&["and", "how", "those", "creatures", "block"]),
+]);
+const DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES: &[&[&str]] = &[
+    &["with", "lesser", "mana", "value"],
+    &["with", "mana", "value", "equal"],
+];
+const DEFERRED_MANA_VALUE_CLAUSE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture(
+        "effect",
+        LexCaptureKind::UntilAnyPhrase(DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES),
+    ),
+    LexPattern::any_phrase(DEFERRED_MANA_VALUE_CONSTRAINT_PHRASES),
+    LexPattern::tail("constraint_tail", LexCaptureKind::Rest),
+]);
+const PLAY_PERMISSION_DURATION_PHRASES: &[&[&str]] =
+    &[&["until", "end", "of", "turn"], &["this", "turn"]];
+const PLAY_PERMISSION_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier(
+        "duration",
+        LexCaptureKind::OneOfPhrase(PLAY_PERMISSION_DURATION_PHRASES),
+    ),
+    LexPattern::tail("permission", LexCaptureKind::Rest),
+]);
+const PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&[
+        "you",
+        "may",
+        "play",
+        "lands",
+        "and",
+        "cast",
+        "spells",
+        "from",
+        "your",
+        "graveyard",
+    ]),
+]);
+const EXILE_THAT_CARD_INSTEAD_PHRASE: &[&str] = &["exile", "that", "card", "instead"];
+const ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::condition(
+        "condition",
+        LexCaptureKind::UntilPhrase(EXILE_THAT_CARD_INSTEAD_PHRASE),
+    ),
+    LexPattern::tail("replacement", LexCaptureKind::Rest),
+]);
+const FUTURE_GRAVEYARD_EXILE_CONDITION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("if"),
+    LexPattern::condition(
+        "object",
+        LexCaptureKind::UntilPhrase(&["would", "be", "put"]),
+    ),
+    LexPattern::phrase(&["would", "be", "put"]),
+    LexPattern::capture("destination", LexCaptureKind::UntilPhrase(&["this", "turn"])),
+    LexPattern::phrase(&["this", "turn"]),
+]);
+const FUTURE_GRAVEYARD_DESTINATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["into", "your", "graveyard"]),
+]);
+const EXILE_THAT_CARD_INSTEAD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(EXILE_THAT_CARD_INSTEAD_PHRASE)]);
+const EACH_PLAYER_PHRASES: &[&[&str]] = &[&["each", "player"]];
+const CHOICE_COMPLEMENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("chooser", LexCaptureKind::OneOfPhrase(EACH_PLAYER_PHRASES)),
+    LexPattern::action("choose", LexCaptureKind::OneOf(&["choose", "chooses"])),
+    LexPattern::object("choice_clause", LexCaptureKind::UntilPhrase(&["then"])),
+    LexPattern::word("then"),
+    LexPattern::action("sacrifice", LexCaptureKind::OneOf(&["sacrifice", "sacrifices"])),
+    LexPattern::phrase(&["the", "rest"]),
+]);
+const CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::object("choice_list", LexCaptureKind::UntilPhrase(&["from", "among"])),
+    LexPattern::phrase(&["from", "among"]),
+    LexPattern::tail("base_filter", LexCaptureKind::Rest),
+]);
+const WHERE_X_IS_PHRASE: &[&str] = &["where", "x", "is"];
+const WHERE_X_VALUE_BINDING_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::condition("effect", LexCaptureKind::UntilPhrase(WHERE_X_IS_PHRASE)),
+    LexPattern::phrase(WHERE_X_IS_PHRASE),
+    LexPattern::tail("definition", LexCaptureKind::Rest),
+]);
+const SOURCE_GETS_SUBJECT_PHRASES: &[&[&str]] =
+    &[&["this", "creature"], &["this", "permanent"], &["this"]];
+const SOURCE_GETS_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "source",
+        LexCaptureKind::OneOfPhrase(SOURCE_GETS_SUBJECT_PHRASES),
+    ),
+]);
+const ABILITY_HASTE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::word("haste")]);
+const ABILITY_TRAMPLE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::word("trample")]);
+const ABILITY_FIRST_STRIKE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["first", "strike"])]);
+const SOURCE_GETS_UNBLOCKABLE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(&[&["get"], &["gets"]]),
+    ),
+    LexPattern::action("pump_action", LexCaptureKind::OneOf(&["get", "gets"])),
+    LexPattern::modifier("modifier", LexCaptureKind::WordCount(1)),
+    LexPattern::tail("tail", LexCaptureKind::Rest),
+]);
+const SOURCE_GETS_FILTER_GAINS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(&[&["get"], &["gets"]]),
+    ),
+    LexPattern::action("pump_action", LexCaptureKind::OneOf(&["get", "gets"])),
+    LexPattern::modifier("modifier", LexCaptureKind::WordCount(1)),
+    LexPattern::word("and"),
+    LexPattern::object(
+        "granted_filter",
+        LexCaptureKind::UntilAnyPhrase(&[&["gain"], &["gains"], &["have"], &["has"]]),
+    ),
+    LexPattern::action(
+        "grant_action",
+        LexCaptureKind::OneOf(&["gain", "gains", "have", "has"]),
+    ),
+    LexPattern::tail("ability", LexCaptureKind::Rest),
+]);
+const TARGET_GAINS_THEN_GETS_PUMP_PHRASES: &[&[&str]] = &[&["and", "get"], &["and", "gets"]];
+const TARGET_GAINS_THEN_GETS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(&[&["gain"], &["gains"]]),
+    ),
+    LexPattern::action("gain_action", LexCaptureKind::OneOf(&["gain", "gains"])),
+    LexPattern::capture(
+        "ability_clause",
+        LexCaptureKind::UntilAnyPhrase(TARGET_GAINS_THEN_GETS_PUMP_PHRASES),
+    ),
+    LexPattern::any_phrase(TARGET_GAINS_THEN_GETS_PUMP_PHRASES),
+    LexPattern::tail("pump_tail", LexCaptureKind::Rest),
+]);
+const TARGET_GETS_THEN_GAINS_GRANT_PHRASES: &[&[&str]] = &[
+    &["and", "gain"],
+    &["and", "gains"],
+    &["and", "have"],
+    &["and", "has"],
+];
+const TARGET_GETS_THEN_GAINS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(&[&["get"], &["gets"]]),
+    ),
+    LexPattern::action("pump_action", LexCaptureKind::OneOf(&["get", "gets"])),
+    LexPattern::capture(
+        "pump_clause",
+        LexCaptureKind::UntilAnyPhrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES),
+    ),
+    LexPattern::any_phrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES),
+    LexPattern::tail("ability_tail", LexCaptureKind::Rest),
+]);
+const TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_phrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES),
+    LexPattern::tail("ability_tail", LexCaptureKind::Rest),
+]);
+const SOURCE_GETS_UNBLOCKABLE_TAIL_PHRASES: &[&[&str]] = &[
+    &[
+        "until", "end", "of", "turn", "and", "cant", "be", "blocked", "this", "turn",
+    ],
+    &[
+        "until", "end", "of", "turn", "and", "can't", "be", "blocked", "this", "turn",
+    ],
+];
+const UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier(
+        "duration_and_restriction",
+        LexCaptureKind::OneOfPhrase(SOURCE_GETS_UNBLOCKABLE_TAIL_PHRASES),
+    ),
+]);
+const TARGET_CONTROLLED_PUMP_CONTROLLER_PHRASES: &[&[&str]] = &[
+    &["target", "player", "controls"],
+    &["target", "players", "control"],
+    &["target", "opponent", "controls"],
+    &["target", "opponents", "control"],
+];
+const TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PHRASES: &[&[&str]] = &[
+    &["target", "player", "controls"],
+    &["target", "players", "control"],
+];
+const TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PHRASES: &[&[&str]] = &[
+    &["target", "opponent", "controls"],
+    &["target", "opponents", "control"],
+];
+const TARGET_CONTROLLED_PUMP_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "affected",
+        LexCaptureKind::UntilAnyPhrase(TARGET_CONTROLLED_PUMP_CONTROLLER_PHRASES),
+    ),
+    LexPattern::condition(
+        "controller",
+        LexCaptureKind::OneOfPhrase(TARGET_CONTROLLED_PUMP_CONTROLLER_PHRASES),
+    ),
+    LexPattern::action("action", LexCaptureKind::OneOf(&["get", "gets"])),
+    LexPattern::amount("modifier", LexCaptureKind::WordCount(1)),
+    LexPattern::tail("tail", LexCaptureKind::Rest),
+]);
+const TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::condition(
+        "controller",
+        LexCaptureKind::OneOfPhrase(TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PHRASES),
+    ),
+]);
+const TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::condition(
+        "controller",
+        LexCaptureKind::OneOfPhrase(TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PHRASES),
+    ),
+]);
+const PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES: &[&[&str]] = &[
+    &["of", "them"],
+    &["them"],
+    &["of", "those", "card"],
+    &["of", "those", "cards"],
+    &["those", "card"],
+    &["those", "cards"],
+];
+const PUT_COUNTED_TOP_CARDS_HAND_PHRASES: &[&[&str]] = &[&["hand"]];
+const PUT_COUNTED_TOP_CARDS_GRAVEYARD_PHRASES: &[&[&str]] =
+    &[&["graveyard"], &["graveyards"]];
+const PUT_COUNTED_TOP_CARDS_YOU_OWNER_PHRASES: &[&[&str]] = &[&["your"]];
+const PUT_COUNTED_TOP_CARDS_THAT_OWNER_PHRASES: &[&[&str]] = &[
+    &["their"],
+    &["that", "player"],
+    &["that", "players"],
+    &["that", "player's"],
+    &["that", "players'"],
+];
+const PUT_COUNTED_TOP_CARDS_YOU_OWNER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "owner",
+        LexCaptureKind::OneOfPhrase(PUT_COUNTED_TOP_CARDS_YOU_OWNER_PHRASES),
+    ),
+]);
+const PUT_COUNTED_TOP_CARDS_THAT_OWNER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "owner",
+        LexCaptureKind::OneOfPhrase(PUT_COUNTED_TOP_CARDS_THAT_OWNER_PHRASES),
+    ),
+]);
+const OPTIONAL_THE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("the")];
+const PUT_COUNTED_TOP_CARDS_VIEW_THEN_REMAINDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture("view_clause", LexCaptureKind::UntilPhrase(&["then"])),
+    LexPattern::word("then"),
+    LexPattern::tail("remainder", LexCaptureKind::Rest),
+]);
+const PUT_COUNTED_TOP_CARDS_REMAINDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("put"),
+    LexPattern::amount(
+        "put_count",
+        LexCaptureKind::UntilAnyPhrase(PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES),
+    ),
+    LexPattern::any_phrase(PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES),
+    LexPattern::word("into"),
+    LexPattern::capture(
+        "hand_owner",
+        LexCaptureKind::UntilAnyPhrase(PUT_COUNTED_TOP_CARDS_HAND_PHRASES),
+    ),
+    LexPattern::word("hand"),
+    LexPattern::word("and"),
+    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::word("rest"),
+    LexPattern::word("into"),
+    LexPattern::capture(
+        "graveyard_owner",
+        LexCaptureKind::UntilAnyPhrase(PUT_COUNTED_TOP_CARDS_GRAVEYARD_PHRASES),
+    ),
+    LexPattern::any_phrase(PUT_COUNTED_TOP_CARDS_GRAVEYARD_PHRASES),
+]);
+const VOTE_REVEAL_TAIL_PREFIX_PHRASES: &[&[&str]] = &[
+    &["then", "those", "votes", "are"],
+    &["then", "those", "choices", "are"],
+];
+const VOTE_REVEAL_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_phrase(VOTE_REVEAL_TAIL_PREFIX_PHRASES),
+    LexPattern::tail("reveal_tail", LexCaptureKind::Rest),
+]);
+const OPTIONAL_THEN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("then")];
+const THOSE_CHOICES_PHRASES: &[&[&str]] = &[&["those", "choices"]];
+const VOTE_REVEAL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::optional(OPTIONAL_THEN_PATTERN_ATOMS),
+    LexPattern::subject("choices", LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES)),
+    LexPattern::word("are"),
+    LexPattern::action("reveal", LexCaptureKind::OneOf(&["revealed"])),
+]);
+const SECRET_CHOICE_PARTICIPANTS_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["you", "and", "target", "opponent"]),
+    LexPattern::capture("between_opponent_each", LexCaptureKind::UntilPhrase(&["each"])),
+    LexPattern::word("each"),
+    LexPattern::capture(
+        "secret_intro",
+        LexCaptureKind::UntilAnyPhrase(&[&["secret"], &["secretly"]]),
+    ),
+    LexPattern::any_word(&["secret", "secretly"]),
+]);
+const EACH_PLAYER_VOTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("each"),
+    LexPattern::capture(
+        "between_each_player",
+        LexCaptureKind::UntilAnyPhrase(&[&["player"], &["players"]]),
+    ),
+    LexPattern::any_word(&["player", "players"]),
+]);
+const SECRET_VOTER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_word(&["secret", "secretly"])]);
+const VOTE_OPTION_DELIMITER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action("delimiter", LexCaptureKind::OneOf(&["or"]))]);
+const SECRET_NUMBER_CHOICE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("participants", LexCaptureKind::UntilPhrase(&["choose"])),
+    LexPattern::action("choose", LexCaptureKind::OneOf(&["choose"])),
+    LexPattern::tail("options", LexCaptureKind::Rest),
+]);
+const GENERIC_VOTE_START_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "voters",
+        LexCaptureKind::UntilAnyPhrase(&[&["vote"], &["votes"]]),
+    ),
+    LexPattern::action("vote", LexCaptureKind::OneOf(&["vote", "votes"])),
+    LexPattern::word("for"),
+    LexPattern::tail("options", LexCaptureKind::Rest),
+]);
+const GENERIC_VOTE_OPTION_EFFECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["for", "each"]),
+    LexPattern::capture(
+        "option",
+        LexCaptureKind::UntilAnyPhrase(&[&["vote"], &["votes"]]),
+    ),
+    LexPattern::action("vote", LexCaptureKind::OneOf(&["vote", "votes"])),
+    LexPattern::tail("effects", LexCaptureKind::Rest),
+]);
+const GENERIC_PLAYER_VOTE_RECEIVED_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["for", "each"]),
+    LexPattern::action("vote", LexCaptureKind::OneOf(&["vote", "votes"])),
+    LexPattern::subject(
+        "player",
+        LexCaptureKind::UntilAnyPhrase(&[&["received"], &["receives"]]),
+    ),
+    LexPattern::action("received", LexCaptureKind::OneOf(&["received", "receives"])),
+    LexPattern::tail("effects", LexCaptureKind::Rest),
+]);
+const OPTIONAL_AN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::word("an")];
+const OPTIONAL_EXTRA_VOTE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("voter", LexCaptureKind::OneOf(&["you"])),
+    LexPattern::capture("may", LexCaptureKind::OneOf(&["may"])),
+    LexPattern::action("vote", LexCaptureKind::OneOf(&["vote", "votes"])),
+    LexPattern::optional(OPTIONAL_AN_PATTERN_ATOMS),
+    LexPattern::word("additional"),
+    LexPattern::amount("time", LexCaptureKind::OneOf(&["time", "times"])),
+]);
+const REQUIRED_EXTRA_VOTE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject("voter", LexCaptureKind::OneOf(&["you"])),
+    LexPattern::action("vote", LexCaptureKind::OneOf(&["vote", "votes"])),
+    LexPattern::optional(OPTIONAL_AN_PATTERN_ATOMS),
+    LexPattern::word("additional"),
+    LexPattern::amount("time", LexCaptureKind::OneOf(&["time", "times"])),
+]);
+const DAMAGE_REPLACEMENT_COUNTER_TARGET_PHRASE: &[&str] =
+    &["damage", "would", "be", "dealt", "to"];
+const DAMAGE_REPLACEMENT_COUNTER_DURATION_PHRASE: &[&str] = &["this", "turn"];
+const DAMAGE_REPLACEMENT_COUNTER_PREVENT_PUT_PHRASE: &[&str] = &[
+    "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1",
+];
+const DAMAGE_REPLACEMENT_COUNTER_RECIPIENT_PHRASES: &[&[&str]] =
+    &[&["it"], &["that", "creature"]];
 
-fn find_generic_word_matching_shape(words: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
-    find_index(words, |word| shape.matches_word(word))
+fn has_where_x_value_binding(tokens: &[OwnedLexToken]) -> bool {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = WHERE_X_VALUE_BINDING_PATTERN.match_clause(clause) else {
+        return false;
+    };
+    matched
+        .capture_clause_by_role(LexCaptureRole::Condition, clause)
+        .is_some()
+        && matched
+            .capture_clause_by_role(LexCaptureRole::Tail, clause)
+            .is_some()
 }
-
-fn find_generic_phrase_start(words: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
-    (0..words.len()).find(|idx| shape.matches_words(&words[*idx..]))
-}
-
 
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
@@ -458,9 +766,7 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     } else if let Some(effects) = parse_cant_effect_sentence_lexed(tokens)? {
         Some(GenericTopLevelProgram::Cant { effects })
     } else {
-        let clause_word_storage = DispatchInnerNormalizedWords::new(tokens);
-        let clause_words = clause_word_storage.to_word_refs();
-        if WHERE_X_IS_PATTERN.matches_words(clause_words.as_slice()) {
+        if has_where_x_value_binding(tokens) {
             let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
             apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
             Some(GenericTopLevelProgram::ValueBinding { effects })
@@ -478,31 +784,29 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
 fn parse_source_gets_unblockable_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(get_idx) = find_generic_word_matching_shape(&words, GET_OR_GETS_WORD_PATTERN) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = SOURCE_GETS_UNBLOCKABLE_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let source_words = &words[..get_idx];
-    if !SOURCE_GETS_SUBJECT_PATTERN.matches_words(source_words) {
-        return Ok(None);
-    }
-
-    let collapsed_modifier_tail = collapse_leading_signed_pt_modifier_tokens(&tokens[get_idx + 1..]);
-    let modifier_tail = collapsed_modifier_tail
-        .as_deref()
-        .unwrap_or(&tokens[get_idx + 1..]);
-    let modifier_words = crate::runtime_backend::token_word_refs(modifier_tail);
-    let Some(modifier_word) = modifier_words.first().copied() else {
-        return Ok(None);
-    };
-    let Ok((power, toughness)) =
-        crate::runtime_backend::keyword_static::parse_pt_modifier_values(modifier_word)
+    let Some(subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
+    let Some(modifier_clause) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+    else {
+        return Ok(None);
+    };
+    let Some(tail_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    if !SOURCE_GETS_SUBJECT_PATTERN.matches_clause(subject_clause.trimmed()) {
+        return Ok(None);
+    }
+    let Some((power, toughness)) = parse_pt_modifier_capture(modifier_clause) else {
+        return Ok(None);
+    };
 
-    let tail = &modifier_words[1..];
-    if !UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN.matches_words(tail) {
+    if !UNTIL_END_OF_TURN_CANT_BE_BLOCKED_TAIL_PATTERN.matches_clause(tail_clause.trimmed()) {
         return Ok(None);
     }
 
@@ -525,51 +829,37 @@ fn parse_source_gets_unblockable_subject_verb(
 fn parse_source_gets_filter_gains_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(get_idx) = find_generic_word_matching_shape(&words, GET_OR_GETS_WORD_PATTERN) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = SOURCE_GETS_FILTER_GAINS_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let source_words = &words[..get_idx];
-    if !SOURCE_GETS_SUBJECT_PATTERN.matches_words(source_words) {
-        return Ok(None);
-    }
-    let Some(modifier_word) = words.get(get_idx + 1).copied() else {
-        return Ok(None);
-    };
-    let Ok((power, toughness)) =
-        crate::runtime_backend::keyword_static::parse_pt_modifier_values(modifier_word)
+    let Some(subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
-    let Some(and_idx) = find_generic_word_matching_shape(&words[get_idx + 2..], AND_WORD_PATTERN)
-        .map(|offset| get_idx + 2 + offset)
+    let Some(modifier_clause) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
     else {
         return Ok(None);
     };
-    let Some(gain_idx) =
-        find_generic_word_matching_shape(&words[and_idx + 1..], GAIN_HAVE_WORD_PATTERN)
-            .map(|offset| and_idx + 1 + offset)
+    let Some(granted_filter_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Object, clause)
     else {
         return Ok(None);
     };
-    if gain_idx <= and_idx + 1 {
-        return Ok(None);
-    }
-    let filter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&words[and_idx + 1..gain_idx]);
-    let Ok(filter) = parse_object_filter(&filter_tokens, false) else {
+    let Some(ability_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
         return Ok(None);
     };
-    let ability_words = &words[gain_idx + 1..];
-    let mut abilities = Vec::new();
-    if ABILITY_HASTE_WORD_PATTERN.matches_words(ability_words) {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
+
+    if !SOURCE_GETS_SUBJECT_PATTERN.matches_clause(subject_clause.trimmed()) {
+        return Ok(None);
     }
-    if ABILITY_TRAMPLE_WORD_PATTERN.matches_words(ability_words) {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
-    }
-    if ABILITY_FIRST_STRIKE_PATTERN.matches_words(ability_words) {
-        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
-    }
+    let Some((power, toughness)) = parse_pt_modifier_capture(modifier_clause) else {
+        return Ok(None);
+    };
+    let Ok(filter) = parse_object_filter(granted_filter_clause.trimmed().tokens(), false) else {
+        return Ok(None);
+    };
+    let abilities = keyword_abilities_from_clause(ability_clause.trimmed());
     if abilities.is_empty() {
         return Ok(None);
     }
@@ -593,15 +883,21 @@ fn parse_source_gets_filter_gains_subject_verb(
 fn parse_target_gains_then_gets_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_generic_word_matching_shape(&words, GAIN_OR_GAINS_WORD_PATTERN) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = TARGET_GAINS_THEN_GETS_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let has_get_tail = AND_GET_OR_GETS_PATTERN.matches_words(&words[gain_idx + 1..]);
-    if !has_get_tail {
+    let Some(_subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+    else {
         return Ok(None);
-    }
-    if WHERE_X_IS_PATTERN.matches_words(&words) {
+    };
+    let Some(_ability_clause) = matched.capture_clause("ability_clause", clause) else {
+        return Ok(None);
+    };
+    let Some(_pump_tail) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    if has_where_x_value_binding(tokens) {
         return Ok(None);
     }
     super::gain_ability::parse_gain_ability_sentence(tokens)
@@ -610,15 +906,21 @@ fn parse_target_gains_then_gets_subject_verb(
 fn parse_target_gets_then_gains_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(get_idx) = find_generic_word_matching_shape(&words, GET_OR_GETS_WORD_PATTERN) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = TARGET_GETS_THEN_GAINS_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let has_gain_tail = AND_GAIN_OR_GAINS_PATTERN.matches_words(&words[get_idx + 1..]);
-    if !has_gain_tail {
+    let Some(_subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
+    else {
         return Ok(None);
-    }
-    if WHERE_X_IS_PATTERN.matches_words(&words) {
+    };
+    let Some(_pump_clause) = matched.capture_clause("pump_clause", clause) else {
+        return Ok(None);
+    };
+    let Some(_ability_tail) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    if has_where_x_value_binding(tokens) {
         return Ok(None);
     }
     super::gain_ability::parse_gain_ability_sentence(tokens)
@@ -627,160 +929,143 @@ fn parse_target_gets_then_gains_subject_verb(
 fn parse_target_player_controls_get_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(target_idx) = find_generic_phrase_start(&words, TARGET_PLAYER_CONTROLS_PATTERN) else {
+    let Some(program) = parse_target_controlled_pump_program(tokens)? else {
         return Ok(None);
     };
-    let Some(get_idx) =
-        find_generic_word_matching_shape(&words[target_idx + 3..], GET_OR_GETS_WORD_PATTERN)
-            .map(|offset| target_idx + 3 + offset)
+    Ok(Some(program.lower()))
+}
+
+fn parse_target_controlled_pump_program(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TargetControlledPumpProgram>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = TARGET_CONTROLLED_PUMP_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(subject_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
-    let Some(modifier_word) = words.get(get_idx + 1).copied() else {
-        return Ok(None);
-    };
-    let Ok((power, toughness)) =
-        crate::runtime_backend::keyword_static::parse_pt_modifier_values(modifier_word)
+    let Some(controller_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
     else {
         return Ok(None);
     };
-    let subject_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&words[..target_idx]);
+    let Some(modifier_clause) = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)
+    else {
+        return Ok(None);
+    };
+    let Some((power, toughness)) = parse_pt_modifier_capture(modifier_clause) else {
+        return Ok(None);
+    };
+    let subject_tokens = subject_clause.tokens();
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let mut filter = parse_object_filter(&subject_tokens, false)?;
-    filter.controller = if words
-        .get(target_idx + 1)
-        .is_some_and(|word| OPPONENT_OR_OPPONENTS_WORD_PATTERN.matches_word(word))
-    {
-        Some(PlayerFilter::target_opponent())
-    } else {
-        Some(PlayerFilter::target_player())
-    };
+    let mut filter = parse_object_filter(subject_tokens, false)?;
+    filter.controller = target_controlled_pump_controller(controller_clause.trimmed());
 
-    let mut effects = vec![EffectAst::subject_verb_pump_all(
-        filter.clone(),
+    let tail_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)
+        .unwrap_or_else(|| LexedClause::new(&[]))
+        .trimmed();
+    let mut abilities = Vec::new();
+    if let Some(tail_match) =
+        TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN.match_clause(tail_clause)
+    {
+        let Some(ability_clause) =
+            tail_match.capture_clause_by_role(LexCaptureRole::Tail, tail_clause)
+        else {
+            return Ok(None);
+        };
+        abilities.extend(keyword_abilities_from_clause(ability_clause.trimmed()));
+    }
+    Ok(Some(TargetControlledPumpProgram {
+        filter,
         power,
         toughness,
-        Until::EndOfTurn,
-    )];
-    let tail = &words[get_idx + 2..];
-    if AND_GAIN_HAVE_TAIL_PATTERN.matches_words(tail) {
-        let ability_tail = &tail[2..];
-        let mut abilities = Vec::new();
-        if ABILITY_FIRST_STRIKE_PATTERN.matches_words(ability_tail) {
-            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
-        }
-        if ABILITY_HASTE_WORD_PATTERN.matches_words(ability_tail) {
-            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
-        }
-        if ABILITY_TRAMPLE_WORD_PATTERN.matches_words(ability_tail) {
-            abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
-        }
-        if !abilities.is_empty() {
-            effects.push(EffectAst::subject_verb_grant_abilities_all(
-                filter,
-                abilities,
-                Until::EndOfTurn,
-            ));
-        }
+        abilities,
+    }))
+}
+
+fn keyword_abilities_from_clause(ability_clause: LexedClause<'_>) -> Vec<GrantedAbilityAst> {
+    let ability_clause = ability_clause.trimmed();
+    let mut abilities = Vec::new();
+    if ABILITY_FIRST_STRIKE_PATTERN
+        .find_in_clause(ability_clause)
+        .is_some()
+    {
+        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
     }
-    Ok(Some(effects))
+    if ABILITY_HASTE_PATTERN.find_in_clause(ability_clause).is_some() {
+        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
+    }
+    if ABILITY_TRAMPLE_PATTERN
+        .find_in_clause(ability_clause)
+        .is_some()
+    {
+        abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
+    }
+    abilities
+}
+
+fn parse_pt_modifier_capture(clause: LexedClause<'_>) -> Option<(Value, Value)> {
+    let modifier_word = clause
+        .trimmed()
+        .tokens()
+        .first()
+        .and_then(OwnedLexToken::as_word)?;
+    crate::runtime_backend::keyword_static::parse_pt_modifier_values(modifier_word).ok()
+}
+
+fn target_controlled_pump_controller(controller_clause: LexedClause<'_>) -> Option<PlayerFilter> {
+    if TARGET_CONTROLLED_PUMP_OPPONENT_CONTROLLER_PATTERN.matches_clause(controller_clause) {
+        Some(PlayerFilter::target_opponent())
+    } else if TARGET_CONTROLLED_PUMP_PLAYER_CONTROLLER_PATTERN.matches_clause(controller_clause) {
+        Some(PlayerFilter::target_player())
+    } else {
+        None
+    }
+}
+
+fn put_counted_top_cards_owner(owner_clause: LexedClause<'_>, default: PlayerAst) -> Option<PlayerAst> {
+    let owner_clause = owner_clause.trimmed();
+    if owner_clause.is_empty() {
+        Some(default)
+    } else if PUT_COUNTED_TOP_CARDS_YOU_OWNER_PATTERN.matches_clause(owner_clause) {
+        Some(PlayerAst::You)
+    } else if PUT_COUNTED_TOP_CARDS_THAT_OWNER_PATTERN.matches_clause(owner_clause) {
+        Some(PlayerAst::That)
+    } else {
+        None
+    }
 }
 
 pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
     let clause_tokens = trim_commas(tokens);
-    let clause_words = crate::runtime_backend::token_word_refs(&clause_tokens);
-    let then_word_idx = find_generic_word_matching_shape(&clause_words, THEN_WORD_PATTERN)?;
-    let clause_word_view = TokenWordView::new(&clause_tokens);
-    let then_token_idx = clause_word_view.token_index_for_word_index(then_word_idx)?;
-    let prefix_tokens = trim_commas(&clause_tokens[..then_token_idx]);
+    let clause = LexedClause::new(&clause_tokens).trimmed();
+    let matched = PUT_COUNTED_TOP_CARDS_VIEW_THEN_REMAINDER_PATTERN.match_clause(clause)?;
+    let view_clause = matched.capture_clause("view_clause", clause)?.trimmed();
+    let remainder_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)?
+        .trimmed();
+    let prefix_tokens = trim_commas(view_clause.tokens());
     let (player, count, reveal_top) = super::parse_top_cards_view_sentence(&prefix_tokens)?;
 
-    let tail_start = clause_word_view
-        .token_index_after_words(then_word_idx + 1)
-        .unwrap_or(clause_tokens.len());
-    let tail_tokens = trim_commas(&clause_tokens[tail_start..]);
-    let tail_word_view = TokenWordView::new(&tail_tokens);
-    if !tail_word_view
-        .first()
-        .is_some_and(|word| PUT_WORD_PATTERN.matches_word(word))
-    {
-        return None;
-    }
-
-    let count_start = tail_word_view.token_index_for_word_index(1)?;
-    let count_tokens = &tail_tokens[count_start..];
+    let tail_tokens = trim_commas(remainder_clause.tokens());
+    let tail_clause = LexedClause::new(&tail_tokens).trimmed();
+    let matched = PUT_COUNTED_TOP_CARDS_REMAINDER_PATTERN.match_clause(tail_clause)?;
+    let count_clause = matched.capture_clause("put_count", tail_clause)?.trimmed();
     let (put_count, used) =
-        crate::runtime_backend::grammar::values::parse_number_from_lexed(count_tokens)?;
-    let tail_refs = TokenWordView::new(&count_tokens[used..]).word_refs();
-
-    let mut idx = 0usize;
-    if OF_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-    }
-    if THEM_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-    } else if THOSE_CARD_OR_CARDS_PATTERN.matches_words(&tail_refs[idx..]) {
-        idx += 2;
-    } else {
+        crate::runtime_backend::grammar::values::parse_number_from_lexed(count_clause.tokens())?;
+    if used != count_clause.tokens().len() {
         return None;
     }
-
-    if !INTO_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-
-    let chooser = if YOUR_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-        PlayerAst::You
-    } else if THEIR_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-        PlayerAst::That
-    } else if THAT_PLAYER_PREFIX_PATTERN.matches_words(&tail_refs[idx..]) {
-        idx += 2;
-        PlayerAst::That
-    } else {
-        player
-    };
-
-    if !HAND_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-    if !AND_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-    if THE_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-    }
-    if !REST_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-    if !INTO_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-
-    if YOUR_OR_THEIR_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        idx += 1;
-    } else if THAT_PLAYER_PREFIX_PATTERN.matches_words(&tail_refs[idx..]) {
-        idx += 2;
-    }
-
-    if !GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN.matches_word_at(&tail_refs, idx) {
-        return None;
-    }
-    idx += 1;
-    if idx != tail_refs.len() {
-        return None;
-    }
+    let hand_owner_clause = matched.capture_clause("hand_owner", tail_clause)?;
+    let chooser = put_counted_top_cards_owner(hand_owner_clause, player)?;
+    let graveyard_owner_clause = matched.capture_clause("graveyard_owner", tail_clause)?;
+    put_counted_top_cards_owner(graveyard_owner_clause, player)?;
 
     let looked_tag = TagKey::from(IT_TAG);
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone())];
@@ -798,16 +1083,19 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let Some(then_idx) = find_index(&sentence_tokens, |token: &OwnedLexToken| {
-        token
-            .as_word()
-            .is_some_and(|word| THEN_WORD_PATTERN.matches_word(word))
-    }) else {
+    let sentence_clause = LexedClause::new(&sentence_tokens);
+    let Some(matched) = CONSULT_REVEAL_UNTIL_HAND_PATTERN.match_clause(sentence_clause) else {
         return Ok(None);
     };
-
-    let consult_tokens = trim_commas(&sentence_tokens[..then_idx]);
-    let followup_tokens = trim_commas(&sentence_tokens[then_idx + 1..]);
+    let Some(consult_clause) = matched.capture_clause("consult_clause", sentence_clause) else {
+        return Ok(None);
+    };
+    let Some(followup_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)
+    else {
+        return Ok(None);
+    };
+    let consult_tokens = trim_commas(consult_clause.tokens());
+    let followup_tokens = trim_commas(followup_clause.tokens());
     if consult_tokens.is_empty() || followup_tokens.is_empty() {
         return Ok(None);
     }
@@ -841,8 +1129,8 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     let mut parts = parts;
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
 
-    let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_all_revealed_into_hand = ALL_REVEALED_INTO_HAND_PATTERN.matches_words(&followup_words);
+    let followup_clause = LexedClause::new(&followup_tokens).trimmed();
+    let puts_all_revealed_into_hand = ALL_REVEALED_INTO_HAND_PATTERN.matches_clause(followup_clause);
     if !puts_all_revealed_into_hand {
         return Ok(None);
     }
@@ -899,11 +1187,20 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     let sentence_tokens = trim_commas(
         super::super::token_primitives::strip_leading_if_you_do_lexed(tokens),
     );
-    let Some((consult_tokens, followup_tokens)) = split_once_on_comma(&sentence_tokens) else {
+    let sentence_clause = LexedClause::new(&sentence_tokens);
+    let Some(matched) = CONSULT_REVEAL_UNTIL_BATTLEFIELD_BOTTOM_PATTERN.match_clause(sentence_clause)
+    else {
         return Ok(None);
     };
-    let consult_tokens = trim_commas(consult_tokens);
-    let followup_tokens = trim_commas(followup_tokens);
+    let Some(consult_clause) = matched.capture_clause("consult_clause", sentence_clause) else {
+        return Ok(None);
+    };
+    let Some(followup_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)
+    else {
+        return Ok(None);
+    };
+    let consult_tokens = trim_commas(consult_clause.tokens());
+    let followup_tokens = trim_commas(followup_clause.tokens());
     if consult_tokens.is_empty() || followup_tokens.is_empty() {
         return Ok(None);
     }
@@ -926,14 +1223,17 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
         return Ok(None);
     }
 
-    let followup_words = TokenWordView::new(&followup_tokens).word_refs();
-    let puts_match_onto_battlefield =
-        MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN.matches_words(followup_words.as_slice());
-    let puts_rest_bottom = REST_BOTTOM_LIBRARY_PATTERN.matches_words(&followup_words);
-    if !puts_match_onto_battlefield || !puts_rest_bottom {
+    let followup_clause = LexedClause::new(&followup_tokens).trimmed();
+    let Some(followup_match) = MATCH_ONTO_BATTLEFIELD_PREFIX_PATTERN.match_clause(followup_clause)
+    else {
         return Ok(None);
-    }
-    let Some(order) = super::consult_family::parse_consult_remainder_order(&followup_words) else {
+    };
+    let Some(remainder_clause) =
+        followup_match.capture_clause_by_role(LexCaptureRole::Tail, followup_clause)
+    else {
+        return Ok(None);
+    };
+    let Some(order) = consult_remainder_order_from_capture(remainder_clause.trimmed()) else {
         return Ok(None);
     };
 
@@ -958,46 +1258,77 @@ fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     Ok(Some(effects))
 }
 
+fn consult_remainder_order_from_capture(
+    clause: LexedClause<'_>,
+) -> Option<crate::cards::builders::LibraryBottomOrderAst> {
+    let matched = REST_BOTTOM_LIBRARY_WITH_ORDER_PATTERN.find_in_clause(clause)?;
+    let order_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let order_clause = order_clause.trimmed();
+    if REST_BOTTOM_LIBRARY_RANDOM_ORDER_PATTERN.matches_clause(order_clause) {
+        Some(crate::cards::builders::LibraryBottomOrderAst::Random)
+    } else if REST_BOTTOM_LIBRARY_ANY_ORDER_PATTERN.matches_clause(order_clause) {
+        Some(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses)
+    } else {
+        None
+    }
+}
+
 fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_tokens = trim_commas(tokens);
-    let Some(then_idx) = find_index(&sentence_tokens, |token: &OwnedLexToken| {
-        token
-            .as_word()
-            .is_some_and(|word| THEN_WORD_PATTERN.matches_word(word))
-    }) else {
+    let sentence_clause = LexedClause::new(&sentence_tokens);
+    let Some(matched) = EACH_PLAYER_EXILE_TOP_CAST_PATTERN.match_clause(sentence_clause) else {
         return Ok(None);
     };
-
-    let exile_tokens = trim_commas(&sentence_tokens[..then_idx]);
-    let cast_tokens = trim_commas(&sentence_tokens[then_idx + 1..]);
+    let Some(exile_clause) = matched.capture_clause("exile_clause", sentence_clause) else {
+        return Ok(None);
+    };
+    let Some(cast_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)
+    else {
+        return Ok(None);
+    };
+    let exile_tokens = trim_commas(exile_clause.tokens());
+    let cast_tokens = trim_commas(cast_clause.tokens());
     if exile_tokens.is_empty() || cast_tokens.is_empty() {
         return Ok(None);
     }
 
-    let exile_words = TokenWordView::new(&exile_tokens).word_refs();
-    let starts_with_each_player_exile =
-        EACH_PLAYER_EXILE_TOP_CARD_PREFIX_PATTERN.matches_words(exile_words.as_slice());
+    let exile_clause = LexedClause::new(&exile_tokens).trimmed();
     let starts_with_each_player_exile_until_nonland =
-        EACH_PLAYER_EXILE_UNTIL_NONLAND_PREFIX_PATTERN.matches_words(exile_words.as_slice());
-    let mentions_player_library = PLAYER_LIBRARY_MARKER_PATTERN.matches_words(&exile_words);
-    if !(starts_with_each_player_exile || starts_with_each_player_exile_until_nonland)
-        || !mentions_player_library
+        EACH_PLAYER_EXILE_UNTIL_NONLAND_PATTERN.matches_clause(exile_clause);
+    let starts_with_each_player_exile = if let Some(exile_match) =
+        EACH_PLAYER_EXILE_TOP_CARD_PATTERN.match_clause(exile_clause)
     {
+        exile_match
+            .capture_clause_by_role(LexCaptureRole::Tail, exile_clause)
+            .is_some_and(|library_clause| {
+                PLAYER_LIBRARY_PATTERN
+                    .find_in_clause(library_clause.trimmed())
+                    .is_some()
+            })
+    } else {
+        false
+    };
+    if !starts_with_each_player_exile && !starts_with_each_player_exile_until_nonland {
         return Ok(None);
     }
 
-    let cast_words = TokenWordView::new(&cast_tokens).word_refs();
-    let casts_any_number_from_those_cards =
-        CAST_ANY_NUMBER_FREE_PREFIX_PATTERN.matches_words(cast_words.as_slice())
-            && FROM_THOSE_OR_THEM_MARKER_PATTERN.matches_words(&cast_words)
-            && WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN.matches_words(cast_words.as_slice());
-
-    let casts_any_number_from_nonland_exiled_this_way =
-        CAST_ANY_NUMBER_FREE_PREFIX_PATTERN.matches_words(cast_words.as_slice())
-            && FROM_NONLAND_EXILED_THIS_WAY_PATTERN.matches_words(cast_words.as_slice())
-            && WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN.matches_words(cast_words.as_slice());
+    let cast_clause = LexedClause::new(&cast_tokens).trimmed();
+    let Some(cast_match) = CAST_ANY_NUMBER_FREE_PATTERN.match_clause(cast_clause) else {
+        return Ok(None);
+    };
+    let Some(cast_scope_clause) =
+        cast_match.capture_clause_by_role(LexCaptureRole::Object, cast_clause)
+    else {
+        return Ok(None);
+    };
+    let casts_any_number_from_those_cards = FROM_THOSE_OR_THEM_SCOPE_PATTERN
+        .find_in_clause(cast_scope_clause.trimmed())
+        .is_some();
+    let casts_any_number_from_nonland_exiled_this_way = FROM_NONLAND_EXILED_THIS_WAY_PATTERN
+        .find_in_clause(cast_scope_clause.trimmed())
+        .is_some();
 
     if !casts_any_number_from_those_cards && !casts_any_number_from_nonland_exiled_this_way {
         return Ok(None);
@@ -1049,84 +1380,85 @@ fn parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
 fn parse_generic_meld_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["exile", "them"]).is_none() {
-        return Ok(None);
-    }
-    let Some(meld_idx) = find_window_by(&clause_words, 4, |window| {
-        THEN_MELD_THEM_INTO_PATTERN.matches_words(window)
-    }) else {
+    let clause = LexedClause::new(tokens);
+    let Some(matched) = MELD_RESULT_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let result_words = &clause_words[meld_idx + 4..];
-    if result_words.is_empty() {
+    let Some(result_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let result_name = crate::runtime_backend::lexer::render_token_slice(result_clause.tokens())
+        .trim()
+        .to_ascii_lowercase()
+        .to_string();
+    if result_name.is_empty() {
+        let clause_display = crate::runtime_backend::lexer::render_token_slice(tokens);
         return Err(CardTextError::ParseError(format!(
             "missing meld result name (clause: '{}')",
-            clause_words.join(" ")
+            clause_display.trim()
         )));
     }
-    Ok(Some(EffectAst::subject_verb_meld(
-        result_words.join(" "),
-        false,
-        false,
-    )))
+    Ok(Some(EffectAst::subject_verb_meld(result_name, false, false)))
 }
 
 fn parse_generic_control_combat_choices_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if CHOOSE_ATTACK_THIS_TURN_PATTERN.matches_words(&words) {
-        return Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = CONTROL_COMBAT_CHOICES_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(action_clause) = matched.capture_clause_by_role(LexCaptureRole::Action, clause) else {
+        return Ok(None);
+    };
+    let Some(scope_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+
+    let action_clause = action_clause.trimmed();
+    let scope_clause = scope_clause.trimmed();
+    if CONTROL_COMBAT_ATTACK_ACTION_PATTERN.matches_clause(action_clause)
+        && CONTROL_COMBAT_ATTACK_SCOPE_PATTERN.matches_clause(scope_clause)
+    {
+        Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
             true, false,
-        )));
-    }
-    if CHOOSE_BLOCK_THIS_TURN_PATTERN.matches_words(&words) {
-        return Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
+        )))
+    } else if CONTROL_COMBAT_BLOCK_ACTION_PATTERN.matches_clause(action_clause)
+        && CONTROL_COMBAT_BLOCK_SCOPE_PATTERN.matches_clause(scope_clause)
+    {
+        Ok(Some(EffectAst::subject_verb_control_combat_choices_this_turn(
             false, true,
-        )));
+        )))
+    } else {
+        Ok(None)
     }
-    Ok(None)
 }
 
 fn parse_generic_damage_replacement_counters_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if grammar::words_match_prefix(tokens, &["if", "damage", "would", "be", "dealt", "to"])
-        .is_none()
-    {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::word("if"),
+        LexPattern::phrase(DAMAGE_REPLACEMENT_COUNTER_TARGET_PHRASE),
+        LexPattern::object(
+            "target",
+            LexCaptureKind::UntilPhrase(DAMAGE_REPLACEMENT_COUNTER_DURATION_PHRASE),
+        ),
+        LexPattern::phrase(DAMAGE_REPLACEMENT_COUNTER_DURATION_PHRASE),
+        LexPattern::phrase(DAMAGE_REPLACEMENT_COUNTER_PREVENT_PUT_PHRASE),
+        LexPattern::any_word(&["counter", "counters"]),
+        LexPattern::word("on"),
+        LexPattern::any_phrase(DAMAGE_REPLACEMENT_COUNTER_RECIPIENT_PHRASES),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
-    }
-
-    let Some(this_turn_rel) =
-        crate::runtime_backend::grammar::primitives::find_phrase_start(&tokens[6..], &["this", "turn"])
+    };
+    let Some(target_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
     else {
         return Ok(None);
     };
-    let this_turn_idx = 6 + this_turn_rel;
-    let tail = &clause_words[this_turn_idx + 2..];
-    let valid_tail = matches!(
-        tail,
-        [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
-            "it"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counters", "on",
-            "that", "creature"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
-            "it"
-        ] | [
-            "prevent", "that", "damage", "and", "put", "that", "many", "+1/+1", "counter", "on",
-            "that", "creature"
-        ]
-    );
-    if !valid_tail {
-        return Ok(None);
-    }
-
-    let target_tokens = &tokens[6..this_turn_idx];
+    let target_tokens = target_clause.tokens();
     if target_tokens.is_empty() {
         return Ok(None);
     }
@@ -1140,14 +1472,6 @@ fn parse_generic_damage_replacement_counters_subject_verb(
             CounterType::PlusOnePlusOne,
         ),
     ))
-}
-
-fn split_once_on_comma(tokens: &[OwnedLexToken]) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
-    let idx = crate::runtime_backend::lexer::find_token_kind(
-        tokens,
-        crate::runtime_backend::lexer::TokenKind::Comma,
-    )?;
-    Some((&tokens[..idx], &tokens[idx + 1..]))
 }
 
 fn tokens_contain_relative_lesser_mana_value(tokens: &[OwnedLexToken]) -> bool {
@@ -1190,35 +1514,37 @@ fn apply_lesser_mana_value_consult_constraint(tokens: &[OwnedLexToken], effects:
 }
 
 fn without_deferred_mana_value_clause(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let lesser_start = find_window_by(tokens, 4, |window| {
-        WITH_LESSER_MANA_VALUE_PATTERN.matches_words(&TokenWordView::new(window).word_refs())
-    });
-    let equal_start = find_window_by(tokens, 4, |window| {
-        WITH_MANA_VALUE_EQUAL_PATTERN.matches_words(&TokenWordView::new(window).word_refs())
-    });
-    let Some(start) = lesser_start.or(equal_start) else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = DEFERRED_MANA_VALUE_CLAUSE_PATTERN.match_clause(clause) else {
         return tokens.to_vec();
     };
-    trim_commas(&tokens[..start]).to_vec()
+    let Some(effect_range) = matched.capture_word_range("effect") else {
+        return tokens.to_vec();
+    };
+    let Some(effect_end) = clause.token_index_after_words(effect_range.end) else {
+        return tokens.to_vec();
+    };
+    trim_commas(&tokens[..effect_end]).to_vec()
 }
 
 pub(crate) fn parse_play_permission_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let duration_words = if UNTIL_END_OF_TURN_PREFIX_PATTERN.matches_words(&words) {
-        4
-    } else if THIS_TURN_PREFIX_PATTERN.matches_words(&words) {
-        2
-    } else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = PLAY_PERMISSION_GRAVEYARD_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let Some(tail_idx) = token_index_for_word_index(tokens, duration_words) else {
+    let Some(_duration_clause) = matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)
+    else {
         return Ok(None);
     };
-    let rest = trim_commas(&tokens[tail_idx..]);
-    let remaining_words = non_article_token_word_refs(&rest);
-    if !PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN.matches_words(&remaining_words) {
+    let Some(permission_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
+    else {
+        return Ok(None);
+    };
+    let rest = trim_commas(permission_clause.tokens());
+    let permission_clause = LexedClause::new(&rest).trimmed();
+    if !PLAY_LANDS_CAST_SPELLS_GRAVEYARD_PATTERN.matches_clause(permission_clause) {
         return Ok(None);
     }
 
@@ -1236,24 +1562,33 @@ pub(crate) fn parse_play_permission_subject_verb(
 pub(crate) fn parse_zone_replacement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let line_words = crate::runtime_backend::token_word_refs(tokens);
-    if !line_words
-        .first()
-        .is_some_and(|word| IF_WORD_PATTERN.matches_words(&[*word]))
-    {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = ZONE_REPLACEMENT_GRAVEYARD_EXILE_PATTERN.match_clause(clause) else {
         return Ok(None);
-    }
-    let has_graveyard_clause = YOUR_GRAVEYARD_MARKER_PATTERN.matches_words(&line_words);
-    let has_would_put = CARD_WOULD_BE_PUT_MARKER_PATTERN.matches_words(&line_words);
-    let has_this_turn = THIS_TURN_MARKER_PATTERN.matches_words(&line_words);
-    if !has_graveyard_clause || !has_would_put || !has_this_turn {
+    };
+    let Some(condition_clause) = matched.capture_clause_by_role(LexCaptureRole::Condition, clause)
+    else {
+        return Ok(None);
+    };
+    let Some(replacement_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
+    else {
+        return Ok(None);
+    };
+    let condition_clause = condition_clause.trimmed();
+    let Some(condition_match) =
+        FUTURE_GRAVEYARD_EXILE_CONDITION_PATTERN.match_clause(condition_clause)
+    else {
+        return Ok(None);
+    };
+    let Some(destination_clause) = condition_match.capture_clause("destination", condition_clause)
+    else {
+        return Ok(None);
+    };
+    if !FUTURE_GRAVEYARD_DESTINATION_PATTERN.matches_clause(destination_clause.trimmed()) {
         return Ok(None);
     }
 
-    let Some((_, remainder)) = split_once_on_comma(tokens) else {
-        return Ok(None);
-    };
-    if !EXILE_THAT_CARD_INSTEAD_PATTERN.matches_words(&non_article_token_word_refs(remainder)) {
+    if !EXILE_THAT_CARD_INSTEAD_PATTERN.matches_clause(replacement_clause.trimmed()) {
         return Ok(None);
     }
 
@@ -1271,45 +1606,50 @@ pub(crate) fn parse_zone_replacement_subject_verb(
 pub(crate) fn parse_choice_complement_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let all_words = crate::runtime_backend::token_word_refs(tokens);
-    if all_words.len() < 6 || !EACH_PLAYER_CHOOSES_PREFIX_PATTERN.matches_words(&all_words) {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = CHOICE_COMPLEMENT_PATTERN.match_clause(clause) else {
         return Ok(None);
-    }
+    };
+    let Some(choice_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
+        return Ok(None);
+    };
+    let clause_display = crate::runtime_backend::lexer::render_token_slice(clause.tokens())
+        .trim()
+        .to_string();
 
-    let Some((before_then, after_then)) =
-        grammar::split_lexed_once_on_separator(tokens, || {
-            use winnow::Parser as _;
-            grammar::kw("then").void()
-        })
-    else {
-        return Ok(None);
-    };
-    let then_idx = before_then.len();
-    let after_words = crate::runtime_backend::token_word_refs(after_then);
-    if !SACRIFICE_THE_REST_PREFIX_PATTERN.matches_words(&after_words) {
-        return Ok(None);
-    }
-
-    let choose_tokens = &tokens[3..then_idx];
-    let Some(from_idx) = find_from_among(choose_tokens) else {
-        return Ok(None);
-    };
-    let (list_tokens, base_tokens) = if from_idx == 0 {
-        let list_start = find_list_start(&choose_tokens[2..])
-            .map(|idx| idx + 2)
-            .ok_or_else(|| {
-                CardTextError::ParseError("missing choice list after 'from among'".to_string())
-            })?;
-        (
-            choose_tokens.get(list_start..).unwrap_or_default(),
-            choose_tokens.get(2..list_start).unwrap_or_default(),
-        )
-    } else {
-        (
-            choose_tokens.get(..from_idx).unwrap_or_default(),
-            choose_tokens.get(from_idx + 2..).unwrap_or_default(),
-        )
-    };
+    let choice_clause = choice_clause.trimmed();
+    let (list_tokens, base_tokens) =
+        if let Some(matched) = CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN.match_clause(choice_clause)
+        {
+            let Some(choice_list) =
+                matched.capture_clause_by_role(LexCaptureRole::Object, choice_clause)
+            else {
+                return Ok(None);
+            };
+            let Some(base_filter) =
+                matched.capture_clause_by_role(LexCaptureRole::Tail, choice_clause)
+            else {
+                return Ok(None);
+            };
+            (choice_list.tokens(), base_filter.tokens())
+        } else {
+            let choose_tokens = choice_clause.tokens();
+            let Some(from_idx) = find_from_among(choose_tokens) else {
+                return Ok(None);
+            };
+            if from_idx != 0 {
+                return Ok(None);
+            }
+            let list_start = find_list_start(&choose_tokens[2..])
+                .map(|idx| idx + 2)
+                .ok_or_else(|| {
+                    CardTextError::ParseError("missing choice list after 'from among'".to_string())
+                })?;
+            (
+                choose_tokens.get(list_start..).unwrap_or_default(),
+                choose_tokens.get(2..list_start).unwrap_or_default(),
+            )
+        };
 
     let list_tokens = trim_commas(list_tokens);
     let base_tokens = trim_commas(base_tokens);
@@ -1320,7 +1660,7 @@ pub(crate) fn parse_choice_complement_subject_verb(
     let mut base_filter = parse_object_filter(&base_tokens, false).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported base filter in choose-and-sacrifice clause (clause: '{}')",
-            all_words.join(" ")
+            clause_display
         ))
     })?;
     if base_filter.controller.is_none() {
@@ -1336,7 +1676,7 @@ pub(crate) fn parse_choice_complement_subject_verb(
         keep_filters.push(parse_object_filter(&segment, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported choice filter in choose-and-sacrifice clause (clause: '{}')",
-                all_words.join(" ")
+                clause_display
             ))
         })?);
     }
@@ -1400,24 +1740,45 @@ pub(crate) fn parse_vote_subject_verb(
     Ok(None)
 }
 
-fn truncate_vote_reveal_tail<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    for idx in 0..words.len().saturating_sub(3) {
-        if THEN_THOSE_VOTES_ARE_PREFIX_PATTERN.matches_words(&words[idx..])
-            || THEN_THOSE_CHOICES_ARE_PREFIX_PATTERN.matches_words(&words[idx..])
-        {
-            return &words[..idx];
-        }
+fn vote_options_clause_before_reveal_tail<'a>(options_clause: LexedClause<'a>) -> LexedClause<'a> {
+    let options_clause = options_clause.trimmed();
+    if let Some(matched) = VOTE_REVEAL_TAIL_PATTERN.find_in_clause(options_clause) {
+        return options_clause
+            .between_word_range(0, matched.word_range.start)
+            .map(LexedClause::trimmed)
+            .unwrap_or_else(|| LexedClause::new(&[]));
     }
-    words
+    options_clause
+}
+
+fn split_vote_option_clauses<'a>(options_clause: LexedClause<'a>) -> Vec<LexedClause<'a>> {
+    let mut clauses = Vec::new();
+    let mut tail = options_clause.trimmed();
+    while let Some(matched) = VOTE_OPTION_DELIMITER_PATTERN.find_in_clause(tail) {
+        if let Some(option_clause) = tail
+            .between_word_range(0, matched.word_range.start)
+            .map(LexedClause::trimmed)
+            .filter(|clause| !clause.is_empty())
+        {
+            clauses.push(option_clause);
+        }
+        tail = tail
+            .after_words(matched.word_range.end)
+            .map(LexedClause::trimmed)
+            .unwrap_or_else(|| LexedClause::new(&[]));
+    }
+    let tail = tail.trimmed();
+    if !tail.is_empty() {
+        clauses.push(tail);
+    }
+    clauses
 }
 
 fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if matches!(
-        words.as_slice(),
-        ["then", "those", "choices", "are", "revealed"]
-            | ["those", "choices", "are", "revealed"]
-    ) {
+    if VOTE_REVEAL_PATTERN
+        .match_clause(LexedClause::new(tokens).trimmed())
+        .is_some()
+    {
         return Some(EffectAst::SecretChoiceReveal);
     }
     None
@@ -1426,26 +1787,26 @@ fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
 fn parse_secret_number_choice_vote_start(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(choose_idx) = find_index(&clause_words, |word| CHOOSE_WORD_PATTERN.matches_word(word))
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = SECRET_NUMBER_CHOICE_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(participants_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
-    if !clause_words[..choose_idx].starts_with(&["you", "and", "target", "opponent"])
-        || !clause_words[..choose_idx].contains(&"each")
-        || !clause_words[..choose_idx]
-            .iter()
-            .any(|word| SECRET_OR_SECRETLY_WORD_PATTERN.matches_word(word))
-    {
+    let Some(options_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    if !SECRET_CHOICE_PARTICIPANTS_PATTERN.matches_clause(participants_clause.trimmed()) {
         return Ok(None);
     }
 
-    let option_words = truncate_vote_reveal_tail(&clause_words[choose_idx + 1..]);
-    let options = option_words
-        .iter()
-        .filter(|word| !OR_WORD_PATTERN.matches_word(word))
-        .filter(|word| word.chars().all(|ch| ch.is_ascii_digit()))
-        .map(|word| (*word).to_string())
+    let option_clause = vote_options_clause_before_reveal_tail(options_clause);
+    let options = split_vote_option_clauses(option_clause)
+        .into_iter()
+        .filter_map(captured_numeric_label)
         .collect::<Vec<_>>();
     if options.len() < 2 {
         return Err(CardTextError::ParseError(
@@ -1460,39 +1821,35 @@ fn parse_secret_number_choice_vote_start(
 }
 
 fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(vote_idx) = find_index(&clause_words, |word| {
-        VOTE_OR_VOTES_WORD_PATTERN.matches_word(word)
-    })
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = GENERIC_VOTE_START_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(voters_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
+    let Some(options_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
 
-    let has_each = EACH_WORD_PATTERN.matches_words(&clause_words[..vote_idx]);
-    let has_player = clause_words[..vote_idx]
-        .iter()
-        .any(|word| PLAYER_OR_PLAYERS_WORD_PATTERN.matches_word(word));
-    if !has_each || !has_player {
+    let voters_clause = voters_clause.trimmed();
+    if EACH_PLAYER_VOTER_PATTERN
+        .find_in_clause(voters_clause)
+        .is_none()
+    {
         return Ok(None);
     }
-    let secret = clause_words[..vote_idx]
-        .iter()
-        .any(|word| SECRET_OR_SECRETLY_WORD_PATTERN.matches_word(word));
+    let secret = SECRET_VOTER_PATTERN.find_in_clause(voters_clause).is_some();
 
-    let for_idx = find_index(&clause_words, |word| FOR_WORD_PATTERN.matches_word(word))
-        .ok_or_else(|| CardTextError::ParseError("missing 'for' in vote clause".to_string()))?;
-    if for_idx < vote_idx {
-        return Ok(None);
-    }
-
-    let option_words = truncate_vote_reveal_tail(&clause_words[for_idx + 1..]).to_vec();
-    let option_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&option_words);
+    let option_clause = vote_options_clause_before_reveal_tail(options_clause);
+    let option_tokens = option_clause.tokens().to_vec();
     if let Ok(target) = parse_target_phrase(&option_tokens) {
         match target {
             TargetAst::Player(filter, _) => {
-                let exclude_voter = option_words
-                    .first()
-                    .is_some_and(|word| matches!(*word, "other" | "another"));
+                let exclude_voter = option_clause
+                    .first_word()
+                    .is_some_and(|word| matches!(word, "other" | "another"));
                 let filter = if exclude_voter && matches!(filter, PlayerFilter::NotYou) {
                     PlayerFilter::Any
                 } else {
@@ -1533,24 +1890,10 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
         }));
     }
 
-    let mut options = Vec::new();
-    let mut current: Vec<&str> = Vec::new();
-    for word in &option_words {
-        if OR_WORD_PATTERN.matches_word(word) {
-            if !current.is_empty() {
-                options.push(current.join(" "));
-                current.clear();
-            }
-            continue;
-        }
-        if is_article(word) {
-            continue;
-        }
-        current.push(word);
-    }
-    if !current.is_empty() {
-        options.push(current.join(" "));
-    }
+    let options = split_vote_option_clauses(option_clause)
+        .into_iter()
+        .filter_map(captured_non_article_label)
+        .collect::<Vec<_>>();
     if options.len() < 2 {
         return Err(CardTextError::ParseError(
             "vote clause requires at least two options".to_string(),
@@ -1563,74 +1906,54 @@ fn parse_generic_vote_start(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst
 fn parse_generic_vote_option_effects(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 4 || grammar::words_match_prefix(tokens, &["for", "each"]).is_none() {
-        return Ok(None);
+    if let Some(effect) = parse_generic_player_vote_received_effects(tokens)? {
+        return Ok(Some(effect));
     }
 
-    let Some(vote_idx) =
-        find_index(&words, |word| VOTE_OR_VOTES_WORD_PATTERN.matches_word(word))
-    else {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = GENERIC_VOTE_OPTION_EFFECT_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    if vote_idx <= 2 {
-        if let Some(effect) = parse_generic_player_vote_received_effects(tokens, &words, vote_idx)?
-        {
-            return Ok(Some(effect));
-        }
+    let Some(option_clause) = matched.capture_clause("option", clause) else {
+        return Ok(None);
+    };
+    let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    let Some(option) = captured_non_article_label(option_clause) else {
         return Err(CardTextError::ParseError(
             "missing vote option name".to_string(),
         ));
-    }
+    };
 
-    let option_words = crate::runtime_backend::util::non_article_word_refs(&words[2..vote_idx]);
-    if option_words.is_empty() {
-        return Err(CardTextError::ParseError(
-            "missing vote option name".to_string(),
-        ));
-    }
-    let option = option_words.join(" ");
-
-    let (_before, effect_tokens) =
-        grammar::split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)
-            .ok_or_else(|| {
-                CardTextError::ParseError("missing comma in for each vote clause".to_string())
-            })?;
-    let effects = parse_effect_chain_lexed(effect_tokens)?;
+    let effect_tokens = trim_commas(effect_clause.tokens());
+    let effects = parse_effect_chain_lexed(&effect_tokens)?;
     Ok(Some(EffectAst::VoteOption { option, effects }))
 }
 
 fn parse_generic_player_vote_received_effects(
     tokens: &[OwnedLexToken],
-    words: &[&str],
-    vote_idx: usize,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(received_idx) = find_index(&words[vote_idx + 1..], |word| {
-        matches!(*word, "received" | "receives")
-    })
-    .map(|idx| idx + vote_idx + 1)
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = GENERIC_PLAYER_VOTE_RECEIVED_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(player_clause) = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)
     else {
         return Ok(None);
     };
-    if received_idx <= vote_idx + 1 {
+    let Some(effect_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
+    let player_tokens = captured_non_article_tokens(player_clause);
+    if player_tokens.is_empty() {
         return Ok(None);
     }
-    let player_words = crate::runtime_backend::util::non_article_word_refs(
-        &words[vote_idx + 1..received_idx],
-    );
-    if player_words.is_empty() {
-        return Ok(None);
-    }
-    let player_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&player_words);
     let TargetAst::Player(filter, _) = parse_target_phrase(&player_tokens)? else {
         return Ok(None);
     };
-    let (_before, effect_tokens) =
-        grammar::split_lexed_once_on_delimiter(tokens, super::super::lexer::TokenKind::Comma)
-            .ok_or_else(|| {
-                CardTextError::ParseError("missing comma in for each vote clause".to_string())
-            })?;
-    let effects = parse_effect_chain_lexed(effect_tokens)?;
+    let effect_tokens = trim_commas(effect_clause.tokens());
+    let effects = parse_effect_chain_lexed(&effect_tokens)?;
     if filter == PlayerFilter::You {
         return Ok(Some(EffectAst::RepeatEffects {
             count: Value::PlayerVoteCount(PlayerFilter::You),
@@ -1646,19 +1969,430 @@ fn parse_generic_player_vote_received_effects(
     }))
 }
 
+fn captured_non_article_tokens(clause: LexedClause<'_>) -> Vec<OwnedLexToken> {
+    clause
+        .trimmed()
+        .tokens()
+        .iter()
+        .filter(|token| token.as_word().is_none_or(|word| !is_article(word)))
+        .cloned()
+        .collect()
+}
+
+fn captured_non_article_label(clause: LexedClause<'_>) -> Option<String> {
+    let tokens = captured_non_article_tokens(clause);
+    (!tokens.is_empty()).then(|| render_token_slice(&tokens).trim().to_string())
+}
+
+fn captured_numeric_label(clause: LexedClause<'_>) -> Option<String> {
+    let tokens = captured_non_article_tokens(clause);
+    if tokens.len() == 1
+        && let Some(word) = tokens[0].as_word()
+        && word.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return Some(word.to_string());
+    }
+    None
+}
+
 fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    if words.len() < 3 || !YOU_WORD_PATTERN.matches_words(&words[..1]) {
-        return None;
+    let clause = LexedClause::new(tokens).trimmed();
+    if OPTIONAL_EXTRA_VOTE_PATTERN.match_clause(clause).is_some() {
+        return Some(EffectAst::VoteExtra {
+            count: 1,
+            optional: true,
+        });
+    }
+    if REQUIRED_EXTRA_VOTE_PATTERN.match_clause(clause).is_some() {
+        return Some(EffectAst::VoteExtra {
+            count: 1,
+            optional: false,
+        });
+    }
+    None
+}
+
+#[cfg(test)]
+mod generic_subject_verb_program_tests {
+    use super::*;
+
+    #[test]
+    fn top_cards_counted_hand_remainder_uses_captured_owners() {
+        let tokens = crate::runtime_backend::lex_line(
+            "look at the top three cards of your library, then put one of those cards into that player's hand and the rest into that player's graveyard.",
+            0,
+        )
+        .expect("rewrite lexer should classify looked-card bundle");
+        let effects = parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
+            &tokens,
+        )
+        .expect("top-card hand/remainder parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(
+            debug.contains("PutSomeIntoHandRestIntoGraveyard"),
+            "{debug}"
+        );
+        assert!(debug.contains("player: That"), "{debug}");
+        assert!(!debug.contains("Unsupported"), "{debug}");
     }
 
-    let has_vote = VOTE_EXTRA_MARKER_PATTERN.matches_words(&words);
-    let has_additional = grammar::contains_word(tokens, "additional");
-    let has_time = TIME_OR_TIMES_MARKER_PATTERN.matches_words(&words);
-    if !has_vote || !has_additional || !has_time {
-        return None;
+    #[test]
+    fn consult_reveal_until_hand_uses_captured_consult_and_followup_clauses() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
+            0,
+        )
+        .expect("consult all-revealed-to-hand text should lex");
+        let effects = parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
+            &tokens,
+        )
+        .expect("consult hand parser should not error")
+        .expect("consult hand parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+        assert!(debug.contains("MoveToZone"), "{debug}");
+        assert!(debug.contains("Hand"), "{debug}");
+        assert!(debug.contains("revealed"), "{debug}");
     }
 
-    let optional = grammar::contains_word(tokens, "may");
-    Some(EffectAst::VoteExtra { count: 1, optional })
+    #[test]
+    fn consult_reveal_until_battlefield_bottom_uses_captured_consult_and_followup_clauses() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Reveal cards from the top of your library until you reveal a creature card, put it onto the battlefield, then put the rest on the bottom of your library in any order.",
+            0,
+        )
+        .expect("consult battlefield-bottom text should lex");
+        let effects = parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(&tokens)
+            .expect("consult battlefield-bottom parser should not error")
+            .expect("consult battlefield-bottom parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+        assert!(debug.contains("MoveToZone"), "{debug}");
+        assert!(debug.contains("Battlefield"), "{debug}");
+        assert!(
+            debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{debug}"
+        );
+    }
+
+    #[test]
+    fn each_player_exile_top_cast_uses_captured_exile_and_cast_clauses() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Exile the top card of each player's library, then you may cast any number of spells from among the nonland cards exiled this way without paying their mana costs.",
+            0,
+        )
+        .expect("each-player exile-top cast text should lex");
+        let effects = parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(
+            &tokens,
+        )
+        .expect("each-player exile-top cast parser should not error")
+        .expect("each-player exile-top cast parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ForEachPlayer"), "{debug}");
+        assert!(debug.contains("ForEachObject"), "{debug}");
+        assert!(debug.contains("CastTagged"), "{debug}");
+        assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+    }
+
+    #[test]
+    fn zone_replacement_uses_captured_condition_and_replacement_clauses() {
+        let tokens = crate::runtime_backend::lex_line(
+            "If that card would be put into your graveyard this turn, exile that card instead.",
+            0,
+        )
+        .expect("future graveyard exile replacement text should lex");
+        let effect = parse_zone_replacement_subject_verb(&tokens)
+            .expect("zone replacement parser should not error")
+            .expect("zone replacement parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("AffectedPlayer"), "{debug}");
+        assert!(debug.contains("You"), "{debug}");
+        assert!(debug.contains("ExileInsteadOfGraveyardThisTurn"), "{debug}");
+    }
+
+    #[test]
+    fn play_permission_uses_captured_duration_and_permission_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Until end of turn, you may play lands and cast spells from your graveyard.",
+            0,
+        )
+        .expect("graveyard play permission text should lex");
+        let effect = parse_play_permission_subject_verb(&tokens)
+            .expect("play permission parser should not error")
+            .expect("play permission parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("PlayFromGraveyardUntilEot"), "{debug}");
+        assert!(debug.contains("You"), "{debug}");
+    }
+
+    #[test]
+    fn secret_number_choice_vote_uses_captured_participants_and_options() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You and target opponent each secretly choose 1, 2, or 3.",
+            0,
+        )
+        .expect("secret numeric choice vote text should lex");
+        let effect = parse_secret_number_choice_vote_start(&tokens)
+            .expect("secret numeric choice vote parser should not error")
+            .expect("secret numeric choice vote parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("SecretChoiceStart"), "{debug}");
+        assert!(debug.contains("\"1\""), "{debug}");
+        assert!(debug.contains("\"2\""), "{debug}");
+        assert!(debug.contains("\"3\""), "{debug}");
+        assert!(debug.contains("Target"), "{debug}");
+    }
+
+    #[test]
+    fn generic_vote_start_uses_captured_voters_and_options() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each player votes for death or torture.",
+            0,
+        )
+        .expect("generic vote-start text should lex");
+        let effect = parse_generic_vote_start(&tokens)
+            .expect("generic vote-start parser should not error")
+            .expect("generic vote-start parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteStart"), "{debug}");
+        assert!(debug.contains("death"), "{debug}");
+        assert!(debug.contains("torture"), "{debug}");
+    }
+
+    #[test]
+    fn generic_vote_option_effect_uses_captured_option_and_effect_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each death vote, draw a card.",
+            0,
+        )
+        .expect("generic vote-option effect text should lex");
+        let effect = parse_generic_vote_option_effects(&tokens)
+            .expect("generic vote-option parser should not error")
+            .expect("generic vote-option parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteOption"), "{debug}");
+        assert!(debug.contains("death"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn player_vote_received_effect_uses_captured_player_and_effect_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each vote you received, draw a card.",
+            0,
+        )
+        .expect("player vote-received effect text should lex");
+        let effect = parse_generic_vote_option_effects(&tokens)
+            .expect("player vote-received parser should not error")
+            .expect("player vote-received parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("RepeatEffects"), "{debug}");
+        assert!(debug.contains("PlayerVoteCount"), "{debug}");
+        assert!(debug.contains("You"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+    }
+
+    #[test]
+    fn extra_vote_uses_captured_optional_vote_shape() {
+        let tokens = crate::runtime_backend::lex_line("You may vote an additional time.", 0)
+            .expect("optional extra vote text should lex");
+        let effect = parse_generic_extra_vote(&tokens)
+            .expect("optional extra vote parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteExtra"), "{debug}");
+        assert!(debug.contains("count: 1"), "{debug}");
+        assert!(debug.contains("optional: true"), "{debug}");
+    }
+
+    #[test]
+    fn extra_vote_uses_captured_required_vote_shape() {
+        let tokens = crate::runtime_backend::lex_line("You vote an additional time.", 0)
+            .expect("required extra vote text should lex");
+        let effect = parse_generic_extra_vote(&tokens)
+            .expect("required extra vote parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteExtra"), "{debug}");
+        assert!(debug.contains("count: 1"), "{debug}");
+        assert!(debug.contains("optional: false"), "{debug}");
+    }
+
+    #[test]
+    fn vote_reveal_uses_captured_choice_reveal_shape() {
+        let tokens = crate::runtime_backend::lex_line("Then those choices are revealed.", 0)
+            .expect("vote reveal text should lex");
+        let effect =
+            parse_vote_reveal_sentence(&tokens).expect("vote reveal parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("SecretChoiceReveal"), "{debug}");
+    }
+
+    #[test]
+    fn control_combat_choices_uses_captured_attack_shape() {
+        let tokens =
+            crate::runtime_backend::lex_line("You choose which creatures attack this turn.", 0)
+                .expect("combat choice attack text should lex");
+        let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
+            .expect("combat choice attack parser should not error")
+            .expect("combat choice attack parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
+        assert!(debug.contains("attackers: true"), "{debug}");
+        assert!(debug.contains("blockers: false"), "{debug}");
+    }
+
+    #[test]
+    fn control_combat_choices_uses_captured_block_shape() {
+        let tokens = crate::runtime_backend::lex_line(
+            "You choose which creatures block this turn and how those creatures block.",
+            0,
+        )
+        .expect("combat choice block text should lex");
+        let effect = parse_generic_control_combat_choices_subject_verb(&tokens)
+            .expect("combat choice block parser should not error")
+            .expect("combat choice block parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("ControlCombatChoicesThisTurn"), "{debug}");
+        assert!(debug.contains("attackers: false"), "{debug}");
+        assert!(debug.contains("blockers: true"), "{debug}");
+    }
+
+    #[test]
+    fn where_x_value_binding_uses_captured_effect_and_definition() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Target creature gets +X/+X until end of turn, where X is the number of cards in your hand.",
+            0,
+        )
+        .expect("where-x value-binding text should lex");
+        let non_binding_tokens =
+            crate::runtime_backend::lex_line("Target creature gets +1/+1 until end of turn.", 0)
+                .expect("non-binding pump text should lex");
+
+        assert!(has_where_x_value_binding(&tokens));
+        assert!(!has_where_x_value_binding(&non_binding_tokens));
+    }
+
+    #[test]
+    fn choice_complement_uses_captured_choice_and_sacrifice_shape() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each player chooses a creature from among creatures they control, then sacrifices the rest.",
+            0,
+        )
+        .expect("choice-complement text should lex");
+        let effect = parse_choice_complement_subject_verb(&tokens)
+            .expect("choice-complement parser should not error")
+            .expect("choice-complement parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("ForEachPlayer"), "{debug}");
+        assert!(debug.contains("ChooseObjects"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+        assert!(debug.contains("keep"), "{debug}");
+    }
+
+    #[test]
+    fn source_gets_unblockable_uses_captured_subject_modifier_and_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "This creature gets +1/+1 until end of turn and can't be blocked this turn.",
+            0,
+        )
+        .expect("source pump plus unblockable text should lex");
+        let effects = parse_source_gets_unblockable_subject_verb(&tokens)
+            .expect("source pump plus unblockable parser should not error")
+            .expect("source pump plus unblockable parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
+        assert!(debug.contains("BeBlocked"), "{debug}");
+        assert!(debug.contains("source: true"), "{debug}");
+    }
+
+    #[test]
+    fn source_gets_filter_gains_uses_captured_filter_and_ability_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "This creature gets +1/+1 and creatures you control gain trample until end of turn.",
+            0,
+        )
+        .expect("source pump plus ability-grant text should lex");
+        let effects = parse_source_gets_filter_gains_subject_verb(&tokens)
+            .expect("source pump plus ability-grant parser should not error")
+            .expect("source pump plus ability-grant parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("power: Fixed") && debug.contains("1"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
+        assert!(debug.contains("Trample"), "{debug}");
+    }
+
+    #[test]
+    fn target_gains_then_gets_gate_uses_captured_ability_and_pump_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Target creature gains trample and gets +1/+0 until end of turn.",
+            0,
+        )
+        .expect("target gains then gets text should lex");
+        let effects = parse_target_gains_then_gets_subject_verb(&tokens)
+            .expect("target gains then gets parser should not error")
+            .expect("target gains then gets parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("Trample"), "{debug}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
+    }
+
+    #[test]
+    fn target_gets_then_gains_gate_uses_captured_pump_and_ability_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Target creature gets +1/+1 and gains trample until end of turn.",
+            0,
+        )
+        .expect("target gets then gains text should lex");
+        let effects = parse_target_gets_then_gains_subject_verb(&tokens)
+            .expect("target gets then gains parser should not error")
+            .expect("target gets then gains parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("Fixed") && debug.contains("1"), "{debug}");
+        assert!(debug.contains("Trample"), "{debug}");
+    }
+
+    #[test]
+    fn target_controlled_pump_uses_captured_granted_ability_tail() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Creatures target player controls get +1/+1 and gain haste until end of turn.",
+            0,
+        )
+        .expect("target-controlled pump plus grant text should lex");
+        let effects = parse_target_player_controls_get_subject_verb(&tokens)
+            .expect("target-controlled pump parser should not error")
+            .expect("target-controlled pump parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("Pump"), "{debug}");
+        assert!(debug.contains("Target") && debug.contains("Any"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
+        assert!(debug.contains("Haste"), "{debug}");
+    }
 }

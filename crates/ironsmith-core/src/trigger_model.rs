@@ -195,9 +195,6 @@ pub enum TriggerKind {
         player: PlayerFilter,
         during_turn: PlayerFilter,
     },
-    PlayerLostGame {
-        player: PlayerFilter,
-    },
     YouDrawCard,
     PlayerDrawsCard {
         player: PlayerFilter,
@@ -777,9 +774,6 @@ impl Trigger {
                 during_turn,
             },
         )
-    }
-    pub fn player_lost_game(player: PlayerFilter) -> Self {
-        Self::typed("player_lost_game", TriggerKind::PlayerLostGame { player })
     }
     pub fn you_draw_card() -> Self {
         Self::typed("you_draw_card", TriggerKind::YouDrawCard)

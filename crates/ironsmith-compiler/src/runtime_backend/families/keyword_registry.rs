@@ -52,6 +52,29 @@ const FREERUNNING_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["freerunning"]);
 const SNEAK_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["sneak"]);
 const EXPLOIT_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["exploit"]);
+const SNEAK_SPELL_FORM_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_phrases
+        & [
+            &["you", "may", "cast", "this", "spell", "for"],
+            &[
+                "return",
+                "an",
+                "unblocked",
+                "attacker",
+                "you",
+                "control",
+                "to",
+                "hand",
+                "during",
+                "the",
+                "declare",
+                "blockers",
+                "step",
+            ],
+        ]
+);
+const SNEAK_PERMANENT_FORM_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [&["enters", "tapped", "and", "attacking"]]);
 const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
     contains_phrases
         & [
@@ -79,6 +102,7 @@ pub(crate) fn parse_keyword_line_cst(
                 info: line.info.clone(),
                 text: normalized.to_string(),
                 parse_tokens: tokens,
+                full_parse_tokens: lex_line(line.info.raw_line.as_str(), line.info.line_index)?,
                 kind: rule.cst_kind,
             }));
         }
@@ -95,6 +119,7 @@ pub(crate) fn lower_keyword_line_cst(
         text: keyword.text,
         kind: keyword.kind,
         parse_tokens: keyword.parse_tokens,
+        full_parse_tokens: keyword.full_parse_tokens,
     })
 }
 
@@ -271,7 +296,7 @@ pub(super) fn lower_alternative_cast(
     }
 
     if SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
-        if !is_supported_spell_sneak_line(line.info.raw_line.as_str()) {
+        if !is_supported_spell_sneak_line(&line.full_parse_tokens) {
             return Err(CardTextError::ParseError(format!(
                 "sneak keyword form is not yet supported: '{}'",
                 line.info.raw_line
@@ -330,13 +355,10 @@ pub(super) fn lower_alternative_cast(
     )))
 }
 
-fn is_supported_spell_sneak_line(raw_line: &str) -> bool {
-    let lower = raw_line.to_ascii_lowercase();
-    lower.contains("you may cast this spell for")
-        && lower.contains(
-            "return an unblocked attacker you control to hand during the declare blockers step",
-        )
-        && !lower.contains("enters tapped and attacking")
+fn is_supported_spell_sneak_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    SNEAK_SPELL_FORM_PATTERN.matches_words(&words)
+        && !SNEAK_PERMANENT_FORM_PATTERN.matches_words(&words)
 }
 
 pub(super) fn lower_bestow(
@@ -999,8 +1021,9 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
+    let words = parser_token_word_refs(tokens);
     Ok(token_slice_first_is(tokens, "encore")
-        || token_slice_first_is(tokens, "sneak")
+        || SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&words)
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_flash_with_additional_cost_line_lexed(tokens).is_some()

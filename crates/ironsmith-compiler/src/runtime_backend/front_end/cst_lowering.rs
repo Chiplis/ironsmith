@@ -48,6 +48,7 @@ pub(crate) fn lower_non_metadata_rewrite_line_cst(
             text: keyword.text,
             kind: keyword.kind,
             parse_tokens: keyword.parse_tokens,
+            full_parse_tokens: keyword.full_parse_tokens,
         })),
         RewriteLineCst::Activated(activated) => lower_activated_line(activated, allow_unsupported),
         RewriteLineCst::Triggered(triggered) => lower_triggered_line(triggered),

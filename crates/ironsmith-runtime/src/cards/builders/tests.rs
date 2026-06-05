@@ -98,6 +98,59 @@ fn parse_all_creature_type_gain_and_loss_effects() {
 }
 
 #[test]
+fn parse_target_player_controls_pump_uses_captured_controller_filter() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Target Pump Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Creatures target player controls get +1/+1 and gain first strike and haste until end of turn.")
+        .expect("parse target-player-controlled pump clause");
+    let debug = format!("{:?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+
+    assert!(
+        debug.contains("ApplyContinuousEffect")
+            && debug.contains("controller: Some(Target(Any))")
+            && debug.contains("ModifyPowerToughness")
+            && debug.contains("AddAbility")
+            && debug.contains("FirstStrike")
+            && debug.contains("Haste"),
+        "target-player-controlled pump should lower to filter-scoped pump plus ability grant, got {debug}"
+    );
+    assert!(
+        rendered.contains("target player's creatures get +1/+1")
+            && rendered.contains("first strike")
+            && rendered.contains("haste"),
+        "target-player-controlled pump should preserve surface text, got {rendered}"
+    );
+}
+
+#[test]
+fn parse_damage_replacement_counter_clause_uses_captured_target() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(2), "Prevention Counter Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text("If damage would be dealt to target creature this turn, prevent that damage and put that many +1/+1 counters on it.")
+        .expect("parse damage-prevention counter replacement clause");
+    let debug = format!("{:?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+
+    assert!(
+        debug.contains("PreventAllDamageToTargetEffect")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("PlusOnePlusOne"),
+        "damage replacement counter clause should lower to target-scoped prevention with counter follow-up, got {debug}"
+    );
+    assert!(
+        rendered.contains("prevent all damage that would be dealt to target creature this turn")
+            && rendered.contains("for each 1 damage prevented this way")
+            && rendered.contains("put a +1/+1 counter on that creature"),
+        "damage replacement counter clause should preserve prevention/counter surface, got {rendered}"
+    );
+}
+
+#[test]
 fn parse_clash_repeat_process_spell_effect() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(3), "Clash Repeat Probe")
         .card_types(vec![CardType::Sorcery])
@@ -33900,6 +33953,51 @@ fn parse_fatal_push_revolt_clause_keeps_permanent_left_gate() {
     assert!(
         rendered.contains("mana value 2 or less") || rendered.contains("mana value is 2 or less"),
         "expected base branch to preserve the mana value 2 threshold, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_prohibit_kicked_counter_spell_mana_value_replacement() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prohibit Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Kicker {2}\nCounter target spell if its mana value is 2 or less. If this spell was kicked, counter that spell if its mana value is 4 or less instead.",
+        )
+        .expect("Prohibit-style kicked counter replacement should parse");
+
+    fn tagged_mana_value_at_most(condition: &crate::effect::Condition, expected: i32) -> bool {
+        matches!(
+            condition,
+            crate::effect::Condition::TaggedObjectMatches(_, filter)
+                if matches!(
+                    filter.mana_value.as_ref(),
+                    Some(crate::target::Comparison::LessThanOrEqual(value)) if *value == expected
+                )
+        )
+    }
+
+    let program = def.spell_effect.as_ref().expect("spell effect");
+    let [segment] = program.segments.as_slice() else {
+        panic!("expected one resolution segment, got {program:#?}");
+    };
+    let has_base_gate = segment.default_effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .is_some_and(|conditional| tagged_mana_value_at_most(&conditional.condition, 2))
+    });
+    let has_kicked_gate = segment.self_replacements.iter().any(|branch| {
+        branch.condition == crate::effect::Condition::ThisSpellWasKicked
+            && branch.replacement_effects.iter().any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::ConditionalEffect>()
+                    .is_some_and(|conditional| tagged_mana_value_at_most(&conditional.condition, 4))
+            })
+    });
+
+    assert!(
+        has_base_gate && has_kicked_gate,
+        "expected Prohibit-style kicked counter replacement to preserve base and kicked mana-value gates, got {program:#?}"
     );
 }
 

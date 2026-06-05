@@ -1,9 +1,12 @@
 use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::super::super::lexer::{LexedClause, OwnedLexToken, render_token_slice};
+use super::super::super::lexer::{
+    LexedClause, OwnedLexToken, render_token_slice, token_slice_first_is,
+};
 use super::*;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
+use crate::runtime_backend::util::strip_leading_article_tokens;
 
 const OUTLAW_SHORTHAND_FILTER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
@@ -1584,18 +1587,17 @@ fn control_predicate_quantity(
 }
 
 fn parse_player_controls_no_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    parse_player_controls_zero_quantity_predicate(filtered)
-        .or_else(|| parse_player_does_not_control_predicate(filtered))
+    parse_player_controls_zero_quantity_predicate(tokens)
+        .or_else(|| parse_player_does_not_control_predicate(tokens))
         .transpose()
 }
 
 fn parse_player_controls_zero_quantity_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["control"], &["controls"]];
     let atoms = [
         LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
@@ -1627,7 +1629,7 @@ fn zero_control_subject_clause(clause: LexedClause<'_>) -> Option<(PlayerAst, Pl
     if clause_matches_phrase(clause, &["you"]) {
         return Some((PlayerAst::You, PlayerFilter::You));
     }
-    if clause_matches_phrase(clause, &["player"]) {
+    if clause_matches_any_phrase(clause, &[&["player"], &["a", "player"], &["any", "player"]]) {
         return Some((PlayerAst::Any, PlayerFilter::Any));
     }
     None
@@ -1641,10 +1643,9 @@ fn zero_control_amount_clause(clause: LexedClause<'_>, player: PlayerAst) -> Opt
 }
 
 fn parse_player_does_not_control_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
         LexPattern::modifier(
@@ -1690,10 +1691,9 @@ fn is_do_not_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_you_control_or_graveyard_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::subject("controller", LexCaptureKind::WordCount(1)),
         LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controls"])),
@@ -1774,10 +1774,9 @@ fn graveyard_object_tokens_after_existential<'a>(
 }
 
 fn parse_you_control_conjoined_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Option<Result<PredicateAst, CardTextError>> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::subject("controller", LexCaptureKind::WordCount(1)),
         LexPattern::action("action", LexCaptureKind::OneOf(&["control", "controls"])),
@@ -1817,17 +1816,16 @@ fn parse_you_control_conjoined_predicate(
 }
 
 fn parse_player_controls_predicate(
-    words: &[&str],
+    tokens: &[OwnedLexToken],
     player: PlayerAst,
     controller: Option<PlayerFilter>,
     prefix_len: usize,
     allow_outlaw_shorthand: bool,
     allow_different_powers: bool,
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     if let Some(control_condition) =
         crate::runtime_backend::grammar::conditions::parse_control_condition(
-            &control_tokens,
+            tokens,
             crate::runtime_backend::grammar::conditions::ControlConditionOptions {
                 allow_that_player: player == PlayerAst::That,
                 allow_opponent_players: false,
@@ -1841,7 +1839,10 @@ fn parse_player_controls_predicate(
         return Ok(Some(predicate_from_control_condition(control_condition)));
     }
 
-    let (min_count, exact_count, filter_start) = control_predicate_quantity(words, prefix_len);
+    let clause = LexedClause::new(tokens);
+    let words_view = clause.words();
+    let words = words_view.word_refs();
+    let (min_count, exact_count, filter_start) = control_predicate_quantity(&words, prefix_len);
     let mut control_words = words[filter_start..].to_vec();
     if control_words.is_empty() {
         return Ok(None);
@@ -1856,11 +1857,15 @@ fn parse_player_controls_predicate(
         control_words.truncate(control_words.len().saturating_sub(3));
     }
 
-    let control_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&control_words);
-    let other = control_tokens
+    let filter_end = filter_start + control_words.len();
+    let Some(filter_range) = words_view.token_range_for_word_range(filter_start, filter_end) else {
+        return Ok(None);
+    };
+    let filter_tokens = &tokens[filter_range];
+    let other = filter_tokens
         .first()
         .is_some_and(|token| OTHER_OR_ANOTHER_WORD_PATTERN.matches_token(token));
-    let parsed_filter = parse_object_filter(&control_tokens, other).or_else(|_| {
+    let parsed_filter = parse_object_filter(filter_tokens, other).or_else(|_| {
         if allow_outlaw_shorthand {
             parse_outlaw_shorthand_filter(&control_words)
                 .ok_or_else(|| CardTextError::ParseError("unsupported control filter".to_string()))
@@ -2045,7 +2050,7 @@ fn strip_clause_suffix<'a>(
 }
 
 fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<ObjectFilter> {
-    let clause = clause.trimmed();
+    let clause = LexedClause::new(strip_leading_article_tokens(clause.trimmed().tokens()));
     let (base_clause, needs_chosen_name) =
         if let Some(base_clause) = strip_clause_suffix(clause, &["with", "chosen", "name"]) {
             (base_clause, true)
@@ -2107,10 +2112,9 @@ fn parse_this_way_object_filter_clause(clause: LexedClause<'_>) -> Option<Object
 }
 
 fn parse_passive_this_way_tagged_object_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[
         &["is", "countered"],
         &["are", "countered"],
@@ -2172,10 +2176,9 @@ fn parse_passive_this_way_tagged_object_predicate(
 }
 
 fn parse_active_this_way_discard_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let action_phrases: &[&[&str]] = &[&["discard"], &["discards"], &["discarded"]];
     let atoms = [
         LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
@@ -2216,9 +2219,8 @@ fn parse_active_this_way_discard_predicate(
     }))
 }
 
-fn parse_negative_put_tagged_object_predicate(filtered: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
     let destination_phrases: &[&[&str]] = &[
         &["into", "your", "hand"],
         &["onto", "battlefield"],
@@ -2306,10 +2308,9 @@ fn is_battlefield_this_way_destination_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_active_this_way_battlefield_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let destination_phrases: &[&[&str]] =
         &[&["onto", "battlefield"], &["onto", "the", "battlefield"]];
     let atoms = [
@@ -2363,10 +2364,9 @@ fn parse_active_this_way_battlefield_predicate(
 }
 
 fn parse_passive_this_way_battlefield_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("object", LexCaptureKind::UntilPhrase(&["is", "put"])),
         LexPattern::action("action", LexCaptureKind::WordCount(2)),
@@ -2575,10 +2575,9 @@ fn parse_or_predicate(filtered: &[&str]) -> Result<Option<PredicateAst>, CardTex
 }
 
 fn parse_attacking_you_own_control_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
         LexPattern::word("and"),
@@ -2624,7 +2623,7 @@ fn parse_attacking_you_own_control_predicate(
     let mut left_filter = parse_meld_subject_filter_clause(left).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported attacking meld predicate subject (predicate: '{}')",
-            filtered.join(" ")
+            render_token_slice(tokens).trim()
         ))
     })?;
     left_filter.controller = Some(PlayerFilter::You);
@@ -2633,7 +2632,7 @@ fn parse_attacking_you_own_control_predicate(
     let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported attacking meld predicate tail (predicate: '{}')",
-            filtered.join(" ")
+            render_token_slice(tokens).trim()
         ))
     })?;
     right_filter.controller = Some(PlayerFilter::You);
@@ -2652,10 +2651,9 @@ fn parse_attacking_you_own_control_predicate(
 }
 
 fn parse_you_both_own_and_control_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::subject("owner", LexCaptureKind::WordCount(4)),
         LexPattern::action("control", LexCaptureKind::OneOf(&["control", "controls"])),
@@ -2687,14 +2685,14 @@ fn parse_you_both_own_and_control_predicate(
     let mut left_filter = parse_meld_subject_filter_clause(left).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported own-and-control predicate subject (predicate: '{}')",
-            filtered.join(" ")
+            render_token_slice(tokens).trim()
         ))
     })?;
     left_filter.controller = Some(PlayerFilter::You);
     let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported own-and-control predicate tail (predicate: '{}')",
-            filtered.join(" ")
+            render_token_slice(tokens).trim()
         ))
     })?;
     right_filter.controller = Some(PlayerFilter::You);
@@ -2734,10 +2732,9 @@ fn is_you_both_own_and_clause(clause: LexedClause<'_>) -> bool {
 }
 
 fn parse_implicit_subject_and_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("left", LexCaptureKind::UntilPhrase(&["and"])),
         LexPattern::word("and"),
@@ -2781,10 +2778,9 @@ fn parse_implicit_subject_and_predicate(
 }
 
 fn parse_while_conjoined_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(filtered);
-    let clause = LexedClause::new(&tokens);
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::object("left", LexCaptureKind::UntilPhrase(&["while"])),
         LexPattern::word("while"),
@@ -2816,7 +2812,7 @@ fn parse_while_conjoined_predicate(
     ) {
         return Err(CardTextError::ParseError(format!(
             "unsupported mana-spent predicate tail (predicate: '{}')",
-            filtered.join(" ")
+            render_token_slice(tokens).trim()
         )));
     }
     Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
@@ -2860,10 +2856,9 @@ fn player_ast_from_status_player_filter(player: PlayerFilter) -> Option<PlayerAs
     }
 }
 
-fn parse_player_status_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_status_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let status =
-        crate::runtime_backend::grammar::conditions::parse_player_status_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_status_condition(tokens)?;
     match status.status {
         crate::runtime_backend::grammar::conditions::PlayerStatusAst::Monarch => {
             Some(PredicateAst::PlayerIsMonarch {
@@ -2885,17 +2880,15 @@ fn parse_player_status_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 }
 
-fn parse_world_state_or_timing_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    parse_initiative_choice_predicate_shape(&tokens)
-        .or_else(|| parse_night_state_predicate_shape(&tokens))
-        .or_else(|| parse_first_combat_phase_predicate_shape(&tokens))
-        .or_else(|| parse_cast_this_spell_during_main_phase_shape(&tokens))
+fn parse_world_state_or_timing_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    parse_initiative_choice_predicate_shape(tokens)
+        .or_else(|| parse_night_state_predicate_shape(tokens))
+        .or_else(|| parse_first_combat_phase_predicate_shape(tokens))
+        .or_else(|| parse_cast_this_spell_during_main_phase_shape(tokens))
 }
 
-fn parse_empty_battlefield_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let clause = LexedClause::new(&tokens);
+fn parse_empty_battlefield_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
     let atoms = [
         LexPattern::amount("quantity", LexCaptureKind::OneOf(&["no"])),
         LexPattern::object("object", LexCaptureKind::OneOf(&["creature", "creatures"])),
@@ -3030,10 +3023,9 @@ fn is_your_main_phase_clause(clause: LexedClause<'_>) -> bool {
     clause_matches_phrase(clause, &["your", "main", "phase"])
 }
 
-fn parse_player_achievement_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let achievement =
-        crate::runtime_backend::grammar::conditions::parse_player_achievement_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_achievement_condition(tokens)?;
     let player = player_ast_from_status_player_filter(achievement.player)?;
     let predicate = match achievement.achievement {
         crate::runtime_backend::grammar::conditions::PlayerAchievementAst::CitysBlessing => {
@@ -3060,10 +3052,9 @@ fn parse_player_achievement_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 }
 
-fn parse_player_cards_in_hand_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_cards_in_hand_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_condition(tokens)?;
     let player = player_ast_from_status_player_filter(condition.player.clone())?;
     if player == PlayerAst::You && condition.is_no_cards_in_hand() {
         return Some(PredicateAst::YouHaveNoCardsInHand);
@@ -3097,10 +3088,9 @@ fn parse_player_cards_in_hand_predicate(words: &[&str]) -> Option<PredicateAst> 
     }
 }
 
-fn parse_player_life_total_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_life_total_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_player_life_total_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_life_total_condition(tokens)?;
     let (operator, amount) = comparison_to_value_comparison_operator(condition.comparison)?;
     Some(PredicateAst::ValueComparison {
         left: crate::effect::Value::LifeTotal(condition.player),
@@ -3109,10 +3099,9 @@ fn parse_player_life_total_predicate(words: &[&str]) -> Option<PredicateAst> {
     })
 }
 
-fn parse_player_life_relation_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_life_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let relation =
-        crate::runtime_backend::grammar::conditions::parse_player_life_relation_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_life_relation_condition(tokens)?;
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
         crate::runtime_backend::grammar::conditions::PlayerLifeRelationAst::HasMoreLifeThanYou => {
@@ -3130,11 +3119,10 @@ fn parse_player_life_relation_predicate(words: &[&str]) -> Option<PredicateAst> 
     }
 }
 
-fn parse_player_cards_in_hand_relation_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_cards_in_hand_relation_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let relation =
         crate::runtime_backend::grammar::conditions::parse_player_cards_in_hand_relation_condition(
-            &tokens,
+            tokens,
         )?;
     let player = player_ast_from_status_player_filter(relation.player)?;
     match relation.relation {
@@ -3147,10 +3135,9 @@ fn parse_player_cards_in_hand_relation_predicate(words: &[&str]) -> Option<Predi
     }
 }
 
-fn parse_player_turn_event_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_player_turn_event_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_turn_event_condition(tokens)?;
     let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
     let left = match condition.event {
         crate::runtime_backend::grammar::conditions::PlayerTurnEventAst::CardsDrawn => {
@@ -3438,10 +3425,9 @@ fn parse_no_vote_objects_matched_predicate(
     Ok(Some(PredicateAst::NoVoteObjectsMatched { filter }))
 }
 
-fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_spell_context_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_spell_context_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_spell_context_condition(tokens)?;
     match condition {
         crate::runtime_backend::grammar::conditions::SpellContextConditionAst::ControllerIsPoisoned {
             ..
@@ -3455,11 +3441,10 @@ fn parse_spell_context_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 }
 
-fn parse_player_spell_cast_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_spell_cast_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
         crate::runtime_backend::grammar::conditions::parse_player_spell_cast_this_turn_condition(
-            &tokens,
+            tokens,
         )?;
     match condition {
         crate::runtime_backend::grammar::conditions::PlayerSpellCastThisTurnConditionAst::CountAtLeast {
@@ -3497,11 +3482,10 @@ fn parse_player_spell_cast_this_turn_predicate(words: &[&str]) -> Option<Predica
     }
 }
 
-fn parse_player_life_change_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_life_change_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
         crate::runtime_backend::grammar::conditions::parse_player_life_change_this_turn_condition(
-            &tokens,
+            tokens,
         )?;
     match condition.direction {
         crate::runtime_backend::grammar::conditions::PlayerLifeChangeDirectionAst::Gained => {
@@ -3528,11 +3512,10 @@ fn parse_player_life_change_this_turn_predicate(words: &[&str]) -> Option<Predic
     }
 }
 
-fn parse_object_death_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_object_death_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
         crate::runtime_backend::grammar::conditions::parse_object_death_this_turn_condition(
-            &tokens,
+            tokens,
         )?;
     match condition.event {
         crate::runtime_backend::grammar::conditions::ObjectDeathThisTurnEventAst::Died => {
@@ -3549,10 +3532,9 @@ fn parse_object_death_this_turn_predicate(words: &[&str]) -> Option<PredicateAst
     }
 }
 
-fn parse_player_would_action_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_player_would_action_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_player_would_action_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_player_would_action_condition(tokens)?;
     let player = player_ast_from_status_player_filter(condition.player)?;
     match condition.action {
         crate::runtime_backend::grammar::conditions::PlayerWouldActionAst::DrawCard => {
@@ -3567,10 +3549,9 @@ fn parse_player_would_action_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 }
 
-fn parse_battlefield_entry_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
-        crate::runtime_backend::grammar::conditions::parse_battlefield_entry_condition(&tokens)?;
+        crate::runtime_backend::grammar::conditions::parse_battlefield_entry_condition(tokens)?;
     match condition {
         crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
             filter,
@@ -3588,11 +3569,10 @@ fn parse_battlefield_entry_predicate(words: &[&str]) -> Option<PredicateAst> {
     }
 }
 
-fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+fn parse_battlefield_change_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let condition =
         crate::runtime_backend::grammar::conditions::parse_battlefield_change_this_turn_condition(
-            &tokens,
+            tokens,
         )?;
     match condition {
         crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield {
@@ -3614,10 +3594,9 @@ fn parse_battlefield_change_this_turn_predicate(words: &[&str]) -> Option<Predic
     }
 }
 
-fn parse_combat_damage_this_turn_predicate(words: &[&str]) -> Option<PredicateAst> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    parse_source_dealt_combat_damage_this_turn_shape(&tokens)
-        .or_else(|| parse_player_dealt_combat_damage_by_subtype_this_turn_shape(&tokens))
+fn parse_combat_damage_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    parse_source_dealt_combat_damage_this_turn_shape(tokens)
+        .or_else(|| parse_player_dealt_combat_damage_by_subtype_this_turn_shape(tokens))
 }
 
 fn is_player_object_clause(clause: LexedClause<'_>) -> bool {
@@ -5545,6 +5524,11 @@ fn parse_there_are_objects_on_battlefield_predicate(
 }
 
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
+    let predicate_tokens = if token_slice_first_is(tokens, "if") {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     let raw_words_view = GrammarFilterNormalizedWords::new(tokens);
     let raw_words = raw_words_view.to_word_refs();
     let mut filtered = non_article_word_refs(&raw_words);
@@ -5604,16 +5588,16 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(&filtered)? {
+    if let Some(predicate) = parse_passive_this_way_tagged_object_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
-    if let Some(predicate) = parse_active_this_way_discard_predicate(&filtered)? {
+    if let Some(predicate) = parse_active_this_way_discard_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
-    if let Some(predicate) = parse_active_this_way_battlefield_predicate(&filtered)? {
+    if let Some(predicate) = parse_active_this_way_battlefield_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
-    if let Some(predicate) = parse_passive_this_way_battlefield_predicate(&filtered)? {
+    if let Some(predicate) = parse_passive_this_way_battlefield_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
@@ -5674,7 +5658,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_empty_battlefield_predicate(&filtered) {
+    if let Some(predicate) = parse_empty_battlefield_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -5697,7 +5681,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_status_predicate(&filtered) {
+    if let Some(predicate) = parse_player_status_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -5733,19 +5717,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_attacking_you_own_control_predicate(&filtered)? {
+    if let Some(predicate) = parse_attacking_you_own_control_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_you_both_own_and_control_predicate(&filtered)? {
+    if let Some(predicate) = parse_you_both_own_and_control_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_implicit_subject_and_predicate(&filtered)? {
+    if let Some(predicate) = parse_implicit_subject_and_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_while_conjoined_predicate(&filtered)? {
+    if let Some(predicate) = parse_while_conjoined_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
@@ -5830,27 +5814,27 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_life_relation_predicate(&filtered) {
+    if let Some(predicate) = parse_player_life_relation_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_life_total_predicate(&filtered) {
+    if let Some(predicate) = parse_player_life_total_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_cards_in_hand_relation_predicate(&filtered) {
+    if let Some(predicate) = parse_player_cards_in_hand_relation_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_cards_in_hand_predicate(&filtered) {
+    if let Some(predicate) = parse_player_cards_in_hand_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_turn_event_predicate(&filtered) {
+    if let Some(predicate) = parse_player_turn_event_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_would_action_predicate(&filtered) {
+    if let Some(predicate) = parse_player_would_action_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -5858,19 +5842,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_life_change_this_turn_predicate(&filtered) {
+    if let Some(predicate) = parse_player_life_change_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_object_death_this_turn_predicate(&filtered) {
+    if let Some(predicate) = parse_object_death_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_battlefield_change_this_turn_predicate(&filtered) {
+    if let Some(predicate) = parse_battlefield_change_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_battlefield_entry_predicate(&filtered) {
+    if let Some(predicate) = parse_battlefield_entry_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -5885,7 +5869,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     if let Some(predicate) = parse_paid_cost_label_predicate(&filtered) {
         return Ok(predicate);
     }
-    if let Some(predicate) = parse_spell_context_predicate(&filtered) {
+    if let Some(predicate) = parse_spell_context_predicate(predicate_tokens) {
         return Ok(predicate);
     }
     if let Some(predicate) = parse_mana_spent_capture_predicate(&filtered) {
@@ -6189,21 +6173,25 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if let Some(predicate) = parse_player_controls_no_predicate(&filtered)? {
+    if let Some(predicate) = parse_player_controls_no_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_you_control_or_graveyard_predicate(&filtered).transpose()? {
+    if let Some(predicate) =
+        parse_you_control_or_graveyard_predicate(predicate_tokens).transpose()?
+    {
         return Ok(predicate);
     }
 
-    if filtered.len() >= 3 && YOU_CONTROL_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some(predicate) = parse_you_control_conjoined_predicate(&filtered).transpose()? {
+    if YOU_CONTROL_PREFIX_PATTERN.matches_non_article_tokens(predicate_tokens) {
+        if let Some(predicate) =
+            parse_you_control_conjoined_predicate(predicate_tokens).transpose()?
+        {
             return Ok(predicate);
         }
 
         if let Some(predicate) = parse_player_controls_predicate(
-            &filtered,
+            predicate_tokens,
             PlayerAst::You,
             Some(PlayerFilter::You),
             2,
@@ -6214,19 +6202,24 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         }
     }
 
-    if filtered.len() >= 4 && THAT_PLAYER_CONTROLS_PREFIX_PATTERN.matches_words(&filtered) {
-        if let Some(predicate) =
-            parse_player_controls_predicate(&filtered, PlayerAst::That, None, 3, false, false)?
-        {
+    if THAT_PLAYER_CONTROLS_PREFIX_PATTERN.matches_non_article_tokens(predicate_tokens) {
+        if let Some(predicate) = parse_player_controls_predicate(
+            predicate_tokens,
+            PlayerAst::That,
+            None,
+            3,
+            false,
+            false,
+        )? {
             return Ok(predicate);
         }
     }
 
-    if let Some(predicate) = parse_negative_put_tagged_object_predicate(&filtered) {
+    if let Some(predicate) = parse_negative_put_tagged_object_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_achievement_predicate(&filtered) {
+    if let Some(predicate) = parse_player_achievement_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -6234,19 +6227,19 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_status_predicate(&filtered) {
+    if let Some(predicate) = parse_player_status_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_world_state_or_timing_predicate(&filtered) {
+    if let Some(predicate) = parse_world_state_or_timing_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_combat_damage_this_turn_predicate(&filtered) {
+    if let Some(predicate) = parse_combat_damage_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_player_spell_cast_this_turn_predicate(&filtered) {
+    if let Some(predicate) = parse_player_spell_cast_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -7052,14 +7045,14 @@ mod tests {
                 "If you have completed Lost Mine of Phandelver",
                 PredicateAst::PlayerCompletedDungeon {
                     player: PlayerAst::You,
-                    dungeon_name: Some("lost mine of phandelver".to_string()),
+                    dungeon_name: Some("Lost Mine of Phandelver".to_string()),
                 },
             ),
             (
                 "If you haven't completed Lost Mine of Phandelver",
                 PredicateAst::Not(Box::new(PredicateAst::PlayerCompletedDungeon {
                     player: PlayerAst::You,
-                    dungeon_name: Some("lost mine of phandelver".to_string()),
+                    dungeon_name: Some("Lost Mine of Phandelver".to_string()),
                 })),
             ),
             ("If you have a full party", PredicateAst::YouHaveFullParty),

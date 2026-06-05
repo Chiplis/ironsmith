@@ -9,7 +9,9 @@ use crate::zone::Zone;
 use super::super::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
-use super::super::lexer::{LexedClause, OwnedLexToken, TokenWordView};
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, TokenWordView, render_token_slice, token_slice_first_is_any,
+};
 use super::super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
     comparison_to_strict_at_most_threshold, comparison_to_value_comparison_operator,
@@ -21,8 +23,10 @@ use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers:
     ClauseShape, clause_shape,
 };
 
-const MORE_LIFE_THAN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["more", "life", "than"]);
+const MORE_LIFE_THAN_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["more", "life", "than"]),
+    LexPattern::subject("player", LexCaptureKind::Rest),
+]);
 const MORE_LIFE_THAN_YOU_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -908,12 +912,7 @@ fn parse_subject_descriptor_shape(
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
     let subject = parse_subject_descriptor_subject_clause(subject_clause)?;
     let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let descriptor_word_refs = descriptor_clause.word_refs();
-    let descriptor_words = strip_optional_article(&descriptor_word_refs);
-    let [descriptor_word] = descriptor_words else {
-        return None;
-    };
-    let descriptor = parse_object_descriptor_word(descriptor_word)?;
+    let descriptor = parse_object_descriptor_clause(descriptor_clause)?;
     let filter =
         parse_object_filter_with_grammar_entrypoint(subject_clause.tokens(), false).ok()?;
 
@@ -943,6 +942,17 @@ fn parse_subject_descriptor_subject_clause(
         return Some(SubjectDescriptorConditionSubjectAst::AttachedObject);
     }
     None
+}
+
+fn parse_object_descriptor_clause(clause: LexedClause<'_>) -> Option<ObjectDescriptorAst> {
+    let mut tokens = clause.trimmed().tokens();
+    if token_slice_first_is_any(tokens, &["a", "an", "the"]) {
+        tokens = &tokens[1..];
+    }
+    let [descriptor] = tokens else {
+        return None;
+    };
+    parse_object_descriptor_word(descriptor.as_word()?)
 }
 
 pub(crate) fn parse_player_status_condition(
@@ -1167,23 +1177,23 @@ fn parse_player_life_relation_shape(
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
     let subject = parse_life_relation_player_subject_clause(subject_clause)?;
-    let relation_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
-    let relation_words = relation_clause.word_refs();
+    let relation_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)?
+        .trimmed();
 
-    if MORE_LIFE_THAN_YOU_PATTERN.matches_words(&relation_words) {
+    if MORE_LIFE_THAN_YOU_PATTERN.matches(relation_clause) {
         return Some(PlayerLifeRelationConditionAst {
             player: subject,
             relation: PlayerLifeRelationAst::HasMoreLifeThanYou,
         });
     }
-    if MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN.matches_words(&relation_words) {
+    if MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
         return Some(PlayerLifeRelationConditionAst {
             player: subject,
             relation: PlayerLifeRelationAst::HasMoreLifeThanEachOtherPlayer,
         });
     }
-    if subject == PlayerFilter::You
-        && MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches_words(&relation_words)
+    if subject == PlayerFilter::You && MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches(relation_clause)
     {
         return Some(PlayerLifeRelationConditionAst {
             player: subject,
@@ -1191,9 +1201,11 @@ fn parse_player_life_relation_shape(
         });
     }
     if subject == PlayerFilter::You
-        && let Some(prefix_len) = MORE_LIFE_THAN_PREFIX_PATTERN.matched_prefix_len(&relation_words)
+        && let Some(matched) = MORE_LIFE_THAN_PLAYER_PATTERN.match_clause(relation_clause)
     {
-        let player = parse_life_relation_player_subject_words(&relation_words[prefix_len..])?;
+        let player_clause =
+            matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)?;
+        let player = parse_life_relation_player_subject_clause(player_clause)?;
         return Some(PlayerLifeRelationConditionAst {
             player,
             relation: PlayerLifeRelationAst::HasLessLifeThanYou,
@@ -1243,16 +1255,17 @@ fn parse_player_cards_in_hand_relation_shape(
     let matched = LexPattern::new(&atoms).match_clause(clause)?;
     let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
     let subject = parse_life_relation_player_subject_clause(subject_clause)?;
-    let relation_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
-    let relation_words = relation_clause.word_refs();
+    let relation_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, clause)?
+        .trimmed();
 
-    if MORE_CARDS_IN_HAND_THAN_YOU_PATTERN.matches_words(&relation_words) {
+    if MORE_CARDS_IN_HAND_THAN_YOU_PATTERN.matches(relation_clause) {
         return Some(PlayerCardsInHandRelationConditionAst {
             player: subject,
             relation: PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou,
         });
     }
-    if MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN.matches_words(&relation_words) {
+    if MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
         return Some(PlayerCardsInHandRelationConditionAst {
             player: subject,
             relation: PlayerCardsInHandRelationAst::HasMoreCardsInHandThanEachOtherPlayer,
@@ -1825,21 +1838,6 @@ fn parse_player_has_quantity_subject_clause(clause: LexedClause<'_>) -> Option<P
     None
 }
 
-fn parse_life_relation_player_subject_words(words: &[&str]) -> Option<PlayerFilter> {
-    match words {
-        ["you"] => Some(PlayerFilter::You),
-        ["that", "player"] | ["player", "who"] => Some(PlayerFilter::IteratedPlayer),
-        ["target", "player"] => Some(PlayerFilter::target_player()),
-        ["target", "opponent"] => Some(PlayerFilter::target_opponent()),
-        ["each", "opponent" | "opponents"] => Some(PlayerFilter::Opponent),
-        ["a" | "an", "opponent"] | ["opponent" | "opponents"] => Some(PlayerFilter::Opponent),
-        ["a" | "any", "player"] | ["player"] => Some(PlayerFilter::Any),
-        ["defending", "player"] => Some(PlayerFilter::Defending),
-        ["attacking", "player"] => Some(PlayerFilter::Attacking),
-        _ => None,
-    }
-}
-
 fn parse_life_relation_player_subject_clause(clause: LexedClause<'_>) -> Option<PlayerFilter> {
     if clause_matches_phrase(clause, &["you"]) {
         return Some(PlayerFilter::You);
@@ -1924,10 +1922,7 @@ fn parse_you_had_object_entered_battlefield_last_turn_shape(
     let mut filter =
         parse_object_filter_with_grammar_entrypoint(object_clause.tokens(), false).ok()?;
     filter.controller = Some(PlayerFilter::You);
-    if matches!(
-        object_clause.word_refs().first(),
-        Some(&"another" | &"other")
-    ) {
+    if token_slice_first_is_any(object_clause.trimmed().tokens(), &["another", "other"]) {
         filter.other = true;
     }
     Some(BattlefieldEntryConditionAst::ObjectEntered {
@@ -1953,10 +1948,7 @@ fn parse_object_entered_battlefield_this_turn_shape(
     let mut filter =
         parse_object_filter_with_grammar_entrypoint(object_clause.tokens(), false).ok()?;
     filter.controller = Some(PlayerFilter::You);
-    if matches!(
-        object_clause.word_refs().first(),
-        Some(&"another" | &"other")
-    ) {
+    if token_slice_first_is_any(object_clause.trimmed().tokens(), &["another", "other"]) {
         filter.other = true;
     }
     Some(BattlefieldEntryConditionAst::ObjectEntered {
@@ -2183,31 +2175,29 @@ fn parse_player_achievement_tail_clause(clause: LexedClause<'_>) -> Option<Playe
 fn parse_completed_dungeon_achievement_clause(
     clause: LexedClause<'_>,
 ) -> Option<PlayerAchievementAst> {
-    const DUNGEON_PHRASE: &[&str] = &["dungeon"];
+    const DUNGEON_PHRASES: &[&[&str]] = &[
+        &["dungeon"],
+        &["a", "dungeon"],
+        &["an", "dungeon"],
+        &["the", "dungeon"],
+    ];
     const NAMED_DUNGEON_PATTERN: LexPattern<'static> = LexPattern::new(&[
         LexPattern::optional(&[LexPattern::any_word(&["a", "an", "the"])]),
         LexPattern::object("dungeon_name", LexCaptureKind::Rest),
     ]);
 
-    if clause_matches_phrase(clause, DUNGEON_PHRASE) {
+    if clause_matches_any_phrase(clause, DUNGEON_PHRASES) {
         return Some(PlayerAchievementAst::CompletedDungeon { dungeon_name: None });
     }
     let matched = NAMED_DUNGEON_PATTERN.match_clause(clause)?;
     let dungeon_name_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let words = dungeon_name_clause.word_refs();
-    if words.is_empty() {
+    let dungeon_name_tokens = dungeon_name_clause.trimmed().tokens();
+    if dungeon_name_tokens.is_empty() {
         return None;
     }
     Some(PlayerAchievementAst::CompletedDungeon {
-        dungeon_name: Some(words.join(" ")),
+        dungeon_name: Some(render_token_slice(dungeon_name_tokens).trim().to_string()),
     })
-}
-
-fn strip_optional_article<'a>(words: &'a [&'a str]) -> &'a [&'a str] {
-    match words {
-        ["a" | "an" | "the", rest @ ..] => rest,
-        _ => words,
-    }
 }
 
 fn parse_object_descriptor_word(word: &str) -> Option<ObjectDescriptorAst> {

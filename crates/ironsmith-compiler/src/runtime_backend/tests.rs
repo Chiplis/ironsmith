@@ -5863,7 +5863,7 @@ fn rewrite_anthem_static_player_achievement_condition_uses_achievement_capture()
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PlayerCompletedDungeon"), "{debug}");
-    assert!(debug.contains("lost mine of phandelver"), "{debug}");
+    assert!(debug.contains("Lost Mine of Phandelver"), "{debug}");
 }
 
 #[test]
@@ -11087,6 +11087,53 @@ fn rewrite_sequence_registry_matches_damage_prevention_counter_followup() {
         "{debug}"
     );
     assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+}
+
+#[test]
+fn rewrite_subject_verb_damage_replacement_counter_clause_uses_captured_target() {
+    let tokens = lex_line(
+        "If damage would be dealt to target creature this turn, prevent that damage and put that many +1/+1 counters on it.",
+        0,
+    )
+    .expect("damage replacement counter clause should lex");
+
+    let parsed = super::effect_sentences::parse_top_level_subject_verb_recognition(&tokens)
+        .expect("damage replacement counter clause should parse")
+        .expect("subject-verb recognizer should match damage replacement counter clause");
+    let debug = format!("{:#?}", parsed.1);
+
+    assert_eq!(
+        parsed.0,
+        "subject-verb verb=Prevent subject=implicit recognizer=damage-replacement-counters"
+    );
+    assert!(
+        debug.contains("PreventDamageToTargetPutCounters")
+            && debug.contains("target: Object(")
+            && debug.contains("PlusOnePlusOne"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_subject_verb_meld_result_uses_captured_name() {
+    let tokens = lex_line("Exile them, then meld them into Chittering Host.", 0)
+        .expect("meld result clause should lex");
+
+    let parsed = super::effect_sentences::parse_top_level_subject_verb_recognition(&tokens)
+        .expect("meld result clause should parse")
+        .expect("subject-verb recognizer should match meld result clause");
+    let debug = format!("{:#?}", parsed.1);
+
+    assert_eq!(
+        parsed.0,
+        "subject-verb verb=Meld subject=explicit recognizer=meld-result"
+    );
+    assert!(
+        debug.contains("Meld")
+            && debug.contains("chittering host")
+            && !debug.contains("then meld them into"),
+        "{debug}"
+    );
 }
 
 #[test]

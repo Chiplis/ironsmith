@@ -37,6 +37,7 @@ pub(crate) struct RewriteKeywordLine {
     pub(crate) text: String,
     pub(crate) kind: RewriteKeywordLineKind,
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
 }
 
 pub(crate) type RewriteKeywordLineKind = KeywordLineKindCst;

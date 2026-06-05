@@ -32,6 +32,7 @@ pub(crate) struct KeywordLineCst {
     pub(crate) info: LineInfo,
     pub(crate) text: String,
     pub(crate) parse_tokens: Vec<OwnedLexToken>,
+    pub(crate) full_parse_tokens: Vec<OwnedLexToken>,
     pub(crate) kind: KeywordLineKindCst,
 }
 

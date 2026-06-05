@@ -2,7 +2,7 @@
 
 use std::ops::Range;
 
-use super::lexer::LexedClause;
+use super::lexer::{LexedClause, TokenKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LexCaptureRole {
@@ -20,16 +20,20 @@ pub(crate) enum LexCaptureKind<'p> {
     Rest,
     WordCount(usize),
     OneOf(&'p [&'p str]),
+    OneOfPhrase(&'p [&'p [&'p str]]),
     UntilPhrase(&'p [&'p str]),
     UntilLastPhrase(&'p [&'p str]),
+    UntilLastPhraseBeforeToken(&'p [&'p str], TokenKind),
     UntilAnyPhrase(&'p [&'p [&'p str]]),
     UntilLastAnyPhrase(&'p [&'p [&'p str]]),
+    UntilToken(TokenKind),
     OneOrMoreWords,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LexPatternAtom<'p> {
     Word(&'p str),
+    Token(TokenKind),
     AnyWord(&'p [&'p str]),
     Phrase(&'p [&'p str]),
     AnyPhrase(&'p [&'p [&'p str]]),
@@ -51,6 +55,10 @@ impl<'p> LexPattern<'p> {
 
     pub(crate) const fn word(word: &'p str) -> LexPatternAtom<'p> {
         LexPatternAtom::Word(word)
+    }
+
+    pub(crate) const fn token(kind: TokenKind) -> LexPatternAtom<'p> {
+        LexPatternAtom::Token(kind)
     }
 
     pub(crate) const fn any_word(words: &'p [&'p str]) -> LexPatternAtom<'p> {
@@ -125,30 +133,31 @@ impl<'p> LexPattern<'p> {
 
     pub(crate) fn match_clause<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
-        let matched = self.match_words(words.as_slice(), 0, true)?;
+        let matched = self.match_words(clause, words.as_slice(), 0, true)?;
         Some(matched)
     }
 
     pub(crate) fn match_prefix<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
-        self.match_words(words.as_slice(), 0, false)
+        self.match_words(clause, words.as_slice(), 0, false)
     }
 
     pub(crate) fn find_in_clause<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
         (0..=words.len())
-            .filter_map(|start| self.match_words(words.as_slice(), start, false))
+            .filter_map(|start| self.match_words(clause, words.as_slice(), start, false))
             .min_by_key(|matched| matched.word_range.start)
     }
 
     fn match_words(
         self,
+        clause: LexedClause<'_>,
         words: &[&str],
         start: usize,
         require_end: bool,
     ) -> Option<LexPatternMatch<'p>> {
         let mut captures = Vec::new();
-        let cursor = match_atoms(self.atoms, words, start, &mut captures)?;
+        let cursor = match_atoms(self.atoms, clause, words, start, &mut captures)?;
 
         if require_end && cursor != words.len() {
             return None;
@@ -163,6 +172,7 @@ impl<'p> LexPattern<'p> {
 
 fn match_atoms<'p>(
     atoms: &[LexPatternAtom<'p>],
+    clause: LexedClause<'_>,
     words: &[&str],
     start: usize,
     captures: &mut Vec<LexPatternCapture<'p>>,
@@ -176,6 +186,11 @@ fn match_atoms<'p>(
                     return None;
                 }
                 cursor += 1;
+            }
+            LexPatternAtom::Token(expected) => {
+                if !token_kind_at_word_boundary(clause, cursor, expected) {
+                    return None;
+                }
             }
             LexPatternAtom::AnyWord(expected) => {
                 let word = words.get(cursor).copied()?;
@@ -200,9 +215,13 @@ fn match_atoms<'p>(
             }
             LexPatternAtom::Optional(optional_atoms) => {
                 let mut optional_captures = captures.clone();
-                if let Some(optional_cursor) =
-                    match_atoms(optional_atoms, words, cursor, &mut optional_captures)
-                {
+                if let Some(optional_cursor) = match_atoms(
+                    optional_atoms,
+                    clause,
+                    words,
+                    cursor,
+                    &mut optional_captures,
+                ) {
                     *captures = optional_captures;
                     cursor = optional_cursor;
                 }
@@ -212,7 +231,7 @@ fn match_atoms<'p>(
                 for sequence in sequences {
                     let mut sequence_captures = captures.clone();
                     if let Some(sequence_cursor) =
-                        match_atoms(sequence, words, cursor, &mut sequence_captures)
+                        match_atoms(sequence, clause, words, cursor, &mut sequence_captures)
                     {
                         let is_better = match &matched {
                             None => true,
@@ -228,10 +247,10 @@ fn match_atoms<'p>(
                 cursor = sequence_cursor;
             }
             LexPatternAtom::Capture(name, kind) => {
-                cursor = match_capture(name, None, kind, words, cursor, captures)?;
+                cursor = match_capture(name, None, kind, clause, words, cursor, captures)?;
             }
             LexPatternAtom::RoleCapture(name, role, kind) => {
-                cursor = match_capture(name, Some(role), kind, words, cursor, captures)?;
+                cursor = match_capture(name, Some(role), kind, clause, words, cursor, captures)?;
             }
         }
     }
@@ -243,6 +262,7 @@ fn match_capture<'p>(
     name: &'p str,
     role: Option<LexCaptureRole>,
     kind: LexCaptureKind<'p>,
+    clause: LexedClause<'_>,
     words: &[&str],
     cursor: usize,
     captures: &mut Vec<LexPatternCapture<'p>>,
@@ -291,6 +311,18 @@ fn match_capture<'p>(
             });
             Some(cursor + 1)
         }
+        LexCaptureKind::OneOfPhrase(expected) => {
+            let phrase = expected
+                .iter()
+                .copied()
+                .find(|phrase| words_at(words, cursor, phrase))?;
+            captures.push(LexPatternCapture {
+                name,
+                role,
+                word_range: cursor..cursor + phrase.len(),
+            });
+            Some(cursor + phrase.len())
+        }
         LexCaptureKind::UntilPhrase(phrase) => {
             let end = find_phrase(words, cursor, phrase)?;
             captures.push(LexPatternCapture {
@@ -302,6 +334,16 @@ fn match_capture<'p>(
         }
         LexCaptureKind::UntilLastPhrase(phrase) => {
             let end = rfind_phrase(words, cursor, phrase)?;
+            captures.push(LexPatternCapture {
+                name,
+                role,
+                word_range: cursor..end,
+            });
+            Some(end)
+        }
+        LexCaptureKind::UntilLastPhraseBeforeToken(phrase, delimiter) => {
+            let delimiter_word = word_index_before_token_kind(clause, cursor, delimiter)?;
+            let end = rfind_phrase_in_word_range(words, cursor, delimiter_word, phrase)?;
             captures.push(LexPatternCapture {
                 name,
                 role,
@@ -327,7 +369,49 @@ fn match_capture<'p>(
             });
             Some(end)
         }
+        LexCaptureKind::UntilToken(delimiter) => {
+            let end = word_index_before_token_kind(clause, cursor, delimiter)?;
+            captures.push(LexPatternCapture {
+                name,
+                role,
+                word_range: cursor..end,
+            });
+            Some(end)
+        }
     }
+}
+
+fn token_kind_at_word_boundary(
+    clause: LexedClause<'_>,
+    word_cursor: usize,
+    expected: TokenKind,
+) -> bool {
+    clause
+        .token_index_after_words(word_cursor)
+        .and_then(|token_idx| clause.tokens().get(token_idx))
+        .is_some_and(|token| token.kind == expected)
+}
+
+fn word_index_before_token_kind(
+    clause: LexedClause<'_>,
+    start_word: usize,
+    delimiter: TokenKind,
+) -> Option<usize> {
+    let start_token = clause.token_index_for_word_or_end(start_word)?;
+    let delimiter_token = clause
+        .tokens()
+        .iter()
+        .enumerate()
+        .skip(start_token)
+        .find_map(|(idx, token)| (token.kind == delimiter).then_some(idx))?;
+    Some(
+        clause
+            .words()
+            .token_start_indices()
+            .iter()
+            .take_while(|token_idx| **token_idx < delimiter_token)
+            .count(),
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -405,6 +489,20 @@ fn rfind_phrase(words: &[&str], start: usize, phrase: &[&str]) -> Option<usize> 
     (start..=words.len())
         .rev()
         .find(|idx| words_at(words, *idx, phrase))
+}
+
+fn rfind_phrase_in_word_range(
+    words: &[&str],
+    start: usize,
+    end: usize,
+    phrase: &[&str],
+) -> Option<usize> {
+    if start > end || end > words.len() {
+        return None;
+    }
+    (start..=end)
+        .rev()
+        .find(|idx| idx.saturating_add(phrase.len()) <= end && words_at(words, *idx, phrase))
 }
 
 fn find_any_phrase<'p>(
@@ -499,6 +597,36 @@ mod tests {
                 .expect("modifier")
                 .word_refs(),
             ["+1", "+1"]
+        );
+    }
+
+    #[test]
+    fn pattern_can_capture_one_of_several_phrases() {
+        let tokens = tokens(&["until", "end", "of", "turn", "you", "may", "cast"]);
+        let clause = LexedClause::new(&tokens);
+        let atoms = [
+            LexPattern::modifier(
+                "duration",
+                LexCaptureKind::OneOfPhrase(&[&["until", "end", "of", "turn"], &["this", "turn"]]),
+            ),
+            LexPattern::capture("permission", LexCaptureKind::Rest),
+        ];
+        let pattern = LexPattern::new(&atoms);
+
+        let matched = pattern.match_clause(clause).expect("match");
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+                .expect("duration")
+                .word_refs(),
+            ["until", "end", "of", "turn"]
+        );
+        assert_eq!(
+            matched
+                .capture_clause("permission", clause)
+                .expect("permission")
+                .word_refs(),
+            ["you", "may", "cast"]
         );
     }
 
@@ -695,6 +823,84 @@ mod tests {
                 .expect("card type")
                 .word_refs(),
             ["instant"]
+        );
+    }
+
+    #[test]
+    fn pattern_can_capture_until_token_delimiter() {
+        let tokens = crate::runtime_backend::lex_line(
+            "This turn, whenever you draw a card, draw a card.",
+            0,
+        )
+        .expect("delimiter text should lex");
+        let clause = LexedClause::new(&tokens).trimmed();
+        let atoms = [
+            LexPattern::modifier(
+                "duration",
+                LexCaptureKind::OneOfPhrase(&[&["this", "turn"]]),
+            ),
+            LexPattern::action("intro", LexCaptureKind::OneOf(&["when", "whenever"])),
+            LexPattern::condition("trigger", LexCaptureKind::UntilToken(TokenKind::Comma)),
+            LexPattern::tail("effect", LexCaptureKind::Rest),
+        ];
+        let pattern = LexPattern::new(&atoms);
+
+        let matched = pattern.match_clause(clause).expect("match");
+
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Condition, clause)
+                .expect("trigger")
+                .word_refs(),
+            ["you", "draw", "a", "card"]
+        );
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Tail, clause)
+                .expect("effect")
+                .word_refs(),
+            ["draw", "a", "card"]
+        );
+    }
+
+    #[test]
+    fn pattern_can_capture_until_phrase_before_token_delimiter() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Whenever you draw a card this turn, target creature can't block this turn.",
+            0,
+        )
+        .expect("suffix delimiter text should lex");
+        let clause = LexedClause::new(&tokens).trimmed();
+        let atoms = [
+            LexPattern::action("intro", LexCaptureKind::OneOf(&["when", "whenever"])),
+            LexPattern::condition(
+                "trigger",
+                LexCaptureKind::UntilLastPhraseBeforeToken(&["this", "turn"], TokenKind::Comma),
+            ),
+            LexPattern::modifier(
+                "duration",
+                LexCaptureKind::OneOfPhrase(&[&["this", "turn"]]),
+            ),
+            LexPattern::token(TokenKind::Comma),
+            LexPattern::tail("effect", LexCaptureKind::Rest),
+        ];
+        let pattern = LexPattern::new(&atoms);
+
+        let matched = pattern.match_clause(clause).expect("match");
+
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Condition, clause)
+                .expect("trigger")
+                .word_refs(),
+            ["you", "draw", "a", "card"]
+        );
+        assert_eq!(
+            matched
+                .capture_clause_by_role(LexCaptureRole::Tail, clause)
+                .expect("effect")
+                .word_refs(),
+            ["target", "creature", "cant", "block", "this", "turn"]
         );
     }
 
