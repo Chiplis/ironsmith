@@ -3077,6 +3077,55 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn dungeon_delver_does_not_duplicate_without_commander_creature() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let dungeon_delver = CardDefinitionBuilder::new(CardId::new(), "Dungeon Delver")
+            .card_types(vec![CardType::Enchantment])
+            .subtypes(vec![Subtype::Background])
+            .parse_text(
+                "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\"",
+            )
+            .expect("Dungeon Delver should parse");
+        let non_commander = CardBuilder::new(CardId::new(), "Non-Commander Legendary")
+            .card_types(vec![CardType::Creature])
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+
+        game.create_object_from_card(&non_commander, alice, Zone::Battlefield);
+        game.create_object_from_definition(&dungeon_delver, alice, Zone::Battlefield);
+        game.refresh_continuous_state();
+
+        let event = TriggerEvent::new_with_provenance(
+            crate::events::DungeonRoomEnteredEvent::new(
+                alice,
+                ObjectId::from_raw(41_003),
+                "Dungeon of the Mad Mage",
+                "Yawning Portal",
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let triggered = check_triggers(&game, &event);
+
+        assert_eq!(
+            dungeon_room_trigger_count(&triggered),
+            1,
+            "Dungeon Delver should not copy room triggers without a commander creature: {triggered:#?}"
+        );
+
+        resolve_triggered_entries(&mut game, triggered);
+
+        assert_eq!(
+            game.life_total(alice),
+            21,
+            "Yawning Portal should resolve once without a commander creature"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn dungeon_delver_does_not_copy_non_room_trigger_from_same_event() {
         let (mut game, alice, _) = dungeon_delver_game_with_commander();
         let watcher = CardDefinitionBuilder::new(CardId::new(), "Room Event Watcher")
