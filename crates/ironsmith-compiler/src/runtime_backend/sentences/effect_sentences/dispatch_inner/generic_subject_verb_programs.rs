@@ -1774,6 +1774,17 @@ fn split_vote_option_clauses<'a>(options_clause: LexedClause<'a>) -> Vec<LexedCl
     clauses
 }
 
+fn numeric_vote_options(options_clause: LexedClause<'_>) -> Vec<String> {
+    options_clause
+        .trimmed()
+        .tokens()
+        .iter()
+        .filter_map(|token| token.as_word())
+        .filter(|word| word.chars().all(|ch| ch.is_ascii_digit()))
+        .map(str::to_string)
+        .collect()
+}
+
 fn parse_vote_reveal_sentence(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     if VOTE_REVEAL_PATTERN
         .match_clause(LexedClause::new(tokens).trimmed())
@@ -1804,10 +1815,7 @@ fn parse_secret_number_choice_vote_start(
     }
 
     let option_clause = vote_options_clause_before_reveal_tail(options_clause);
-    let options = split_vote_option_clauses(option_clause)
-        .into_iter()
-        .filter_map(captured_numeric_label)
-        .collect::<Vec<_>>();
+    let options = numeric_vote_options(option_clause);
     if options.len() < 2 {
         return Err(CardTextError::ParseError(
             "secret choice clause requires at least two numeric options".to_string(),
@@ -1982,17 +1990,6 @@ fn captured_non_article_tokens(clause: LexedClause<'_>) -> Vec<OwnedLexToken> {
 fn captured_non_article_label(clause: LexedClause<'_>) -> Option<String> {
     let tokens = captured_non_article_tokens(clause);
     (!tokens.is_empty()).then(|| render_token_slice(&tokens).trim().to_string())
-}
-
-fn captured_numeric_label(clause: LexedClause<'_>) -> Option<String> {
-    let tokens = captured_non_article_tokens(clause);
-    if tokens.len() == 1
-        && let Some(word) = tokens[0].as_word()
-        && word.chars().all(|ch| ch.is_ascii_digit())
-    {
-        return Some(word.to_string());
-    }
-    None
 }
 
 fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {

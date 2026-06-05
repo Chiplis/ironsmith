@@ -1569,6 +1569,7 @@ fn parse_no_permanent_left_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
+    let optional_the = [LexPattern::word("the")];
     let atoms = [
         LexPattern::word("no"),
         LexPattern::subject(
@@ -1576,6 +1577,7 @@ fn parse_no_permanent_left_battlefield_shape(
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
         LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
+        LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
@@ -1586,7 +1588,10 @@ fn parse_permanent_left_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
-    let optional_article = [LexPattern::word("a")];
+    let optional_article = [LexPattern::any_word(&[
+        "a", "an",
+    ])];
+    let optional_the = [LexPattern::word("the")];
     let atoms = [
         LexPattern::optional(&optional_article),
         LexPattern::subject(
@@ -1594,6 +1599,7 @@ fn parse_permanent_left_battlefield_shape(
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
         LexPattern::action("action", LexCaptureKind::OneOf(&["left"])),
+        LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
@@ -1604,21 +1610,29 @@ fn parse_permanent_left_battlefield_under_your_control_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
+    let optional_article = [LexPattern::any_word(&[
+        "a", "an",
+    ])];
+    let optional_the = [LexPattern::word("the")];
     let controlled_tail = [
+        LexPattern::optional(&optional_article),
         LexPattern::subject(
             "subject",
             LexCaptureKind::OneOf(&["permanent", "permanents", "creature", "creatures"]),
         ),
         LexPattern::word("left"),
+        LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "under", "your", "control", "this", "turn"]),
     ];
     let you_controlled_tail = [
+        LexPattern::optional(&optional_article),
         LexPattern::subject(
             "subject",
             LexCaptureKind::OneOf(&["permanent", "permanents"]),
         ),
         LexPattern::phrase(&["you", "controlled"]),
         LexPattern::word("left"),
+        LexPattern::optional(&optional_the),
         LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     let alternatives: &[&[LexPatternAtom<'_>]] = &[&controlled_tail, &you_controlled_tail];
@@ -1631,19 +1645,22 @@ fn parse_object_put_into_graveyard_from_battlefield_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<BattlefieldChangeThisTurnConditionAst> {
     let clause = LexedClause::new(tokens);
+    let optional_article = [LexPattern::any_word(&[
+        "a", "an",
+    ])];
+    let optional_graveyard_article = [LexPattern::word("a")];
+    let optional_the = [LexPattern::word("the")];
     let atoms = [
+        LexPattern::optional(&optional_article),
         LexPattern::object("object", LexCaptureKind::OneOf(&["land", "lands"])),
         LexPattern::phrase(&["you", "controlled"]),
         LexPattern::action("action", LexCaptureKind::OneOf(&["was", "were"])),
-        LexPattern::phrase(&[
-            "put",
-            "into",
-            "graveyard",
-            "from",
-            "battlefield",
-            "this",
-            "turn",
-        ]),
+        LexPattern::phrase(&["put", "into"]),
+        LexPattern::optional(&optional_graveyard_article),
+        LexPattern::word("graveyard"),
+        LexPattern::word("from"),
+        LexPattern::optional(&optional_the),
+        LexPattern::phrase(&["battlefield", "this", "turn"]),
     ];
     LexPattern::new(&atoms).match_clause(clause)?;
     Some(
