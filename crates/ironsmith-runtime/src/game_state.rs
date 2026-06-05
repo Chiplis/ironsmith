@@ -2393,7 +2393,7 @@ impl GameState {
         }
     }
 
-    fn mark_continuous_state_dirty(&self) {
+    pub(crate) fn mark_continuous_state_dirty(&self) {
         self.runtime_cache.continuous_state_dirty.set(true);
         self.runtime_cache
             .calculated_characteristics_cache

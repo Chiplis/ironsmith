@@ -21707,6 +21707,87 @@ fn test_marhault_elsdragon_rampage_buffs_for_blockers_beyond_first() {
     );
 }
 
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rampaging_cyclops_loses_power_only_when_two_or_more_creatures_block_it() {
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let mut combat = CombatState::default();
+
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let rampaging_cyclops_def =
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Rampaging Cyclops")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(4, 4))
+            .parse_text(
+                "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+            )
+            .expect("Rampaging Cyclops should parse for runtime test");
+    let cyclops =
+        game.create_object_from_definition(&rampaging_cyclops_def, alice, Zone::Battlefield);
+    let blocker_1 = create_creature(&mut game, "Blocker 1", bob, 1, 1);
+    let blocker_2 = create_creature(&mut game, "Blocker 2", bob, 1, 1);
+
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: cyclops,
+        target: AttackTarget::Player(bob),
+    });
+
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[BlockerDeclaration {
+            blocker: blocker_1,
+            blocking: cyclops,
+        }],
+        bob,
+    )
+    .expect("one blocker should be a legal block");
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.calculated_power(cyclops),
+        Some(4),
+        "Rampaging Cyclops should keep 4 power with only one blocker"
+    );
+    assert_eq!(
+        game.calculated_toughness(cyclops),
+        Some(4),
+        "Rampaging Cyclops toughness should not change"
+    );
+
+    apply_blocker_declarations(
+        &mut game,
+        &mut combat,
+        &mut trigger_queue,
+        &[
+            BlockerDeclaration {
+                blocker: blocker_1,
+                blocking: cyclops,
+            },
+            BlockerDeclaration {
+                blocker: blocker_2,
+                blocking: cyclops,
+            },
+        ],
+        bob,
+    )
+    .expect("two blockers should be a legal block");
+    game.refresh_continuous_state();
+    assert_eq!(
+        game.calculated_power(cyclops),
+        Some(2),
+        "Rampaging Cyclops should get -2/-0 with two blockers"
+    );
+    assert_eq!(
+        game.calculated_toughness(cyclops),
+        Some(4),
+        "Rampaging Cyclops toughness should still not change"
+    );
+}
+
 fn create_creature(
     game: &mut GameState,
     name: &str,
