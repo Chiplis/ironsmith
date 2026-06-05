@@ -377,6 +377,33 @@ pub(crate) fn choose_tagged_cost_step(
         }
     }
 
+    let sacrifice_player = next_effect
+        .downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
+        .or_else(|| {
+            next_effect
+                .downcast_ref::<crate::effects::WithIdEffect>()
+                .and_then(|with_id| {
+                    with_id
+                        .effect
+                        .downcast_ref::<ironsmith_core::SacrificePlayerEffect>()
+                })
+        });
+    if let Some(sacrifice) = sacrifice_player {
+        if sacrifice.player == crate::target::PlayerFilter::You
+            && tagged_filter_matches(&sacrifice.filter, &choose.tag)
+        {
+            return Some(ActivationCostStep::Sacrifice {
+                cost: crate::costs::Cost::sacrifice(choose.filter.clone()),
+                filter: choose.filter.clone(),
+                description: crate::costs::CostProcessingMode::SacrificeTarget {
+                    filter: choose.filter.clone(),
+                }
+                .display(),
+                choice_tag: Some(choose.tag.clone()),
+            });
+        }
+    }
+
     if let Some(exile) = next_effect.downcast_ref::<crate::effects::ExileEffect>() {
         let zone = choose.filter.zone.or(choose.zone)?;
         let description = match zone {

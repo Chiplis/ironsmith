@@ -28516,6 +28516,280 @@ fn test_corpse_cobble_sums_the_power_of_sacrificed_creatures() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn tormented_thoughts_definition_for_runtime_tests() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(398_623), "Tormented Thoughts")
+        .mana_cost(ManaCost::new())
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nTarget player discards a number of cards equal to the sacrificed creature's power.",
+        )
+        .expect("Tormented Thoughts should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn tormented_thoughts_test_card(name: &str, card_types: Vec<CardType>) -> crate::card::Card {
+    CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .build()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct TormentedThoughtsDiscardDecisionMaker {
+    discard_order: Vec<ObjectId>,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct TormentedThoughtsCostDecisionMaker {
+    sacrifice_id: ObjectId,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for TormentedThoughtsCostDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        if ctx
+            .candidates
+            .iter()
+            .any(|candidate| candidate.id == self.sacrifice_id && candidate.legal)
+        {
+            vec![self.sacrifice_id]
+        } else {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.min)
+                .collect()
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for TormentedThoughtsDiscardDecisionMaker {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        let legal_ids = ctx
+            .candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .collect::<Vec<_>>();
+        self.discard_order
+            .iter()
+            .copied()
+            .filter(|id| legal_ids.contains(id))
+            .take(ctx.min)
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn cast_tormented_thoughts_targeting_player(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    spell_id: ObjectId,
+    target_player: PlayerId,
+    sacrifice_id: ObjectId,
+) {
+    use crate::decision::{GameProgress, LegalAction};
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let mut dm = TormentedThoughtsCostDecisionMaker { sacrifice_id };
+    let mut progress = apply_priority_response_with_dm(
+        game,
+        trigger_queue,
+        &mut state,
+        &PriorityResponse::PriorityAction(LegalAction::CastSpell {
+            spell_id,
+            from_zone: Zone::Hand,
+            casting_method: CastingMethod::Normal,
+        }),
+        &mut dm,
+    )
+    .expect("Tormented Thoughts cast should start");
+
+    for _ in 0..5 {
+        progress = match progress {
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Targets(_),
+            ) => {
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    &mut state,
+                    &PriorityResponse::Targets(vec![Target::Player(target_player)]),
+                    &mut dm,
+                )
+                .expect("Tormented Thoughts should accept target player")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectOptions(ctx),
+            ) => {
+                let sacrifice_cost_index = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                    .map(|option| option.index)
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "Tormented Thoughts should offer a sacrifice cost option, got {:?}",
+                            ctx.options
+                        )
+                    });
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    &mut state,
+                    &PriorityResponse::NextCostChoice(sacrifice_cost_index),
+                    &mut dm,
+                )
+                .expect("Tormented Thoughts should accept choosing the sacrifice cost")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::SelectObjects(ctx),
+            ) => {
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == sacrifice_id && candidate.legal),
+                    "Tormented Thoughts should allow sacrificing the chosen creature as its additional cost"
+                );
+                apply_priority_response_with_dm(
+                    game,
+                    trigger_queue,
+                    &mut state,
+                    &PriorityResponse::CardCostChoice(sacrifice_id),
+                    &mut dm,
+                )
+                .expect("Tormented Thoughts should accept the sacrificed creature")
+            }
+            GameProgress::NeedsDecisionCtx(
+                crate::decisions::context::DecisionContext::Priority(_),
+            ) => {
+                break;
+            }
+            other => panic!("unexpected Tormented Thoughts cast flow state: {other:?}"),
+        };
+    }
+
+    assert_eq!(game.stack.len(), 1, "Tormented Thoughts should be on the stack");
+    let stack_entry = game.stack.last().expect("Tormented Thoughts should be stacked");
+    assert_eq!(stack_entry.targets, vec![Target::Player(target_player)]);
+    let sacrificed = stack_entry
+        .tagged_objects
+        .get(&crate::tag::TagKey::from("sacrificed_0"))
+        .expect("Tormented Thoughts stack entry should remember the sacrificed creature");
+    assert_eq!(sacrificed.len(), 1);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn run_tormented_thoughts_discards_by_sacrificed_power(
+    sacrificed_power: i32,
+    target_hand_size: usize,
+) {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut trigger_queue = TriggerQueue::new();
+
+    game.turn.active_player = alice;
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let tormented_thoughts = tormented_thoughts_definition_for_runtime_tests();
+    let spell_id = game.create_object_from_definition(&tormented_thoughts, alice, Zone::Hand);
+    let fodder = CardBuilder::new(CardId::new(), "Tormented Thoughts Fodder")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(sacrificed_power, 1))
+        .build();
+    let fodder_id = game.create_object_from_card(&fodder, alice, Zone::Battlefield);
+    let alice_hand_card = game.create_object_from_card(
+        &tormented_thoughts_test_card("Alice Untouched Hand Card", vec![CardType::Instant]),
+        alice,
+        Zone::Hand,
+    );
+    let bob_hand = (0..target_hand_size)
+        .map(|idx| {
+            game.create_object_from_card(
+                &tormented_thoughts_test_card(
+                    &format!("Bob Tormented Card {}", idx + 1),
+                    vec![CardType::Artifact],
+                ),
+                bob,
+                Zone::Hand,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    cast_tormented_thoughts_targeting_player(
+        &mut game,
+        &mut trigger_queue,
+        spell_id,
+        bob,
+        fodder_id,
+    );
+
+    assert!(
+        !game.battlefield.contains(&fodder_id)
+            && player_zone_contains_named(
+                &game,
+                alice,
+                Zone::Graveyard,
+                "Tormented Thoughts Fodder"
+            ),
+        "Tormented Thoughts should sacrifice the creature as an additional cost"
+    );
+    assert!(
+        game.player(alice)
+            .expect("Alice exists")
+            .hand
+            .contains(&alice_hand_card),
+        "Tormented Thoughts should not discard cards from the caster when Bob is targeted"
+    );
+
+    let mut dm = TormentedThoughtsDiscardDecisionMaker {
+        discard_order: bob_hand.clone(),
+    };
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Tormented Thoughts should resolve");
+
+    let expected_discards = target_hand_size.min(sacrificed_power.max(0) as usize);
+    for (idx, card_id) in bob_hand.iter().enumerate() {
+        let name = format!("Bob Tormented Card {}", idx + 1);
+        if idx < expected_discards {
+            assert!(
+                !game.player(bob).expect("Bob exists").hand.contains(card_id)
+                    && player_zone_contains_named(&game, bob, Zone::Graveyard, &name),
+                "Tormented Thoughts should discard Bob's card {name}"
+            );
+        } else {
+            assert!(
+                game.player(bob).expect("Bob exists").hand.contains(card_id),
+                "Tormented Thoughts should leave Bob's extra card {name} in hand"
+            );
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tormented_thoughts_discards_cards_equal_to_sacrificed_creature_power() {
+    run_tormented_thoughts_discards_by_sacrificed_power(3, 4);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn tormented_thoughts_discards_only_available_cards_when_power_exceeds_hand_size() {
+    run_tormented_thoughts_discards_by_sacrificed_power(4, 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn soulblast_definition_for_runtime_tests() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(130_369), "Soulblast")
         .mana_cost(ManaCost::new())
