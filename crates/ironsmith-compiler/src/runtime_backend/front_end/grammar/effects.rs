@@ -741,32 +741,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_BY_PREFIXES).is_some() {
-        let source_tokens = &core_tokens[5..];
-        if source_tokens
-            .first()
-            .is_some_and(|token| PREVENT_DAMAGE_SOURCE_HEAD_WORD_PATTERN.matches_token(token))
-        {
-            let (source, has_color_condition) =
-                parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-            return Ok(Some(prevent_damage_effect_with_optional_condition(
-                source,
-                has_color_condition,
-            )));
-        }
-        if let Ok(source_filter) = parse_object_filter(source_tokens, false) {
-            return Ok(Some(
-                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
-                    source_filter,
-                    crate::effect::Until::EndOfTurn,
-                ),
-            ));
-        }
-        let (source, has_color_condition) =
-            parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
-        return Ok(Some(prevent_damage_effect_with_optional_condition(
-            source,
-            has_color_condition,
-        )));
+        return parse_prevent_all_combat_damage_from_source_tokens(&core_tokens[5..], &words);
     }
 
     if primitives::words_match_any_prefix(&core_tokens, PREVENT_DAMAGE_TO_AND_BY_PREFIXES).is_some()
@@ -790,6 +765,18 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
             .is_some_and(|word| DEAL_WORD_PATTERN.matches_word(word))
     {
         let source_tokens = &core_tokens[..would_idx];
+        if !source_tokens
+            .first()
+            .is_some_and(|token| PREVENT_DAMAGE_SOURCE_HEAD_WORD_PATTERN.matches_token(token))
+            && let Ok(source_filter) = parse_object_filter(source_tokens, false)
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         let (source, has_color_condition) =
             parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
         let has_color_condition = has_color_condition
@@ -803,6 +790,37 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     Err(CardTextError::ParseError(format!(
         "unsupported prevent-all-combat-damage clause tail (clause: '{}')",
         words.join(" ")
+    )))
+}
+
+fn parse_prevent_all_combat_damage_from_source_tokens(
+    source_tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if source_tokens
+        .first()
+        .is_some_and(|token| PREVENT_DAMAGE_SOURCE_HEAD_WORD_PATTERN.matches_token(token))
+    {
+        let (source, has_color_condition) =
+            parse_prevent_damage_source_target_lexed(source_tokens, clause_words)?;
+        return Ok(Some(prevent_damage_effect_with_optional_condition(
+            source,
+            has_color_condition,
+        )));
+    }
+    if let Ok(source_filter) = parse_object_filter(source_tokens, false) {
+        return Ok(Some(
+            EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                source_filter,
+                crate::effect::Until::EndOfTurn,
+            ),
+        ));
+    }
+    let (source, has_color_condition) =
+        parse_prevent_damage_source_target_lexed(source_tokens, clause_words)?;
+    Ok(Some(prevent_damage_effect_with_optional_condition(
+        source,
+        has_color_condition,
     )))
 }
 
