@@ -927,11 +927,6 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
-    /// Return how many extra times matching dungeon room abilities trigger.
-    fn dungeon_room_trigger_duplication_copies(&self) -> Option<usize> {
-        None
-    }
-
     /// Return a trigger-suppression descriptor, if this ability prevents matching
     /// triggers from triggering.
     fn trigger_suppression_spec(&self) -> Option<TriggerSuppressionSpec> {
@@ -1207,10 +1202,6 @@ impl StaticAbility {
 
     pub fn trigger_duplication_spec(&self) -> Option<TriggerDuplicationSpec> {
         self.0.trigger_duplication_spec()
-    }
-
-    pub fn dungeon_room_trigger_duplication_copies(&self) -> Option<usize> {
-        self.0.dungeon_room_trigger_duplication_copies()
     }
 
     pub fn trigger_suppression_spec(&self) -> Option<TriggerSuppressionSpec> {

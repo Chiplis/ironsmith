@@ -2188,14 +2188,6 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
         self.leaf_static_ability()?.trigger_duplication_spec()
     }
 
-    fn dungeon_room_trigger_duplication_copies(&self) -> Option<usize> {
-        if self.id() == StaticAbilityId::DungeonRoomTriggerDuplication {
-            return Some(1);
-        }
-        self.leaf_static_ability()?
-            .dungeon_room_trigger_duplication_copies()
-    }
-
     fn trigger_suppression_spec(&self) -> Option<super::TriggerSuppressionSpec> {
         self.leaf_static_ability()?.trigger_suppression_spec()
     }

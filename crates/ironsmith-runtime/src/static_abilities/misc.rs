@@ -3173,14 +3173,12 @@ impl StaticAbilityKind for DuplicateMatchingTriggeredAbilities {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DungeonRoomTriggerDuplication {
     pub display: String,
-    pub copies: usize,
 }
 
 impl DungeonRoomTriggerDuplication {
     pub fn new(display: impl Into<String>) -> Self {
         Self {
             display: display.into(),
-            copies: 1,
         }
     }
 }
@@ -3192,10 +3190,6 @@ impl StaticAbilityKind for DungeonRoomTriggerDuplication {
 
     fn display(&self) -> String {
         self.display.clone()
-    }
-
-    fn dungeon_room_trigger_duplication_copies(&self) -> Option<usize> {
-        Some(self.copies)
     }
 }
 

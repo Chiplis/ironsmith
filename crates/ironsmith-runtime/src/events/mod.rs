@@ -107,12 +107,11 @@ pub use combat::{
 };
 pub use other::{
     BecameMonstrousEvent, CardDiscardedEvent, CardRevealedEvent, CardsDrawnEvent,
-    ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent,
-    DungeonRoomEnteredEvent, GiftGivenEvent, KeywordActionEvent, KeywordActionKind,
-    LandPlayedEvent, MarkerChangeType, MarkersChangedEvent, MutatedEvent, PermanentTappedEvent,
-    PermanentUntappedEvent, PlayerLosesGameEvent, PlayerLostGameEvent, PlayerVote,
-    PlayersFinishedVotingEvent, SearchLibraryEvent, ShuffleLibraryEvent, StateTriggerEvent,
-    TransformedEvent, TurnedFaceUpEvent,
+    ControlChangedEvent, ConvertedEvent, CounterPlacedEvent, DayNightChangedEvent, GiftGivenEvent,
+    KeywordActionEvent, KeywordActionKind, LandPlayedEvent, MarkerChangeType, MarkersChangedEvent,
+    MutatedEvent, PermanentTappedEvent, PermanentUntappedEvent, PlayerLosesGameEvent,
+    PlayerLostGameEvent, PlayerVote, PlayersFinishedVotingEvent, SearchLibraryEvent,
+    ShuffleLibraryEvent, StateTriggerEvent, TransformedEvent, TurnedFaceUpEvent,
     WouldKeywordActionMatcher,
 };
 pub use phase::{

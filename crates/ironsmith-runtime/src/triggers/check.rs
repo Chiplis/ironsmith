@@ -263,8 +263,6 @@ pub struct TriggeredAbilityEntry {
     pub source_stable_id: StableId,
     /// Name of the source for display purposes.
     pub source_name: String,
-    /// Whether this entry is a room ability of a dungeon.
-    pub is_dungeon_room_ability: bool,
     /// Source snapshot captured earlier when available.
     pub source_snapshot: Option<crate::snapshot::ObjectSnapshot>,
     /// Tagged objects captured at trigger time for delayed/tagged follow-up effects.
@@ -546,26 +544,16 @@ fn additional_trigger_copies_for_entry(
     entry: &TriggeredAbilityEntry,
 ) -> usize {
     let mut copies = 0usize;
-    let dungeon_room_event = entry
-        .is_dungeon_room_ability
-        .then(|| entry.triggering_event.downcast::<crate::events::DungeonRoomEnteredEvent>())
-        .flatten();
 
     for &obj_id in &game.battlefield {
         let Some(obj) = game.object(obj_id) else {
             continue;
         };
-        let Some(abilities) = view.abilities_rc(obj_id) else {
+        let Some(static_abilities) = view.static_abilities_rc(obj_id) else {
             continue;
         };
 
-        for ability in abilities.iter() {
-            let AbilityKind::Static(static_ability) = &ability.kind else {
-                continue;
-            };
-            if !ability.functions_in(&obj.zone) {
-                continue;
-            }
+        for static_ability in static_abilities.iter() {
             let Some(spec) = static_ability.trigger_duplication_spec() else {
                 continue;
             };
@@ -581,22 +569,6 @@ fn additional_trigger_copies_for_entry(
                 continue;
             }
             copies += spec.copies;
-        }
-        if let Some(room_event) = dungeon_room_event.as_ref()
-            && room_event.player == game.controller_of(obj)
-        {
-            for ability in abilities.iter() {
-                let AbilityKind::Static(static_ability) = &ability.kind else {
-                    continue;
-                };
-                if !ability.functions_in(&obj.zone) {
-                    continue;
-                }
-                if let Some(extra_copies) = static_ability.dungeon_room_trigger_duplication_copies()
-                {
-                    copies += extra_copies;
-                }
-            }
         }
     }
 
@@ -674,61 +646,6 @@ fn ring_designation_source() -> (ObjectId, StableId, String) {
     (source, StableId::from(source), "The Ring".to_string())
 }
 
-fn dungeon_room_source() -> (ObjectId, StableId) {
-    let source = ObjectId::from_raw(u64::MAX - 2);
-    (source, StableId::from(source))
-}
-
-fn dungeon_room_triggered_ability(
-    dungeon_name: &str,
-    room_name: &str,
-) -> Option<TriggeredAbility> {
-    let room_ability = crate::dungeon::room_ability_definition(dungeon_name, room_name)?;
-
-    Some(TriggeredAbility {
-        trigger: Trigger::custom(
-            "dungeon-room",
-            format!("When you enter {room_name} of {dungeon_name}"),
-        ),
-        effects: ResolutionProgram::from_effects(room_ability.effects),
-        choices: room_ability.choices,
-        intervening_if: None,
-        presentation_label: None,
-    })
-}
-
-fn add_dungeon_room_triggers(
-    trigger_event: &TriggerEvent,
-    triggered: &mut Vec<TriggeredAbilityEntry>,
-) {
-    let Some(room_event) = trigger_event.downcast::<crate::events::DungeonRoomEnteredEvent>() else {
-        return;
-    };
-    let Some(ability) =
-        dungeon_room_triggered_ability(&room_event.dungeon_name, &room_event.room_name)
-    else {
-        return;
-    };
-
-    let (source, source_stable_id) = dungeon_room_source();
-    let source_name = format!("{} of {}", room_event.room_name, room_event.dungeon_name);
-    let trigger_identity = compute_trigger_identity(&ability);
-    triggered.push(TriggeredAbilityEntry {
-        source,
-        controller: room_event.player,
-        x_value: None,
-        event_value_amount: None,
-        ability,
-        triggering_event: trigger_event.clone(),
-        source_stable_id,
-        source_name,
-        is_dungeon_room_ability: true,
-        source_snapshot: None,
-        tagged_objects: std::collections::HashMap::new(),
-        trigger_identity,
-    });
-}
-
 fn push_monarch_trigger(
     triggered: &mut Vec<TriggeredAbilityEntry>,
     controller: PlayerId,
@@ -746,7 +663,6 @@ fn push_monarch_trigger(
         triggering_event: trigger_event.clone(),
         source_stable_id,
         source_name,
-        is_dungeon_room_ability: false,
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
         trigger_identity,
@@ -770,7 +686,6 @@ fn push_ring_trigger(
         triggering_event: trigger_event.clone(),
         source_stable_id,
         source_name,
-        is_dungeon_room_ability: false,
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
         trigger_identity,
@@ -794,7 +709,6 @@ fn push_initiative_trigger(
         triggering_event: trigger_event.clone(),
         source_stable_id,
         source_name,
-        is_dungeon_room_ability: false,
         source_snapshot: None,
         tagged_objects: std::collections::HashMap::new(),
         trigger_identity,
@@ -1271,7 +1185,6 @@ pub(crate) fn check_triggers_with_view(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
-                    is_dungeon_room_ability: false,
                     source_snapshot: None,
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
@@ -1348,7 +1261,6 @@ pub(crate) fn check_triggers_with_view(
                         triggering_event: trigger_event.clone(),
                         source_stable_id: snapshot.stable_id,
                         source_name: snapshot.name.clone(),
-                        is_dungeon_room_ability: false,
                         source_snapshot: Some(snapshot.clone()),
                         tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                         trigger_identity,
@@ -1423,7 +1335,6 @@ pub(crate) fn check_triggers_with_view(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
                     source_name: snapshot.name.clone(),
-                    is_dungeon_room_ability: false,
                     source_snapshot: Some(snapshot.clone()),
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
@@ -1489,7 +1400,6 @@ pub(crate) fn check_triggers_with_view(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: snapshot.stable_id,
                     source_name: snapshot.name.clone(),
-                    is_dungeon_room_ability: false,
                     source_snapshot: Some(snapshot.clone()),
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
@@ -1576,7 +1486,6 @@ pub(crate) fn check_triggers_with_view(
                     triggering_event: trigger_event.clone(),
                     source_stable_id: obj.stable_id,
                     source_name: obj.name.clone(),
-                    is_dungeon_room_ability: false,
                     source_snapshot: None,
                     tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                     trigger_identity,
@@ -1622,7 +1531,6 @@ pub(crate) fn check_triggers_with_view(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
-                is_dungeon_room_ability: false,
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
@@ -1669,7 +1577,6 @@ pub(crate) fn check_triggers_with_view(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
-                is_dungeon_room_ability: false,
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
@@ -1677,7 +1584,6 @@ pub(crate) fn check_triggers_with_view(
         }
     }
 
-    add_dungeon_room_triggers(trigger_event, &mut triggered);
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
@@ -1813,7 +1719,6 @@ fn collect_attached_source_lki_triggers(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: source_snapshot.stable_id,
                 source_name: source_snapshot.name.clone(),
-                is_dungeon_room_ability: false,
                 source_snapshot: Some(source_snapshot.clone()),
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
@@ -1873,7 +1778,6 @@ fn add_speed_increase_triggers(
         triggering_event: trigger_event.clone(),
         source_stable_id: StableId::from_raw(0),
         source_name: SPEED_RULE_SOURCE_NAME.to_string(),
-        is_dungeon_room_ability: false,
         source_snapshot: None,
         tagged_objects: HashMap::new(),
         trigger_identity,
@@ -1956,7 +1860,6 @@ fn collect_state_triggers_for_object(
             triggering_event: trigger_event,
             source_stable_id: obj.stable_id,
             source_name: obj.name.clone(),
-            is_dungeon_room_ability: false,
             source_snapshot: None,
             tagged_objects,
             trigger_identity,
@@ -2124,7 +2027,6 @@ pub fn check_delayed_triggers(
                 triggering_event: trigger_event.clone(),
                 source_stable_id,
                 source_name,
-                is_dungeon_room_ability: false,
                 source_snapshot: delayed.ability_source_snapshot.clone(),
                 tagged_objects: {
                     let mut tagged = delayed.tagged_objects.clone();
@@ -2233,7 +2135,6 @@ fn check_triggers_in_zone(
                 triggering_event: trigger_event.clone(),
                 source_stable_id: obj.stable_id,
                 source_name: obj.name.clone(),
-                is_dungeon_room_ability: false,
                 source_snapshot: None,
                 tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
                 trigger_identity,
@@ -2511,7 +2412,6 @@ mod tests {
     use crate::card::PowerToughness;
     use crate::cards::CardDefinitionBuilder;
     use crate::combat_state::AttackTarget;
-    use crate::effects::EffectExecutor;
     use crate::events::DamageEvent;
     use crate::events::DamageTarget;
     use crate::events::cause::EventCause;
@@ -2521,7 +2421,7 @@ mod tests {
     use crate::ids::{CardId, PlayerId};
     use crate::static_abilities::StaticAbility;
     use crate::target::ChooseSpec;
-    use crate::types::{CardType, Subtype, Supertype};
+    use crate::types::{CardType, Subtype};
     use crate::zone::Zone;
 
     fn make_battlefield_creature(
@@ -2545,277 +2445,6 @@ mod tests {
             .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
-    }
-
-    struct ChooseFirstOptionDecisionMaker;
-
-    impl crate::decision::DecisionMaker for ChooseFirstOptionDecisionMaker {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            ctx.options
-                .first()
-                .map(|option| vec![option.index])
-                .unwrap_or_default()
-        }
-    }
-
-    struct ChooseNamedOptionsDecisionMaker<'a> {
-        choices: &'a [&'a str],
-        next_choice: usize,
-    }
-
-    impl<'a> ChooseNamedOptionsDecisionMaker<'a> {
-        fn new(choices: &'a [&'a str]) -> Self {
-            Self {
-                choices,
-                next_choice: 0,
-            }
-        }
-    }
-
-    impl crate::decision::DecisionMaker for ChooseNamedOptionsDecisionMaker<'_> {
-        fn decide_options(
-            &mut self,
-            _game: &GameState,
-            ctx: &crate::decisions::context::SelectOptionsContext,
-        ) -> Vec<usize> {
-            if let Some(choice) = self.choices.get(self.next_choice)
-                && let Some(option) = ctx
-                    .options
-                    .iter()
-                    .find(|option| option.description.eq_ignore_ascii_case(choice))
-            {
-                self.next_choice += 1;
-                return vec![option.index];
-            }
-            ctx.options
-                .first()
-                .map(|option| vec![option.index])
-                .unwrap_or_default()
-        }
-    }
-
-    fn first_dungeon_room_event_from_venture(
-        game: &mut GameState,
-        player: PlayerId,
-    ) -> TriggerEvent {
-        let mut dm = ChooseFirstOptionDecisionMaker;
-        let mut ctx =
-            crate::effects::EffectContext::new(ObjectId::from_raw(90_200), player, &mut dm);
-        let outcome = crate::effects::player::VentureIntoDungeonEffect::new(PlayerFilter::Specific(
-            player,
-        ))
-        .execute(game, &mut ctx)
-        .expect("venture should resolve");
-
-        outcome
-            .events
-            .into_iter()
-            .find(|event| {
-                event
-                    .downcast::<crate::events::DungeonRoomEnteredEvent>()
-                    .is_some()
-            })
-            .expect("venture should emit a dungeon room event")
-    }
-
-    fn dungeon_room_event_from_venture_path(
-        game: &mut GameState,
-        player: PlayerId,
-        choices: &[&str],
-        expected_room: &str,
-        initiative: bool,
-    ) -> TriggerEvent {
-        let mut dm = ChooseNamedOptionsDecisionMaker::new(choices);
-        let effect = if initiative {
-            crate::effects::player::VentureIntoDungeonEffect::via_initiative(PlayerFilter::Specific(
-                player,
-            ))
-        } else {
-            crate::effects::player::VentureIntoDungeonEffect::new(PlayerFilter::Specific(player))
-        };
-
-        for _ in 0..10 {
-            let mut ctx = crate::effects::EffectContext::new(
-                ObjectId::from_raw(90_201),
-                player,
-                &mut dm,
-            );
-            let outcome = effect.execute(game, &mut ctx).expect("venture should resolve");
-            for event in outcome.events {
-                let is_expected = event
-                    .downcast::<crate::events::DungeonRoomEnteredEvent>()
-                    .is_some_and(|room_event| room_event.room_name == expected_room);
-                if is_expected {
-                    return event;
-                }
-            }
-        }
-        panic!("venture path did not enter expected room {expected_room}");
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn put_dungeon_delver_online(game: &mut GameState, player: PlayerId) {
-        let dungeon_delver = CardDefinitionBuilder::new(CardId::new(), "Dungeon Delver")
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Background])
-            .parse_text(
-                "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\"",
-            )
-            .expect("Dungeon Delver should parse");
-        let commander = CardBuilder::new(CardId::new(), "Dungeon Delver Commander")
-            .card_types(vec![CardType::Creature])
-            .supertypes(vec![Supertype::Legendary])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-        let commander_id = game.create_object_from_card(&commander, player, Zone::Battlefield);
-        game.set_as_commander(commander_id, player);
-        game.create_object_from_definition(&dungeon_delver, player, Zone::Battlefield);
-        game.refresh_continuous_state();
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn assert_dungeon_delver_copies_room_trigger(
-        game: &GameState,
-        event: &TriggerEvent,
-        controller: PlayerId,
-        expected_source: &str,
-    ) {
-        let room_triggers = check_triggers(game, event);
-        assert_eq!(
-            room_triggers.len(),
-            2,
-            "Dungeon Delver should add one extra copy to {expected_source}"
-        );
-        assert!(
-            room_triggers.iter().all(|entry| entry.is_dungeon_room_ability
-                && entry.controller == controller
-                && entry.source_name == expected_source),
-            "expected only duplicated {expected_source} room triggers, got {room_triggers:?}"
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_real_room_trigger_from_venture_flow() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-
-        put_dungeon_delver_online(&mut game, alice);
-
-        let alice_event = first_dungeon_room_event_from_venture(&mut game, alice);
-        let own_room_triggers = check_triggers(&game, &alice_event);
-        assert_eq!(
-            own_room_triggers.len(),
-            2,
-            "Dungeon Delver should add one extra copy to Alice's real dungeon room trigger"
-        );
-        assert!(
-            own_room_triggers.iter().all(|entry| entry.is_dungeon_room_ability
-                && entry.controller == alice
-                && entry.source_name == "Cave Entrance of Lost Mine of Phandelver"
-                && entry.ability.trigger.display()
-                    == "When you enter Cave Entrance of Lost Mine of Phandelver"),
-            "expected only duplicated Cave Entrance room triggers, got {own_room_triggers:?}"
-        );
-
-        let bob_event = first_dungeon_room_event_from_venture(&mut game, bob);
-        let opponent_room_triggers = check_triggers(&game, &bob_event);
-        assert_eq!(
-            opponent_room_triggers.len(),
-            1,
-            "Dungeon Delver should not copy real room triggers from another player's dungeon"
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_previously_omitted_lost_mine_room_branch() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        put_dungeon_delver_online(&mut game, alice);
-
-        let event = dungeon_room_event_from_venture_path(&mut game, alice, &[], "Goblin Lair", false);
-
-        assert_dungeon_delver_copies_room_trigger(
-            &game,
-            &event,
-            alice,
-            "Goblin Lair of Lost Mine of Phandelver",
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_previously_omitted_tomb_room_trigger() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        put_dungeon_delver_online(&mut game, alice);
-
-        let event = dungeon_room_event_from_venture_path(
-            &mut game,
-            alice,
-            &["Tomb of Annihilation"],
-            "Trapped Entry",
-            false,
-        );
-
-        assert_dungeon_delver_copies_room_trigger(
-            &game,
-            &event,
-            alice,
-            "Trapped Entry of Tomb of Annihilation",
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_previously_omitted_mad_mage_branch() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        put_dungeon_delver_online(&mut game, alice);
-
-        let event = dungeon_room_event_from_venture_path(
-            &mut game,
-            alice,
-            &["Dungeon of the Mad Mage", "Twisted Caverns"],
-            "Twisted Caverns",
-            false,
-        );
-
-        assert_dungeon_delver_copies_room_trigger(
-            &game,
-            &event,
-            alice,
-            "Twisted Caverns of Dungeon of the Mad Mage",
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_previously_omitted_undercity_branch() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        put_dungeon_delver_online(&mut game, alice);
-
-        let event = dungeon_room_event_from_venture_path(
-            &mut game,
-            alice,
-            &["Forge"],
-            "Trap!",
-            true,
-        );
-
-        assert_dungeon_delver_copies_room_trigger(
-            &game,
-            &event,
-            alice,
-            "Trap! of Undercity",
-        );
     }
 
     #[test]

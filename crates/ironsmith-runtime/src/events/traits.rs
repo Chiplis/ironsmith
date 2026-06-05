@@ -129,8 +129,6 @@ pub enum EventKind {
     ChapterAbilityResolved,
     /// A player lost the game
     PlayerLostGame,
-    /// A player entered a dungeon room.
-    DungeonRoomEntered,
 }
 
 /// A target within an event that can potentially be redirected.
