@@ -18417,6 +18417,9 @@ fn normalize_redundant_short_name_etb_surface(
     if rest_lower.contains("behold ") {
         return line;
     }
+    if rest_lower.contains("another target") {
+        return line;
+    }
     if rest
         .to_ascii_lowercase()
         .contains(surface.to_ascii_lowercase().as_str())
@@ -21092,25 +21095,8 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
         return None;
     };
     let count = count.max(0) as u32;
-    let (card_type, name_filter, other_filter) = match &discard.card_filter {
-        None => (None, None, false),
-        Some(filter) if filter.card_types.len() == 1 => {
-            let expected = ObjectFilter {
-                zone: Some(Zone::Hand),
-                card_types: filter.card_types.clone(),
-                name: filter.name.clone(),
-                other: filter.other,
-                ..Default::default()
-            };
-            if filter != &expected {
-                return None;
-            }
-            (
-                filter.card_types.first().copied(),
-                filter.name.as_deref(),
-                filter.other,
-            )
-        }
+    let (card_type, supertypes, name_filter, other_filter) = match &discard.card_filter {
+        None => (None, Vec::new(), None, false),
         Some(filter) if !filter.any_of.is_empty() => {
             if let Some(filter_text) = describe_discard_any_of_filter(filter) {
                 return Some(if count == 1 {
@@ -21121,9 +21107,11 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
             }
             return None;
         }
-        Some(filter) if filter.card_types.is_empty() => {
+        Some(filter) if filter.card_types.len() <= 1 => {
             let expected = ObjectFilter {
                 zone: Some(Zone::Hand),
+                card_types: filter.card_types.clone(),
+                supertypes: filter.supertypes.clone(),
                 name: filter.name.clone(),
                 other: filter.other,
                 ..Default::default()
@@ -21131,13 +21119,18 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
             if filter != &expected {
                 return None;
             }
-            (None, filter.name.as_deref(), filter.other)
+            (
+                filter.card_types.first().copied(),
+                filter.supertypes.clone(),
+                filter.name.as_deref(),
+                filter.other,
+            )
         }
         Some(_) => return None,
     };
 
     if let Some(name) = name_filter {
-        if count != 1 {
+        if count != 1 || !supertypes.is_empty() {
             return None;
         }
         let name = normalize_card_name_for_surface(name);
@@ -21148,17 +21141,22 @@ fn describe_simple_discard_cost(discard: &crate::effects::DiscardEffect) -> Opti
         });
     }
 
-    let Some(card_type) = card_type else {
+    if supertypes.is_empty() && card_type.is_none() {
         return Some(if count == 1 {
             "Discard a card".to_string()
         } else {
             format!("Discard {count} cards")
         });
-    };
-    let type_text = with_indefinite_article(&format!(
-        "{} card",
-        describe_card_type_word_local(card_type)
-    ));
+    }
+
+    let mut descriptors: Vec<&str> = supertypes
+        .iter()
+        .map(|supertype| supertype.name())
+        .collect();
+    if let Some(card_type) = card_type {
+        descriptors.push(describe_card_type_word_local(card_type));
+    }
+    let type_text = with_indefinite_article(&format!("{} card", descriptors.join(" ")));
     Some(if count == 1 {
         format!("Discard {type_text}")
     } else {
@@ -33628,6 +33626,14 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 player_verb(&player, "gain", "gains")
             );
         }
+        if let Value::ManaValueOf(spec) = &gain.amount {
+            return format!(
+                "{} {} life equal to {}",
+                player,
+                player_verb(&player, "gain", "gains"),
+                describe_dynamic_counter_basis(spec, "mana value")
+            );
+        }
         if matches!(
             gain.amount,
             Value::Add(_, _)
@@ -33642,7 +33648,6 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 | Value::SourceToughness
                 | Value::PowerOf(_)
                 | Value::ToughnessOf(_)
-                | Value::ManaValueOf(_)
                 | Value::Speed(_)
                 | Value::LifeTotal(_)
                 | Value::LifeTotalAsTurnBegan(_)

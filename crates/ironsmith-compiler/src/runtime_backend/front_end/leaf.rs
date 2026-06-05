@@ -10,7 +10,7 @@ use crate::filter::ObjectFilter;
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::object::CounterType;
 use crate::target::PlayerFilter;
-use crate::types::{CardType, Subtype};
+use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
@@ -29,6 +29,7 @@ use super::object_filters::parse_object_filter_lexed;
 use super::token_primitives::{find_index as find_token_index, str_starts_with, str_strip_suffix};
 use super::util::{
     is_source_reference_words, parse_card_type, parse_counter_type_from_tokens, parse_number,
+    parse_supertype_word,
 };
 
 const NAMED_ARTIFACTS_YOU_CONTROL_MARKERS: &[&[&str]] = &[
@@ -90,6 +91,7 @@ pub(crate) enum ActivationCostSegmentCst {
     DiscardFiltered {
         count: u32,
         card_types: Vec<CardType>,
+        supertypes: Vec<Supertype>,
         filter: Option<ObjectFilter>,
         random: bool,
         name: Option<String>,
@@ -725,6 +727,7 @@ fn parse_discard_segment_tokens(
         return Ok(ActivationCostSegmentCst::DiscardFiltered {
             count,
             card_types: Vec::new(),
+            supertypes: Vec::new(),
             filter: None,
             random: false,
             name: Some(name),
@@ -736,6 +739,7 @@ fn parse_discard_segment_tokens(
         return Ok(ActivationCostSegmentCst::DiscardFiltered {
             count,
             card_types: Vec::new(),
+            supertypes: Vec::new(),
             filter: Some(filter),
             random: false,
             name: None,
@@ -744,6 +748,7 @@ fn parse_discard_segment_tokens(
     }
 
     let mut card_types = Vec::new();
+    let mut supertypes = Vec::new();
     while let Some(word) = tail.get(idx).copied() {
         if LEAF_CARD_OR_CARDS_WORD_PATTERN.matches_word(word) {
             break;
@@ -751,6 +756,11 @@ fn parse_discard_segment_tokens(
         if LEAF_AND_OR_WORD_PATTERN.matches_word(word)
             || LEAF_A_OR_AN_WORD_PATTERN.matches_word(word)
         {
+            idx += 1;
+            continue;
+        }
+        if let Some(supertype) = parse_supertype_word(word) {
+            crate::slice_primitives::push_unique(&mut supertypes, supertype);
             idx += 1;
             continue;
         }
@@ -783,13 +793,14 @@ fn parse_discard_segment_tokens(
         }
     };
 
-    if card_types.is_empty() && !random {
+    if card_types.is_empty() && supertypes.is_empty() && !random {
         return Ok(ActivationCostSegmentCst::DiscardCard(count));
     }
 
     Ok(ActivationCostSegmentCst::DiscardFiltered {
         count,
         card_types,
+        supertypes,
         filter: None,
         random,
         name: None,
@@ -2095,21 +2106,32 @@ pub(crate) fn lower_activation_cost_cst(
             ActivationCostSegmentCst::DiscardFiltered {
                 count,
                 card_types,
+                supertypes,
                 filter,
                 random,
                 name,
                 other,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                if *random || name.is_some() || *other || filter.is_some() {
+                if *random
+                    || name.is_some()
+                    || *other
+                    || filter.is_some()
+                    || !supertypes.is_empty()
+                {
                     let card_filter = if let Some(filter) = filter {
                         Some(filter.clone())
-                    } else if card_types.is_empty() && name.is_none() && !*other {
+                    } else if card_types.is_empty()
+                        && supertypes.is_empty()
+                        && name.is_none()
+                        && !*other
+                    {
                         None
                     } else {
                         let mut filter = ObjectFilter {
                             zone: Some(crate::zone::Zone::Hand),
                             card_types: card_types.clone(),
+                            supertypes: supertypes.clone(),
                             ..Default::default()
                         };
                         if let Some(name) = name {
