@@ -1071,7 +1071,6 @@ pub struct TriggerDuplicationSpec {
     pub source_filter: Option<crate::target::ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
     pub copies: usize,
-    pub requires_dungeon_room_ability: bool,
 }
 
 /// Spec for static abilities that suppress matching triggered abilities.

@@ -28,7 +28,6 @@ use super::TriggerEvent;
 use super::matcher_trait::TriggerContext;
 
 const SPEED_RULE_SOURCE_NAME: &str = "Start your engines";
-const DUNGEON_ROOM_SOURCE_BASE: u64 = u64::MAX - 1024;
 
 pub(crate) fn speed_rule_source_id() -> ObjectId {
     ObjectId::from_raw(0)
@@ -512,13 +511,7 @@ fn trigger_entry_matches_specs(
     static_source: ObjectId,
     source_filter: Option<&ObjectFilter>,
     event_matcher: Option<&Trigger>,
-    requires_dungeon_room_ability: bool,
 ) -> bool {
-    if requires_dungeon_room_ability
-        && !trigger_entry_is_owned_dungeon_room_ability(entry, controller)
-    {
-        return false;
-    }
     if let Some(filter) = source_filter
         && !trigger_source_matches_duplication_filter(
             game,
@@ -572,7 +565,6 @@ fn additional_trigger_copies_for_entry(
                 obj_id,
                 spec.source_filter.as_ref(),
                 spec.event_matcher.as_ref(),
-                spec.requires_dungeon_room_ability,
             ) {
                 continue;
             }
@@ -608,7 +600,6 @@ fn trigger_is_suppressed(
                 obj_id,
                 spec.source_filter.as_ref(),
                 spec.event_matcher.as_ref(),
-                false,
             ) {
                 return true;
             }
@@ -653,26 +644,6 @@ fn initiative_designation_source() -> (ObjectId, StableId, String) {
 fn ring_designation_source() -> (ObjectId, StableId, String) {
     let source = ObjectId::from_raw(u64::MAX);
     (source, StableId::from(source), "The Ring".to_string())
-}
-
-fn dungeon_room_source(owner: PlayerId) -> (ObjectId, StableId) {
-    let source = ObjectId::from_raw(DUNGEON_ROOM_SOURCE_BASE - owner.0 as u64);
-    (source, StableId::from(source))
-}
-
-fn trigger_entry_is_owned_dungeon_room_ability(
-    entry: &TriggeredAbilityEntry,
-    controller: PlayerId,
-) -> bool {
-    entry
-        .ability
-        .trigger
-        .downcast_ref::<crate::triggers::DungeonRoomAbilityTrigger>()
-        .is_some()
-        && entry
-            .triggering_event
-            .downcast::<crate::events::DungeonRoomEnteredEvent>()
-            .is_some_and(|event| event.owner == controller)
 }
 
 fn push_monarch_trigger(
@@ -886,47 +857,6 @@ fn add_initiative_designation_triggers(
             trigger_event,
         );
     }
-}
-
-fn add_dungeon_room_ability_triggers(
-    game: &GameState,
-    trigger_event: &TriggerEvent,
-    triggered: &mut Vec<TriggeredAbilityEntry>,
-) {
-    let Some(room_event) = trigger_event.downcast::<crate::events::DungeonRoomEnteredEvent>() else {
-        return;
-    };
-
-    let Some(room_effects) = crate::dungeon::dungeon_room_effects(
-        &room_event.dungeon_name,
-        &room_event.room_name,
-        room_event.owner,
-    ) else {
-        return;
-    };
-
-    let ability = TriggeredAbility {
-        trigger: Trigger::dungeon_room_ability(PlayerFilter::Specific(room_event.owner)),
-        effects: ResolutionProgram::from_effects(room_effects),
-        choices: vec![],
-        intervening_if: None,
-        presentation_label: None,
-    };
-    let trigger_identity = compute_trigger_identity(&ability);
-    let (source, source_stable_id) = dungeon_room_source(room_event.owner);
-    triggered.push(TriggeredAbilityEntry {
-        source,
-        controller: room_event.owner,
-        x_value: None,
-        event_value_amount: None,
-        ability,
-        triggering_event: trigger_event.clone(),
-        source_stable_id,
-        source_name: format!("{} - {}", room_event.dungeon_name, room_event.room_name),
-        source_snapshot: None,
-        tagged_objects: tagged_objects_for_trigger_event(game, trigger_event),
-        trigger_identity,
-    });
 }
 
 fn add_ring_designation_triggers(
@@ -1656,7 +1586,6 @@ pub(crate) fn check_triggers_with_view(
 
     add_monarch_designation_triggers(game, trigger_event, &mut triggered);
     add_initiative_designation_triggers(game, trigger_event, &mut triggered);
-    add_dungeon_room_ability_triggers(game, trigger_event, &mut triggered);
     add_ring_designation_triggers(game, trigger_event, &mut triggered);
     add_speed_increase_triggers(game, trigger_event, &mut triggered);
     remove_suppressed_triggers(game, view, &mut triggered);
@@ -2990,210 +2919,6 @@ mod tests {
 
         assert_eq!(source_tag.len(), 1);
         assert_eq!(source_tag[0].object_id, source);
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn dungeon_delver_game_with_commander() -> (GameState, PlayerId, PlayerId) {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
-
-        let dungeon_delver = CardDefinitionBuilder::new(CardId::new(), "Dungeon Delver")
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Background])
-            .parse_text(
-                "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\"",
-            )
-            .expect("Dungeon Delver should parse");
-        let commander = CardBuilder::new(CardId::new(), "Dungeon Delver Commander")
-            .card_types(vec![CardType::Creature])
-            .supertypes(vec![crate::types::Supertype::Legendary])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
-        game.set_as_commander(commander_id, alice);
-        game.create_object_from_definition(&dungeon_delver, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
-
-        (game, alice, bob)
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn dungeon_room_trigger_count(triggered: &[TriggeredAbilityEntry]) -> usize {
-        triggered
-            .iter()
-            .filter(|entry| {
-                entry
-                    .ability
-                    .trigger
-                    .downcast_ref::<crate::triggers::DungeonRoomAbilityTrigger>()
-                    .is_some()
-            })
-            .count()
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    fn resolve_triggered_entries(game: &mut GameState, triggered: Vec<TriggeredAbilityEntry>) {
-        let mut queue = TriggerQueue { entries: triggered };
-        crate::game_loop::put_triggers_on_stack(game, &mut queue)
-            .expect("triggers should be put on the stack");
-        while !game.stack_is_empty() {
-            crate::game_loop::resolve_stack_entry(game).expect("trigger should resolve");
-        }
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_grants_commander_room_trigger_duplication_runtime() {
-        let (mut game, alice, _) = dungeon_delver_game_with_commander();
-        let event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                alice,
-                ObjectId::from_raw(41_000),
-                "Dungeon of the Mad Mage",
-                "Yawning Portal",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(
-            dungeon_room_trigger_count(&triggered),
-            2,
-            "Dungeon Delver's granted commander ability should copy Alice's room trigger once: \
-             {triggered:#?}"
-        );
-
-        resolve_triggered_entries(&mut game, triggered);
-
-        assert_eq!(
-            game.life_total(alice),
-            22,
-            "Yawning Portal should resolve twice with Dungeon Delver"
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_does_not_duplicate_without_commander_creature() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        let dungeon_delver = CardDefinitionBuilder::new(CardId::new(), "Dungeon Delver")
-            .card_types(vec![CardType::Enchantment])
-            .subtypes(vec![Subtype::Background])
-            .parse_text(
-                "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\"",
-            )
-            .expect("Dungeon Delver should parse");
-        let non_commander = CardBuilder::new(CardId::new(), "Non-Commander Legendary")
-            .card_types(vec![CardType::Creature])
-            .supertypes(vec![crate::types::Supertype::Legendary])
-            .power_toughness(PowerToughness::fixed(2, 2))
-            .build();
-
-        game.create_object_from_card(&non_commander, alice, Zone::Battlefield);
-        game.create_object_from_definition(&dungeon_delver, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
-
-        let event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                alice,
-                ObjectId::from_raw(41_003),
-                "Dungeon of the Mad Mage",
-                "Yawning Portal",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(
-            dungeon_room_trigger_count(&triggered),
-            1,
-            "Dungeon Delver should not copy room triggers without a commander creature: {triggered:#?}"
-        );
-
-        resolve_triggered_entries(&mut game, triggered);
-
-        assert_eq!(
-            game.life_total(alice),
-            21,
-            "Yawning Portal should resolve once without a commander creature"
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_does_not_copy_non_room_trigger_from_same_event() {
-        let (mut game, alice, _) = dungeon_delver_game_with_commander();
-        let watcher = CardDefinitionBuilder::new(CardId::new(), "Room Event Watcher")
-            .card_types(vec![CardType::Creature])
-            .power_toughness(PowerToughness::fixed(1, 1))
-            .with_trigger(
-                Trigger::new(crate::triggers::EventKindTrigger::new(
-                    crate::events::EventKind::DungeonRoomEntered,
-                    "Whenever a player enters a dungeon room",
-                )),
-                vec![Effect::draw(1)],
-            )
-            .build();
-        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
-        game.refresh_continuous_state();
-
-        let event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                alice,
-                ObjectId::from_raw(41_001),
-                "Lost Mine of Phandelver",
-                "Cave Entrance",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(
-            triggered
-                .iter()
-                .filter(|entry| entry.source_name == "Room Event Watcher")
-                .count(),
-            1,
-            "Dungeon Delver should not copy non-room triggers from the same event: {triggered:#?}"
-        );
-    }
-
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_does_not_copy_other_players_dungeon_room_trigger() {
-        let (mut game, alice, bob) = dungeon_delver_game_with_commander();
-        let event = TriggerEvent::new_with_provenance(
-            crate::events::DungeonRoomEnteredEvent::new(
-                bob,
-                ObjectId::from_raw(41_002),
-                "Dungeon of the Mad Mage",
-                "Yawning Portal",
-            ),
-            crate::provenance::ProvNodeId::default(),
-        );
-
-        let triggered = check_triggers(&game, &event);
-
-        assert_eq!(
-            dungeon_room_trigger_count(&triggered),
-            1,
-            "Dungeon Delver should not copy another player's dungeon room trigger: {triggered:#?}"
-        );
-
-        resolve_triggered_entries(&mut game, triggered);
-
-        assert_eq!(game.life_total(alice), 20);
-        assert_eq!(
-            game.life_total(bob),
-            21,
-            "another player's Yawning Portal should resolve once"
-        );
     }
 
     #[test]
