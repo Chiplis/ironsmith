@@ -57240,6 +57240,52 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         "Creeping Peeper mana should not pay for unrelated activated abilities"
     );
 
+    let room = CardDefinitionBuilder::new(CardId::new(), "Locked Door Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .build();
+    let room_id = game.create_object_from_definition(&room, alice, Zone::Battlefield);
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "Creeping Peeper mana should pay to unlock a Room door"
+    );
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::ActivateAbility,
+        ),
+        "Creeping Peeper mana should not pay ordinary activated costs, even from a Room source"
+    );
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        room_id,
+        &crate::cost::TotalCost::mana(blue_cost.clone()),
+        crate::costs::PaymentReason::UnlockDoor,
+        &mut dm,
+    )
+    .expect("Creeping Peeper mana should be spendable on the unlock-door payment path");
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            symbol: ManaSymbol::Blue,
+            source: peeper_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
     let face_up_probe = CardDefinitionBuilder::new(CardId::new(), "Face-Up Probe")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
@@ -57256,7 +57302,6 @@ fn creeping_peeper_restricted_mana_runtime_branches() {
         ));
     game.set_face_down(face_up_probe_id);
 
-    let mut dm = crate::decision::SelectFirstDecisionMaker;
     crate::special_actions::perform(
         crate::special_actions::SpecialAction::TurnFaceUp {
             permanent_id: face_up_probe_id,

@@ -6627,6 +6627,25 @@ impl GameState {
         object.card_types.contains(&crate::types::CardType::Land)
     }
 
+    pub(crate) fn object_is_room_unlock_payment_source(&self, object_id: ObjectId) -> bool {
+        let Some(object) = self.object(object_id) else {
+            return false;
+        };
+        object.zone == Zone::Battlefield
+            && self.current_has_subtype(object_id, crate::types::Subtype::Room)
+    }
+
+    pub(crate) fn activation_payment_reason(
+        &self,
+        source: ObjectId,
+    ) -> crate::costs::PaymentReason {
+        if self.object_is_room_unlock_payment_source(source) {
+            crate::costs::PaymentReason::UnlockDoor
+        } else {
+            crate::costs::PaymentReason::ActivateAbility
+        }
+    }
+
     fn required_sacrifice_count_for_cost(&self, cost: &crate::costs::Cost) -> usize {
         if cost.is_sacrifice_self() {
             return 1;
@@ -6892,6 +6911,10 @@ impl GameState {
                             self.object(source_id)
                                 .is_some_and(|source_obj| source_obj.zone == Zone::Battlefield)
                                 && self.is_face_down(source_id)
+                        }))
+                    || (reason == crate::costs::PaymentReason::UnlockDoor
+                        && payment_source.is_some_and(|source_id| {
+                            self.object_is_room_unlock_payment_source(source_id)
                         }))
             }
             crate::ability::ManaUsageRestriction::ActivateAbility => {

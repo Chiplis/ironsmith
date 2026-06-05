@@ -857,6 +857,7 @@ pub(super) fn payment_source_matches_restriction(
         } => {
             cast_spell_filter_matches_payment_source(game, unit, spell_filter, Some(source_obj.id))
                 || matches_allowed_turn_face_up_payment_source(game, source_obj.id)
+                || matches_allowed_unlock_door_payment_source(game, source_obj.id)
         }
         crate::ability::ManaUsageRestriction::ActivateAbility => source_obj.zone != Zone::Stack,
     }
@@ -867,6 +868,10 @@ fn matches_allowed_turn_face_up_payment_source(game: &GameState, source_id: Obje
         return false;
     };
     source_obj.zone == Zone::Battlefield && game.is_face_down(source_id)
+}
+
+fn matches_allowed_unlock_door_payment_source(game: &GameState, source_id: ObjectId) -> bool {
+    game.object_is_room_unlock_payment_source(source_id)
 }
 
 pub(super) fn restricted_unit_is_payable(
@@ -2187,7 +2192,7 @@ pub(super) fn apply_mana_payment_response_activation(
                 Some(pending.source),
                 cost,
                 x_value,
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
             )
         {
             return Err(GameLoopError::InvalidState(
@@ -2203,7 +2208,7 @@ pub(super) fn apply_mana_payment_response_activation(
                 Some(pending.source),
                 cost,
                 x_value,
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
             ) {
                 return Err(GameLoopError::InvalidState(
                     "Cannot pay mana cost - insufficient mana".to_string(),
@@ -2242,7 +2247,7 @@ pub(super) fn apply_pip_payment_response_activation(
     let allow_black_life = game.player_can_pay_black_with_life_for_reason(
         pending.activator,
         Some(pending.source),
-        crate::costs::PaymentReason::ActivateAbility,
+        pending.payment_reason,
     );
     let options = build_pip_payment_options(
         game,
@@ -2533,7 +2538,7 @@ pub(super) fn apply_sacrifice_target_response(
                 pending.activator,
                 pending.source,
                 &filter,
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
             );
             if !legal_targets.contains(&target_id) {
                 return Err(GameLoopError::InvalidState(
@@ -2551,7 +2556,7 @@ pub(super) fn apply_sacrifice_target_response(
                 &cost,
                 pending.source,
                 pending.activator,
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
                 pending.provenance,
                 target_id,
                 Some(&choice_tag),
@@ -2599,7 +2604,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         None,
@@ -2629,7 +2634,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         None,
@@ -2655,7 +2660,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         None,
@@ -2690,7 +2695,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         Some(&choice_tag),
@@ -2724,7 +2729,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         None,
@@ -2756,7 +2761,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         choice_tag.as_ref(),
@@ -2791,7 +2796,7 @@ pub(super) fn apply_sacrifice_target_response(
                         &cost,
                         pending.source,
                         pending.activator,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        pending.payment_reason,
                         pending.provenance,
                         target_id,
                         Some(&choice_tag),

@@ -664,6 +664,8 @@ pub struct PendingActivation {
     pub remaining_requirements: Vec<TargetRequirement>,
     /// The computed mana cost to pay.
     pub mana_cost_to_pay: Option<crate::mana::ManaCost>,
+    /// Why this activation's costs are being paid.
+    pub payment_reason: crate::costs::PaymentReason,
     /// Stable display pips for the mana payment overlay.
     ///
     /// Unlike `remaining_mana_pips`, this is not mutated as payment proceeds so
@@ -724,6 +726,7 @@ impl PendingActivation {
         effects: crate::resolution::ResolutionProgram,
         remaining_requirements: Vec<TargetRequirement>,
         mana_cost_to_pay: Option<crate::mana::ManaCost>,
+        payment_reason: crate::costs::PaymentReason,
         payment_trace: Vec<CostStep>,
         remaining_cost_steps: Vec<ActivationCostStep>,
         tagged_objects: std::collections::HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
@@ -748,6 +751,7 @@ impl PendingActivation {
             chosen_target_assignments: Vec::new(),
             remaining_requirements,
             mana_cost_to_pay,
+            payment_reason,
             display_mana_pips: Vec::new(),
             payment_trace,
             undo_locked_by_mana: false,

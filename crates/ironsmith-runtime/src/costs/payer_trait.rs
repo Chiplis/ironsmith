@@ -21,6 +21,8 @@ pub enum PaymentReason {
     ActivateAbility,
     /// Activating a mana ability.
     ActivateManaAbility,
+    /// Paying the cost to unlock a locked Room door.
+    UnlockDoor,
     /// Turning a face-down permanent face up.
     TurnFaceUp,
     /// Paying a cost during effect or triggered-ability resolution.
