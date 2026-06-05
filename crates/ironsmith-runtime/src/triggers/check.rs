@@ -683,40 +683,15 @@ fn dungeon_room_triggered_ability(
     dungeon_name: &str,
     room_name: &str,
 ) -> Option<TriggeredAbility> {
-    let effects = match (dungeon_name, room_name) {
-        ("Lost Mine of Phandelver", "Cave Entrance") => vec![Effect::scry(1)],
-        ("Lost Mine of Phandelver", "Mine Tunnels") => vec![Effect::create_tokens(
-            crate::cards::tokens::treasure_token_definition(),
-            1,
-        )],
-        ("Lost Mine of Phandelver", "Dark Pool") => vec![
-            Effect::for_each_opponent(vec![Effect::lose_life_player(
-                1,
-                PlayerFilter::IteratedPlayer,
-            )]),
-            Effect::gain_life(1),
-        ],
-        ("Lost Mine of Phandelver", "Temple of Dumathoin") => vec![Effect::draw(1)],
-        ("Dungeon of the Mad Mage", "Yawning Portal") => vec![Effect::gain_life(1)],
-        ("Dungeon of the Mad Mage", "Dungeon Level") => vec![Effect::scry(1)],
-        ("Dungeon of the Mad Mage", "Goblin Bazaar") => vec![Effect::create_tokens(
-            crate::cards::tokens::treasure_token_definition(),
-            1,
-        )],
-        ("Dungeon of the Mad Mage", "Lost Level") => vec![Effect::scry(2)],
-        ("Dungeon of the Mad Mage", "Deep Mines") => vec![Effect::scry(3)],
-        ("Undercity", "Lost Well") => vec![Effect::scry(2)],
-        ("Undercity", "Archives") => vec![Effect::draw(1)],
-        _ => return None,
-    };
+    let room_ability = crate::dungeon::room_ability_definition(dungeon_name, room_name)?;
 
     Some(TriggeredAbility {
         trigger: Trigger::custom(
             "dungeon-room",
             format!("When you enter {room_name} of {dungeon_name}"),
         ),
-        effects: ResolutionProgram::from_effects(effects),
-        choices: vec![],
+        effects: ResolutionProgram::from_effects(room_ability.effects),
+        choices: room_ability.choices,
         intervening_if: None,
         presentation_label: None,
     })
@@ -2587,6 +2562,42 @@ mod tests {
         }
     }
 
+    struct ChooseNamedOptionsDecisionMaker<'a> {
+        choices: &'a [&'a str],
+        next_choice: usize,
+    }
+
+    impl<'a> ChooseNamedOptionsDecisionMaker<'a> {
+        fn new(choices: &'a [&'a str]) -> Self {
+            Self {
+                choices,
+                next_choice: 0,
+            }
+        }
+    }
+
+    impl crate::decision::DecisionMaker for ChooseNamedOptionsDecisionMaker<'_> {
+        fn decide_options(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectOptionsContext,
+        ) -> Vec<usize> {
+            if let Some(choice) = self.choices.get(self.next_choice)
+                && let Some(option) = ctx
+                    .options
+                    .iter()
+                    .find(|option| option.description.eq_ignore_ascii_case(choice))
+            {
+                self.next_choice += 1;
+                return vec![option.index];
+            }
+            ctx.options
+                .first()
+                .map(|option| vec![option.index])
+                .unwrap_or_default()
+        }
+    }
+
     fn first_dungeon_room_event_from_venture(
         game: &mut GameState,
         player: PlayerId,
@@ -2611,13 +2622,43 @@ mod tests {
             .expect("venture should emit a dungeon room event")
     }
 
-    #[cfg(ironsmith_runtime_parser_tests)]
-    #[test]
-    fn dungeon_delver_duplicates_real_room_trigger_from_venture_flow() {
-        let mut game = crate::tests::test_helpers::setup_two_player_game();
-        let alice = PlayerId::from_index(0);
-        let bob = PlayerId::from_index(1);
+    fn dungeon_room_event_from_venture_path(
+        game: &mut GameState,
+        player: PlayerId,
+        choices: &[&str],
+        expected_room: &str,
+        initiative: bool,
+    ) -> TriggerEvent {
+        let mut dm = ChooseNamedOptionsDecisionMaker::new(choices);
+        let effect = if initiative {
+            crate::effects::player::VentureIntoDungeonEffect::via_initiative(PlayerFilter::Specific(
+                player,
+            ))
+        } else {
+            crate::effects::player::VentureIntoDungeonEffect::new(PlayerFilter::Specific(player))
+        };
 
+        for _ in 0..10 {
+            let mut ctx = crate::effects::EffectContext::new(
+                ObjectId::from_raw(90_201),
+                player,
+                &mut dm,
+            );
+            let outcome = effect.execute(game, &mut ctx).expect("venture should resolve");
+            for event in outcome.events {
+                let is_expected = event
+                    .downcast::<crate::events::DungeonRoomEnteredEvent>()
+                    .is_some_and(|room_event| room_event.room_name == expected_room);
+                if is_expected {
+                    return event;
+                }
+            }
+        }
+        panic!("venture path did not enter expected room {expected_room}");
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn put_dungeon_delver_online(game: &mut GameState, player: PlayerId) {
         let dungeon_delver = CardDefinitionBuilder::new(CardId::new(), "Dungeon Delver")
             .card_types(vec![CardType::Enchantment])
             .subtypes(vec![Subtype::Background])
@@ -2630,10 +2671,41 @@ mod tests {
             .supertypes(vec![Supertype::Legendary])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
-        let commander_id = game.create_object_from_card(&commander, alice, Zone::Battlefield);
-        game.set_as_commander(commander_id, alice);
-        game.create_object_from_definition(&dungeon_delver, alice, Zone::Battlefield);
+        let commander_id = game.create_object_from_card(&commander, player, Zone::Battlefield);
+        game.set_as_commander(commander_id, player);
+        game.create_object_from_definition(&dungeon_delver, player, Zone::Battlefield);
         game.refresh_continuous_state();
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn assert_dungeon_delver_copies_room_trigger(
+        game: &GameState,
+        event: &TriggerEvent,
+        controller: PlayerId,
+        expected_source: &str,
+    ) {
+        let room_triggers = check_triggers(game, event);
+        assert_eq!(
+            room_triggers.len(),
+            2,
+            "Dungeon Delver should add one extra copy to {expected_source}"
+        );
+        assert!(
+            room_triggers.iter().all(|entry| entry.is_dungeon_room_ability
+                && entry.controller == controller
+                && entry.source_name == expected_source),
+            "expected only duplicated {expected_source} room triggers, got {room_triggers:?}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn dungeon_delver_duplicates_real_room_trigger_from_venture_flow() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        put_dungeon_delver_online(&mut game, alice);
 
         let alice_event = first_dungeon_room_event_from_venture(&mut game, alice);
         let own_room_triggers = check_triggers(&game, &alice_event);
@@ -2657,6 +2729,92 @@ mod tests {
             opponent_room_triggers.len(),
             1,
             "Dungeon Delver should not copy real room triggers from another player's dungeon"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn dungeon_delver_duplicates_previously_omitted_lost_mine_room_branch() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        put_dungeon_delver_online(&mut game, alice);
+
+        let event = dungeon_room_event_from_venture_path(&mut game, alice, &[], "Goblin Lair", false);
+
+        assert_dungeon_delver_copies_room_trigger(
+            &game,
+            &event,
+            alice,
+            "Goblin Lair of Lost Mine of Phandelver",
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn dungeon_delver_duplicates_previously_omitted_tomb_room_trigger() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        put_dungeon_delver_online(&mut game, alice);
+
+        let event = dungeon_room_event_from_venture_path(
+            &mut game,
+            alice,
+            &["Tomb of Annihilation"],
+            "Trapped Entry",
+            false,
+        );
+
+        assert_dungeon_delver_copies_room_trigger(
+            &game,
+            &event,
+            alice,
+            "Trapped Entry of Tomb of Annihilation",
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn dungeon_delver_duplicates_previously_omitted_mad_mage_branch() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        put_dungeon_delver_online(&mut game, alice);
+
+        let event = dungeon_room_event_from_venture_path(
+            &mut game,
+            alice,
+            &["Dungeon of the Mad Mage", "Twisted Caverns"],
+            "Twisted Caverns",
+            false,
+        );
+
+        assert_dungeon_delver_copies_room_trigger(
+            &game,
+            &event,
+            alice,
+            "Twisted Caverns of Dungeon of the Mad Mage",
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn dungeon_delver_duplicates_previously_omitted_undercity_branch() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        put_dungeon_delver_online(&mut game, alice);
+
+        let event = dungeon_room_event_from_venture_path(
+            &mut game,
+            alice,
+            &["Forge"],
+            "Trap!",
+            true,
+        );
+
+        assert_dungeon_delver_copies_room_trigger(
+            &game,
+            &event,
+            alice,
+            "Trap! of Undercity",
         );
     }
 
