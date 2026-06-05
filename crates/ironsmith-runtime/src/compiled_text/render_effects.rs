@@ -3586,6 +3586,40 @@ fn describe_for_each_tagged_shuffle_into_owner_library(
     Some("Its owner shuffles it into their library".to_string())
 }
 
+fn describe_source_and_blocked_creatures_top_library_shuffle(
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    let [move_effect, shuffle_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let [source_filter, blocked_filter] = for_each.filter.any_of.as_slice() else {
+        return None;
+    };
+    let mut expected_blocked_filter = ObjectFilter::creature();
+    expected_blocked_filter.blocked_by_source = true;
+    if source_filter != &ObjectFilter::source() || blocked_filter != &expected_blocked_filter {
+        return None;
+    }
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Library
+        || !move_to_zone.to_top
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if !matches!(
+        &shuffle.player,
+        PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag)) if tag.as_str() == "__it__"
+    ) {
+        return None;
+    }
+    Some(
+        "Put this creature and each creature it's blocking on top of their owners' libraries, then those players shuffle"
+            .to_string(),
+    )
+}
+
 fn describe_source_owner_shuffle_then_reveal_named_to_battlefield(
     effects: &[&Effect],
 ) -> Option<String> {
@@ -31818,6 +31852,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return compact;
         }
         if let Some(compact) = describe_for_each_prevent_combat_damage_unless_pays(for_each) {
+            return compact;
+        }
+        if let Some(compact) = describe_source_and_blocked_creatures_top_library_shuffle(for_each) {
             return compact;
         }
         if for_each.effects.len() == 1

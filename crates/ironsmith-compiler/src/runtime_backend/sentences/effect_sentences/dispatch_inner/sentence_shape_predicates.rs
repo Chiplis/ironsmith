@@ -713,6 +713,9 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(effect) = parse_source_and_blocked_creatures_top_library_shuffle_sentence(tokens) {
+        return Ok(vec![effect]);
+    }
     if sentence_words.starts_with(&["at", "the", "beginning", "of"])
         && sentence_words
             .windows(3)
@@ -795,6 +798,70 @@ fn parse_effect_sentence_lexed_inner(
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     normalize_search_followup_shuffles(&mut effects);
     Ok(effects)
+}
+
+fn source_and_creatures_blocked_by_source_words(words: &[&str]) -> bool {
+    words
+        == [
+            "this", "creature", "and", "each", "creature", "it's", "blocking",
+        ]
+}
+
+fn parse_source_and_blocked_creatures_top_library_shuffle_sentence(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    if !token_slice_first_is(tokens, "put") {
+        return None;
+    }
+    let (target_slice, after_on_top_of) = grammar::split_lexed_once_on_separator(&tokens[1..], || {
+        use winnow::Parser as _;
+        grammar::phrase(&["on", "top", "of"]).void()
+    })?;
+    let target_tokens = trim_commas(target_slice);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    if !source_and_creatures_blocked_by_source_words(&target_words) {
+        return None;
+    }
+
+    let destination_words = crate::runtime_backend::token_word_refs(after_on_top_of);
+    let has_owner_library = destination_words
+        .iter()
+        .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
+        && destination_words
+            .iter()
+            .any(|word| matches!(*word, "library" | "libraries"));
+    if !has_owner_library
+        || !word_slice_contains_phrase(
+            &destination_words,
+            &["then", "those", "players", "shuffle"],
+        )
+    {
+        return None;
+    }
+
+    let mut blocked_creature = ObjectFilter::creature();
+    blocked_creature.blocked_by_source = true;
+    let mut moved_objects = ObjectFilter::default();
+    moved_objects.any_of = vec![ObjectFilter::source(), blocked_creature];
+
+    Some(EffectAst::ForEachObject {
+        filter: moved_objects,
+        effects: vec![
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                Zone::Library,
+                true,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::ItsOwner,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+        ],
+    })
 }
 
 fn parse_effect_sentence_with_where_x_lexed(

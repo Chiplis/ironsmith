@@ -23736,6 +23736,142 @@ fn parse_draw_then_put_source_on_top_of_library() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn gomazoa_activated_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Gomazoa should have an activated ability")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn execute_gomazoa_ability(
+    game: &mut crate::game_state::GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    activated: &crate::ability::ActivatedAbility,
+) {
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(game, effect, &mut ctx)
+            .expect("Gomazoa activated ability effect should resolve");
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn library_contains_card_name(
+    game: &crate::game_state::GameState,
+    player: PlayerId,
+    name: &str,
+) -> bool {
+    game.player(player)
+        .expect("player exists")
+        .library
+        .iter()
+        .any(|id| game.object(*id).is_some_and(|object| object.name == name))
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_oracle_gomazoa_strict_and_renders_blocked_creatures_shuffle_clause() {
+    let def = parse_oracle_card_definition("Gomazoa");
+    let activated = gomazoa_activated_ability(&def);
+    assert!(activated.has_tap_cost(), "Gomazoa should keep its tap cost");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("defender")
+            && rendered.contains("flying")
+            && rendered.contains("put this creature and each creature it's blocking on top of their owners' libraries")
+            && rendered.contains("then those players shuffle"),
+        "expected Gomazoa compiled text to preserve the blocking top-library shuffle clause, got {rendered}"
+    );
+
+    let ability_debug = format!("{activated:#?}").to_ascii_lowercase();
+    assert!(
+        ability_debug.contains("foreachobject")
+            && ability_debug.contains("blocked_by_source: true")
+            && ability_debug.contains("movetozoneeffect")
+            && ability_debug.contains("shufflelibraryeffect"),
+        "expected Gomazoa ability to structurally move source plus blocked creatures and shuffle owners, got {ability_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gomazoa_runtime_moves_source_and_creature_it_is_blocking_to_owners_libraries() {
+    let def = parse_oracle_card_definition("Gomazoa");
+    let activated = gomazoa_activated_ability(&def);
+    let vanilla = CardDefinitionBuilder::new(CardId::new(), "Attacking Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let gomazoa = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let attacker = game.create_object_from_definition(&vanilla, bob, Zone::Battlefield);
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: attacker,
+        target: crate::combat_state::AttackTarget::Player(alice),
+    });
+    combat.blockers.insert(attacker, vec![gomazoa]);
+    game.combat = Some(combat);
+
+    execute_gomazoa_ability(&mut game, gomazoa, alice, activated);
+
+    assert!(
+        !game.battlefield.contains(&gomazoa) && !game.battlefield.contains(&attacker),
+        "Gomazoa and the creature it blocked should leave the battlefield"
+    );
+    assert!(
+        library_contains_card_name(&game, alice, "Gomazoa")
+            && library_contains_card_name(&game, bob, "Attacking Bear"),
+        "Gomazoa and its blocked attacker should be in their owners' libraries"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gomazoa_runtime_does_not_move_creature_blocking_it_when_source_attacks() {
+    let def = parse_oracle_card_definition("Gomazoa");
+    let activated = gomazoa_activated_ability(&def);
+    let blocker_def = CardDefinitionBuilder::new(CardId::new(), "Blocking Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let gomazoa = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let blocker = game.create_object_from_definition(&blocker_def, bob, Zone::Battlefield);
+    let mut combat = crate::combat_state::CombatState::default();
+    combat.attackers.push(crate::combat_state::AttackerInfo {
+        creature: gomazoa,
+        target: crate::combat_state::AttackTarget::Player(bob),
+    });
+    combat.blockers.insert(gomazoa, vec![blocker]);
+    game.combat = Some(combat);
+
+    execute_gomazoa_ability(&mut game, gomazoa, alice, activated);
+
+    assert!(
+        !game.battlefield.contains(&gomazoa),
+        "Gomazoa should move itself even if it is attacking"
+    );
+    assert!(
+        game.battlefield.contains(&blocker)
+            && !library_contains_card_name(&game, bob, "Blocking Bear"),
+        "a creature blocking Gomazoa is not a creature Gomazoa is blocking"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_draw_then_put_source_third_from_top() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Sensei Top Third Variant")
