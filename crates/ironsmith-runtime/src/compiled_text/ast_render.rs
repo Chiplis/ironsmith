@@ -1687,6 +1687,9 @@ fn describe_structural_equipment_token_keyword(ability: &Ability) -> Option<Stri
     if is_for_mirrodin_rebel_token(&create.token) {
         return Some("For Mirrodin!".to_string());
     }
+    if is_job_select_hero_token(&create.token) {
+        return Some("Job select".to_string());
+    }
     None
 }
 
@@ -1734,6 +1737,22 @@ fn is_for_mirrodin_rebel_token(token: &CardDefinition) -> bool {
             Some(crate::card::PowerToughness {
                 power: crate::card::PtValue::Fixed(2),
                 toughness: crate::card::PtValue::Fixed(2),
+            })
+        )
+        && token.abilities.is_empty()
+}
+
+fn is_job_select_hero_token(token: &CardDefinition) -> bool {
+    token.card.is_token
+        && token.card.name == "Hero"
+        && token.card.colors() == crate::color::ColorSet::COLORLESS
+        && token.card.card_types == [CardType::Creature]
+        && token.card.subtypes == [Subtype::Hero]
+        && matches!(
+            token.card.power_toughness,
+            Some(crate::card::PowerToughness {
+                power: crate::card::PtValue::Fixed(1),
+                toughness: crate::card::PtValue::Fixed(1),
             })
         )
         && token.abilities.is_empty()

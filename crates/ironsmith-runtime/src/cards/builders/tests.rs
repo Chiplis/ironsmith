@@ -5074,6 +5074,78 @@ fn parse_equipment_attached_goaded_anthem_preserves_equipped_subject() {
     );
 }
 
+#[test]
+fn summoners_grimoire_compiles_job_select_granted_trigger_and_labeled_equip() {
+    let def = parse_oracle_card_definition("Summoner's Grimoire");
+    let lines = canonical_compiled_lines(&def);
+    let rendered = lines.join("\n");
+
+    assert!(
+        lines.iter().any(|line| line == "Job select."),
+        "expected Job select keyword action, got {rendered}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Equipped creature is a Shaman in addition to its other types and has \"Whenever this creature attacks, you may put a creature card from your hand onto the battlefield. If that card is an enchantment card, it enters tapped and attacking\"."),
+        "expected merged equipped Shaman grant with quoted attack trigger, got {rendered}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "Abraxas — Equip {3}."),
+        "expected labeled equip line, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("job_select_created")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("AttachToEffect")
+            && debug.contains("AttachedAbilityGrant")
+            && debug.contains("enters_tapped_and_attacking_if: Some")
+            && debug.contains("Enchantment"),
+        "expected structural Job select and conditional enchantment entry support, got {debug}"
+    );
+}
+
+#[test]
+fn summoners_grimoire_job_select_creates_hero_and_attaches_equipment() {
+    let def = parse_oracle_card_definition("Summoner's Grimoire");
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let grimoire = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            grimoire,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            None,
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, grimoire, &event),
+        1,
+        "Summoner's Grimoire should trigger Job select when it enters"
+    );
+
+    let hero = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .find(|&id| game.object(id).is_some_and(|object| object.name == "Hero"))
+        .expect("Job select should create a Hero token");
+    let hero_object = game.object(hero).expect("Hero should exist");
+    assert_eq!(hero_object.card_types, [CardType::Creature]);
+    assert_eq!(hero_object.subtypes, [Subtype::Hero]);
+    assert_eq!(hero_object.base_power, Some(crate::card::PtValue::Fixed(1)));
+    assert_eq!(hero_object.base_toughness, Some(crate::card::PtValue::Fixed(1)));
+    assert_eq!(game.controller_of(hero_object), alice);
+    assert_eq!(
+        game.object(grimoire).and_then(|object| object.attached_to),
+        Some(crate::object::AttachmentTarget::Object(hero)),
+        "Job select should attach the Equipment to the created Hero"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn shiny_impetus_buffs_and_goads_enchanted_creature_away_from_aura_controller() {

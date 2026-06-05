@@ -1116,6 +1116,7 @@ enum ExactAbilityPhrase {
     FirstStrike,
     DoubleStrike,
     ForMirrodin,
+    JobSelect,
     LivingWeapon,
     ModularSunburst,
     ProtectionFromAllColors,
@@ -1132,6 +1133,7 @@ const EXACT_ABILITY_PHRASES: &[(&[&str], ExactAbilityPhrase)] = &[
     (&["first", "strike"], ExactAbilityPhrase::FirstStrike),
     (&["double", "strike"], ExactAbilityPhrase::DoubleStrike),
     (&["for", "mirrodin"], ExactAbilityPhrase::ForMirrodin),
+    (&["job", "select"], ExactAbilityPhrase::JobSelect),
     (&["living", "weapon"], ExactAbilityPhrase::LivingWeapon),
     (
         &["modular", "sunburst"],
@@ -1175,6 +1177,7 @@ fn exact_ability_phrase_action(kind: ExactAbilityPhrase) -> KeywordAction {
         ExactAbilityPhrase::FirstStrike => KeywordAction::FirstStrike,
         ExactAbilityPhrase::DoubleStrike => KeywordAction::DoubleStrike,
         ExactAbilityPhrase::ForMirrodin => KeywordAction::ForMirrodin,
+        ExactAbilityPhrase::JobSelect => KeywordAction::JobSelect,
         ExactAbilityPhrase::LivingWeapon => KeywordAction::LivingWeapon,
         ExactAbilityPhrase::ModularSunburst => KeywordAction::ModularSunburst,
         ExactAbilityPhrase::ProtectionFromAllColors => KeywordAction::ProtectionFromAllColors,
@@ -1556,7 +1559,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
     if JOB_SELECT_PREFIX_PATTERN.matches_words(&words) {
-        return Some(KeywordAction::MarkerText("Job select".to_string()));
+        return Some(KeywordAction::JobSelect);
     }
     if UMBRA_ARMOR_PREFIX_PATTERN.matches_words(&words) {
         return Some(KeywordAction::UmbraArmor);
@@ -1668,6 +1671,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         phrase_tokens,
         &[
             &["for", "mirrodin"],
+            &["job", "select"],
             &["living", "weapon"],
             &["battle", "cry"],
             &["split", "second"],
@@ -1677,6 +1681,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     ) {
         return Some(match matched_phrase {
             ["for", "mirrodin"] => KeywordAction::ForMirrodin,
+            ["job", "select"] => KeywordAction::JobSelect,
             ["living", "weapon"] => KeywordAction::LivingWeapon,
             ["battle", "cry"] => KeywordAction::BattleCry,
             ["split", "second"] => KeywordAction::SplitSecond,

@@ -1097,6 +1097,7 @@ pub(crate) fn parse_attached_type_transform_line(
     }
 
     let mut with_idx = None;
+    let mut has_idx = None;
     let mut lose_idx = None;
     let mut in_quotes = false;
     for (idx, token) in remainder.iter().enumerate() {
@@ -1111,13 +1112,25 @@ pub(crate) fn parse_attached_type_transform_line(
             with_idx = Some(idx);
             continue;
         }
+        if has_idx.is_none()
+            && ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            && idx > 0
+            && ATTACHED_AND_WORD_PATTERN.matches_token(&remainder[idx - 1])
+        {
+            has_idx = Some(idx);
+            continue;
+        }
         if ATTACHED_LOSE_OR_LOSES_WORD_PATTERN.matches_token(token) {
             lose_idx = Some(idx);
             break;
         }
     }
 
-    let descriptor_end = with_idx.or(lose_idx).unwrap_or(remainder.len());
+    let descriptor_end = [with_idx, has_idx.map(|idx| idx - 1), lose_idx]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(remainder.len());
     let mut descriptor_tokens = trim_commas(&remainder[1..descriptor_end]).to_vec();
     while descriptor_tokens
         .first()
@@ -1125,7 +1138,17 @@ pub(crate) fn parse_attached_type_transform_line(
     {
         descriptor_tokens.remove(0);
     }
-    let descriptor_words = crate::runtime_backend::lexer::token_word_refs(&descriptor_tokens);
+    let mut descriptor_words = crate::runtime_backend::lexer::token_word_refs(&descriptor_tokens);
+    let descriptor_preserve_other_types = descriptor_words
+        .len()
+        .checked_sub(6)
+        .is_some_and(|tail_start| {
+            ATTACHED_PRESERVE_OTHER_TYPES_TAIL_PATTERN.matches_words(&descriptor_words[tail_start..])
+                && {
+                    descriptor_words.truncate(tail_start);
+                    true
+                }
+        });
     if descriptor_words.is_empty() {
         return Ok(None);
     }
@@ -1164,7 +1187,7 @@ pub(crate) fn parse_attached_type_transform_line(
     }
 
     let mut out = Vec::new();
-    let mut preserve_other_types = false;
+    let mut preserve_other_types = descriptor_preserve_other_types;
     let mut loss_consumed = false;
 
     if let Some(with_idx) = with_idx {
@@ -1256,6 +1279,70 @@ pub(crate) fn parse_attached_type_transform_line(
             out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
                 ability: parsed,
                 display: format!("{subject_text} has {display}"),
+                condition: None,
+            });
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported attached transform granted ability (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+    } else if let Some(has_idx) = has_idx {
+        let ability_end = lose_idx.unwrap_or(remainder.len());
+        let ability_tokens = trim_edge_punctuation(&remainder[has_idx + 1..ability_end]);
+        if ability_tokens.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing attached transform granted ability (clause: '{}')",
+                line_words.join(" ")
+            )));
+        }
+
+        if let Some(parsed) = parse_attached_granted_activated_line(&ability_tokens)? {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed,
+                display: format!(
+                    "{subject_text} has {}",
+                    display_text_for_tokens(&ability_tokens, true)
+                ),
+                condition: None,
+            });
+        } else if let Some((parsed, display)) =
+            parse_attached_nonstatic_keyword_ability(&ability_tokens)?
+        {
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed,
+                display: format!("{subject_text} has {display}"),
+                condition: None,
+            });
+        } else if token_slice_first_is_any(&ability_tokens, &["when", "whenever", "at"])
+            && let LineAst::Triggered {
+                trigger,
+                effects,
+                max_triggers_per_turn,
+            } = crate::runtime_backend::clause_support::parse_triggered_line_lexed(&ability_tokens)?
+        {
+            let text = crate::runtime_backend::lexer::token_word_refs(&ability_tokens).join(" ");
+            let parsed = parsed_triggered_ability(
+                trigger,
+                effects,
+                vec![Zone::Battlefield],
+                Some(text.clone()),
+                crate::runtime_backend::trigger_frequency_condition(
+                    Some(&text),
+                    max_triggers_per_turn,
+                ),
+                None,
+                ReferenceImports::default(),
+            );
+            if parsed_triggered_ability_is_empty(&parsed) {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported empty attached triggered grant clause (clause: '{}')",
+                    line_words.join(" ")
+                )));
+            }
+            out.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+                ability: parsed,
+                display: format!("{subject_text} has {text}"),
                 condition: None,
             });
         } else {

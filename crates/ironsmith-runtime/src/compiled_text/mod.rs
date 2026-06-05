@@ -968,8 +968,10 @@ fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
                     merge_lose_all_transform_lines(merge_attached_transform_keyword_loss_lines(
                         merge_blockability_lines(annotate_color_choice_exclusions(
                             merge_same_true_color_lines(merge_same_true_type_addition_lines(
-                                merge_same_true_keyword_grant_lines(
-                                    merge_subject_predicate_surface_lines(previous.clone()),
+                                merge_attached_type_and_ability_grant_lines(
+                                    merge_same_true_keyword_grant_lines(
+                                        merge_subject_predicate_surface_lines(previous.clone()),
+                                    ),
                                 ),
                             )),
                         )),

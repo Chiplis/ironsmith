@@ -350,6 +350,61 @@ pub(super) fn merge_same_true_type_addition_lines(lines: Vec<String>) -> Vec<Str
     merged
 }
 
+pub(super) fn merge_attached_type_and_ability_grant_lines(lines: Vec<String>) -> Vec<String> {
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(line) = merge_attached_type_and_ability_grant_pair(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(line);
+            idx += 2;
+            continue;
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
+}
+
+fn merge_attached_type_and_ability_grant_pair(left: &str, right: &str) -> Option<String> {
+    let left = left.trim().trim_end_matches('.');
+    let right = right.trim().trim_end_matches('.');
+    let left_lower = left.to_ascii_lowercase();
+    let right_lower = right.to_ascii_lowercase();
+    let subject = if left_lower.starts_with("equipped creature is ")
+        && right_lower.starts_with("equipped creature has ")
+    {
+        "Equipped creature"
+    } else if left_lower.starts_with("enchanted creature is ")
+        && right_lower.starts_with("enchanted creature has ")
+    {
+        "Enchanted creature"
+    } else {
+        return None;
+    };
+
+    let type_tail = left
+        .strip_prefix(subject)?
+        .trim()
+        .strip_prefix("is")?
+        .trim();
+    if !type_tail
+        .to_ascii_lowercase()
+        .ends_with(" in addition to its other types")
+    {
+        return None;
+    }
+    let ability = right.strip_prefix(subject)?.trim().strip_prefix("has")?.trim();
+    if ability.is_empty() || ability.starts_with('"') {
+        return None;
+    }
+    Some(format!(
+        "{subject} is {type_tail} and has \"{}\".",
+        capitalize_first(ability)
+    ))
+}
+
 #[derive(Debug, Clone)]
 struct ColorLine {
     subject: String,

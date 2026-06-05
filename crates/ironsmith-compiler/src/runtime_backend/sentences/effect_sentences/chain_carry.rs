@@ -46,7 +46,8 @@ use super::{
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
     parse_sentence_return_with_counters_on_it_lexed, parse_simple_gain_ability_clause_lexed,
     parse_simple_lose_ability_clause_lexed, parse_token_copy_followup_sentence_lexed,
-    try_apply_token_copy_followup,
+    parse_conditional_entry_modifier_followup_sentence_lexed,
+    try_apply_conditional_entry_modifier_followup, try_apply_token_copy_followup,
 };
 
 const ENCHANTED_TAG_NAME: &str = "enchanted";
@@ -1252,6 +1253,12 @@ pub(crate) fn parse_effect_chain_inner_lexed(
                 }
                 effects.push(effect);
             }
+            previous_segment = Some(segment);
+            continue;
+        }
+        if let Some(filter) = parse_conditional_entry_modifier_followup_sentence_lexed(&segment)
+            && try_apply_conditional_entry_modifier_followup(&mut effects, filter)?
+        {
             previous_segment = Some(segment);
             continue;
         }

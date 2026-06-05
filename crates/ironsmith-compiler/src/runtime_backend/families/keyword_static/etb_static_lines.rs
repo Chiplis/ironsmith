@@ -3012,6 +3012,9 @@ fn parse_entry_filter_clause<'a>(tokens: &'a [OwnedLexToken]) -> Option<EtbEntry
 pub(crate) fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
+    if tokens.iter().any(OwnedLexToken::is_quote) {
+        return Ok(None);
+    }
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if clause_words
         .first()

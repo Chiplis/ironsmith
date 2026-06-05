@@ -150,6 +150,7 @@ pub enum KeywordAction {
     Devoid,
     Annihilator(u32),
     ForMirrodin,
+    JobSelect,
     LivingWeapon,
     Crew {
         amount: u32,
@@ -458,6 +459,7 @@ impl KeywordAction {
             Self::Devoid => "Devoid".to_string(),
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),
+            Self::JobSelect => "Job select".to_string(),
             Self::LivingWeapon => "Living weapon".to_string(),
             Self::Crew { amount, .. } => format!("Crew {amount}"),
             Self::Saddle { amount, .. } => format!("Saddle {amount}"),

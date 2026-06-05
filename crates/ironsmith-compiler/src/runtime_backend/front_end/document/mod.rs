@@ -3444,7 +3444,10 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if is_named_label && let Some(keyword_line) = parse_keyword_line_cst(&body_line)? {
+    if (is_named_label || looks_like_ability_word_label(label_tokens, preserve_as_choice_label))
+        && let Some(mut keyword_line) = parse_keyword_line_cst(&body_line)?
+    {
+        keyword_line.text = format!("{} — {}", label.trim(), keyword_line.text);
         return Ok(Some(LineDispatchResult::single(
             RewriteLineCst::Keyword(keyword_line),
             idx + 1,

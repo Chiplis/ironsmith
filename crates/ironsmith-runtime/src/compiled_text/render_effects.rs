@@ -39719,6 +39719,11 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
                 rendered.push_str(". ");
                 rendered.push_str(&join_activation_restriction_clauses(&restriction_clauses));
             }
+            if let Some(label) = activated_presentation_label(activated)
+                && !rendered.starts_with(label)
+            {
+                rendered = format!("{label} — {rendered}");
+            }
         }
         return Some(rendered);
     }
@@ -39761,6 +39766,9 @@ pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     }
     if text == "for mirrodin!" {
         return Some("For Mirrodin!".to_string());
+    }
+    if text == "job select" {
+        return Some("Job select".to_string());
     }
     if text.starts_with("afterlife ")
         || text.starts_with("annihilator ")
@@ -40198,6 +40206,11 @@ fn describe_structural_equip_keyword(
     if !restriction_clauses.is_empty() {
         rendered.push_str(". ");
         rendered.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+    }
+    if let Some(label) = activated_presentation_label(activated)
+        && !rendered.starts_with(label)
+    {
+        rendered = format!("{label} — {rendered}");
     }
 
     Some(rendered)

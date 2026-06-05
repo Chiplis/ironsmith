@@ -28,6 +28,7 @@ use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
 };
 use super::preprocess::PreprocessedLine;
+use super::semantic::ParsedAbility;
 use super::token_primitives::{
     find_index as find_token_index, split_em_dash_label_prefix_tokens, str_strip_suffix,
 };
@@ -177,6 +178,60 @@ fn require_keyword_parse<T>(
             line.info.raw_line
         ))
     })
+}
+
+fn keyword_display_label(line: &RewriteKeywordLine) -> Option<String> {
+    if let Some((label, _)) = line.info.raw_line.split_once('—') {
+        let label = label.trim();
+        if !label.is_empty() {
+            return Some(label.to_string());
+        }
+    }
+    if let Some((label, _)) = line.text.split_once('—') {
+        let label = label.trim();
+        if !label.is_empty() {
+            return Some(label.to_string());
+        }
+    }
+    let (label_tokens, _) = split_em_dash_label_prefix_tokens(&line.full_parse_tokens)?;
+    let label = render_token_slice(label_tokens).trim().to_string();
+    (!label.is_empty()).then_some(label)
+}
+
+fn preserve_keyword_display_label(
+    line: &RewriteKeywordLine,
+    mut parsed: ParsedAbility,
+) -> ParsedAbility {
+    let Some(label) = keyword_display_label(line) else {
+        return parsed;
+    };
+    let Some(text) = parsed.text.as_mut() else {
+        return parsed;
+    };
+    if !text.starts_with(label.as_str()) {
+        *text = format!("{label} — {text}");
+    }
+    parsed
+}
+
+fn preserve_activated_keyword_label(
+    line: &RewriteKeywordLine,
+    mut parsed: ParsedAbility,
+) -> ParsedAbility {
+    let Some(label) = keyword_display_label(line) else {
+        return parsed;
+    };
+    if let crate::ability::AbilityKind::Activated(activated) = parsed.kind_mut() {
+        let marker = format!("__ironsmith_activation_label:{label}");
+        if !activated
+            .additional_restrictions
+            .iter()
+            .any(|restriction| restriction == &marker)
+        {
+            activated.additional_restrictions.push(marker);
+        }
+    }
+    preserve_keyword_display_label(line, parsed)
 }
 
 fn optional_cost_tail_effect_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -434,11 +489,10 @@ pub(super) fn lower_equip(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
-    Ok(LineAst::Ability(require_keyword_parse(
+    Ok(LineAst::Ability(preserve_activated_keyword_label(
         line,
-        "equip",
-        parse_equip_line_lexed(tokens)?,
-    )?))
+        require_keyword_parse(line, "equip", parse_equip_line_lexed(tokens)?)?,
+    )))
 }
 
 pub(super) fn lower_reconfigure(

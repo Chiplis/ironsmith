@@ -8236,6 +8236,9 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     {
         return Ok(None);
     }
+    if addition_idx + 6 != tail.len() {
+        return Ok(None);
+    }
 
     let subject_tokens = &tokens[..be_idx];
     if subject_tokens.is_empty() {

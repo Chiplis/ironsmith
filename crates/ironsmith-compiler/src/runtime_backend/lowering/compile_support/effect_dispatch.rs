@@ -2670,6 +2670,7 @@ fn compile_subject_verb_effect(
             battlefield_controller,
             battlefield_tapped,
             battlefield_attacking,
+            battlefield_tapped_and_attacking_if,
             battlefield_face_down,
             attached_to,
             all,
@@ -2737,6 +2738,16 @@ fn compile_subject_verb_effect(
                 };
                 let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                     move_effect.attacking()
+                } else {
+                    move_effect
+                };
+                let move_effect = if *zone == Zone::Battlefield
+                    && let Some(filter) = battlefield_tapped_and_attacking_if
+                {
+                    move_effect.tapped_and_attacking_if(resolve_it_tag(
+                        filter,
+                        &current_reference_env(ctx),
+                    )?)
                 } else {
                     move_effect
                 };
@@ -2820,6 +2831,16 @@ fn compile_subject_verb_effect(
             };
             let move_effect = if *zone == Zone::Battlefield && *battlefield_attacking {
                 move_effect.attacking()
+            } else {
+                move_effect
+            };
+            let move_effect = if *zone == Zone::Battlefield
+                && let Some(filter) = battlefield_tapped_and_attacking_if
+            {
+                move_effect.tapped_and_attacking_if(resolve_it_tag(
+                    filter,
+                    &current_reference_env(ctx),
+                )?)
             } else {
                 move_effect
             };

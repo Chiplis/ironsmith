@@ -1496,6 +1496,7 @@ pub struct MoveToZoneEffect {
     pub battlefield_controller: BattlefieldController,
     pub enters_tapped: bool,
     pub enters_attacking: bool,
+    pub enters_tapped_and_attacking_if: Option<ObjectFilter>,
     pub enters_face_down: bool,
     pub transfer_exiled_with_source_links: bool,
 }
@@ -1509,6 +1510,7 @@ impl MoveToZoneEffect {
             battlefield_controller: BattlefieldController::Preserve,
             enters_tapped: false,
             enters_attacking: false,
+            enters_tapped_and_attacking_if: None,
             enters_face_down: false,
             transfer_exiled_with_source_links: false,
         }
@@ -1552,6 +1554,11 @@ impl MoveToZoneEffect {
 
     pub fn attacking(mut self) -> Self {
         self.enters_attacking = true;
+        self
+    }
+
+    pub fn tapped_and_attacking_if(mut self, filter: ObjectFilter) -> Self {
+        self.enters_tapped_and_attacking_if = Some(filter);
         self
     }
 

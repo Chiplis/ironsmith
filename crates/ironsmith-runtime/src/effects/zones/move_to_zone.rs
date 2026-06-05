@@ -241,16 +241,27 @@ impl EffectExecutor for MoveToZoneEffect {
                 }
                 EventOutcome::Proceed(final_zone) => {
                     if final_zone == Zone::Battlefield {
+                        let conditional_tapped_and_attacking = self
+                            .enters_tapped_and_attacking_if
+                            .as_ref()
+                            .is_some_and(|filter| {
+                                let filter_ctx = FilterContext::new(ctx.controller)
+                                    .with_source(ctx.source);
+                                filter.matches_snapshot(&target_lki_before_move, &filter_ctx, game)
+                            });
+                        let enters_tapped = self.enters_tapped || conditional_tapped_and_attacking;
+                        let enters_attacking =
+                            self.enters_attacking || conditional_tapped_and_attacking;
                         let options = match self.battlefield_controller {
                             BattlefieldController::Preserve => {
-                                BattlefieldEntryOptions::preserve(self.enters_tapped)
+                                BattlefieldEntryOptions::preserve(enters_tapped)
                             }
                             BattlefieldController::Owner => {
-                                BattlefieldEntryOptions::owner(self.enters_tapped)
+                                BattlefieldEntryOptions::owner(enters_tapped)
                             }
                             BattlefieldController::You => BattlefieldEntryOptions::specific(
                                 ctx.controller,
-                                self.enters_tapped,
+                                enters_tapped,
                             ),
                         };
                         if self.enters_face_down
@@ -260,7 +271,7 @@ impl EffectExecutor for MoveToZoneEffect {
                         }
                         match move_to_battlefield_with_options(game, ctx, object_id, options) {
                             BattlefieldEntryOutcome::Moved(new_id) => {
-                                if self.enters_attacking
+                                if enters_attacking
                                     && let Some(target) =
                                         choose_enters_attacking_target(game, ctx, new_id)
                                     && let Some(combat) = game.combat.as_mut()
@@ -484,6 +495,20 @@ mod tests {
         id
     }
 
+    fn create_named_creature_with_types_in_zone(
+        game: &mut GameState,
+        owner: PlayerId,
+        name: &str,
+        card_types: Vec<CardType>,
+        zone: Zone,
+    ) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(2)]]))
+            .card_types(card_types)
+            .build();
+        game.create_object_from_card(&card, owner, zone)
+    }
+
     struct ChooseLastOptionDecisionMaker;
 
     impl crate::decision::DecisionMaker for ChooseLastOptionDecisionMaker {
@@ -601,6 +626,108 @@ mod tests {
         assert!(
             game.combat.is_none(),
             "no attacker should be added without combat"
+        );
+    }
+
+    #[test]
+    fn conditional_move_enters_tapped_and_attacking_when_filter_matches() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_named_creature_in_zone(&mut game, alice, "Attack Source", Zone::Battlefield);
+        let existing_attacker =
+            create_named_creature_in_zone(&mut game, alice, "Existing Attacker", Zone::Battlefield);
+        let enchantment_creature = create_named_creature_with_types_in_zone(
+            &mut game,
+            alice,
+            "Enchantment Creature",
+            vec![CardType::Enchantment, CardType::Creature],
+            Zone::Hand,
+        );
+        game.combat = Some(CombatState {
+            attackers: vec![AttackerInfo {
+                creature: existing_attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        });
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = MoveToZoneEffect::new(
+            ChooseSpec::SpecificObject(enchantment_creature),
+            Zone::Battlefield,
+            false,
+        )
+        .tapped_and_attacking_if(ObjectFilter::default().with_type(CardType::Enchantment))
+        .execute(&mut game, &mut ctx)
+        .expect("conditional move should resolve");
+        let moved = match outcome.value {
+            crate::effect::OutcomeValue::Objects(ids) => ids[0],
+            _ => panic!("expected moved object id"),
+        };
+
+        assert!(game
+            .object(moved)
+            .is_some_and(|object| object.zone == Zone::Battlefield));
+        assert!(
+            game.is_tapped(moved),
+            "matching enchantment creature should enter tapped"
+        );
+        assert!(
+            game.combat.as_ref().is_some_and(|combat| combat
+                .attackers
+                .iter()
+                .any(|info| info.creature == moved)),
+            "matching enchantment creature should enter attacking"
+        );
+    }
+
+    #[test]
+    fn conditional_move_enters_normally_when_filter_does_not_match() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_named_creature_in_zone(&mut game, alice, "Attack Source", Zone::Battlefield);
+        let existing_attacker =
+            create_named_creature_in_zone(&mut game, alice, "Existing Attacker", Zone::Battlefield);
+        let creature = create_named_creature_with_types_in_zone(
+            &mut game,
+            alice,
+            "Plain Creature",
+            vec![CardType::Creature],
+            Zone::Hand,
+        );
+        game.combat = Some(CombatState {
+            attackers: vec![AttackerInfo {
+                creature: existing_attacker,
+                target: AttackTarget::Player(bob),
+            }],
+            ..CombatState::default()
+        });
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = MoveToZoneEffect::new(ChooseSpec::SpecificObject(creature), Zone::Battlefield, false)
+            .tapped_and_attacking_if(ObjectFilter::default().with_type(CardType::Enchantment))
+            .execute(&mut game, &mut ctx)
+            .expect("conditional move should resolve");
+        let moved = match outcome.value {
+            crate::effect::OutcomeValue::Objects(ids) => ids[0],
+            _ => panic!("expected moved object id"),
+        };
+
+        assert!(game
+            .object(moved)
+            .is_some_and(|object| object.zone == Zone::Battlefield));
+        assert!(
+            !game.is_tapped(moved),
+            "nonmatching creature should not enter tapped"
+        );
+        assert!(
+            game.combat.as_ref().is_some_and(|combat| !combat
+                .attackers
+                .iter()
+                .any(|info| info.creature == moved)),
+            "nonmatching creature should not enter attacking"
         );
     }
 

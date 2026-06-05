@@ -1183,6 +1183,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_controller: ReturnControllerAst,
         battlefield_tapped: bool,
         battlefield_attacking: bool,
+        battlefield_tapped_and_attacking_if: Option<ObjectFilter>,
         battlefield_face_down: bool,
         attached_to: Option<TargetAst>,
         all: bool,
@@ -2516,6 +2517,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_tapped_and_attacking_if,
                 battlefield_face_down,
                 attached_to,
                 all,
@@ -2527,6 +2529,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("battlefield_controller", battlefield_controller)
                 .field("battlefield_tapped", battlefield_tapped)
                 .field("battlefield_attacking", battlefield_attacking)
+                .field(
+                    "battlefield_tapped_and_attacking_if",
+                    battlefield_tapped_and_attacking_if,
+                )
                 .field("battlefield_face_down", battlefield_face_down)
                 .field("attached_to", attached_to)
                 .field("all", all)
@@ -4296,6 +4302,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking,
+                battlefield_tapped_and_attacking_if: None,
                 battlefield_face_down,
                 attached_to,
                 all: false,
@@ -4321,6 +4328,7 @@ impl EffectAst {
                 battlefield_controller,
                 battlefield_tapped,
                 battlefield_attacking: false,
+                battlefield_tapped_and_attacking_if: None,
                 battlefield_face_down: false,
                 attached_to,
                 all: true,

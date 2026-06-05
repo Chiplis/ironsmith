@@ -73,6 +73,7 @@ use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseSha
 use crate::target::{
     ChooseSpec, ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation,
 };
+use crate::types::CardType;
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 use std::cell::OnceCell;
@@ -1238,6 +1239,13 @@ fn parse_effect_sentences_from_sentence_inputs(
         if let Some(replacement) = future_zone_replacement_from_sentence_tokens(&sentence_tokens) {
             effects.push(replacement);
             carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
+        if let Some(filter) = parse_conditional_entry_modifier_followup_sentence_lexed(&sentence_tokens)
+            && try_apply_conditional_entry_modifier_followup(&mut effects, filter)?
+        {
             sentence_idx += 1;
             continue;
         }
@@ -3572,4 +3580,87 @@ pub(crate) fn try_apply_token_copy_followup(
             try_apply_token_copy_followup(nested_effects.as_mut_slice(), followup)
         }
     }
+}
+
+pub(crate) fn try_apply_conditional_entry_modifier_followup(
+    effects: &mut [EffectAst],
+    filter: ObjectFilter,
+) -> Result<bool, CardTextError> {
+    let Some(last) = effects.last_mut() else {
+        return Ok(false);
+    };
+
+    match last {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::MoveToZone {
+                zone,
+                battlefield_tapped_and_attacking_if,
+                ..
+            } if *zone == Zone::Battlefield => {
+                *battlefield_tapped_and_attacking_if = Some(filter);
+                Ok(true)
+            }
+            _ => Ok(false),
+        },
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        }
+        | EffectAst::SelfReplacement {
+            if_true, if_false, ..
+        } => {
+            if try_apply_conditional_entry_modifier_followup(if_true.as_mut_slice(), filter.clone())?
+            {
+                return Ok(true);
+            }
+            if try_apply_conditional_entry_modifier_followup(if_false.as_mut_slice(), filter)? {
+                return Ok(true);
+            }
+            Ok(false)
+        }
+        _ => {
+            let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
+                return Ok(false);
+            };
+            if nested_effects.is_empty() {
+                return Ok(false);
+            }
+            try_apply_conditional_entry_modifier_followup(nested_effects.as_mut_slice(), filter)
+        }
+    }
+}
+
+pub(crate) fn parse_conditional_entry_modifier_followup_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
+    if matches!(
+        words.as_slice(),
+        [
+            "if",
+            "that",
+            "card",
+            "is",
+            "enchantment",
+            "card",
+            "it",
+            "enters",
+            "tapped",
+            "and",
+            "attacking"
+        ] | [
+            "if",
+            "it",
+            "is",
+            "enchantment",
+            "card",
+            "it",
+            "enters",
+            "tapped",
+            "and",
+            "attacking"
+        ]
+    ) {
+        return Some(ObjectFilter::default().with_type(CardType::Enchantment));
+    }
+    None
 }
