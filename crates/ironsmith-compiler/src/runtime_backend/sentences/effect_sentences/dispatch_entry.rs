@@ -1982,23 +1982,22 @@ mod tests {
                 .expect("reveal-top follow-up should parse");
 
         assert!(matches!(
-            parsed.as_slice(),
-            [
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        subject: crate::cards::builders::SubjectVerbSubjectAst {
-                            player: crate::cards::builders::PlayerAst::You,
-                            ..
-                        },
-                        action:
-                            crate::cards::builders::SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
-                                count: 3,
-                                ..
-                            },
+            parsed.first(),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: crate::cards::builders::PlayerAst::You,
+                        ..
                     },
-                )
-            ]
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                },
+            ))
         ));
+        // Now composed from reusable primitives; rest->graveyard is a per-card split.
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::ForEachTagged { .. }
+        )));
     }
 
     #[test]
@@ -2016,25 +2015,33 @@ mod tests {
                 .expect("reveal-top follow-up parser should not error")
                 .expect("reveal-top bottom follow-up should parse");
 
+        // Now composed from reusable primitives: look + reveal-tagged + tag-matching +
+        // move-group-to-hand + remainder-to-bottom (order preserved on the remainder).
         assert!(matches!(
-            parsed.as_slice(),
-            [
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        subject: crate::cards::builders::SubjectVerbSubjectAst {
-                            player: crate::cards::builders::PlayerAst::You,
+            parsed.first(),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject: crate::cards::builders::SubjectVerbSubjectAst {
+                        player: crate::cards::builders::PlayerAst::You,
+                        ..
+                    },
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                },
+            ))
+        ));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                            order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
                             ..
                         },
-                        action:
-                            crate::cards::builders::SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                                count: 5,
-                                order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
-                                ..
-                            },
-                    },
-                )
-            ]
-        ));
+                    ..
+                },
+            )
+        )));
     }
 
     #[test]
@@ -2846,8 +2853,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
             | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }

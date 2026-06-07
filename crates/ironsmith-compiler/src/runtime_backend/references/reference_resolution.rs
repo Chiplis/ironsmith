@@ -436,13 +436,6 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
-                SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-                | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                    ..
-                } => {
-                    track_effect_player(subject_verb.subject.player, frame, true, true)?;
-                    frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
-                }
                 SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
@@ -2149,8 +2142,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
             | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
@@ -2873,14 +2864,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
-                filter, ..
-            }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                filter,
-                ..
-            }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
+            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter, ..
             } => bind_unresolved_it_in_filter(filter, seed_tag),
             SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {

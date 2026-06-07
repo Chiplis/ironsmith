@@ -838,8 +838,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Meld { .. }
         | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
         | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-        | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-        | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }

@@ -1895,22 +1895,117 @@ pub(crate) fn parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard(
         return Ok(None);
     }
 
-    let effect = if let Some(order) = bottom_order {
-        EffectAst::subject_verb_reveal_top_put_matching_into_hand_rest_on_bottom_of_library(
-            PlayerAst::You,
+    let effects = if let Some(order) = bottom_order {
+        compose_reveal_top_put_matching_into_hand_rest_on_bottom(
+            sentences[sentence_idx].lowered(),
+            &second_tokens,
             count,
             filter,
             order,
         )
     } else {
-        EffectAst::subject_verb_reveal_top_put_matching_into_hand_rest_into_graveyard(
-            PlayerAst::You,
+        compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
+            sentences[sentence_idx].lowered(),
             count,
             filter,
         )
     };
 
-    Ok(Some(vec![effect]))
+    Ok(Some(effects))
+}
+
+/// Composes the "reveal top N, put all matching into hand, rest on bottom" shape
+/// from reusable primitives (look + reveal-tagged + tag-matching + move-group +
+/// remainder-to-bottom), matching the runtime effects the retired
+/// `RevealTopPutMatchingIntoHandRestOnBottomOfLibrary` recipe lowered to.
+fn compose_reveal_top_put_matching_into_hand_rest_on_bottom(
+    look_tokens: &[OwnedLexToken],
+    matched_tokens: &[OwnedLexToken],
+    count: u32,
+    mut filter: ObjectFilter,
+    order: LibraryBottomOrderAst,
+) -> Vec<EffectAst> {
+    let looked_tag = helper_tag_for_tokens(look_tokens, "revealed");
+    let matched_tag = helper_tag_for_tokens(matched_tokens, "matched");
+    filter.zone = None;
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    vec![
+        EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::You,
+            Value::Fixed(count as i32),
+            looked_tag.clone(),
+        ),
+        EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+        EffectAst::subject_verb_tag_matching_objects(
+            filter,
+            vec![Zone::Library],
+            matched_tag.clone(),
+        ),
+        EffectAst::ForEachTagged {
+            tag: matched_tag.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        },
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(matched_tag),
+            order,
+            PlayerAst::You,
+        ),
+    ]
+}
+
+/// Composes the "reveal top N, put matching into hand, rest into graveyard" shape:
+/// look + reveal-tagged + per-looked-card conditional split (matches filter -> hand,
+/// else -> graveyard), matching the retired
+/// `RevealTopPutMatchingIntoHandRestIntoGraveyard` recipe's lowering.
+fn compose_reveal_top_put_matching_into_hand_rest_into_graveyard(
+    look_tokens: &[OwnedLexToken],
+    count: u32,
+    mut filter: ObjectFilter,
+) -> Vec<EffectAst> {
+    let looked_tag = helper_tag_for_tokens(look_tokens, "revealed");
+    filter.zone = None;
+    let iterated = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
+    vec![
+        EffectAst::subject_verb_look_at_top_cards(
+            PlayerAst::You,
+            Value::Fixed(count as i32),
+            looked_tag.clone(),
+        ),
+        EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+        EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter),
+                if_true: vec![EffectAst::subject_verb_move_to_zone(
+                    iterated(),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    iterated(),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+    ]
 }
 
 pub(crate) fn parse_consult_match_move_and_bottom_remainder(

@@ -1473,15 +1473,6 @@ pub(crate) enum SubjectVerbActionAst {
     RevealTopChooseCardTypePutToHandRestBottom {
         count: u32,
     },
-    RevealTopPutMatchingIntoHandRestIntoGraveyard {
-        count: u32,
-        filter: ObjectFilter,
-    },
-    RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-        count: u32,
-        filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    },
     ChooseFromLookedCardsIntoHandRestIntoGraveyard {
         filter: ObjectFilter,
         reveal: bool,
@@ -2969,21 +2960,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RevealTopChooseCardTypePutToHandRestBottom { count } => f
                 .debug_tuple("RevealTopChooseCardTypePutToHandRestBottom")
                 .field(count)
-                .finish(),
-            Self::RevealTopPutMatchingIntoHandRestIntoGraveyard { count, filter } => f
-                .debug_struct("RevealTopPutMatchingIntoHandRestIntoGraveyard")
-                .field("count", count)
-                .field("filter", filter)
-                .finish(),
-            Self::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                count,
-                filter,
-                order,
-            } => f
-                .debug_struct("RevealTopPutMatchingIntoHandRestOnBottomOfLibrary")
-                .field("count", count)
-                .field("filter", filter)
-                .field("order", order)
                 .finish(),
             Self::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
                 filter,
@@ -5069,35 +5045,6 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count },
-        )
-    }
-
-    pub(crate) fn subject_verb_reveal_top_put_matching_into_hand_rest_into_graveyard(
-        player: PlayerAst,
-        count: u32,
-        filter: ObjectFilter,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { count, filter },
-        )
-    }
-
-    pub(crate) fn subject_verb_reveal_top_put_matching_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        count: u32,
-        filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                count,
-                filter,
-                order,
-            },
         )
     }
 
