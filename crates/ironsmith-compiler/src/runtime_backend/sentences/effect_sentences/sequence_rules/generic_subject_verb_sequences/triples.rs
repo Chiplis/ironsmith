@@ -8,7 +8,8 @@ use super::super::super::dispatch_entry::{
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, ObjectFilter, PlayerAst, PredicateAst, ReturnControllerAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey,
+    TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::effect_sentences;
@@ -352,8 +353,25 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(mut effects) =
-        super::pairs::parse_mill_then_may_put_from_among_into_hand(sentences, sentence_idx)?
+    let first = sentences[sentence_idx].lowered();
+    let second = sentences[sentence_idx + 1].lowered();
+    let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject: SubjectVerbSubjectAst { player, .. },
+            action: SubjectVerbActionAst::Mill { .. },
+        }),
+    ] = first_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    let Some((chooser, filter)) = super::pairs::parse_may_put_filtered_card_from_among_into_hand(
+        second,
+        *player,
+        Zone::Graveyard,
+    )?
     else {
         return Ok(None);
     };
@@ -362,19 +380,14 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
         return Ok(None);
     };
 
-    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action:
-            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                if_not_chosen: existing,
-                ..
-            },
-        ..
-    })) = effects.get_mut(1)
-    else {
-        return Ok(None);
-    };
-    *existing = if_not_chosen;
-    Ok(Some(effects))
+    super::pairs::parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
+        sentences,
+        sentence_idx,
+        *player,
+        chooser,
+        filter,
+        if_not_chosen,
+    )
 }
 
 pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
@@ -1072,25 +1085,129 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         return Ok(Some(effects));
     }
 
+    let looked_tag = helper_tag_for_tokens(
+        sentences[sentence_idx].lowered(),
+        if reveal_top { "revealed" } else { "looked" },
+    );
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        TagKey::from(crate::cards::builders::IT_TAG),
+        looked_tag.clone(),
     )];
     if reveal_top {
-        effects.push(EffectAst::subject_verb_reveal_tagged(TagKey::from(
-            crate::cards::builders::IT_TAG,
-        )));
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
-    effects.push(
-        EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
-            chooser,
-            filter,
-            reveal_chosen,
-            Vec::new(),
-        ),
-    );
+    effects.extend(compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
+        chooser,
+        filter,
+        looked_tag,
+        chosen_tag,
+        Zone::Library,
+        reveal_chosen,
+        Vec::new(),
+    ));
     Ok(Some(effects))
+}
+
+/// Composes the "choose from looked-at cards into hand, rest into graveyard"
+/// follow-up shape from reusable primitives, mirroring the runtime effects the
+/// retired `ChooseFromLookedCardsIntoHandRestIntoGraveyard` recipe lowered to.
+///
+/// `looked_tag` must reference the cards already looked at / milled by a prior
+/// effect (the recipe read this from `ctx.last_object_tag`):
+/// - For a library source, pass the explicit tag the prior look effect minted
+///   so the rest-into-graveyard split can iterate that exact collection.
+/// - For a graveyard source (e.g. after a mill), pass `IT_TAG` so the choose
+///   filter resolves the prior milled collection via `resolve_it_tag`; the
+///   rest already sits in the graveyard, so no split effect is emitted.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
+    chooser: PlayerAst,
+    mut filter: ObjectFilter,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+    source_zone: Zone,
+    reveal_chosen: bool,
+    if_not_chosen: Vec<EffectAst>,
+) -> Vec<EffectAst> {
+    let source_zone = filter.zone.unwrap_or(source_zone);
+    filter.zone = Some(source_zone);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let mut effects = vec![if source_zone == Zone::Library {
+        EffectAst::ChooseObjects {
+            filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: chosen_tag.clone(),
+        }
+    } else {
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: chosen_tag.clone(),
+            zones: vec![source_zone],
+            search_mode: None,
+        }
+    }];
+
+    if reveal_chosen {
+        effects.push(EffectAst::ForEachTagged {
+            tag: chosen_tag.clone(),
+            effects: vec![EffectAst::subject_verb_reveal_tagged(chosen_tag.clone())],
+        });
+    }
+
+    let move_to_hand = EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    };
+    effects.push(move_to_hand);
+    if !if_not_chosen.is_empty() {
+        effects.push(EffectAst::IfResult {
+            predicate: IfResultPredicate::DidNot,
+            effects: if_not_chosen,
+        });
+    }
+
+    if source_zone == Zone::Library {
+        let mut in_chosen_filter = ObjectFilter::default();
+        in_chosen_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+        effects.push(EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(chosen_tag, in_chosen_filter),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        });
+    }
+
+    effects
 }
 
 fn parse_any_number_from_looked_cards_action(

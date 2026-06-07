@@ -838,7 +838,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Meld { .. }
         | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
         | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-        | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
@@ -1107,8 +1106,7 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 filter_references_tag(filter, IT_TAG)
             }
-            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
+            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => true,
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),

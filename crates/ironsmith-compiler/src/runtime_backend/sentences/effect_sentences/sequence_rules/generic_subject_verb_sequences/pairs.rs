@@ -1370,7 +1370,7 @@ fn looks_like_keyword_bundle_choice_filter(tokens: &[OwnedLexToken]) -> bool {
     false
 }
 
-fn parse_may_put_filtered_card_from_among_into_hand(
+pub(crate) fn parse_may_put_filtered_card_from_among_into_hand(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
     zone: Zone,
@@ -1759,15 +1759,60 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
         return Ok(None);
     };
 
-    Ok(Some(vec![
-        first_effects[0].clone(),
-        EffectAst::subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
+    parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
+        sentences,
+        sentence_idx,
+        *player,
+        chooser,
+        filter,
+        Vec::new(),
+    )
+}
+
+/// Shared body for the mill-then-choose follow-up, parameterized by the
+/// optional "if you don't" branch so both the bare and the if-you-don't
+/// callers compose the same reusable primitive sequence (mirroring the retired
+/// `ChooseFromLookedCardsIntoHandRestIntoGraveyard` recipe). The milled cards
+/// already sit in the graveyard, so the choose filter references them via
+/// `IT_TAG` (resolved to the mill's collection tag at lowering) and no
+/// rest-into-graveyard split is emitted.
+pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+    player: PlayerAst,
+    chooser: PlayerAst,
+    filter: ObjectFilter,
+    if_not_chosen: Vec<EffectAst>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = sentences[sentence_idx].lowered();
+    let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
+        return Ok(None);
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Mill { .. },
+            ..
+        }),
+    ] = first_effects.as_slice()
+    else {
+        return Ok(None);
+    };
+    let _ = player;
+
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut effects = vec![first_effects[0].clone()];
+    effects.extend(
+        super::triples::compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
             chooser,
             filter,
+            TagKey::from(crate::cards::builders::IT_TAG),
+            chosen_tag,
+            Zone::Graveyard,
             false,
-            Vec::new(),
+            if_not_chosen,
         ),
-    ]))
+    );
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_exile_until_match_grant_play_this_turn(

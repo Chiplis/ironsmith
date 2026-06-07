@@ -1473,11 +1473,6 @@ pub(crate) enum SubjectVerbActionAst {
     RevealTopChooseCardTypePutToHandRestBottom {
         count: u32,
     },
-    ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-        filter: ObjectFilter,
-        reveal: bool,
-        if_not_chosen: Vec<EffectAst>,
-    },
     ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
         spell_filter: ObjectFilter,
         order: LibraryBottomOrderAst,
@@ -2960,16 +2955,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::RevealTopChooseCardTypePutToHandRestBottom { count } => f
                 .debug_tuple("RevealTopChooseCardTypePutToHandRestBottom")
                 .field(count)
-                .finish(),
-            Self::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                filter,
-                reveal,
-                if_not_chosen,
-            } => f
-                .debug_struct("ChooseFromLookedCardsIntoHandRestIntoGraveyard")
-                .field("filter", filter)
-                .field("reveal", reveal)
-                .field("if_not_chosen", if_not_chosen)
                 .finish(),
             Self::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
                 spell_filter,
@@ -5045,23 +5030,6 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             player,
             SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
-        player: PlayerAst,
-        filter: ObjectFilter,
-        reveal: bool,
-        if_not_chosen: Vec<EffectAst>,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                filter,
-                reveal,
-                if_not_chosen,
-            },
         )
     }
 
