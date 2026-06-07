@@ -1,22 +1,16 @@
 use super::*;
 
-const THE_CONTROLLER_OF_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["the", "controller", "of"]);
-const CONTROLLER_OF_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["controller", "of"]);
-const THE_OWNER_OF_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["the", "owner", "of"]);
-const OWNER_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["owner", "of"]);
-const COUNTER_ON_PRONOUN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["counter", "on", "it"],
-            &["counter", "on", "them"],
-            &["counters", "on", "it"],
-            &["counters", "on", "them"],
-        ]
-);
-const ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_PATTERNS: &[&[&str]] = &[
+const THE_CONTROLLER_OF_PREFIX: &[&str] = &["the", "controller", "of"];
+const CONTROLLER_OF_PREFIX: &[&str] = &["controller", "of"];
+const THE_OWNER_OF_PREFIX: &[&str] = &["the", "owner", "of"];
+const OWNER_OF_PREFIX: &[&str] = &["owner", "of"];
+const COUNTER_ON_PRONOUN_PHRASES: &[&[&str]] = &[
+    &["counter", "on", "it"],
+    &["counter", "on", "them"],
+    &["counters", "on", "it"],
+    &["counters", "on", "them"],
+];
+const ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_CLAUSES: &[&[&str]] = &[
     &["enchanted", "creature", "s", "controller"],
     &["enchanted", "creatures", "controller"],
     &["enchanted", "creature's", "controller"],
@@ -24,15 +18,7 @@ const ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_PATTERNS: &[&[&str]] = &[
     &["enchanted", "creatures", "owner"],
     &["enchanted", "creature's", "owner"],
 ];
-const ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_PATTERNS);
 const BASE_POWER_TOUGHNESS_WORDS: &[&str] = &["base", "power", "and", "toughness"];
-const BASE_POWER_TOUGHNESS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & BASE_POWER_TOUGHNESS_WORDS);
-const BASE_POWER_TOUGHNESS_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [BASE_POWER_TOUGHNESS_WORDS]);
-const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const AND_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["and"], &["or"]]);
 
 pub(super) fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     LexedClause::new(tokens).text()
@@ -82,7 +68,10 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
             });
         TargetAst::Object(filter, None, None)
     };
-    if ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_PATTERN.matches_words(&subject_words) {
+    if word_slice_eq_any(
+        &subject_words,
+        ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_CLAUSES,
+    ) {
         let player = if matches!(
             subject_words.last().copied(),
             Some("controller" | "controller's")
@@ -114,13 +103,14 @@ pub(super) fn parse_controller_or_owner_of_target_subject(
         }
     }
 
-    let (player, target_start) = if THE_CONTROLLER_OF_PREFIX_PATTERN.matches_words(&subject_words) {
+    let (player, target_start) = if word_slice_starts_with(&subject_words, THE_CONTROLLER_OF_PREFIX)
+    {
         (PlayerAst::ItsController, 3usize)
-    } else if CONTROLLER_OF_PREFIX_PATTERN.matches_words(&subject_words) {
+    } else if word_slice_starts_with(&subject_words, CONTROLLER_OF_PREFIX) {
         (PlayerAst::ItsController, 2usize)
-    } else if THE_OWNER_OF_PREFIX_PATTERN.matches_words(&subject_words) {
+    } else if word_slice_starts_with(&subject_words, THE_OWNER_OF_PREFIX) {
         (PlayerAst::ItsOwner, 3usize)
-    } else if OWNER_OF_PREFIX_PATTERN.matches_words(&subject_words) {
+    } else if word_slice_starts_with(&subject_words, OWNER_OF_PREFIX) {
         (PlayerAst::ItsOwner, 2usize)
     } else {
         return None;
@@ -142,11 +132,11 @@ pub(super) fn parse_subtype_word_or_plural(word: &str) -> Option<Subtype> {
 pub(super) fn has_counter_state_pronoun(subject_words: &[&str]) -> bool {
     subject_words
         .windows(3)
-        .any(|window| COUNTER_ON_PRONOUN_PATTERN.matches_words(window))
+        .any(|window| word_slice_eq_any(window, COUNTER_ON_PRONOUN_PHRASES))
 }
 
 pub(super) fn subject_references_base_power_toughness(subject_words: &[&str]) -> bool {
-    BASE_POWER_TOUGHNESS_MARKER_PATTERN.matches_words(subject_words)
+    word_slice_contains_phrase(subject_words, BASE_POWER_TOUGHNESS_WORDS)
 }
 
 pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
@@ -155,7 +145,7 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
 ) -> &'a [OwnedLexToken] {
     let Some(base_word_idx) = subject_words
         .windows(BASE_POWER_TOUGHNESS_WORDS.len())
-        .position(|window| BASE_POWER_TOUGHNESS_PATTERN.matches_words(window))
+        .position(|window| word_slice_eq(window, BASE_POWER_TOUGHNESS_WORDS))
     else {
         return subject_tokens;
     };
@@ -174,18 +164,37 @@ pub(super) fn strip_base_power_toughness_subject_tokens<'a>(
 pub(super) fn parse_become_base_pt_tail<'a>(
     become_words: &'a [&'a str],
 ) -> Result<Option<(&'a [&'a str], Value, Value)>, CardTextError> {
-    let Some(with_idx) = become_words
-        .iter()
-        .position(|word| WITH_WORD_PATTERN.matches_words(&[*word]))
-    else {
+    let Some(with_idx) = become_words.iter().position(|word| *word == "with") else {
         return Ok(None);
     };
     let tail = &become_words[with_idx + 1..];
-    if tail.len() != 5 || !BASE_POWER_TOUGHNESS_PATTERN.matches_words(&tail[..4]) {
+    if tail.len() < 5 || !word_slice_eq(&tail[..4], BASE_POWER_TOUGHNESS_WORDS) {
         return Ok(None);
     }
-    let (power, toughness) = parse_pt_modifier_values(tail[4])?;
+    let Some((power, toughness, used)) = parse_pt_value_words(&tail[4..]) else {
+        return Err(CardTextError::ParseError(format!(
+            "invalid base power/toughness value (clause: '{}')",
+            become_words.join(" ")
+        )));
+    };
+    if 4 + used != tail.len() {
+        return Ok(None);
+    }
     Ok(Some((&become_words[..with_idx], power, toughness)))
+}
+
+pub(super) fn parse_pt_value_words(words: &[&str]) -> Option<(Value, Value, usize)> {
+    let first = words.first().copied()?;
+    if let Ok((power, toughness)) = parse_pt_modifier_values(first) {
+        return Some((power, toughness, 1));
+    }
+    if words.len() >= 2 {
+        let joined = format!("{}/{}", words[0], words[1]);
+        if let Ok((power, toughness)) = parse_pt_modifier_values(&joined) {
+            return Some((power, toughness, 2));
+        }
+    }
+    None
 }
 
 pub(super) fn parse_become_creature_descriptor_words(
@@ -197,7 +206,7 @@ pub(super) fn parse_become_creature_descriptor_words(
     let mut saw_subtype = false;
 
     for word in descriptor_words {
-        if AND_OR_WORD_PATTERN.matches_word(word) {
+        if matches!(*word, "a" | "an" | "the" | "and" | "or") {
             continue;
         }
         if let Some(color) = parse_color(word) {

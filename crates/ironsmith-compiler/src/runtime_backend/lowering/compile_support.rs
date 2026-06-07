@@ -62,11 +62,8 @@ use crate::runtime_backend::lexer::{
     OwnedLexToken, TokenKind, contains_token_word_sequence, find_token_word,
     find_token_word_sequence_span, lex_line, parser_token_word_refs, render_token_slice,
     token_slice_starts_with, word_slice_contains_any_phrase, word_slice_contains_phrase,
-    word_slice_contains_phrase_or_empty, word_slice_contains_word,
+    word_slice_contains_phrase_or_empty, word_slice_contains_word, word_slice_eq,
     word_slice_find_phrase_start_or_zero,
-};
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
 };
 
 use super::effect_ast_traversal::{
@@ -106,9 +103,6 @@ use super::util::{
 };
 
 const EQUIPPED_CREATURE_PHRASE: &[&str] = &["equipped", "creature"];
-const EQUIPPED_CREATURE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & EQUIPPED_CREATURE_PHRASE);
-const SHAPESHIFTER_TOKEN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["shapeshifter"]);
 
 #[path = "compile_support/choose_effect_helpers.rs"]
 mod choose_effect_helpers;
@@ -2103,9 +2097,7 @@ fn inline_token_rules_start(tokens: &[OwnedLexToken]) -> Option<usize> {
 }
 
 pub(crate) fn parse_equipment_rules_text(words: &[&str], source_text: &str) -> Option<String> {
-    let has_equipped_subject = words
-        .windows(EQUIPPED_CREATURE_PHRASE.len())
-        .any(|window| EQUIPPED_CREATURE_PATTERN.matches_words(window));
+    let has_equipped_subject = word_slice_contains_phrase(words, EQUIPPED_CREATURE_PHRASE);
     if !has_equipped_subject {
         return None;
     }
@@ -3429,6 +3421,20 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
                 ObjectFilter::source(),
             )));
         }
+        if has_equipment_rules_subject
+            && let Some(rules_text) = parse_equipment_rules_text(&words, name)
+        {
+            if let Some(def) =
+                build_equipment_token_from_rules_text(builder.clone(), &rules_text, &token_name)
+            {
+                return Some(def);
+            }
+            if let Some(def) =
+                build_equipment_token_from_parsed_rules_text(builder.clone(), &rules_text)
+            {
+                return Some(def);
+            }
+        }
         if let Some(parsed) = try_parse_quoted_token_rules_text(&builder, name, "This artifact") {
             return Some(parsed);
         }
@@ -3551,7 +3557,7 @@ pub(crate) fn token_definition_for(name: &str) -> Option<CardDefinition> {
             .card_types(vec![CardType::Creature])
             .subtypes(vec![Subtype::Shapeshifter])
             .power_toughness(PowerToughness::fixed(3, 2));
-        if has_word("changeling") || SHAPESHIFTER_TOKEN_PATTERN.matches_words(&words) {
+        if has_word("changeling") || word_slice_eq(&words, &["shapeshifter"]) {
             builder = builder.with_ability(Ability::static_ability(StaticAbility::changeling()));
         }
         return Some(builder.build());

@@ -1,6 +1,6 @@
+use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::OwnedLexToken;
 use super::super::rule_engine::LexClauseView;
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
     chain_carry::FALLBACK_POST_DIAGNOSTIC_INDEX_LEXED,
@@ -13,8 +13,11 @@ use super::{
 use crate::cards::builders::{CardTextError, EffectAst};
 use crate::runtime_backend::util::parse_number_word_u32;
 
-const X_CANT_BE_ZERO_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]]);
+const X_CANT_BE_ZERO_WORDS: &[&[&str]] = &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]];
+const X_CANT_BE_ZERO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
+    "restriction",
+    LexCaptureKind::OneOfPhrase(X_CANT_BE_ZERO_WORDS),
+)]);
 
 fn run_sentence_rule_family(
     index: &'static super::super::rule_engine::LexRuleIndex<Vec<EffectAst>>,
@@ -27,7 +30,11 @@ pub(super) fn run_sentence_parse_rules_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if X_CANT_BE_ZERO_PATTERN.matches_words(&words) {
+    if X_CANT_BE_ZERO_PATTERN
+        .match_word_refs(words.as_slice())
+        .and_then(|matched| matched.capture_word_range("restriction"))
+        .is_some()
+    {
         return Ok(("x_cant_be_zero_activation_restriction", Vec::new()));
     }
 

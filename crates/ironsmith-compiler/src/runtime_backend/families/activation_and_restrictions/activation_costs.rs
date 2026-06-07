@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
 const IF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
 struct StaticAbilityShapeEntry {
@@ -35,23 +36,19 @@ const DIRECT_TEMPORARY_CAST_RESTRICTION_PATTERN: ClauseShape<'static> = clause_s
         ];
     contains_words & ["this", "turn"]
 );
-const UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["unless"]);
-const WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["who"]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["and"]);
-const OR_WORD_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["get"], &["gets"]]);
-const UNTAP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["untap"]);
-const CREATURE_OR_CREATURES_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["creature"], &["creatures"]]);
-const WALL_OR_WALLS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["wall"], &["walls"]]);
-const ARTIFACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["artifact"]);
-const SELF_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this", "creature"], &["this"]]);
-const BLOCK_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["block"]);
-const TRANSFORM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["transform"]);
-const MANA_VALUES_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mana", "values"]);
+const UNLESS_WORD: &str = "unless";
+const WHO_WORD: &str = "who";
+const AND_WORD: &str = "and";
+const OR_WORD: &str = "or";
+const GET_OR_GETS_WORDS: &[&str] = &["get", "gets"];
+const UNTAP_WORD: &str = "untap";
+const CREATURE_OR_CREATURES_WORDS: &[&str] = &["creature", "creatures"];
+const WALL_OR_WALLS_WORDS: &[&str] = &["wall", "walls"];
+const ARTIFACT_WORD: &str = "artifact";
+const SELF_SUBJECT_PHRASES: &[&[&str]] = &[&["this", "creature"], &["this"]];
+const BLOCK_WORD: &str = "block";
+const TRANSFORM_WORD: &str = "transform";
+const MANA_VALUES_WORDS: &[&str] = &["mana", "values"];
 const OPPONENTS_CANT_CAST_SPELLS_WITH_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["your", "opponents", "cant", "cast", "spells", "with"]);
 const OPPONENTS_CANT_BLOCK_WITH_CREATURES_WITH_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -420,7 +417,7 @@ const ISLANDS_ON_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["islands", "on", "battlefield"],
         ]
 );
-const ISLANDS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["islands"]);
+const ISLANDS_WORD: &str = "islands";
 const CARDS_IN_THEIR_GRAVEYARD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["cards", "in", "their", "graveyard"]);
 const CARDS_IN_EXILE_PATTERN: ClauseShape<'static> =
@@ -535,10 +532,55 @@ const PAY_PER_PLUS_ONE_COUNTER_ATTACK_COST_PATTERN: ClauseShape<'static> = claus
             ],
         ]
 );
+fn activation_cost_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
+    shape.matches_words(words)
+}
+
+fn activation_word_is_any(word: &str, expected: &[&str]) -> bool {
+    expected.contains(&word)
+}
+
+fn activation_token_word_is_any(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| activation_word_is_any(token.parser_text(), expected))
+}
+
+fn activation_token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
+    activation_token_word_is_any(token, &[expected])
+}
+
+fn activation_word_at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words
+        .get(idx)
+        .is_some_and(|word| activation_word_is_any(word, expected))
+}
+
+fn activation_word_at_is(words: &[&str], idx: usize, expected: &str) -> bool {
+    activation_word_at_is_any(words, idx, &[expected])
+}
+
+fn activation_words_eq(words: &[&str], expected: &[&str]) -> bool {
+    words == expected
+}
+
+fn activation_words_eq_any(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .any(|phrase| activation_words_eq(words, phrase))
+}
+
+fn activation_words_contains(words: &[&str], expected: &str) -> bool {
+    words.contains(&expected)
+}
+
 fn cant_attack_unless_tail<'a>(words: &'a [&str]) -> Option<&'a [&'a str]> {
-    if THIS_CREATURE_CANT_ATTACK_UNLESS_PREFIX_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(words, THIS_CREATURE_CANT_ATTACK_UNLESS_PREFIX_PATTERN) {
         Some(&words[5..])
-    } else if THIS_SELF_CANT_ATTACK_UNLESS_PREFIX_PATTERN.matches_words(words) {
+    } else if activation_cost_shape_matches_words(
+        words,
+        THIS_SELF_CANT_ATTACK_UNLESS_PREFIX_PATTERN,
+    ) {
         Some(&words[4..])
     } else {
         None
@@ -546,42 +588,92 @@ fn cant_attack_unless_tail<'a>(words: &'a [&str]) -> Option<&'a [&'a str]> {
 }
 
 fn cant_attack_or_block_unless_tail<'a>(words: &'a [&str]) -> Option<&'a [&'a str]> {
-    if THIS_CREATURE_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(
+        words,
+        THIS_CREATURE_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN,
+    ) {
         Some(&words[7..])
-    } else if THIS_SELF_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN.matches_words(words) {
+    } else if activation_cost_shape_matches_words(
+        words,
+        THIS_SELF_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN,
+    ) {
         Some(&words[6..])
     } else {
         None
     }
 }
 
+fn parse_activation_count_words(words: &[&str]) -> Option<(u32, usize)> {
+    let word = words.first()?.to_ascii_lowercase();
+    if let Ok(value) = word.parse::<u32>() {
+        return Some((value, 1));
+    }
+    match word.as_str() {
+        "once" => return Some((1, 1)),
+        "twice" => return Some((2, 1)),
+        _ => {}
+    }
+    let trimmed_trailing_punctuation = word.trim_end_matches(|ch: char| !ch.is_ascii_digit());
+    if trimmed_trailing_punctuation.len() < word.len()
+        && !trimmed_trailing_punctuation.is_empty()
+        && trimmed_trailing_punctuation
+            .chars()
+            .all(|ch| ch.is_ascii_digit())
+        && let Ok(value) = trimmed_trailing_punctuation.parse::<u32>()
+    {
+        return Some((value, 1));
+    }
+    ironsmith_core::parse_cardinal_words(words)
+}
+
 fn parse_greater_than_or_equal_count_prefix_from_words(words: &[&str]) -> Option<(u32, usize)> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    parse_greater_than_or_equal_quantity_prefix(&tokens, false, true, "activation condition")
-        .ok()
-        .flatten()
+    if words.starts_with(&["at", "least"]) {
+        let (count, used) = parse_activation_count_words(words.get(2..).unwrap_or_default())?;
+        return Some((count, used + 2));
+    }
+    if words
+        .first()
+        .is_some_and(|word| activation_word_is_any(word, &["more", "greater"]))
+        && words.get(1).copied() == Some("than")
+    {
+        let (count, used) = parse_activation_count_words(words.get(2..).unwrap_or_default())?;
+        return Some((count.saturating_add(1), used + 2));
+    }
+    let (count, used) = parse_activation_count_words(words)?;
+    if words
+        .first()
+        .is_some_and(|word| activation_word_is_any(word, &["a", "an"]))
+    {
+        return Some((1, used));
+    }
+    if words.get(used).copied() == Some("or")
+        && words
+            .get(used + 1)
+            .is_some_and(|word| activation_word_is_any(word, &["more", "greater"]))
+    {
+        return Some((count, used + 2));
+    }
+    None
 }
 
 fn parse_exact_count_from_words(words: &[&str]) -> Option<(u32, usize)> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let (count, used) = parse_number(&tokens)?;
-    Some((count, used))
+    parse_activation_count_words(words)
 }
 
 fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionExpr> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
-    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
-        &tokens,
-        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
-            allow_that_player: false,
-            allow_opponent_players: false,
-            allow_defending_player: false,
-            bind_filter_controller_to_subject: true,
-            allow_different_powers_tail: false,
-            default_filter_zone: Some(Zone::Battlefield),
-        },
-    )?;
-    if control_condition.quantity_token_count == 0 {
+    let control_condition =
+        crate::runtime_backend::grammar::conditions::parse_control_condition_words(
+            tail,
+            crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+                allow_that_player: false,
+                allow_opponent_players: false,
+                allow_defending_player: false,
+                bind_filter_controller_to_subject: true,
+                allow_different_powers_tail: false,
+                default_filter_zone: Some(Zone::Battlefield),
+            },
+        )?;
+    if !control_condition.has_explicit_quantity() {
         return None;
     }
     let count = control_condition.at_least_count()?;
@@ -593,18 +685,18 @@ fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::
 }
 
 fn source_control_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionExpr> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
-    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
-        &tokens,
-        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
-            allow_that_player: false,
-            allow_opponent_players: false,
-            allow_defending_player: false,
-            bind_filter_controller_to_subject: true,
-            allow_different_powers_tail: false,
-            default_filter_zone: Some(Zone::Battlefield),
-        },
-    )?;
+    let control_condition =
+        crate::runtime_backend::grammar::conditions::parse_control_condition_words(
+            tail,
+            crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+                allow_that_player: false,
+                allow_opponent_players: false,
+                allow_defending_player: false,
+                bind_filter_controller_to_subject: true,
+                allow_different_powers_tail: false,
+                default_filter_zone: Some(Zone::Battlefield),
+            },
+        )?;
     let count = control_condition.at_least_count()?;
     if count > 1 {
         return Some(crate::ConditionExpr::PlayerHasAtLeast {
@@ -617,18 +709,18 @@ fn source_control_condition_from_tail(tail: &[&str]) -> Option<crate::ConditionE
 }
 
 fn defending_player_controls_filter_from_tail(tail: &[&str]) -> Option<ObjectFilter> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
-    let control_condition = crate::runtime_backend::grammar::conditions::parse_control_condition(
-        &tokens,
-        crate::runtime_backend::grammar::conditions::ControlConditionOptions {
-            allow_that_player: false,
-            allow_opponent_players: false,
-            allow_defending_player: true,
-            bind_filter_controller_to_subject: false,
-            allow_different_powers_tail: false,
-            default_filter_zone: Some(Zone::Battlefield),
-        },
-    )?;
+    let control_condition =
+        crate::runtime_backend::grammar::conditions::parse_control_condition_words(
+            tail,
+            crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+                allow_that_player: false,
+                allow_opponent_players: false,
+                allow_defending_player: true,
+                bind_filter_controller_to_subject: false,
+                allow_different_powers_tail: false,
+                default_filter_zone: Some(Zone::Battlefield),
+            },
+        )?;
     if control_condition.player_filter != Some(crate::target::PlayerFilter::Defending)
         || control_condition.at_least_count()? > 1
     {
@@ -670,7 +762,7 @@ fn ability_from_shape_table(
 ) -> Option<StaticAbility> {
     table
         .iter()
-        .find(|entry| entry.pattern.matches_words(words))
+        .find(|entry| activation_cost_shape_matches_words(words, entry.pattern))
         .map(|entry| (entry.build)())
 }
 
@@ -682,13 +774,13 @@ fn direct_cant_static_ability(
     words: &[&str],
     tokens: &[OwnedLexToken],
 ) -> Option<StaticAbilityShapeResolution> {
-    if TEMPORARY_UNBLOCKABLE_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(words, TEMPORARY_UNBLOCKABLE_PATTERN) {
         return Some(StaticAbilityShapeResolution::Decline);
     }
     if let Some(ability) = ability_from_shape_table(words, DIRECT_CANT_STATIC_ABILITY_PATTERNS) {
         return Some(StaticAbilityShapeResolution::Ability(ability));
     }
-    if SOURCE_CANT_ATTACK_ALONE_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(words, SOURCE_CANT_ATTACK_ALONE_PATTERN) {
         return Some(StaticAbilityShapeResolution::Ability(
             StaticAbility::restriction(
                 crate::effect::Restriction::attack_alone(ObjectFilter::source()),
@@ -696,7 +788,7 @@ fn direct_cant_static_ability(
             ),
         ));
     }
-    if SOURCE_CANT_ATTACK_OR_BLOCK_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(words, SOURCE_CANT_ATTACK_OR_BLOCK_PATTERN) {
         return Some(StaticAbilityShapeResolution::Ability(
             StaticAbility::restriction(
                 crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
@@ -704,7 +796,7 @@ fn direct_cant_static_ability(
             ),
         ));
     }
-    if SOURCE_CANT_ATTACK_OR_BLOCK_ALONE_PATTERN.matches_words(words) {
+    if activation_cost_shape_matches_words(words, SOURCE_CANT_ATTACK_OR_BLOCK_ALONE_PATTERN) {
         return Some(StaticAbilityShapeResolution::Ability(
             StaticAbility::restriction(
                 crate::effect::Restriction::attack_or_block_alone(ObjectFilter::source()),
@@ -741,13 +833,16 @@ pub(crate) fn parse_cant_clauses(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if IF_PLAYER_WOULD_GAIN_NO_LIFE_INSTEAD_PATTERN.matches_words(&normalized_words) {
+    if activation_cost_shape_matches_words(
+        &normalized_words,
+        IF_PLAYER_WOULD_GAIN_NO_LIFE_INSTEAD_PATTERN,
+    ) {
         return Ok(Some(vec![StaticAbility::restriction(
             crate::effect::Restriction::gain_life(PlayerFilter::Any),
             "If a player would gain life, that player gains no life instead".to_string(),
         )]));
     }
-    if IF_PREFIX_PATTERN.matches_words(&normalized_words) {
+    if activation_cost_shape_matches_words(&normalized_words, IF_PREFIX_PATTERN) {
         return Ok(None);
     }
     if is_mana_retention_cant_clause(&normalized_words) {
@@ -765,7 +860,10 @@ pub(crate) fn parse_cant_clauses(
             return Ok(None);
         }
     }
-    if MAX_SPEED_CANT_ATTACK_OR_BLOCK_PATTERN.matches_words(&normalized_words) {
+    if activation_cost_shape_matches_words(
+        &normalized_words,
+        MAX_SPEED_CANT_ATTACK_OR_BLOCK_PATTERN,
+    ) {
         let max_speed = crate::ConditionExpr::ValueComparison {
             left: crate::effect::Value::Speed(PlayerFilter::You),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
@@ -779,19 +877,21 @@ pub(crate) fn parse_cant_clauses(
             .with_condition(crate::ConditionExpr::Not(Box::new(max_speed))),
         ]));
     }
-    let is_direct_temporary_cast_restriction = DIRECT_TEMPORARY_CAST_RESTRICTION_PATTERN
-        .matches_words(&normalized_words)
-        && !UNLESS_WORD_PATTERN.matches_words(&normalized_words)
-        && !WHO_WORD_PATTERN.matches_words(&normalized_words);
+    let is_direct_temporary_cast_restriction =
+        activation_cost_shape_matches_words(
+            &normalized_words,
+            DIRECT_TEMPORARY_CAST_RESTRICTION_PATTERN,
+        ) && !activation_words_contains(&normalized_words, UNLESS_WORD)
+            && !activation_words_contains(&normalized_words, WHO_WORD);
     if is_direct_temporary_cast_restriction {
         return Ok(None);
     }
 
-    if AND_WORD_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(tokens))
+    if activation_words_contains(&crate::runtime_backend::token_word_refs(tokens), AND_WORD)
         && let Some((neg_start, _)) = find_negation_span(tokens)
         && tokens[..neg_start]
             .iter()
-            .any(|token| GET_OR_GETS_WORD_PATTERN.matches_token(token))
+            .any(|token| activation_token_word_is_any(token, GET_OR_GETS_WORDS))
     {
         return Ok(None);
     }
@@ -816,7 +916,7 @@ pub(crate) fn parse_cant_clauses(
         }
     }
 
-    if AND_WORD_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(tokens)) {
+    if activation_words_contains(&crate::runtime_backend::token_word_refs(tokens), AND_WORD) {
         let segments = grammar::split_lexed_slices_on_and(tokens);
         if segments.is_empty() {
             return Ok(None);
@@ -886,15 +986,16 @@ pub(crate) fn split_cant_clause_on_or(tokens: &[OwnedLexToken]) -> Option<Vec<Ve
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if ATTACK_OR_BLOCK_TAIL_PREFIX_PATTERN.matches_words(&remainder_words) {
+    if activation_cost_shape_matches_words(&remainder_words, ATTACK_OR_BLOCK_TAIL_PREFIX_PATTERN) {
         return None;
     }
     let or_idx = find_index(&remainder_tokens, |token: &OwnedLexToken| {
-        OR_WORD_EXACT_PATTERN.matches_token(token)
+        activation_token_word_is(token, OR_WORD)
     })?;
     let tail = trim_commas(&remainder_tokens[or_idx + 1..]);
     let tail_words = crate::runtime_backend::token_word_refs(&tail);
-    let starts_new_restriction = CANT_RESTRICTION_OR_TAIL_PATTERN.matches_words(&tail_words);
+    let starts_new_restriction =
+        activation_cost_shape_matches_words(&tail_words, CANT_RESTRICTION_OR_TAIL_PATTERN);
     if !starts_new_restriction {
         return None;
     }
@@ -919,8 +1020,8 @@ fn is_mana_retention_cant_clause(words: &[&str]) -> bool {
         ["dont", tail @ ..] | ["don't", tail @ ..] | ["do", "not", tail @ ..] => tail,
         _ => return false,
     };
-    LOSE_UNSPENT_MANA_STEPS_PATTERN.matches_words(rest)
-        || LOSE_THIS_MANA_STEPS_PATTERN.matches_words(rest)
+    activation_cost_shape_matches_words(rest, LOSE_UNSPENT_MANA_STEPS_PATTERN)
+        || activation_cost_shape_matches_words(rest, LOSE_THIS_MANA_STEPS_PATTERN)
 }
 
 pub(crate) fn parse_cant_clause(
@@ -952,7 +1053,7 @@ pub(crate) fn parse_cant_clause(
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        if UNTAP_WORD_PATTERN.matches_words(&remainder_words) {
+        if activation_words_contains(&remainder_words, UNTAP_WORD) {
             return Ok(None);
         }
     }
@@ -996,28 +1097,31 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    if COLLECTIVE_RESTRAINT_ATTACK_TAX_PATTERN.matches_words(&normalized) {
+    if activation_cost_shape_matches_words(&normalized, COLLECTIVE_RESTRAINT_ATTACK_TAX_PATTERN) {
         return Ok(Some(
             StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control(),
         ));
     }
 
-    if CANT_BE_BLOCKED_BY_PREFIX_PATTERN.matches_words(&normalized) {
-        let mut idx = if THIS_CREATURE_CANT_BE_BLOCKED_BY_PREFIX_PATTERN.matches_words(&normalized)
-        {
+    if activation_cost_shape_matches_words(&normalized, CANT_BE_BLOCKED_BY_PREFIX_PATTERN) {
+        let mut idx = if activation_cost_shape_matches_words(
+            &normalized,
+            THIS_CREATURE_CANT_BE_BLOCKED_BY_PREFIX_PATTERN,
+        ) {
             6
-        } else if THIS_CANT_BE_BLOCKED_BY_PREFIX_PATTERN.matches_words(&normalized) {
+        } else if activation_cost_shape_matches_words(
+            &normalized,
+            THIS_CANT_BE_BLOCKED_BY_PREFIX_PATTERN,
+        ) {
             5
         } else {
             4
         };
-        if CREATURE_OR_CREATURES_PATTERN.matches_word_at(&normalized, idx) {
+        if activation_word_at_is_any(&normalized, idx, CREATURE_OR_CREATURES_WORDS) {
             idx += 1;
         }
-        let blocker_quantity_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(&normalized[idx..]);
-        if let Some((minimum_blockers, used)) = parse_greater_than_or_equal_quantity_prefix(
-            &blocker_quantity_tokens,
+        if let Some((minimum_blockers, used)) = parse_greater_than_or_equal_quantity_prefix_words(
+            &normalized[idx..],
             false,
             false,
             "cant-be-blocked blocker threshold",
@@ -1032,7 +1136,7 @@ pub(crate) fn parse_cant_clause(
                     normalized.join(" ")
                 ))
             })?;
-            if !CREATURE_OR_CREATURES_PATTERN.matches_word(noun) {
+            if !activation_word_is_any(noun, CREATURE_OR_CREATURES_WORDS) {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported blocker noun in cant-blocked clause (clause: '{}')",
                     normalized.join(" ")
@@ -1048,7 +1152,7 @@ pub(crate) fn parse_cant_clause(
                 (minimum_blockers - 1) as usize,
             )));
         }
-        if WITH_POWER_PREFIX_PATTERN.matches_words(&normalized[idx..]) {
+        if activation_cost_shape_matches_words(&normalized[idx..], WITH_POWER_PREFIX_PATTERN) {
             let amount_word = normalized.get(idx + 2).copied().ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "missing power threshold in cant-blocked clause (clause: '{}')",
@@ -1063,7 +1167,7 @@ pub(crate) fn parse_cant_clause(
                 ))
             })?;
             if used != 1
-                || !OR_WORD_EXACT_PATTERN.matches_word_at(&normalized, idx + 3)
+                || !activation_word_at_is(&normalized, idx + 3, OR_WORD)
                 || idx + 5 != normalized.len()
             {
                 return Err(CardTextError::ParseError(format!(
@@ -1086,7 +1190,9 @@ pub(crate) fn parse_cant_clause(
             };
         }
 
-        if WITH_FLYING_PATTERN.matches_words(&normalized[idx..]) && idx + 2 == normalized.len() {
+        if activation_cost_shape_matches_words(&normalized[idx..], WITH_FLYING_PATTERN)
+            && idx + 2 == normalized.len()
+        {
             return Ok(Some(StaticAbility::restriction(
                 crate::effect::Restriction::block_specific_attacker(
                     ObjectFilter::creature()
@@ -1097,7 +1203,7 @@ pub(crate) fn parse_cant_clause(
             )));
         }
         if let Some(color_word) = normalized.get(idx).copied()
-            && CREATURE_OR_CREATURES_PATTERN.matches_word_at(&normalized, idx + 1)
+            && activation_word_at_is_any(&normalized, idx + 1, CREATURE_OR_CREATURES_WORDS)
             && idx + 2 == normalized.len()
             && let Some(color) = parse_color(color_word)
         {
@@ -1110,7 +1216,9 @@ pub(crate) fn parse_cant_clause(
             )));
         }
 
-        if WALL_OR_WALLS_PATTERN.matches_word_at(&normalized, idx) && idx + 1 == normalized.len() {
+        if activation_word_at_is_any(&normalized, idx, WALL_OR_WALLS_WORDS)
+            && idx + 1 == normalized.len()
+        {
             return Ok(Some(StaticAbility::restriction(
                 crate::effect::Restriction::block_specific_attacker(
                     ObjectFilter::creature().with_subtype(Subtype::Wall),
@@ -1121,18 +1229,23 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    if CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN.matches_words(&normalized) {
-        let idx =
-            if THIS_CREATURE_CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN.matches_words(&normalized) {
-                7
-            } else if THIS_CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN.matches_words(&normalized) {
-                6
-            } else {
-                5
-            };
+    if activation_cost_shape_matches_words(&normalized, CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN) {
+        let idx = if activation_cost_shape_matches_words(
+            &normalized,
+            THIS_CREATURE_CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN,
+        ) {
+            7
+        } else if activation_cost_shape_matches_words(
+            &normalized,
+            THIS_CANT_BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN,
+        ) {
+            6
+        } else {
+            5
+        };
         if let Some((min_blockers, used)) =
             parse_greater_than_or_equal_count_prefix_from_words(&normalized[idx..])
-            && CREATURE_OR_CREATURES_PATTERN.matches_word_at(&normalized, idx + used)
+            && activation_word_at_is_any(&normalized, idx + used, CREATURE_OR_CREATURES_WORDS)
             && idx + used + 1 == normalized.len()
         {
             return Ok(Some(StaticAbility::cant_be_blocked_except_by_n_or_more(
@@ -1140,7 +1253,7 @@ pub(crate) fn parse_cant_clause(
             )));
         }
         if let Some(color_word) = normalized.get(idx)
-            && CREATURE_OR_CREATURES_PATTERN.matches_word_at(&normalized, idx + 1)
+            && activation_word_at_is_any(&normalized, idx + 1, CREATURE_OR_CREATURES_WORDS)
             && idx + 2 == normalized.len()
             && let Some(color) = parse_color(color_word)
         {
@@ -1152,8 +1265,8 @@ pub(crate) fn parse_cant_clause(
                 format!("this creature can't be blocked except by {color_word} creatures"),
             )));
         }
-        if ARTIFACT_WORD_PATTERN.matches_word_at(&normalized, idx)
-            && CREATURE_OR_CREATURES_PATTERN.matches_word_at(&normalized, idx + 1)
+        if activation_word_at_is(&normalized, idx, ARTIFACT_WORD)
+            && activation_word_at_is_any(&normalized, idx + 1, CREATURE_OR_CREATURES_WORDS)
             && idx + 2 == normalized.len()
         {
             return Ok(Some(StaticAbility::restriction(
@@ -1164,7 +1277,9 @@ pub(crate) fn parse_cant_clause(
                 "this creature can't be blocked except by artifact creatures".to_string(),
             )));
         }
-        if WALL_OR_WALLS_PATTERN.matches_word_at(&normalized, idx) && idx + 1 == normalized.len() {
+        if activation_word_at_is_any(&normalized, idx, WALL_OR_WALLS_WORDS)
+            && idx + 1 == normalized.len()
+        {
             return Ok(Some(StaticAbility::restriction(
                 crate::effect::Restriction::block_specific_attacker(
                     ObjectFilter::creature().without_subtype(Subtype::Wall),
@@ -1175,19 +1290,23 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    let cant_attack_unless_cast_creature_spell_tail =
-        CAST_CREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN.matches_words(&normalized);
-    let cant_attack_unless_cast_noncreature_spell_tail =
-        CAST_NONCREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN.matches_words(&normalized);
+    let cant_attack_unless_cast_creature_spell_tail = activation_cost_shape_matches_words(
+        &normalized,
+        CAST_CREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN,
+    );
+    let cant_attack_unless_cast_noncreature_spell_tail = activation_cost_shape_matches_words(
+        &normalized,
+        CAST_NONCREATURE_SPELL_THIS_TURN_UNLESS_TAIL_PATTERN,
+    );
     if cant_attack_unless_cast_creature_spell_tail
-        && THIS_CANT_ATTACK_PREFIX_PATTERN.matches_words(&normalized)
+        && activation_cost_shape_matches_words(&normalized, THIS_CANT_ATTACK_PREFIX_PATTERN)
     {
         return Ok(Some(
             StaticAbility::cant_attack_unless_controller_cast_creature_spell_this_turn(),
         ));
     }
     if cant_attack_unless_cast_noncreature_spell_tail
-        && THIS_CANT_ATTACK_PREFIX_PATTERN.matches_words(&normalized)
+        && activation_cost_shape_matches_words(&normalized, THIS_CANT_ATTACK_PREFIX_PATTERN)
     {
         return Ok(Some(
             StaticAbility::cant_attack_unless_controller_cast_noncreature_spell_this_turn(),
@@ -1195,7 +1314,7 @@ pub(crate) fn parse_cant_clause(
     }
 
     let starts_with_this_cant_attack_unless =
-        THIS_CANT_ATTACK_UNLESS_PREFIX_PATTERN.matches_words(&normalized);
+        activation_cost_shape_matches_words(&normalized, THIS_CANT_ATTACK_UNLESS_PREFIX_PATTERN);
     if starts_with_this_cant_attack_unless && let Some(tail) = cant_attack_unless_tail(&normalized)
     {
         let static_text = format!("Can't attack unless {}", tail.join(" "));
@@ -1206,14 +1325,20 @@ pub(crate) fn parse_cant_clause(
             )))
         };
 
-        if CONTROL_MORE_CREATURES_THAN_DEFENDING_PLAYER_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(
+            tail,
+            CONTROL_MORE_CREATURES_THAN_DEFENDING_PLAYER_PATTERN,
+        ) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(
                     ObjectFilter::default().with_type(crate::types::CardType::Creature),
                 ),
             );
         }
-        if CONTROL_MORE_LANDS_THAN_DEFENDING_PLAYER_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(
+            tail,
+            CONTROL_MORE_LANDS_THAN_DEFENDING_PLAYER_PATTERN,
+        ) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::ControllerControlsMoreThanDefendingPlayer(
                     ObjectFilter::default().with_type(crate::types::CardType::Land),
@@ -1230,7 +1355,7 @@ pub(crate) fn parse_cant_clause(
                 crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition),
             );
         }
-        if MOUNTAIN_ON_BATTLEFIELD_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, MOUNTAIN_ON_BATTLEFIELD_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
                     filter: ObjectFilter::default()
@@ -1242,7 +1367,7 @@ pub(crate) fn parse_cant_clause(
         }
         if let ["there", "are", rest @ ..] = tail
             && let Some((value, used)) = parse_greater_than_or_equal_count_prefix_from_words(rest)
-            && CARDS_IN_YOUR_GRAVEYARD_PATTERN.matches_words(&rest[used..])
+            && activation_cost_shape_matches_words(&rest[used..], CARDS_IN_YOUR_GRAVEYARD_PATTERN)
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::ControllerGraveyardHasCardsAtLeast(
@@ -1252,7 +1377,7 @@ pub(crate) fn parse_cant_clause(
         }
         if let ["there", "are", rest @ ..] = tail
             && let Some((value, used)) = parse_greater_than_or_equal_count_prefix_from_words(rest)
-            && ISLANDS_ON_BATTLEFIELD_PATTERN.matches_words(&rest[used..])
+            && activation_cost_shape_matches_words(&rest[used..], ISLANDS_ON_BATTLEFIELD_PATTERN)
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::BattlefieldCountAtLeast {
@@ -1263,7 +1388,7 @@ pub(crate) fn parse_cant_clause(
                 },
             );
         }
-        if DEFENDING_PLAYER_POISONED_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, DEFENDING_PLAYER_POISONED_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
                     crate::static_abilities::DefendingPlayerAttackCondition::IsPoisoned,
@@ -1272,7 +1397,7 @@ pub(crate) fn parse_cant_clause(
         }
         if let ["defending", "player", "has", rest @ ..] = tail
             && let Some((value, used)) = parse_greater_than_or_equal_count_prefix_from_words(rest)
-            && CARDS_IN_THEIR_GRAVEYARD_PATTERN.matches_words(&rest[used..])
+            && activation_cost_shape_matches_words(&rest[used..], CARDS_IN_THEIR_GRAVEYARD_PATTERN)
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
@@ -1282,7 +1407,8 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if DEFENDING_PLAYER_CONTROLS_ENCHANTMENT_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, DEFENDING_PLAYER_CONTROLS_ENCHANTMENT_PATTERN)
+        {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::DefendingPlayerCondition(
                     crate::static_abilities::DefendingPlayerAttackCondition::ControlsEnchantmentOrEnchantedPermanent,
@@ -1297,7 +1423,10 @@ pub(crate) fn parse_cant_clause(
             );
         }
         if let Some((value, used)) = parse_greater_than_or_equal_count_prefix_from_words(tail)
-            && OTHER_CREATURES_ATTACK_TAIL_PATTERN.matches_words(&tail[used..])
+            && activation_cost_shape_matches_words(
+                &tail[used..],
+                OTHER_CREATURES_ATTACK_TAIL_PATTERN,
+            )
         {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
@@ -1307,21 +1436,24 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if CREATURE_WITH_GREATER_POWER_ALSO_ATTACKS_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(
+            tail,
+            CREATURE_WITH_GREATER_POWER_ALSO_ATTACKS_PATTERN,
+        ) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
                     crate::static_abilities::AttackingGroupAttackCondition::CreatureWithGreaterPowerAlsoAttacks,
                 ),
             );
         }
-        if BLACK_OR_GREEN_CREATURE_ALSO_ATTACKS_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, BLACK_OR_GREEN_CREATURE_ALSO_ATTACKS_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackingGroupCondition(
                     crate::static_abilities::AttackingGroupAttackCondition::BlackOrGreenCreatureAlsoAttacks,
                 ),
             );
         }
-        if OPPONENT_DEALT_DAMAGE_THIS_TURN_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, OPPONENT_DEALT_DAMAGE_THIS_TURN_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::OpponentWasDealtDamageThisTurn,
             );
@@ -1331,7 +1463,7 @@ pub(crate) fn parse_cant_clause(
                 crate::static_abilities::CantAttackUnlessConditionSpec::SourceCondition(condition),
             );
         }
-        if SACRIFICE_LAND_ATTACK_COST_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, SACRIFICE_LAND_ATTACK_COST_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
                     crate::static_abilities::AttackCostCondition::SacrificePermanents {
@@ -1343,7 +1475,7 @@ pub(crate) fn parse_cant_clause(
         }
         if let ["you", "sacrifice", rest @ ..] = tail
             && let Some((value, used)) = parse_exact_count_from_words(rest)
-            && ISLANDS_WORD_PATTERN.matches_word_at(rest, used)
+            && activation_word_at_is(rest, used, ISLANDS_WORD)
             && used + 1 == rest.len()
         {
             return static_with(
@@ -1355,7 +1487,7 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if RETURN_ENCHANTMENT_ATTACK_COST_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, RETURN_ENCHANTMENT_ATTACK_COST_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
                     crate::static_abilities::AttackCostCondition::ReturnPermanentsToOwnersHand {
@@ -1365,7 +1497,7 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        if PAY_PER_PLUS_ONE_COUNTER_ATTACK_COST_PATTERN.matches_words(tail) {
+        if activation_cost_shape_matches_words(tail, PAY_PER_PLUS_ONE_COUNTER_ATTACK_COST_PATTERN) {
             return static_with(
                 crate::static_abilities::CantAttackUnlessConditionSpec::AttackCost(
                     crate::static_abilities::AttackCostCondition::PayGenericPerSourceCounter {
@@ -1375,9 +1507,8 @@ pub(crate) fn parse_cant_clause(
                 ),
             );
         }
-        let tail_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(tail);
         if let Some(player_status) =
-            crate::runtime_backend::grammar::conditions::parse_player_status_condition(&tail_tokens)
+            crate::runtime_backend::grammar::conditions::parse_player_status_condition_words(tail)
             && player_status.player == PlayerFilter::Defending
             && player_status.status
                 == crate::runtime_backend::grammar::conditions::PlayerStatusAst::Monarch
@@ -1399,10 +1530,10 @@ pub(crate) fn parse_cant_clause(
             .map(String::as_str)
             .collect::<Vec<_>>();
         let subject_words = crate::runtime_backend::token_word_refs(&subject_tokens);
-        if SELF_SUBJECT_PATTERN.matches_words(&subject_words)
+        if activation_words_eq_any(&subject_words, SELF_SUBJECT_PHRASES)
             && remainder_words
                 .first()
-                .is_some_and(|word| BLOCK_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| activation_word_is_any(word, &[BLOCK_WORD]))
             && remainder_words.len() > 1
         {
             let attacker_tokens = trim_commas(&remainder_tokens[1..]);
@@ -1425,7 +1556,7 @@ pub(crate) fn parse_cant_clause(
                 ),
             )));
         }
-        if TRANSFORM_WORD_PATTERN.matches_words(&remainder_words) {
+        if activation_words_eq(&remainder_words, &[TRANSFORM_WORD]) {
             let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
                 return Ok(None);
             };
@@ -1440,11 +1571,11 @@ pub(crate) fn parse_cant_clause(
         }
     }
 
-    if OPPONENTS_CANT_CAST_SPELLS_WITH_PATTERN.matches_words(&normalized)
+    if activation_cost_shape_matches_words(&normalized, OPPONENTS_CANT_CAST_SPELLS_WITH_PATTERN)
         && normalized.len() >= 8
         && normalized
             .get(6..8)
-            .is_some_and(|words| MANA_VALUES_PATTERN.matches_words(words))
+            .is_some_and(|words| activation_words_eq(words, MANA_VALUES_WORDS))
     {
         let parity = match normalized[5] {
             "odd" => crate::filter::ParityRequirement::Odd,
@@ -1460,11 +1591,13 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if OPPONENTS_CANT_BLOCK_WITH_CREATURES_WITH_PATTERN.matches_words(&normalized)
-        && normalized.len() >= 10
+    if activation_cost_shape_matches_words(
+        &normalized,
+        OPPONENTS_CANT_BLOCK_WITH_CREATURES_WITH_PATTERN,
+    ) && normalized.len() >= 10
         && normalized
             .get(8..10)
-            .is_some_and(|words| MANA_VALUES_PATTERN.matches_words(words))
+            .is_some_and(|words| activation_words_eq(words, MANA_VALUES_WORDS))
     {
         let parity = match normalized[7] {
             "odd" => crate::filter::ParityRequirement::Odd,
@@ -1481,19 +1614,23 @@ pub(crate) fn parse_cant_clause(
         )));
     }
 
-    if THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN.matches_words(&normalized)
-        && EVEN_COUNTERS_ON_IT_SUFFIX_PATTERN.matches_words(&normalized)
+    if activation_cost_shape_matches_words(
+        &normalized,
+        THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN,
+    ) && activation_cost_shape_matches_words(&normalized, EVEN_COUNTERS_ON_IT_SUFFIX_PATTERN)
     {
         return Ok(Some(StaticAbility::rule_fallback_text(
             format_negated_restriction_display(tokens),
         )));
     }
 
-    if THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN.matches_words(&normalized)
-        && let Some(tail) = cant_attack_or_block_unless_tail(&normalized)
+    if activation_cost_shape_matches_words(
+        &normalized,
+        THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN,
+    ) && let Some(tail) = cant_attack_or_block_unless_tail(&normalized)
         && let ["there", "are", rest @ ..] = tail
         && let Some((count, used)) = parse_greater_than_or_equal_count_prefix_from_words(rest)
-        && CARDS_IN_EXILE_PATTERN.matches_words(&rest[used..])
+        && activation_cost_shape_matches_words(&rest[used..], CARDS_IN_EXILE_PATTERN)
     {
         let condition =
             crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::ValueComparison {
@@ -1518,8 +1655,10 @@ pub(crate) fn parse_cant_clause(
         ));
     }
 
-    if THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN.matches_words(&normalized)
-        && let Some(tail) = cant_attack_or_block_unless_tail(&normalized)
+    if activation_cost_shape_matches_words(
+        &normalized,
+        THIS_CANT_ATTACK_OR_BLOCK_UNLESS_PREFIX_PATTERN,
+    ) && let Some(tail) = cant_attack_or_block_unless_tail(&normalized)
         && let Some(control_condition) = player_controls_at_least_condition_from_tail(tail)
     {
         let condition = crate::ConditionExpr::Not(Box::new(control_condition));
@@ -1538,7 +1677,10 @@ pub(crate) fn parse_cant_clause(
         ));
     }
 
-    if IF_SOURCE_YOU_CONTROL_DOUBLE_MANA_VALUE_INSTEAD_PATTERN.matches_words(&normalized) {
+    if activation_cost_shape_matches_words(
+        &normalized,
+        IF_SOURCE_YOU_CONTROL_DOUBLE_MANA_VALUE_INSTEAD_PATTERN,
+    ) {
         return Ok(Some(StaticAbility::rule_fallback_text(
             crate::runtime_backend::token_word_refs(tokens).join(" "),
         )));

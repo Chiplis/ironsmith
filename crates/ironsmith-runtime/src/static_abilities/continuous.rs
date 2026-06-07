@@ -1071,7 +1071,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             if let crate::ConditionExpr::CountComparison { display, .. } = inner.as_ref() {
                 let condition_text = display
                     .clone()
-                    .unwrap_or_else(|| describe_static_condition(inner).replacen("as long as ", "", 1))
+                    .unwrap_or_else(|| {
+                        describe_static_condition(inner).replacen("as long as ", "", 1)
+                    })
                     .replace(" dont ", " don't ");
                 return format!("unless {condition_text}");
             }

@@ -53,7 +53,6 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom,
 };

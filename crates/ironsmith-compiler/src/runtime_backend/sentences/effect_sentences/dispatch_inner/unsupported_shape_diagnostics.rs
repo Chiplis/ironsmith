@@ -1,33 +1,31 @@
-const UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["life", "equal", "to"]);
-const UNSUPPORTED_ITS_POWER_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["its", "power"]]);
-const UNSUPPORTED_X_PLUS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["x", "plus"]);
-const UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["gain"], &["gains"]]);
-const UNSUPPORTED_NEGATION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["cant"], &["cannot"], &["doesnt"], &["don't"], &["dont"]]);
-const UNSUPPORTED_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
+const UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX: &[&str] = &["life", "equal", "to"];
+const UNSUPPORTED_ITS_POWER_PHRASE: &[&str] = &["its", "power"];
+const UNSUPPORTED_X_PLUS_PREFIX: &[&str] = &["x", "plus"];
+
+fn unsupported_word_is_gain(word: &str) -> bool {
+    matches!(word, "gain" | "gains")
+}
+
+fn unsupported_word_is_negation(word: &str) -> bool {
+    matches!(word, "cant" | "cannot" | "doesnt" | "don't" | "dont")
+}
 
 pub(crate) fn parse_gain_life_equal_to_power_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| {
-        UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN.matches_word(word)
-    }) else {
+    let Some(gain_idx) = find_index(words.as_slice(), |word| unsupported_word_is_gain(word)) else {
         return Ok(None);
     };
 
-    if !words
-        .get(gain_idx + 1..)
-        .is_some_and(|words| UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX_PATTERN.matches_words(words))
-    {
+    if !word_slice_starts_with(
+        &words[gain_idx + 1..],
+        UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX,
+    ) {
         return Ok(None);
     }
 
-    let tail = &words[gain_idx + 4..];
-    if !UNSUPPORTED_ITS_POWER_MARKER_PATTERN.matches_words(tail) {
+    if !word_slice_contains_phrase(&words[gain_idx + 4..], UNSUPPORTED_ITS_POWER_PHRASE) {
         return Ok(None);
     }
 
@@ -62,14 +60,10 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    let Some(gain_idx) = find_index(words.as_slice(), |word| {
-        UNSUPPORTED_GAIN_OR_GAINS_WORD_PATTERN.matches_word(word)
-    }) else {
+    let Some(gain_idx) = find_index(words.as_slice(), |word| unsupported_word_is_gain(word)) else {
         return Ok(None);
     };
-    if gain_idx > 0
-        && UNSUPPORTED_NEGATION_WORD_PATTERN.matches_word(words[gain_idx - 1])
-    {
+    if gain_idx > 0 && unsupported_word_is_negation(words[gain_idx - 1]) {
         return Ok(None);
     }
 
@@ -77,7 +71,7 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
         return Ok(None);
     }
 
-    if !UNSUPPORTED_X_PLUS_PREFIX_PATTERN.matches_words(&words[gain_idx + 1..]) {
+    if !word_slice_starts_with(&words[gain_idx + 1..], UNSUPPORTED_X_PLUS_PREFIX) {
         return Ok(None);
     }
 
@@ -90,7 +84,7 @@ pub(crate) fn parse_gain_x_plus_life_sentence(
     let life_idx = gain_idx + 3 + number_used;
     if !tokens
         .get(life_idx)
-        .is_some_and(|token| UNSUPPORTED_LIFE_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| token.is_word("life"))
     {
         return Err(CardTextError::ParseError(format!(
             "missing life keyword in gain-x-plus-life clause (clause: '{}')",

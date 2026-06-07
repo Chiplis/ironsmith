@@ -8,9 +8,6 @@ use crate::cards::builders::{
     SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::SearchSelectionMode;
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
 use crate::target::PlayerFilter;
 use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -22,7 +19,7 @@ use super::super::activation_and_restrictions::{
 };
 use super::super::grammar::structure::{IfClausePredicateSpec, split_if_clause_lexed};
 use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, lex_line, parser_token_word_positions,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, lex_line, parser_token_word_positions,
     parser_token_word_refs, split_lexed_sentences, token_slice_all_are_kind, token_slice_at_is,
     token_slice_first_is, token_slice_starts_with, token_word_refs, trim_lexed_commas,
 };
@@ -50,69 +47,81 @@ pub(crate) use search_library::*;
 mod unsupported_shapes;
 pub(crate) use unsupported_shapes::*;
 
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const DESCEND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["descend"]);
-const CANT_NEGATION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["can't"], &["cant"], &["cannot"]]);
-const DONT_NEGATION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["doesn't"], &["doesnt"], &["don't"], &["dont"]]);
-const DOES_DO_CAN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["does"], &["do"], &["can"]]);
-const DOES_OR_DO_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["does"], &["do"]]);
-const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
-const IF_YOU_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if", "you"]);
-const CONTROL_OR_OWN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["control"], &["controls"], &["own"], &["owns"]]);
-const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
-const WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
-const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
-const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "way"]);
-const MAX_SPEED_LABEL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["max", "speed"]);
-const COMPACT_NEGATED_ACTION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["doesnt"], &["didnt"], &["doesn't"], &["didn't"]]);
-const SPLIT_NEGATED_ACTION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["do", "not"], &["did", "not"]]);
-const THAT_WOULD_BE_DEALT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["that", "would", "be", "dealt"]);
-const WOULD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["would"]);
-const PREVENT_DAMAGE_SOURCE_HEAD_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["target"], &["that"], &["this"], &["it"]]);
-const DEAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["deal"]);
-const PREVENT_DAMAGE_REFERENCE_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["target", "this", "that", "it"]]);
-const PREVENT_DAMAGE_PLAYERS_TARGET_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["player"], &["players"]]);
-const YOU_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
-const LOSE_MANA_STEPS_PHASES_END_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["lose", "mana", "steps", "phases", "end"]);
-const THAT_MANY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["that", "many"]);
-const TRAILING_THAT_PLAYER_SHUFFLE_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["then", "that", "player", "shuffle"],
-            &["then", "that", "player", "shuffles"],
-            &["that", "player", "shuffle"],
-            &["that", "player", "shuffles"],
-        ]]
-);
-const REMAINS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["remains"]);
-const TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
-const PREVENT_DAMAGE_EXPLICIT_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this"], &["that"], &["it"]]);
-const SOURCE_REFERENCE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this"],
-            &["source"],
-            &["artifact"],
-            &["creature"],
-            &["permanent"]
-        ]
-);
-const EFFECT_DISCARD_OR_DISCARDED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["discard"], &["discarded"]]);
+const IF_YOU_PHRASE: &[&str] = &["if", "you"];
+const THIS_TURN_PHRASE: &[&str] = &["this", "turn"];
+const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const MAX_SPEED_LABEL: &[&str] = &["max", "speed"];
+const SPLIT_NEGATED_ACTION_PHRASES: &[&[&str]] = &[&["do", "not"], &["did", "not"]];
+const THAT_WOULD_BE_DEALT_PHRASE: &[&str] = &["that", "would", "be", "dealt"];
+const LOSE_MANA_STEPS_PHASES_END_WORDS: &[&str] = &["lose", "mana", "steps", "phases", "end"];
+const THAT_MANY_PREFIX: &[&str] = &["that", "many"];
+const TRAILING_THAT_PLAYER_SHUFFLE_PHRASES: &[&[&str]] = &[
+    &["then", "that", "player", "shuffle"],
+    &["then", "that", "player", "shuffles"],
+    &["that", "player", "shuffle"],
+    &["that", "player", "shuffles"],
+];
+
+fn token_is_any_word(token: &OwnedLexToken, words: &[&str]) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| words.contains(&token.parser_text()))
+}
+
+fn words_find_phrase(words: &[&str], phrase: &[&str]) -> Option<usize> {
+    words
+        .windows(phrase.len())
+        .position(|window| window == phrase)
+}
+
+fn words_find_any_phrase(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
+    phrases
+        .iter()
+        .find_map(|phrase| words_find_phrase(words, phrase))
+}
+
+fn words_contain_all(words: &[&str], required: &[&str]) -> bool {
+    required
+        .iter()
+        .all(|required_word| words.iter().any(|word| word == required_word))
+}
+
+fn tokens_contain_any_non_article_word(tokens: &[OwnedLexToken], words: &[&str]) -> bool {
+    let source_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
+    source_words.iter().any(|word| words.contains(word))
+}
+
+fn is_cant_negation_word(word: &str) -> bool {
+    matches!(word, "can't" | "cant" | "cannot")
+}
+
+fn is_dont_negation_word(word: &str) -> bool {
+    matches!(word, "doesn't" | "doesnt" | "don't" | "dont")
+}
+
+fn is_does_do_can_word(word: &str) -> bool {
+    matches!(word, "does" | "do" | "can")
+}
+
+fn is_does_or_do_word(word: &str) -> bool {
+    matches!(word, "does" | "do")
+}
+
+fn is_control_or_own_word(word: &str) -> bool {
+    matches!(word, "control" | "controls" | "own" | "owns")
+}
+
+fn is_compact_negated_action_word(word: &str) -> bool {
+    matches!(word, "doesnt" | "didnt" | "doesn't" | "didn't")
+}
+
+fn is_prevent_damage_source_head_word(word: &str) -> bool {
+    matches!(word, "target" | "that" | "this" | "it")
+}
+
+fn is_prevent_damage_explicit_reference_word(word: &str) -> bool {
+    matches!(word, "this" | "that" | "it")
+}
 
 pub(crate) fn cant_sentence_clause_tokens_for_restriction_scan_lexed(
     clause_tokens: &[OwnedLexToken],
@@ -133,7 +142,7 @@ pub(crate) fn cant_sentence_has_supported_negation_gate_lexed(
 
     !clause_tokens[..neg_start]
         .iter()
-        .any(|token| AND_WORD_PATTERN.matches_token(token))
+        .any(|token| token_is_any_word(token, &["and"]))
 }
 
 pub(crate) fn find_cant_sentence_negation_span_lexed(
@@ -143,42 +152,49 @@ pub(crate) fn find_cant_sentence_negation_span_lexed(
 
     while cursor < tokens.len() {
         let token = &tokens[cursor];
-        if CANT_NEGATION_WORD_PATTERN.matches_token(token) {
+        if token
+            .as_word()
+            .is_some_and(|word| is_cant_negation_word(word))
+        {
             return Some((cursor, cursor + 1));
         }
-        if DONT_NEGATION_WORD_PATTERN.matches_token(token) {
-            if cursor >= 2
-                && IF_YOU_PREFIX_PATTERN
-                    .matches_words(&token_word_refs(&tokens[cursor - 2..cursor]))
-            {
-                cursor += 1;
-                continue;
-            }
-            if tokens
-                .get(cursor + 1)
-                .is_some_and(|next| CONTROL_OR_OWN_WORD_PATTERN.matches_token(next))
-            {
-                cursor += 1;
-                continue;
-            }
-            return Some((cursor, cursor + 1));
-        }
-        if DOES_DO_CAN_WORD_PATTERN.matches_token(token)
-            && tokens
-                .get(cursor + 1)
-                .is_some_and(|next| NOT_WORD_PATTERN.matches_token(next))
+        if token
+            .as_word()
+            .is_some_and(|word| is_dont_negation_word(word))
         {
             if cursor >= 2
-                && IF_YOU_PREFIX_PATTERN
-                    .matches_words(&token_word_refs(&tokens[cursor - 2..cursor]))
+                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
+            {
+                cursor += 1;
+                continue;
+            }
+            if tokens.get(cursor + 1).is_some_and(|next| {
+                next.as_word()
+                    .is_some_and(|word| is_control_or_own_word(word))
+            }) {
+                cursor += 1;
+                continue;
+            }
+            return Some((cursor, cursor + 1));
+        }
+        if token
+            .as_word()
+            .is_some_and(|word| is_does_do_can_word(word))
+            && tokens
+                .get(cursor + 1)
+                .is_some_and(|next| token_is_any_word(next, &["not"]))
+        {
+            if cursor >= 2
+                && token_word_refs(&tokens[cursor - 2..cursor]).as_slice() == IF_YOU_PHRASE
             {
                 cursor += 2;
                 continue;
             }
-            if DOES_OR_DO_WORD_PATTERN.matches_token(token)
-                && tokens
-                    .get(cursor + 2)
-                    .is_some_and(|next| CONTROL_OR_OWN_WORD_PATTERN.matches_token(next))
+            if token.as_word().is_some_and(|word| is_does_or_do_word(word))
+                && tokens.get(cursor + 2).is_some_and(|next| {
+                    next.as_word()
+                        .is_some_and(|word| is_control_or_own_word(word))
+                })
             {
                 cursor += 1;
                 continue;
@@ -251,7 +267,7 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
     }
     if clause_tokens
         .first()
-        .is_some_and(|token| IF_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| token_is_any_word(token, &["if"]))
     {
         return Ok(None);
     }
@@ -305,10 +321,7 @@ fn is_labeled_ability_prefix_words(words: &[&str]) -> bool {
         return false;
     }
 
-    if words.len() == 2
-        && DESCEND_WORD_PATTERN.matches_word(words[0])
-        && words[1].chars().all(|ch| ch.is_ascii_digit())
-    {
+    if words.len() == 2 && words[0] == "descend" && words[1].chars().all(|ch| ch.is_ascii_digit()) {
         return true;
     }
 
@@ -401,7 +414,7 @@ pub(crate) fn preserve_labeled_ability_prefix_for_parse_text(prefix: &str) -> bo
     let Some(first) = words.first().copied() else {
         return false;
     };
-    if MAX_SPEED_LABEL_PATTERN.matches_words(&words) {
+    if parser_token_word_refs(&tokens).as_slice() == MAX_SPEED_LABEL {
         return true;
     }
 
@@ -451,7 +464,7 @@ fn starts_with_if_clause_text(text: &str) -> bool {
     };
     parser_token_word_refs(&tokens)
         .first()
-        .is_some_and(|word| IF_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| *word == "if")
 }
 
 pub(crate) fn should_strip_labeled_ability_prefix_text(prefix: &str, remainder: &str) -> bool {
@@ -524,9 +537,7 @@ pub(crate) fn split_choose_new_targets_clause_lexed(
         return None;
     }
 
-    if let Some(if_idx) =
-        find_token_index(tail_tokens, |token| IF_WORD_PATTERN.matches_token(token))
-    {
+    if let Some(if_idx) = find_token_index(tail_tokens, |token| token_is_any_word(token, &["if"])) {
         tail_tokens = &tail_tokens[..if_idx];
     }
     if tail_tokens.is_empty() {
@@ -601,10 +612,13 @@ pub(crate) fn split_change_target_clause_lexed(
 }
 
 pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {
-    if let Some(idx) = COMPACT_NEGATED_ACTION_WORD_PATTERN.find_word(words) {
+    if let Some(idx) = words
+        .iter()
+        .position(|word| is_compact_negated_action_word(word))
+    {
         return Some((idx, 1));
     }
-    if let Some(idx) = SPLIT_NEGATED_ACTION_WORD_PATTERN.find_exact_window(words, 2) {
+    if let Some(idx) = words_find_any_phrase(words, SPLIT_NEGATED_ACTION_PHRASES) {
         return Some((idx, 2));
     }
     None
@@ -617,7 +631,7 @@ fn split_for_each_doesnt_clause_lexed<'a>(
     let mut clause_tokens = tokens;
     if token_word_refs(clause_tokens)
         .first()
-        .is_some_and(|word| THEN_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| *word == "then")
     {
         clause_tokens = &clause_tokens[1..];
     }
@@ -626,17 +640,14 @@ fn split_for_each_doesnt_clause_lexed<'a>(
         .len();
     let inner_tokens = trim_lexed_commas(&clause_tokens[start..]);
     let inner_words = token_word_refs(inner_tokens);
-    if !inner_words
-        .first()
-        .is_some_and(|word| WHO_WORD_PATTERN.matches_word(word))
-    {
+    if !inner_words.first().is_some_and(|word| *word == "who") {
         return None;
     }
     let (negation_idx, negation_len) = negated_action_word_index(&inner_words)?;
     let effect_token_start =
         if let Some(comma_idx) = find_token_index(inner_tokens, |token| token.is_comma()) {
             comma_idx + 1
-        } else if let Some(this_way_idx) = THIS_WAY_PATTERN.find_exact_window(&inner_words, 2) {
+        } else if let Some(this_way_idx) = words_find_phrase(&inner_words, THIS_WAY_PHRASE) {
             parser_token_word_positions(inner_tokens)
                 .get(this_way_idx + 2)
                 .map(|(idx, _)| *idx)
@@ -672,18 +683,14 @@ pub(crate) fn split_negated_who_this_way_filter_tokens_lexed(
     inner_tokens: &[OwnedLexToken],
 ) -> Option<&[OwnedLexToken]> {
     let inner_words = token_word_refs(inner_tokens);
-    if !inner_words
-        .first()
-        .is_some_and(|word| WHO_WORD_PATTERN.matches_word(word))
-    {
+    if !inner_words.first().is_some_and(|word| *word == "who") {
         return None;
     }
-    let this_way_idx = THIS_WAY_PATTERN.find_exact_window(&inner_words, 2)?;
+    let this_way_idx = words_find_phrase(&inner_words, THIS_WAY_PHRASE)?;
     let (negation_idx, negation_len) = negated_action_word_index(&inner_words)?;
     let verb_idx = negation_idx + negation_len;
     let verb = inner_words.get(verb_idx).copied().unwrap_or("");
-    if !EFFECT_DISCARD_OR_DISCARDED_WORD_PATTERN.matches_word(verb) || this_way_idx <= verb_idx + 1
-    {
+    if !matches!(verb, "discard" | "discarded") || this_way_idx <= verb_idx + 1 {
         return None;
     }
 
@@ -708,13 +715,16 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return Ok(None);
     }
 
-    let Some(this_turn_idx) = THIS_TURN_PATTERN.find_exact_window(&words, 2) else {
+    let Some(this_turn_idx) = words_find_phrase(&words, THIS_TURN_PHRASE) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
         )));
     };
-    if THIS_TURN_PATTERN.matches_words(&words[this_turn_idx + 2..]) {
+    if LexedClause::new(tokens)
+        .after_words(this_turn_idx + 2)
+        .is_some_and(|tail| tail.word_refs().as_slice() == THIS_TURN_PHRASE)
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all-combat-damage duration (clause: '{}')",
             words.join(" ")
@@ -734,7 +744,7 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
     core_tokens.extend_from_slice(&tokens[prefix.len()..this_turn_idx]);
     core_tokens.extend_from_slice(&tokens[this_turn_idx + 2..]);
 
-    if THAT_WOULD_BE_DEALT_PATTERN.matches_words(&core_words) {
+    if token_word_refs(&core_tokens).as_slice() == THAT_WOULD_BE_DEALT_PHRASE {
         return Ok(Some(EffectAst::subject_verb_prevent_all_combat_damage(
             crate::effect::Until::EndOfTurn,
         )));
@@ -744,7 +754,8 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         let source_tokens = &core_tokens[5..];
         if source_tokens
             .first()
-            .is_some_and(|token| PREVENT_DAMAGE_SOURCE_HEAD_WORD_PATTERN.matches_token(token))
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(is_prevent_damage_source_head_word)
         {
             let (source, has_color_condition) =
                 parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
@@ -784,10 +795,10 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
         return parse_prevent_damage_target_scope_lexed(&core_tokens[5..], &words);
     }
 
-    if let Some(would_idx) = WOULD_WORD_PATTERN.find_word(&core_words)
+    if let Some(would_idx) = core_words.iter().position(|word| *word == "would")
         && core_words
             .get(would_idx + 1)
-            .is_some_and(|word| DEAL_WORD_PATTERN.matches_word(word))
+            .is_some_and(|word| *word == "deal")
     {
         let source_tokens = &core_tokens[..would_idx];
         let (source, has_color_condition) =
@@ -819,11 +830,11 @@ pub(crate) fn parse_prevent_damage_source_target_lexed(
 
     let (tokens, has_color_condition) = strip_prevent_damage_shares_color_clause_lexed(tokens);
     let source_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    let is_explicit_reference = PREVENT_DAMAGE_REFERENCE_MARKER_PATTERN
-        .matches_words(&source_words)
-        || source_words
-            .first()
-            .is_some_and(|word| PREVENT_DAMAGE_EXPLICIT_REFERENCE_WORD_PATTERN.matches_word(word));
+    let is_explicit_reference =
+        tokens_contain_any_non_article_word(tokens, &["target", "this", "that", "it"])
+            || source_words
+                .first()
+                .is_some_and(|word| is_prevent_damage_explicit_reference_word(word));
     if !is_explicit_reference {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-all source target '{}'",
@@ -892,7 +903,7 @@ fn strip_prevent_damage_shares_color_clause_lexed(
 ) -> (&[OwnedLexToken], bool) {
     let Some(if_idx) = tokens
         .iter()
-        .rposition(|token| IF_WORD_PATTERN.matches_token(token))
+        .rposition(|token| token_is_any_word(token, &["if"]))
     else {
         return (tokens, false);
     };
@@ -914,14 +925,14 @@ pub(crate) fn parse_prevent_damage_target_scope_lexed(
     }
 
     let target_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
-    if PREVENT_DAMAGE_PLAYERS_TARGET_PATTERN.matches_words(&target_words) {
+    if matches!(target_words.as_slice(), ["player"] | ["players"]) {
         return Ok(Some(
             EffectAst::subject_verb_prevent_all_combat_damage_to_players(
                 crate::effect::Until::EndOfTurn,
             ),
         ));
     }
-    if YOU_TARGET_PATTERN.matches_words(&target_words) {
+    if target_words.as_slice() == ["you"] {
         return Ok(Some(
             EffectAst::subject_verb_prevent_all_combat_damage_to_you(
                 crate::effect::Until::EndOfTurn,
@@ -1069,7 +1080,7 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
 
     let source_tapped_duration = cant_sentence_has_source_remains_tapped_duration(tokens);
     let words = token_word_refs(tokens);
-    if LOSE_MANA_STEPS_PHASES_END_PATTERN.matches_words(&words) {
+    if words_contain_all(&words, LOSE_MANA_STEPS_PHASES_END_WORDS) {
         return Ok(Some(vec![
             EffectAst::subject_verb_dont_lose_this_mana_as_steps_and_phases_end_this_turn(),
         ]));
@@ -1128,8 +1139,11 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     parse_effect_clause_lexed: fn(&[OwnedLexToken]) -> Result<EffectAst, CardTextError>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn has_trailing_that_player_shuffle(tokens: &[OwnedLexToken]) -> bool {
-        TRAILING_THAT_PLAYER_SHUFFLE_MARKER_PATTERN
-            .matches_words(&crate::runtime_backend::token_word_refs(tokens))
+        words_find_any_phrase(
+            &crate::runtime_backend::token_word_refs(tokens),
+            TRAILING_THAT_PLAYER_SHUFFLE_PHRASES,
+        )
+        .is_some()
     }
 
     let words_all = parser_token_word_refs(tokens);
@@ -1219,7 +1233,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     let mut raw_filter_tokens = trim_commas(&search_tokens[filter_start..filter_end]).to_vec();
-    if THAT_MANY_PREFIX_PATTERN.matches_words(&token_word_refs(&raw_filter_tokens)) {
+    if token_slice_starts_with(&raw_filter_tokens, THAT_MANY_PREFIX) {
         prefix_count_value.get_or_insert(Value::Count(ObjectFilter::tagged(TagKey::from(IT_TAG))));
         count = if search_mode == SearchSelectionMode::Optional {
             ChoiceCount::up_to_dynamic_x()
@@ -1756,9 +1770,12 @@ pub(crate) fn cant_sentence_has_source_remains_tapped_duration(tokens: &[OwnedLe
         }
 
         let token = &tokens[cursor];
-        has_remains |= REMAINS_WORD_PATTERN.matches_token(token);
-        has_tapped |= TAPPED_WORD_PATTERN.matches_token(token);
-        has_source_word |= SOURCE_REFERENCE_WORD_PATTERN.matches_token(token);
+        has_remains |= token_is_any_word(token, &["remains"]);
+        has_tapped |= token_is_any_word(token, &["tapped"]);
+        has_source_word |= token_is_any_word(
+            token,
+            &["this", "source", "artifact", "creature", "permanent"],
+        );
         cursor += 1;
     }
 

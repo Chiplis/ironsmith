@@ -537,8 +537,7 @@ pub(crate) fn can_attack_with_view(
     // Summoning sickness prevents attacking (unless haste)
     if game.is_summoning_sick(creature.id)
         && !view.object_has_static_ability_id(creature.id, StaticAbilityId::Haste)
-        && !view
-            .object_has_static_ability_id(creature.id, StaticAbilityId::CanAttackAsThoughHaste)
+        && !view.object_has_static_ability_id(creature.id, StaticAbilityId::CanAttackAsThoughHaste)
     {
         return false;
     }

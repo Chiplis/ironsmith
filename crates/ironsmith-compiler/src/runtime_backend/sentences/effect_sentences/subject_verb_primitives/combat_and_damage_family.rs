@@ -1,8 +1,8 @@
 use super::*;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
+use crate::runtime_backend::lexer::TokenKind;
 
 const PUT_STICKER_WORDS: &[&str] = &["put", "puts"];
 const STICKER_KIND_PHRASES: &[(&[&str], crate::events::KeywordActionKind)] = &[
@@ -23,78 +23,51 @@ const STICKER_KIND_PHRASES: &[(&[&str], crate::events::KeywordActionKind)] = &[
         crate::events::KeywordActionKind::PowerToughnessSticker,
     ),
 ];
-const ZONE_PAIR_PHRASES: &[(&[&str], [Zone; 2])] = &[
-    (
-        &[
-            "from",
-            "the",
-            "battlefield",
-            "and",
-            "from",
-            "your",
-            "graveyard",
-        ],
-        [Zone::Battlefield, Zone::Graveyard],
-    ),
-    (
-        &[
-            "from",
-            "the",
-            "command",
-            "zone",
-            "and",
-            "from",
-            "your",
-            "graveyard",
-        ],
-        [Zone::Command, Zone::Graveyard],
-    ),
+const COMBAT_AND_DAMAGE_FROM_WORDS: &[&str] = &["from"];
+const COMBAT_AND_DAMAGE_INTO_OR_IN_WORDS: &[&str] = &["into", "in"];
+const COMBAT_AND_DAMAGE_THEM_WORDS: &[&str] = &["them"];
+const SOURCE_ZONE_BATTLEFIELD_WORDS: &[&str] = &["battlefield"];
+const SOURCE_ZONE_COMMAND_PHRASES: &[&[&str]] = &[&["command", "zone"]];
+const SOURCE_ZONE_GRAVEYARD_WORDS: &[&str] = &["graveyard", "graveyards"];
+const SOURCE_ZONE_GRAVEYARD_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
+const THAT_WORD: &str = "that";
+const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
+const TARGET_REFERENCE_WORDS: &[&str] = &["target", "it", "them", "that", "those", "this"];
+const TARGET_WORDS: &[&str] = &["target"];
+const ZONE_SUFFIX_START_WORDS: &[&str] = &["from", "to", "in", "on", "under"];
+const TARGET_REFERENCE_HEAD_WORDS: &[&str] =
+    &["target", "up", "this", "that", "it", "them", "another"];
+const RETURN_SEGMENT_HEAD_WORDS: &[&str] = &[
+    "target", "up", "another", "other", "this", "that", "it", "them", "all", "each",
 ];
-const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
-const ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["all"], &["each"]]);
-const TARGET_REFERENCE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["target"],
-            &["it"],
-            &["them"],
-            &["that"],
-            &["those"],
-            &["this"],
-        ]
-);
-const ZONE_SUFFIX_START_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["from"], &["to"], &["in"], &["on"], &["under"]]);
-const TARGET_REFERENCE_HEAD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["target"],
-            &["up"],
-            &["this"],
-            &["that"],
-            &["it"],
-            &["them"],
-            &["another"],
-        ]
-);
-const ARENT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["arent"], &["aren't"]]);
-const ARE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["are"]);
-const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
-const TRANSFORM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["transform"]);
-const CONVERT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["convert"]);
-const GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["get"], &["gets"]]);
-const DISTRIBUTE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["distribute"]);
+const RETURN_DESTINATION_HAND_WORDS: &[&str] = &["hand", "hands"];
+const RETURN_DESTINATION_HAND_PHRASES: &[&[&str]] = &[&["hand"], &["hands"]];
+const RETURN_DESTINATION_BATTLEFIELD_WORDS: &[&str] = &["battlefield"];
+const RETURN_DESTINATION_TAPPED_WORDS: &[&str] = &["tapped"];
+const RETURN_SEGMENT_ZONE_WORDS: &[&str] = &[
+    "graveyard",
+    "graveyards",
+    "battlefield",
+    "hand",
+    "hands",
+    "library",
+    "libraries",
+    "exile",
+];
+const ARENT_WORDS: &[&str] = &["arent", "aren't"];
+const ARE_WORD: &str = "are";
+const NOT_WORD: &str = "not";
+const TRANSFORM_WORD: &str = "transform";
+const CONVERT_WORD: &str = "convert";
+const GET_OR_GETS_WORDS: &[&str] = &["get", "gets"];
+const DISTRIBUTE_WORD: &str = "distribute";
 
-fn combat_clause_first_matches(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    shape: &ClauseShape<'static>,
-) -> bool {
-    clause
-        .first_word()
-        .is_some_and(|word| shape.matches_word(word))
+fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word() == Some(expected)
+}
+
+fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token.as_word().is_some_and(|word| expected.contains(&word))
 }
 
 pub(crate) const DESTROY_CREATURE_TYPE_OF_CHOICE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
@@ -128,6 +101,238 @@ pub(crate) const PUT_STICKER_ON_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
+const RETURN_TO_HAND_DESTINATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier(
+        "owner",
+        LexCaptureKind::UntilAnyPhrase(RETURN_DESTINATION_HAND_PHRASES),
+    ),
+    LexPattern::object("zone", LexCaptureKind::OneOf(RETURN_DESTINATION_HAND_WORDS)),
+]);
+const RETURN_TO_BATTLEFIELD_DESTINATION_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "zone",
+        LexCaptureKind::OneOf(RETURN_DESTINATION_BATTLEFIELD_WORDS),
+    )]);
+const RETURN_DESTINATION_TAPPED_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "tapped",
+        LexCaptureKind::OneOf(RETURN_DESTINATION_TAPPED_WORDS),
+    )]);
+const TARGET_REFERENCE_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+    "target",
+    LexCaptureKind::OneOf(TARGET_REFERENCE_WORDS),
+)]);
+const LITERAL_TARGET_REFERENCE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "target",
+        LexCaptureKind::OneOf(TARGET_WORDS),
+    )]);
+const BROAD_TARGET_REFERENCE_HEAD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "target",
+        LexCaptureKind::OneOf(TARGET_REFERENCE_HEAD_WORDS),
+    )]);
+const RETURN_SEGMENT_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+    "head",
+    LexCaptureKind::OneOf(RETURN_SEGMENT_HEAD_WORDS),
+)]);
+const ZONE_SUFFIX_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+    "zone_suffix",
+    LexCaptureKind::OneOf(ZONE_SUFFIX_START_WORDS),
+)]);
+const ALL_OR_EACH_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+    "quantifier",
+    LexCaptureKind::OneOf(ALL_OR_EACH_WORDS),
+)]);
+const RETURN_SEGMENT_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+    "zone",
+    LexCaptureKind::OneOf(RETURN_SEGMENT_ZONE_WORDS),
+)]);
+const SOURCE_BATTLEFIELD_AND_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action(
+        "from_battlefield",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_FROM_WORDS),
+    ),
+    LexPattern::optional(&[LexPattern::word("the")]),
+    LexPattern::object(
+        "battlefield",
+        LexCaptureKind::OneOf(SOURCE_ZONE_BATTLEFIELD_WORDS),
+    ),
+    LexPattern::word("and"),
+    LexPattern::action(
+        "from_graveyard",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_FROM_WORDS),
+    ),
+    LexPattern::modifier(
+        "graveyard_owner",
+        LexCaptureKind::UntilAnyPhrase(SOURCE_ZONE_GRAVEYARD_PHRASES),
+    ),
+    LexPattern::object(
+        "graveyard",
+        LexCaptureKind::OneOf(SOURCE_ZONE_GRAVEYARD_WORDS),
+    ),
+]);
+const SOURCE_COMMAND_AND_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action(
+        "from_command",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_FROM_WORDS),
+    ),
+    LexPattern::optional(&[LexPattern::word("the")]),
+    LexPattern::object(
+        "command",
+        LexCaptureKind::OneOfPhrase(SOURCE_ZONE_COMMAND_PHRASES),
+    ),
+    LexPattern::word("and"),
+    LexPattern::action(
+        "from_graveyard",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_FROM_WORDS),
+    ),
+    LexPattern::modifier(
+        "graveyard_owner",
+        LexCaptureKind::UntilAnyPhrase(SOURCE_ZONE_GRAVEYARD_PHRASES),
+    ),
+    LexPattern::object(
+        "graveyard",
+        LexCaptureKind::OneOf(SOURCE_ZONE_GRAVEYARD_WORDS),
+    ),
+]);
+const CHOOSE_ALL_PUT_THEM_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("put"),
+    LexPattern::object(
+        "target",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_THEM_WORDS),
+    ),
+    LexPattern::action(
+        "destination_action",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_INTO_OR_IN_WORDS),
+    ),
+    LexPattern::modifier(
+        "hand_owner",
+        LexCaptureKind::UntilAnyPhrase(RETURN_DESTINATION_HAND_PHRASES),
+    ),
+    LexPattern::object("zone", LexCaptureKind::OneOf(RETURN_DESTINATION_HAND_WORDS)),
+]);
+const CHOOSE_ALL_HAND_DESTINATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action(
+        "destination_action",
+        LexCaptureKind::OneOf(COMBAT_AND_DAMAGE_INTO_OR_IN_WORDS),
+    ),
+    LexPattern::modifier(
+        "hand_owner",
+        LexCaptureKind::UntilAnyPhrase(RETURN_DESTINATION_HAND_PHRASES),
+    ),
+    LexPattern::object("zone", LexCaptureKind::OneOf(RETURN_DESTINATION_HAND_WORDS)),
+]);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ReturnDestinationShape {
+    zone: Zone,
+    tapped: bool,
+}
+
+fn parse_return_destination_shape(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Option<ReturnDestinationShape> {
+    let lexed = LexedClause::new(clause.tokens());
+    let zone = if RETURN_TO_HAND_DESTINATION_PATTERN
+        .find_in_clause(lexed)
+        .is_some()
+    {
+        Zone::Hand
+    } else if RETURN_TO_BATTLEFIELD_DESTINATION_PATTERN
+        .find_in_clause(lexed)
+        .is_some()
+    {
+        Zone::Battlefield
+    } else {
+        return None;
+    };
+    let tapped = RETURN_DESTINATION_TAPPED_PATTERN
+        .find_in_clause(lexed)
+        .is_some();
+    Some(ReturnDestinationShape { zone, tapped })
+}
+
+fn target_reference_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    clause
+        .match_prefix_pattern(TARGET_REFERENCE_HEAD_PATTERN)
+        .and_then(|matched| matched.capture_word_range("target"))
+        .is_some()
+}
+
+fn broad_target_reference_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    clause
+        .match_prefix_pattern(BROAD_TARGET_REFERENCE_HEAD_PATTERN)
+        .and_then(|matched| matched.capture_word_range("target"))
+        .is_some()
+}
+
+fn literal_target_reference_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    let words = clause.word_refs();
+    LITERAL_TARGET_REFERENCE_PATTERN
+        .find_in_word_refs(&words)
+        .and_then(|matched| matched.capture_word_range("target"))
+        .is_some()
+}
+
+fn return_segment_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    clause
+        .match_prefix_pattern(RETURN_SEGMENT_HEAD_PATTERN)
+        .and_then(|matched| matched.capture_word_range("head"))
+        .is_some()
+}
+
+fn zone_suffix_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    clause
+        .match_prefix_pattern(ZONE_SUFFIX_HEAD_PATTERN)
+        .and_then(|matched| matched.capture_word_range("zone_suffix"))
+        .is_some()
+}
+
+fn all_or_each_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    all_or_each_head_word(clause).is_some()
+}
+
+fn all_or_each_head_word(clause: SubjectVerbPrimitiveClause<'_>) -> Option<String> {
+    clause
+        .match_prefix_pattern(ALL_OR_EACH_HEAD_PATTERN)
+        .and_then(|matched| matched.capture_word_range("quantifier"))
+        .and_then(|range| {
+            clause
+                .token(range.start)
+                .and_then(|token| token.as_word())
+                .map(str::to_string)
+        })
+}
+
+fn parse_choose_all_source_zone_pair(clause: SubjectVerbPrimitiveClause<'_>) -> Option<[Zone; 2]> {
+    let lexed = LexedClause::new(clause.tokens());
+    if SOURCE_BATTLEFIELD_AND_GRAVEYARD_PATTERN
+        .find_in_clause(lexed)
+        .is_some()
+    {
+        return Some([Zone::Battlefield, Zone::Graveyard]);
+    }
+    if SOURCE_COMMAND_AND_GRAVEYARD_PATTERN
+        .find_in_clause(lexed)
+        .is_some()
+    {
+        return Some([Zone::Command, Zone::Graveyard]);
+    }
+    None
+}
+
+fn choose_all_put_clause_returns_them_to_hand(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    CHOOSE_ALL_PUT_THEM_HAND_PATTERN
+        .match_prefix(LexedClause::new(clause.tokens()))
+        .is_some()
+}
+
+fn choose_all_clause_ends_in_hand_destination(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    let word_len = clause.word_refs().len();
+    CHOOSE_ALL_HAND_DESTINATION_PATTERN
+        .find_in_clause(LexedClause::new(clause.tokens()))
+        .is_some_and(|matched| matched.word_range.end == word_len)
+}
 pub(crate) const MUST_ATTACK_CREATURE_TYPE_OF_CHOICE_SUFFIXES: &[&[&str]] = &[
     &["attack", "this", "turn", "if", "able"],
     &["attacks", "this", "turn", "if", "able"],
@@ -175,6 +380,12 @@ pub(crate) const FOR_EACH_THIS_WAY_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &
     LexPattern::role_capture(
         "body",
         LexCaptureRole::Object,
+        LexCaptureKind::UntilToken(TokenKind::Comma),
+    ),
+    LexPattern::token(TokenKind::Comma),
+    LexPattern::role_capture(
+        "effect",
+        LexCaptureRole::Tail,
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
@@ -230,9 +441,12 @@ pub(crate) fn parse_sentence_destroy_creature_type_of_choice(
 
 pub(crate) fn parse_sentence_destroy_creature_type_of_choice_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
-    _matched: &LexPatternMatch<'_>,
+    matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if find_creature_type_choice_phrase(clause).is_none() {
+    let Some(tail_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
+        return Ok(None);
+    };
+    if find_creature_type_choice_phrase(tail_clause).is_none() {
         return Ok(None);
     }
 
@@ -271,7 +485,10 @@ pub(crate) fn parse_sentence_pump_creature_type_of_choice_matched(
     else {
         return Ok(None);
     };
-    if !combat_clause_first_matches(get_tail_clause, &GET_OR_GETS_WORD_PATTERN) {
+    if !get_tail_clause
+        .first_word()
+        .is_some_and(|word| GET_OR_GETS_WORDS.contains(&word))
+    {
         return Ok(None);
     }
     let Some((choice_idx, consumed)) = find_creature_type_choice_phrase(subject_clause) else {
@@ -481,11 +698,7 @@ pub(crate) fn parse_sentence_put_sticker_on_matched(
         return Ok(None);
     }
 
-    let target_words = target_clause.word_refs();
-    if target_words
-        .first()
-        .is_some_and(|word| TARGET_REFERENCE_WORD_PATTERN.matches_words(&[*word]))
-    {
+    if target_reference_head_matches(target_clause) {
         let target = parse_target_phrase(target_clause.tokens())?;
         return Ok(Some(vec![EffectAst::subject_verb_put_sticker(
             target, action,
@@ -567,33 +780,33 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice_matched(
             if choice_idx >= 2
                 && target_clause
                     .token(choice_idx - 2)
-                    .is_some_and(|token| THAT_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, THAT_WORD))
                 && target_clause
                     .token(choice_idx - 1)
-                    .is_some_and(|token| ARENT_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_any_word(token, ARENT_WORDS))
             {
                 start_idx = choice_idx - 2;
                 excluded = true;
             } else if choice_idx >= 3
                 && target_clause
                     .token(choice_idx - 3)
-                    .is_some_and(|token| THAT_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, THAT_WORD))
                 && target_clause
                     .token(choice_idx - 2)
-                    .is_some_and(|token| ARE_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, ARE_WORD))
                 && target_clause
                     .token(choice_idx - 1)
-                    .is_some_and(|token| NOT_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, NOT_WORD))
             {
                 start_idx = choice_idx - 3;
                 excluded = true;
             } else if choice_idx >= 2
                 && target_clause
                     .token(choice_idx - 2)
-                    .is_some_and(|token| THAT_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, THAT_WORD))
                 && target_clause
                     .token(choice_idx - 1)
-                    .is_some_and(|token| ARE_WORD_PATTERN.matches_token(token))
+                    .is_some_and(|token| token_is_word(token, ARE_WORD))
             {
                 start_idx = choice_idx - 2;
             }
@@ -622,7 +835,7 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice_matched(
     // mention "target". If so, we need to parse a proper TargetAst (which
     // captures targeting semantics and count such as X) rather than using a
     // mass-return-all filter.
-    let has_target = target_clause.contains_word("target");
+    let has_target = literal_target_reference_matches(target_clause);
 
     let mut effects = Vec::new();
     if needs_inline_choice_effect {
@@ -644,23 +857,22 @@ pub(crate) fn parse_sentence_return_targets_of_creature_type_of_choice_matched(
                 if choice_idx >= 2
                     && target_clause
                         .token(choice_idx - 2)
-                        .is_some_and(|token| THAT_WORD_PATTERN.matches_token(token))
+                        .is_some_and(|token| token_is_word(token, THAT_WORD))
                     && target_clause.token(choice_idx - 1).is_some_and(|token| {
-                        ARENT_WORD_PATTERN.matches_token(token)
-                            || ARE_WORD_PATTERN.matches_token(token)
+                        token_is_any_word(token, ARENT_WORDS) || token_is_word(token, ARE_WORD)
                     })
                 {
                     start_idx = choice_idx - 2;
                 } else if choice_idx >= 3
                     && target_clause
                         .token(choice_idx - 3)
-                        .is_some_and(|token| THAT_WORD_PATTERN.matches_token(token))
+                        .is_some_and(|token| token_is_word(token, THAT_WORD))
                     && target_clause
                         .token(choice_idx - 2)
-                        .is_some_and(|token| ARE_WORD_PATTERN.matches_token(token))
+                        .is_some_and(|token| token_is_word(token, ARE_WORD))
                     && target_clause
                         .token(choice_idx - 1)
-                        .is_some_and(|token| NOT_WORD_PATTERN.matches_token(token))
+                        .is_some_and(|token| token_is_word(token, NOT_WORD))
                 {
                     start_idx = choice_idx - 3;
                 }
@@ -704,11 +916,6 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
         return Ok(None);
     }
     let starts_choose_all = clause.starts_with_any(CHOOSE_ALL_PREFIXES);
-    if !((clause.contains_word("battlefield") || clause.contains_word("command"))
-        && clause.contains_all_words(&["graveyard", "hand"]))
-    {
-        return Ok(None);
-    }
 
     let Some(from_idx) = clause.find_word("from") else {
         return Ok(None);
@@ -719,10 +926,7 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
     let Some(zone_clause) = clause.from_word(from_idx) else {
         return Ok(None);
     };
-    let Some(zone_pair) = ZONE_PAIR_PHRASES
-        .iter()
-        .find_map(|(phrase, zones)| zone_clause.contains_phrase(phrase).then_some(*zones))
-    else {
+    let Some(zone_pair) = parse_choose_all_source_zone_pair(zone_clause) else {
         return Ok(None);
     };
 
@@ -747,16 +951,10 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
         let Some(put_clause) = clause.from_word(put_idx) else {
             return Ok(None);
         };
-        if !put_clause.starts_with_any(&[
-            &["put", "them", "into", "your", "hand"],
-            &["put", "them", "in", "your", "hand"],
-        ]) {
+        if !choose_all_put_clause_returns_them_to_hand(put_clause) {
             return Ok(None);
         }
-    } else if clause
-        .strip_any_suffix(&[&["into", "your", "hand"], &["in", "your", "hand"]])
-        .is_none()
-    {
+    } else if !choose_all_clause_ends_in_hand_destination(clause) {
         return Ok(None);
     }
 
@@ -781,14 +979,9 @@ pub(crate) fn parse_sentence_choose_all_from_battlefield_and_graveyard_to_hand(
 }
 
 pub(crate) fn return_segment_mentions_zone(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause.contains_word("graveyard")
-        || clause.contains_word("graveyards")
-        || clause.contains_word("battlefield")
-        || clause.contains_word("hand")
-        || clause.contains_word("hands")
-        || clause.contains_word("library")
-        || clause.contains_word("libraries")
-        || clause.contains_word("exile")
+    RETURN_SEGMENT_ZONE_PATTERN
+        .find_in_clause(LexedClause::new(clause.tokens()))
+        .is_some()
 }
 
 pub(crate) fn parse_sentence_return_multiple_targets(
@@ -818,12 +1011,9 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
         return Ok(None);
     };
 
-    let is_hand = dest_clause.contains_any_word(&["hand", "hands"]);
-    let is_battlefield = dest_clause.contains_word("battlefield");
-    let tapped = dest_clause.contains_word("tapped");
-    if !is_hand && !is_battlefield {
+    let Some(destination) = parse_return_destination_shape(dest_clause) else {
         return Ok(None);
-    }
+    };
 
     let has_multi_separator = targets_clause.contains_comma_or_any_word(&["and", "or", "and/or"]);
     if !has_multi_separator {
@@ -832,26 +1022,9 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
 
     let mut segments: Vec<SubjectVerbPrimitiveOwnedClause> = Vec::new();
     for segment_clause in targets_clause.trimmed_and_comma_segments() {
-        let trimmed_words = segment_clause.word_refs();
-        let starts_new_target = trimmed_words.first().is_some_and(|word| {
-            matches!(
-                *word,
-                "target"
-                    | "up"
-                    | "another"
-                    | "other"
-                    | "this"
-                    | "that"
-                    | "it"
-                    | "them"
-                    | "all"
-                    | "each"
-            )
-        });
-        let mentions_target = segment_clause.contains_word("target");
-        let starts_like_zone_suffix = trimmed_words
-            .first()
-            .is_some_and(|word| ZONE_SUFFIX_START_WORD_PATTERN.matches_words(&[*word]));
+        let starts_new_target = return_segment_head_matches(segment_clause);
+        let mentions_target = literal_target_reference_matches(segment_clause);
+        let starts_like_zone_suffix = zone_suffix_head_matches(segment_clause);
         if !segments.is_empty()
             && !starts_new_target
             && !mentions_target
@@ -869,9 +1042,7 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
 
     let shared_quantifier = segments
         .first()
-        .and_then(SubjectVerbPrimitiveOwnedClause::first_word)
-        .filter(|word| ALL_OR_EACH_WORD_PATTERN.matches_words(&[*word]))
-        .map(str::to_string);
+        .and_then(|segment| all_or_each_head_word(segment.as_clause()));
 
     let shared_suffix = segments
         .last()
@@ -888,25 +1059,17 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
             segment.extend_from_slice(&shared_suffix);
         }
         if let Some(quantifier) = shared_quantifier.as_deref() {
-            let segment_words = segment.word_refs();
-            let has_explicit_quantifier = segment_words
-                .first()
-                .is_some_and(|word| ALL_OR_EACH_WORD_PATTERN.matches_words(&[*word]));
-            let starts_like_target_reference = segment_words
-                .first()
-                .is_some_and(|word| TARGET_REFERENCE_HEAD_PATTERN.matches_words(&[*word]));
+            let has_explicit_quantifier = all_or_each_head_matches(segment.as_clause());
+            let starts_like_target_reference =
+                broad_target_reference_head_matches(segment.as_clause());
             if !has_explicit_quantifier
                 && !starts_like_target_reference
-                && !segment.contains_word("target")
+                && !literal_target_reference_matches(segment.as_clause())
             {
                 segment.insert_leading_word(quantifier);
             }
         }
-        let segment_words = segment.word_refs();
-        if segment_words
-            .first()
-            .is_some_and(|word| ALL_OR_EACH_WORD_PATTERN.matches_words(&[*word]))
-        {
+        if all_or_each_head_matches(segment.as_clause()) {
             if segment.len() < 2 {
                 return Err(CardTextError::ParseError(format!(
                     "missing return-all filter (clause: '{}')",
@@ -914,10 +1077,10 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
                 )));
             }
             let filter = parse_object_filter(segment.from_tokens(1), false)?;
-            if is_battlefield {
+            if destination.zone == Zone::Battlefield {
                 effects.push(EffectAst::subject_verb_return_all_to_battlefield(
                     filter,
-                    tapped,
+                    destination.tapped,
                     false,
                     ReturnControllerAst::Owner,
                 ));
@@ -926,10 +1089,10 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
             }
         } else {
             let target = parse_target_phrase(segment.tokens())?;
-            if is_battlefield {
+            if destination.zone == Zone::Battlefield {
                 effects.push(EffectAst::subject_verb_return_to_battlefield(
                     target,
-                    tapped,
+                    destination.tapped,
                     false,
                     false,
                     ReturnControllerAst::Preserve,
@@ -947,7 +1110,8 @@ pub(crate) fn parse_sentence_return_multiple_targets_matched(
 pub(crate) fn parse_sentence_for_each_of_target_objects(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    if clause.strip_prefix(&["for", "each"]).is_none() && clause.first_word() != Some("each") {
+    let pattern = LexPattern::new(FOR_EACH_TARGET_OBJECTS_PATTERN_ATOMS);
+    if clause.match_pattern(pattern).is_none() {
         return Ok(None);
     }
 
@@ -1006,7 +1170,10 @@ pub(crate) fn parse_sentence_for_each_of_target_objects(
 pub(crate) fn parse_distribute_counters_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if !combat_clause_first_matches(clause, &DISTRIBUTE_WORD_PATTERN) {
+    if !clause
+        .first_word()
+        .is_some_and(|word| word == DISTRIBUTE_WORD)
+    {
         return Ok(None);
     }
 
@@ -1092,8 +1259,8 @@ pub(crate) fn parse_sentence_transform_with_followup(
     let Some(first) = clause.token(0) else {
         return Ok(None);
     };
-    let is_transform = TRANSFORM_WORD_PATTERN.matches_token(first);
-    let is_convert = CONVERT_WORD_PATTERN.matches_token(first);
+    let is_transform = token_is_word(first, TRANSFORM_WORD);
+    let is_convert = token_is_word(first, CONVERT_WORD);
     if !is_transform && !is_convert {
         return Ok(None);
     }
@@ -1147,8 +1314,17 @@ pub(crate) fn parse_sentence_for_each_exiled_this_way(
 
 pub(crate) fn parse_sentence_for_each_exiled_this_way_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
-    _matched: &LexPatternMatch<'_>,
+    matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(body_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
+        return Ok(None);
+    };
+    let Some(effect_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
+        return Ok(None);
+    };
+    if body_clause.is_empty() || effect_clause.is_empty() {
+        return Ok(None);
+    }
     clause.parse_with_lexed(parse_for_each_exiled_this_way_sentence)
 }
 
@@ -1164,8 +1340,17 @@ pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way(
 
 pub(crate) fn parse_sentence_for_each_put_into_graveyard_this_way_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
-    _matched: &LexPatternMatch<'_>,
+    matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(body_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
+        return Ok(None);
+    };
+    let Some(effect_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
+        return Ok(None);
+    };
+    if body_clause.is_empty() || effect_clause.is_empty() {
+        return Ok(None);
+    }
     clause.parse_with_lexed(parse_for_each_put_into_graveyard_this_way_sentence)
 }
 
@@ -1187,8 +1372,17 @@ pub(crate) fn parse_sentence_for_each_destroyed_this_way(
 
 pub(crate) fn parse_sentence_for_each_destroyed_this_way_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
-    _matched: &LexPatternMatch<'_>,
+    matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(body_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
+        return Ok(None);
+    };
+    let Some(effect_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Tail) else {
+        return Ok(None);
+    };
+    if body_clause.is_empty() || effect_clause.is_empty() {
+        return Ok(None);
+    }
     clause.parse_with_lexed(parse_for_each_destroyed_this_way_sentence)
 }
 

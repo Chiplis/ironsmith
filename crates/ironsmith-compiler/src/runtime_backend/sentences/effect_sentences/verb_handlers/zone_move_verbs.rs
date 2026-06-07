@@ -1,59 +1,219 @@
-const ZONE_MOVE_CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
-const ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["graveyard"], &["graveyards"]]);
-const ZONE_MOVE_WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
-const ZONE_MOVE_HALF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["half"]);
-const DRAW_TRAILING_IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const DRAW_TRAILING_UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
-const COUNTER_MANA_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["mana"]);
-const ZONE_MOVE_MINUS_ONE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["minus", "one"]);
-const ZONE_MOVE_PLUS_ONE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["plus", "one"]);
-const ZONE_MOVE_FOR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["for", "each"]]);
-const ZONE_MOVE_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["this", "way"]]);
-const ZONE_MOVE_ADDITIONAL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["additional"]);
-const ZONE_MOVE_ROUNDED_DOWN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["rounded", "down"]);
-const DRAW_TRAILING_INSTEAD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const DRAW_TRAILING_THEN_PUT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["then", "put"]);
-const DRAW_AS_MANY_CARDS_AS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any & [&["as", "many", "card", "as"], &["as", "many", "cards", "as"]]
-);
-const DRAW_EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["equal", "to"]);
-const COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-            ],
-            &[
-                "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
-                "turn",
-            ],
-        ]
-);
-const COUNTER_UNLESS_PAYS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["pays"]);
-const COUNTER_DYNAMIC_PAYMENT_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [
-    &["and"],
-    &["or"],
-    &["where"],
-    &["plus"],
-    &["additional"],
-    &["equal"],
-    &["equals"],
+const ZONE_MOVE_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
+const ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORDS: &[&str] = &["graveyard", "graveyards"];
+const ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
+const ZONE_MOVE_WHO_WORD: &str = "who";
+const ZONE_MOVE_HALF_WORD: &str = "half";
+const DRAW_TRAILING_IF_WORD: &str = "if";
+const DRAW_TRAILING_UNLESS_WORD: &str = "unless";
+const ZONE_MOVE_IF_WORDS: &[&str] = &[DRAW_TRAILING_IF_WORD];
+const COUNTER_MANA_WORD: &str = "mana";
+const DRAW_MINUS_OPERATOR_WORDS: &[&str] = &["minus"];
+const DRAW_PLUS_OPERATOR_WORDS: &[&str] = &["plus"];
+const DRAW_ONE_AMOUNT_WORDS: &[&str] = &["one"];
+const DRAW_MINUS_ONE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier("operator", LexCaptureKind::OneOf(DRAW_MINUS_OPERATOR_WORDS)),
+    LexPattern::amount("amount", LexCaptureKind::OneOf(DRAW_ONE_AMOUNT_WORDS)),
 ]);
-const COUNTER_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const COUNTER_LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
-const COUNTER_SAME_NAME_AS_SPELL_PATTERN: ClauseShape<'static> = clause_shape!(contains_any_phrases & [
-    &[
-        &["same", "name", "as", "the", "spell"],
-        &["same", "name", "as", "that", "spell"],
-    ]
+const DRAW_PLUS_ONE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier("operator", LexCaptureKind::OneOf(DRAW_PLUS_OPERATOR_WORDS)),
+    LexPattern::amount("amount", LexCaptureKind::OneOf(DRAW_ONE_AMOUNT_WORDS)),
+]);
+const ZONE_MOVE_FOR_EACH_PHRASE: &[&str] = &["for", "each"];
+const ZONE_MOVE_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const ZONE_MOVE_ADDITIONAL_WORD: &str = "additional";
+const ZONE_MOVE_ROUNDED_DOWN_PREFIX: &[&str] = &["rounded", "down"];
+const DRAW_TRAILING_INSTEAD_WORDS: &[&str] = &["instead"];
+const DRAW_TRAILING_THEN_PUT_PREFIX: &[&str] = &["then", "put"];
+const DRAW_AS_MANY_CARDS_AS_PREFIXES: &[&[&str]] = &[
+    &["as", "many", "card", "as"],
+    &["as", "many", "cards", "as"],
+];
+const DRAW_EQUAL_TO_PREFIX: &[&str] = &["equal", "to"];
+const ZONE_MOVE_FOR_EACH_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+    "loop",
+    LexCaptureKind::OneOfPhrase(&[ZONE_MOVE_FOR_EACH_PHRASE]),
+)]);
+const ZONE_MOVE_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+    "reference",
+    LexCaptureKind::OneOfPhrase(&[ZONE_MOVE_THIS_WAY_PHRASE]),
+)]);
+const ZONE_MOVE_ROUNDED_DOWN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "rounding",
+        LexCaptureKind::OneOfPhrase(&[ZONE_MOVE_ROUNDED_DOWN_PREFIX]),
+    )]);
+const DRAW_TRAILING_INSTEAD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "instead",
+        LexCaptureKind::OneOfPhrase(&[DRAW_TRAILING_INSTEAD_WORDS]),
+    )]);
+const DRAW_TRAILING_THEN_PUT_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "action",
+        LexCaptureKind::OneOfPhrase(&[DRAW_TRAILING_THEN_PUT_PREFIX]),
+    )]);
+const DRAW_AS_MANY_CARDS_AS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
+    "comparison",
+    LexCaptureKind::OneOfPhrase(DRAW_AS_MANY_CARDS_AS_PREFIXES),
+)]);
+const DRAW_EQUAL_TO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
+    "equal_to",
+    LexCaptureKind::OneOfPhrase(&[DRAW_EQUAL_TO_PREFIX]),
+)]);
+const ZONE_MOVE_IF_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
+    "condition",
+    LexCaptureKind::OneOf(ZONE_MOVE_IF_WORDS),
+)]);
+const COUNTER_ACTION_WORDS: &[&str] = &["counter"];
+const COUNTER_TARGET_SPELL_WORDS: &[&str] = &["spell"];
+const COUNTER_SECOND_SPELL_CAST_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["thats", "second", "spell", "cast", "this", "turn"],
+    &["thats", "the", "second", "spell", "cast", "this", "turn"],
+];
+const COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::action("action", LexCaptureKind::OneOf(COUNTER_ACTION_WORDS)),
+    LexPattern::word("target"),
+    LexPattern::object("target", LexCaptureKind::OneOf(COUNTER_TARGET_SPELL_WORDS)),
+    LexPattern::condition(
+        "cast_order",
+        LexCaptureKind::OneOfPhrase(COUNTER_SECOND_SPELL_CAST_THIS_TURN_PHRASES),
+    ),
+]);
+const COUNTER_UNLESS_PAYS_WORD: &str = "pays";
+const COUNTER_DYNAMIC_PAYMENT_TAIL_WORDS: &[&str] = &[
+    "and",
+    "or",
+    "where",
+    "plus",
+    "additional",
+    "equal",
+    "equals",
+];
+const COUNTER_AND_WORD: &str = "and";
+const COUNTER_LIFE_WORD: &str = "life";
+const COUNTER_SAME_NAME_AS_SPELL_PHRASES: &[&[&str]] = &[
+    &["same", "name", "as", "the", "spell"],
+    &["same", "name", "as", "that", "spell"],
+];
+const COUNTER_GRAVEYARD_SAME_NAME_AS_SPELL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::modifier(
+        "before_zone",
+        LexCaptureKind::UntilAnyPhrase(ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_PHRASES),
+    ),
+    LexPattern::object(
+        "zone",
+        LexCaptureKind::OneOf(ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORDS),
+    ),
+    LexPattern::modifier(
+        "between_zone_and_name",
+        LexCaptureKind::UntilAnyPhrase(COUNTER_SAME_NAME_AS_SPELL_PHRASES),
+    ),
+    LexPattern::condition(
+        "same_name",
+        LexCaptureKind::OneOfPhrase(COUNTER_SAME_NAME_AS_SPELL_PHRASES),
+    ),
 ]);
 
+fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word() == Some(expected)
+}
+
+fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token.as_word().is_some_and(|word| expected.contains(&word))
+}
+
+fn token_words(tokens: &[OwnedLexToken]) -> Vec<&str> {
+    crate::runtime_backend::token_word_refs(tokens)
+}
+
+fn zone_move_exact_pattern_matches(
+    words: &[&str],
+    pattern: LexPattern<'static>,
+    capture: &str,
+) -> bool {
+    pattern
+        .match_word_refs(words)
+        .and_then(|matched| matched.capture_word_range(capture))
+        .is_some()
+}
+
+fn zone_move_prefix_pattern_matches(
+    words: &[&str],
+    pattern: LexPattern<'static>,
+    capture: &str,
+) -> bool {
+    pattern
+        .match_prefix_word_refs(words)
+        .and_then(|matched| matched.capture_word_range(capture))
+        .is_some()
+}
+
+fn zone_move_word_refs_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    let phrase_choices = [phrase];
+    let atoms = [LexPattern::modifier(
+        "prefix",
+        LexCaptureKind::OneOfPhrase(&phrase_choices),
+    )];
+    LexPattern::new(&atoms)
+        .match_prefix_word_refs(words)
+        .and_then(|matched| matched.capture_word_range("prefix"))
+        .is_some()
+}
+
+fn zone_move_word_refs_first_is(words: &[&str], expected: &str) -> bool {
+    let expected_words = [expected];
+    let atoms = [LexPattern::modifier(
+        "head",
+        LexCaptureKind::OneOf(&expected_words),
+    )];
+    LexPattern::new(&atoms)
+        .match_prefix_word_refs(words)
+        .and_then(|matched| matched.capture_word_range("head"))
+        .is_some()
+}
+
+fn zone_move_word_refs_contain_pattern(
+    words: &[&str],
+    pattern: LexPattern<'static>,
+    capture: &str,
+) -> bool {
+    pattern
+        .find_in_word_refs(words)
+        .and_then(|matched| matched.capture_word_range(capture))
+        .is_some()
+}
+
+fn counter_same_name_graveyard_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    COUNTER_GRAVEYARD_SAME_NAME_AS_SPELL_PATTERN
+        .find_in_clause(LexedClause::new(tokens))
+        .map(|_| {
+            Value::Count(
+                ObjectFilter::default()
+                    .in_zone(Zone::Graveyard)
+                    .match_tagged(
+                        TagKey::from("triggering"),
+                        crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+                    ),
+            )
+        })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DrawCardCountOffset {
+    MinusOne,
+    PlusOne,
+}
+
+fn parse_draw_card_count_offset_tail(tokens: &[OwnedLexToken]) -> Option<DrawCardCountOffset> {
+    let clause = LexedClause::new(tokens);
+    if DRAW_MINUS_ONE_TAIL_PATTERN.match_clause(clause).is_some() {
+        return Some(DrawCardCountOffset::MinusOne);
+    }
+    if DRAW_PLUS_ONE_TAIL_PATTERN.match_clause(clause).is_some() {
+        return Some(DrawCardCountOffset::PlusOne);
+    }
+    None
+}
 
 pub(crate) fn parse_move(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     use super::super::grammar::primitives as grammar;
@@ -111,18 +271,26 @@ pub(crate) fn parse_draw(
             let rest = &tokens[consumed..];
             if rest
                 .first()
-                .is_some_and(|token| ZONE_MOVE_CARD_OR_CARDS_WORD_PATTERN.matches_token(token))
+                .is_some_and(|token| token_is_any_word(token, ZONE_MOVE_CARD_OR_CARDS_WORDS))
             {
                 let trailing = trim_commas(&rest[1..]);
-                let trailing_words = crate::runtime_backend::token_word_refs(&trailing);
-                if ZONE_MOVE_MINUS_ONE_PATTERN.matches_words(&trailing_words) {
-                    value = Value::EventValueOffset(EventValueSpec::Amount, -1);
-                    parsed_that_many_minus_one = true;
-                } else if ZONE_MOVE_PLUS_ONE_PATTERN.matches_words(&trailing_words) {
-                    value = Value::EventValueOffset(EventValueSpec::Amount, 1);
-                    parsed_that_many_plus_one = true;
-                } else if !trailing_words.is_empty()
-                    && !ZONE_MOVE_FOR_EACH_PATTERN.matches_words(&trailing_words)
+                if let Some(offset) = parse_draw_card_count_offset_tail(&trailing) {
+                    match offset {
+                        DrawCardCountOffset::MinusOne => {
+                            value = Value::EventValueOffset(EventValueSpec::Amount, -1);
+                            parsed_that_many_minus_one = true;
+                        }
+                        DrawCardCountOffset::PlusOne => {
+                            value = Value::EventValueOffset(EventValueSpec::Amount, 1);
+                            parsed_that_many_plus_one = true;
+                        }
+                    }
+                } else if !trailing.is_empty()
+                    && !zone_move_word_refs_contain_pattern(
+                        &token_words(&trailing),
+                        ZONE_MOVE_FOR_EACH_PATTERN,
+                        "loop",
+                    )
                 {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing draw clause (clause: '{}')",
@@ -146,8 +314,7 @@ pub(crate) fn parse_draw(
             && token_slice_at_is_any(tokens, 1, &["card", "cards"])
         {
             (Value::Fixed(1), 1)
-        } else if token_slice_first_is_any(tokens, &["card", "cards"])
-        {
+        } else if token_slice_first_is_any(tokens, &["card", "cards"]) {
             let tail = trim_commas(&tokens[1..]);
             let value = parse_draw_card_prefixed_count_value(&tail)?.ok_or_else(|| {
                 CardTextError::ParseError(format!(
@@ -157,9 +324,7 @@ pub(crate) fn parse_draw(
             })?;
             consumed_embedded_card_keyword = true;
             (value, tokens.len())
-        } else if token_slice_first_is(tokens, "up")
-            && token_slice_at_is(tokens, 1, "to")
-        {
+        } else if token_slice_first_is(tokens, "up") && token_slice_at_is(tokens, 1, "to") {
             let Some((amount, used_amount)) = parse_number(&tokens[2..]) else {
                 return Err(CardTextError::ParseError(format!(
                     "missing draw count (clause: '{}')",
@@ -183,7 +348,7 @@ pub(crate) fn parse_draw(
         let mut card_word_idx = 0usize;
         if rest
             .first()
-            .is_some_and(|token| ZONE_MOVE_ADDITIONAL_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| token_is_word(token, ZONE_MOVE_ADDITIONAL_WORD))
         {
             card_word_idx = 1;
         }
@@ -192,7 +357,7 @@ pub(crate) fn parse_draw(
                 "missing card keyword".to_string(),
             ));
         };
-        if !ZONE_MOVE_CARD_OR_CARDS_WORD_PATTERN.matches_words(&[card_word]) {
+        if !ZONE_MOVE_CARD_OR_CARDS_WORDS.contains(&card_word) {
             return Err(CardTextError::ParseError(
                 "missing card keyword".to_string(),
             ));
@@ -209,12 +374,15 @@ pub(crate) fn parse_draw(
     );
 
     if !tail.is_empty() {
-        let tail_words = crate::runtime_backend::token_word_refs(&tail);
-        if !((parsed_that_many_minus_one
-            && ZONE_MOVE_MINUS_ONE_PATTERN.matches_words(&tail_words))
-            || (parsed_that_many_plus_one
-                && ZONE_MOVE_PLUS_ONE_PATTERN.matches_words(&tail_words)))
-        {
+        if !matches!(
+            (
+                parsed_that_many_minus_one,
+                parsed_that_many_plus_one,
+                parse_draw_card_count_offset_tail(&tail),
+            ),
+            (true, _, Some(DrawCardCountOffset::MinusOne))
+                | (_, true, Some(DrawCardCountOffset::PlusOne))
+        ) {
             if let Some(parsed) = parse_draw_for_each_player_condition(&tail, effect.clone())? {
                 effect = parsed;
             } else {
@@ -393,10 +561,7 @@ fn parse_draw_for_each_player_condition(
 
     let inner_tokens = trim_commas(&tokens[start..]);
     let inner_words = crate::runtime_backend::token_word_refs(&inner_tokens);
-    if !inner_words
-        .first()
-        .is_some_and(|word| ZONE_MOVE_WHO_WORD_PATTERN.matches_word(word))
-    {
+    if !zone_move_word_refs_first_is(&inner_words, ZONE_MOVE_WHO_WORD) {
         return Ok(None);
     }
 
@@ -441,17 +606,20 @@ fn parse_draw_for_each_player_condition(
 }
 
 pub(crate) fn parse_half_rounded_down_draw_count_words(words: &[&str]) -> Option<(Value, usize)> {
-    if !words
-        .first()
-        .is_some_and(|word| ZONE_MOVE_HALF_WORD_PATTERN.matches_word(word))
-    {
+    if !zone_move_word_refs_first_is(words, ZONE_MOVE_HALF_WORD) {
         return None;
     }
 
     let mut card_idx = None;
     for idx in 1..words.len() {
-        if ZONE_MOVE_CARD_OR_CARDS_WORD_PATTERN.matches_word_at(words, idx)
-            && ZONE_MOVE_ROUNDED_DOWN_PREFIX_PATTERN.matches_words(&words[idx + 1..])
+        if words
+            .get(idx)
+            .is_some_and(|word| ZONE_MOVE_CARD_OR_CARDS_WORDS.contains(word))
+            && zone_move_prefix_pattern_matches(
+                &words[idx + 1..],
+                ZONE_MOVE_ROUNDED_DOWN_PATTERN,
+                "rounding",
+            )
         {
             card_idx = Some(idx);
             break;
@@ -473,7 +641,7 @@ pub(crate) fn parse_draw_trailing_clause(
     draw_effect: EffectAst,
 ) -> Result<Option<EffectAst>, CardTextError> {
     let tail_words = crate::runtime_backend::token_word_refs(tokens);
-    if DRAW_TRAILING_INSTEAD_PATTERN.matches_words(&tail_words) {
+    if zone_move_exact_pattern_matches(&tail_words, DRAW_TRAILING_INSTEAD_PATTERN, "instead") {
         return Ok(Some(draw_effect));
     }
 
@@ -484,7 +652,7 @@ pub(crate) fn parse_draw_trailing_clause(
         )));
     }
 
-    if DRAW_TRAILING_THEN_PUT_PREFIX_PATTERN.matches_words(&tail_words) {
+    if zone_move_prefix_pattern_matches(&tail_words, DRAW_TRAILING_THEN_PUT_PATTERN, "action") {
         let put_tokens = trim_commas(&tokens[2..]);
         let put_effect = parse_put_into_hand(&put_tokens, None)?;
         return Ok(Some(EffectAst::Sequence {
@@ -492,10 +660,7 @@ pub(crate) fn parse_draw_trailing_clause(
         }));
     }
 
-    if tail_words
-        .first()
-        .is_some_and(|word| DRAW_TRAILING_IF_WORD_PATTERN.matches_word(word))
-    {
+    if zone_move_word_refs_first_is(&tail_words, DRAW_TRAILING_IF_WORD) {
         let predicate = parse_trailing_if_predicate_lexed(tokens).ok_or_else(|| {
             CardTextError::ParseError("missing condition after trailing if clause".to_string())
         })?;
@@ -506,10 +671,7 @@ pub(crate) fn parse_draw_trailing_clause(
         }));
     }
 
-    if tail_words
-        .first()
-        .is_some_and(|word| DRAW_TRAILING_UNLESS_WORD_PATTERN.matches_word(word))
-    {
+    if zone_move_word_refs_first_is(&tail_words, DRAW_TRAILING_UNLESS_WORD) {
         return try_build_unless(
             vec![draw_effect],
             SubjectVerbPrimitiveClause::new(tokens),
@@ -574,13 +736,13 @@ pub(crate) fn parse_draw_delayed_timing_words(words: &[&str]) -> Option<DelayedR
 }
 
 pub(crate) fn parse_draw_as_many_cards_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !DRAW_AS_MANY_CARDS_AS_PREFIX_PATTERN.matches_words(&clause_words) {
+    let words = token_words(tokens);
+    if !zone_move_prefix_pattern_matches(&words, DRAW_AS_MANY_CARDS_AS_PATTERN, "comparison") {
         return None;
     }
 
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let references_previous_event = ZONE_MOVE_THIS_WAY_PATTERN.matches_words(&clause_words);
+    let references_previous_event =
+        zone_move_word_refs_contain_pattern(&words, ZONE_MOVE_THIS_WAY_PATTERN, "reference");
     if references_previous_event {
         return Some(Value::EventValue(EventValueSpec::Amount));
     }
@@ -608,8 +770,8 @@ pub(crate) fn parse_draw_card_prefixed_count_value(
 pub(crate) fn parse_draw_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    let token_words = crate::runtime_backend::token_word_refs(tokens);
-    if !DRAW_EQUAL_TO_PREFIX_PATTERN.matches_words(&token_words) {
+    let token_words = token_words(tokens);
+    if !zone_move_prefix_pattern_matches(&token_words, DRAW_EQUAL_TO_PATTERN, "equal_to") {
         return Ok(None);
     }
 
@@ -642,12 +804,12 @@ pub(crate) fn parse_draw_equal_to_value(
         return Ok(Some(value));
     }
 
-    if DRAW_EQUAL_TO_PREFIX_PATTERN.matches_words(&token_words) {
+    if zone_move_prefix_pattern_matches(&token_words, DRAW_EQUAL_TO_PATTERN, "equal_to") {
         let value_tokens = &tokens[2..];
         let value_words = crate::runtime_backend::token_word_refs(value_tokens);
         let parse_stat_of_target =
             |stat_words: &[&str], constructor: fn(Box<ChooseSpec>) -> Value| {
-                if ClauseShape::new().prefix(stat_words).matches_words(&value_words) {
+                if zone_move_word_refs_start_with_phrase(&value_words, stat_words) {
                     let target_start = token_index_for_word_index(value_tokens, stat_words.len())
                         .unwrap_or(value_tokens.len());
                     let target_tokens = &value_tokens[target_start..];
@@ -679,8 +841,7 @@ pub(crate) fn parse_draw_equal_to_value(
     {
         return Ok(Some(value));
     }
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if ZONE_MOVE_THIS_WAY_PATTERN.matches_words(&clause_words) {
+    if zone_move_word_refs_contain_pattern(&token_words, ZONE_MOVE_THIS_WAY_PATTERN, "reference") {
         return Ok(Some(Value::EventValue(EventValueSpec::Amount)));
     }
     if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
@@ -731,9 +892,10 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let target_spell_second_this_turn =
-        COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PATTERN.matches_words(&clause_words);
-    if target_spell_second_this_turn {
+    if COUNTER_TARGET_SECOND_SPELL_THIS_TURN_PATTERN
+        .match_clause(LexedClause::new(tokens))
+        .is_some()
+    {
         return Ok(EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::TargetSpellCastOrderThisTurn(2),
             if_true: vec![EffectAst::subject_verb_counter(TargetAst::Spell(
@@ -743,7 +905,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         });
     }
 
-    if super::super::grammar::primitives::contains_word(tokens, "if") {
+    if zone_move_word_refs_contain_pattern(&clause_words, ZONE_MOVE_IF_PATTERN, "condition") {
         return Err(CardTextError::ParseError(format!(
             "missing conditional counter target or predicate (clause: '{}')",
             clause_words.join(" ")
@@ -758,18 +920,18 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     {
         let target = parse_counter_target_phrase(target_tokens)?;
         let pays_idx = find_index(unless_tokens, |token: &OwnedLexToken| {
-            COUNTER_UNLESS_PAYS_WORD_PATTERN.matches_token(token)
+            token_is_word(token, COUNTER_UNLESS_PAYS_WORD)
         })
         .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "missing pays keyword (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                ))
-            })?;
+            CardTextError::ParseError(format!(
+                "missing pays keyword (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            ))
+        })?;
 
         let mut payment_clause_tokens = unless_tokens[pays_idx..].to_vec();
         if let Some(first) = payment_clause_tokens.first_mut()
-            && COUNTER_UNLESS_PAYS_WORD_PATTERN.matches_token(first)
+            && token_is_word(first, COUNTER_UNLESS_PAYS_WORD)
         {
             first.replace_word("pay");
         }
@@ -778,11 +940,15 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             mana_pips_from_token(token)
                 .is_some_and(|pips| pips.iter().any(|symbol| matches!(symbol, ManaSymbol::X)))
         });
-        let has_dynamic_payment_tail =
-            payment_clause_words.iter().any(|word| {
-                COUNTER_DYNAMIC_PAYMENT_TAIL_WORD_PATTERN.matches_words(&[*word])
-            }) || ZONE_MOVE_FOR_EACH_PATTERN.matches_words(&payment_clause_words)
-                || has_x_mana_payment;
+        let has_dynamic_payment_tail = payment_clause_words
+            .iter()
+            .any(|word| COUNTER_DYNAMIC_PAYMENT_TAIL_WORDS.contains(word))
+            || zone_move_word_refs_contain_pattern(
+                &payment_clause_words,
+                ZONE_MOVE_FOR_EACH_PATTERN,
+                "loop",
+            )
+            || has_x_mana_payment;
         match crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(&payment_clause_tokens) {
             Ok(Some(cost)) => {
                 let should_keep_subject_verb_dynamic_path = has_dynamic_payment_tail
@@ -850,7 +1016,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             // "unless its controller pays mana equal to ..." uses a dynamic generic payment.
             if payment_words
                 .first()
-                .is_some_and(|word| COUNTER_MANA_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| *word == COUNTER_MANA_WORD)
                 && let Some(value) = parse_equal_to_aggregate_filter_value(&payment_tokens)
                     .or_else(|| parse_equal_to_number_of_filter_value(&payment_tokens))
             {
@@ -870,13 +1036,13 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             let trailing_words = crate::runtime_backend::token_word_refs(&trailing_tokens);
             if trailing_tokens
                 .first()
-                .is_some_and(|token| COUNTER_AND_WORD_PATTERN.matches_token(token))
+                .is_some_and(|token| token_is_word(token, COUNTER_AND_WORD))
             {
                 let life_tokens = trim_commas(&trailing_tokens[1..]);
                 if let Some((amount, used)) = parse_value(&life_tokens)
                     && life_tokens
                         .get(used)
-                        .is_some_and(|token| COUNTER_LIFE_WORD_PATTERN.matches_token(token))
+                        .is_some_and(|token| token_is_word(token, COUNTER_LIFE_WORD))
                     && trim_commas(&life_tokens[used + 1..]).is_empty()
                 {
                     life = Some(amount);
@@ -896,27 +1062,17 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 &[&["where", "x", "is"], &["where", "x", "equals"]],
             )
             .is_some()
-                && trailing_words
-                    .iter()
-                    .any(|word| ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN.matches_word(word))
-                && COUNTER_SAME_NAME_AS_SPELL_PATTERN.matches_words(&trailing_words)
+                && let Some(same_name_value) =
+                    counter_same_name_graveyard_count_value(&trailing_tokens)
             {
-                if mana.as_slice() == [ManaSymbol::X] {
-                    x_value = Some(Value::Count(
-                        ObjectFilter::default()
-                            .in_zone(Zone::Graveyard)
-                            .match_tagged(
-                                TagKey::from("triggering"),
-                                crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
-                            ),
-                    ));
-                } else {
+                if mana.as_slice() != [ManaSymbol::X] {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing counter-unless payment clause (clause: '{}', trailing: '{}')",
                         crate::runtime_backend::token_word_refs(tokens).join(" "),
                         trailing_words.join(" ")
                     )));
                 }
+                x_value = Some(same_name_value);
             } else if let Some(value) = parse_value_binding_clause(&trailing_tokens) {
                 if mana.as_slice() == [ManaSymbol::X] {
                     x_value = Some(value);
@@ -970,25 +1126,8 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 crate::runtime_backend::lexer::find_token_word(&unless_tokens, "where")
         {
             let where_tokens = trim_commas(&unless_tokens[where_idx..]);
-            let where_words = crate::runtime_backend::token_word_refs(&where_tokens);
-            x_value = parse_value_binding_clause(&where_tokens).or_else(|| {
-                if where_words
-                    .iter()
-                    .any(|word| ZONE_MOVE_GRAVEYARD_OR_GRAVEYARDS_WORD_PATTERN.matches_word(word))
-                    && COUNTER_SAME_NAME_AS_SPELL_PATTERN.matches_words(&where_words)
-                {
-                    Some(Value::Count(
-                        ObjectFilter::default()
-                            .in_zone(Zone::Graveyard)
-                            .match_tagged(
-                                TagKey::from("triggering"),
-                                crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
-                            ),
-                    ))
-                } else {
-                    None
-                }
-            });
+            x_value = parse_value_binding_clause(&where_tokens)
+                .or_else(|| counter_same_name_graveyard_count_value(&where_tokens));
         }
 
         return Ok(EffectAst::subject_verb_counter_unless_pays(

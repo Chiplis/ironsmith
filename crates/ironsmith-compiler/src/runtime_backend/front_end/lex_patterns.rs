@@ -127,31 +127,49 @@ impl<'p> LexPattern<'p> {
         self.match_clause(clause).is_some()
     }
 
+    pub(crate) fn matches(self, clause: LexedClause<'_>) -> bool {
+        self.matches_clause(clause)
+    }
+
     pub(crate) fn matches_prefix(self, clause: LexedClause<'_>) -> bool {
         self.match_prefix(clause).is_some()
     }
 
     pub(crate) fn match_clause<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
-        let matched = self.match_words(clause, words.as_slice(), 0, true)?;
+        let matched = self.match_words(Some(clause), words.as_slice(), 0, true)?;
         Some(matched)
     }
 
     pub(crate) fn match_prefix<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
-        self.match_words(clause, words.as_slice(), 0, false)
+        self.match_words(Some(clause), words.as_slice(), 0, false)
+    }
+
+    pub(crate) fn match_word_refs(self, words: &[&str]) -> Option<LexPatternMatch<'p>> {
+        self.match_words(None, words, 0, true)
+    }
+
+    pub(crate) fn match_prefix_word_refs(self, words: &[&str]) -> Option<LexPatternMatch<'p>> {
+        self.match_words(None, words, 0, false)
+    }
+
+    pub(crate) fn find_in_word_refs(self, words: &[&str]) -> Option<LexPatternMatch<'p>> {
+        (0..=words.len())
+            .filter_map(|start| self.match_words(None, words, start, false))
+            .min_by_key(|matched| matched.word_range.start)
     }
 
     pub(crate) fn find_in_clause<'a>(self, clause: LexedClause<'a>) -> Option<LexPatternMatch<'p>> {
         let words = clause.word_refs();
         (0..=words.len())
-            .filter_map(|start| self.match_words(clause, words.as_slice(), start, false))
+            .filter_map(|start| self.match_words(Some(clause), words.as_slice(), start, false))
             .min_by_key(|matched| matched.word_range.start)
     }
 
     fn match_words(
         self,
-        clause: LexedClause<'_>,
+        clause: Option<LexedClause<'_>>,
         words: &[&str],
         start: usize,
         require_end: bool,
@@ -172,7 +190,7 @@ impl<'p> LexPattern<'p> {
 
 fn match_atoms<'p>(
     atoms: &[LexPatternAtom<'p>],
-    clause: LexedClause<'_>,
+    clause: Option<LexedClause<'_>>,
     words: &[&str],
     start: usize,
     captures: &mut Vec<LexPatternCapture<'p>>,
@@ -188,7 +206,7 @@ fn match_atoms<'p>(
                 cursor += 1;
             }
             LexPatternAtom::Token(expected) => {
-                if !token_kind_at_word_boundary(clause, cursor, expected) {
+                if !token_kind_at_word_boundary(clause?, cursor, expected) {
                     return None;
                 }
             }
@@ -262,7 +280,7 @@ fn match_capture<'p>(
     name: &'p str,
     role: Option<LexCaptureRole>,
     kind: LexCaptureKind<'p>,
-    clause: LexedClause<'_>,
+    clause: Option<LexedClause<'_>>,
     words: &[&str],
     cursor: usize,
     captures: &mut Vec<LexPatternCapture<'p>>,
@@ -342,7 +360,7 @@ fn match_capture<'p>(
             Some(end)
         }
         LexCaptureKind::UntilLastPhraseBeforeToken(phrase, delimiter) => {
-            let delimiter_word = word_index_before_token_kind(clause, cursor, delimiter)?;
+            let delimiter_word = word_index_before_token_kind(clause?, cursor, delimiter)?;
             let end = rfind_phrase_in_word_range(words, cursor, delimiter_word, phrase)?;
             captures.push(LexPatternCapture {
                 name,
@@ -370,7 +388,7 @@ fn match_capture<'p>(
             Some(end)
         }
         LexCaptureKind::UntilToken(delimiter) => {
-            let end = word_index_before_token_kind(clause, cursor, delimiter)?;
+            let end = word_index_before_token_kind(clause?, cursor, delimiter)?;
             captures.push(LexPatternCapture {
                 name,
                 role,

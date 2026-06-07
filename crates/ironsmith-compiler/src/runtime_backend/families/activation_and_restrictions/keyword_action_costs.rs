@@ -9,94 +9,90 @@ use crate::runtime_backend::value_helpers::{
 };
 
 const PAYMENT_FOR_EACH_PREFIXES: &[&[&str]] = &[&["for", "each"], &["each"]];
-const UNTAP_ONLY_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["untap"], &["untaps"]]);
-const UNTAP_RESTRICTION_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any & [&["untap"], &["untaps"]];
-    contains_words & ["during"];
-    contains_any_words & [&["step", "steps"]]
-);
-const CUMULATIVE_UPKEEP_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["cumulative", "upkeep"]);
-const ADD_MANA_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["add"]);
-const PAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["pay"], &["pays"]]);
-const MANA_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["mana"]);
-const WHERE_X_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["where", "x", "is"], &["where", "x", "equals"]]);
-const SAME_NAME_AS_TRIGGERING_SPELL_GRAVEYARD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["same", "name", "as", "the", "spell"],
-            &["same", "name", "as", "that", "spell"],
-        ]];
-    contains_any_words & [&["graveyard", "graveyards"]]
-);
-const CREW_SORCERY_SPEED_REMINDER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["activate", "only", "as", "a", "sorcery"]]);
-const ONCE_PER_TURN_REMINDER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["activate", "only", "once", "each", "turn"],
-            &["activate", "only", "once", "per", "turn"],
-        ]]
-);
-const AURA_SWAP_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["aura", "swap"]);
-const EMERGE_FROM_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["emerge", "from"]);
-const UMBRA_ARMOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["umbra", "armor"]);
-const JOB_SELECT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["job", "select"]);
-const TOXIC_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["toxic"]);
-const FIRST_STRIKE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["first", "strike"]);
-const DOUBLE_STRIKE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["double", "strike"]);
-const PROTECTION_FROM_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["protection", "from"]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["and"]);
-const AND_EXACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const OR_EXACT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const CAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["can"]);
-const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
-const T_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["t"]);
-const VE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["ve"]);
-const CANT_CONTRACTION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["cannot"], &["can't"]]);
-const YOUVE_CONTRACTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you've"]);
-const COST_OR_COSTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["cost"], &["costs"]]);
-const SUNBURST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["sunburst"]);
-const IT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
-const DEAL_OR_DEALS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["deal"], &["deals"]]);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
-const AND_OR_CONNECTOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["and"], &["or"]]);
-const LIFE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["life"]);
-const ENCHANTED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["enchanted"]);
-const CONTROLLER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["controller"]);
-const ATTACHED_CONTROLLER_OBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["creature"],
-            &["creatures"],
-            &["permanent"],
-            &["permanents"],
-            &["artifact"],
-            &["artifacts"],
-            &["enchantment"],
-            &["enchantments"],
-            &["land"],
-            &["lands"],
-        ]
-);
-const DISCARD_OR_DISCARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["discard", "discards"]]);
-const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["card", "cards"]]);
-const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["spell", "spells"]]);
-const EVERYTHING_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["everything"]);
-const CANT_BE_BLOCKED_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["cant", "be", "blocked"], &["cannot", "be", "blocked"]]);
+const UNTAP_ONLY_TAILS: &[&[&str]] = &[&["untap"], &["untaps"]];
+const UNTAP_RESTRICTION_PREFIXES: &[&[&str]] = &[&["untap"], &["untaps"]];
+const CUMULATIVE_UPKEEP_PREFIX: &[&str] = &["cumulative", "upkeep"];
+const ADD_MANA_PREFIX: &[&str] = &["add"];
+const PAY_PREFIXES: &[&[&str]] = &[&["pay"], &["pays"]];
+const MANA_PREFIX: &[&str] = &["mana"];
+const WHERE_X_PREFIXES: &[&[&str]] = &[&["where", "x", "is"], &["where", "x", "equals"]];
+const SAME_NAME_AS_TRIGGERING_SPELL_PHRASES: &[&[&str]] = &[
+    &["same", "name", "as", "the", "spell"],
+    &["same", "name", "as", "that", "spell"],
+];
+const CREW_SORCERY_SPEED_REMINDER_PHRASE: &[&str] = &["activate", "only", "as", "a", "sorcery"];
+const ONCE_PER_TURN_REMINDER_PHRASES: &[&[&str]] = &[
+    &["activate", "only", "once", "each", "turn"],
+    &["activate", "only", "once", "per", "turn"],
+];
+const AURA_SWAP_PREFIX: &[&str] = &["aura", "swap"];
+const EMERGE_FROM_PREFIX: &[&str] = &["emerge", "from"];
+const UMBRA_ARMOR_PREFIX: &[&str] = &["umbra", "armor"];
+const JOB_SELECT_PREFIX: &[&str] = &["job", "select"];
+const TOXIC_PREFIX: &[&str] = &["toxic"];
+const FIRST_STRIKE_PREFIX: &[&str] = &["first", "strike"];
+const DOUBLE_STRIKE_PREFIX: &[&str] = &["double", "strike"];
+const PROTECTION_FROM_PREFIX: &[&str] = &["protection", "from"];
+const ATTACHED_CONTROLLER_OBJECT_WORDS: &[&str] = &[
+    "creature",
+    "creatures",
+    "permanent",
+    "permanents",
+    "artifact",
+    "artifacts",
+    "enchantment",
+    "enchantments",
+    "land",
+    "lands",
+];
+const CANT_BE_BLOCKED_SUFFIXES: &[&[&str]] =
+    &[&["cant", "be", "blocked"], &["cannot", "be", "blocked"]];
+
+fn keyword_action_words_start_with(words: &[&str], prefix: &[&str]) -> bool {
+    word_slice_starts_with(words, prefix)
+}
+
+fn keyword_action_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
+    word_slice_starts_with_any(words, prefixes)
+}
+
+fn keyword_action_words_equal_any(words: &[&str], phrases: &[&[&str]]) -> bool {
+    word_slice_eq_any(words, phrases)
+}
+
+fn keyword_action_words_contain_word(words: &[&str], word: &str) -> bool {
+    word_slice_contains_word(words, word)
+}
+
+fn keyword_action_words_contain_any_word(words: &[&str], candidates: &[&str]) -> bool {
+    word_slice_contains_any_word(words, candidates)
+}
+
+fn keyword_action_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    word_slice_contains_phrase(words, phrase)
+}
+
+fn keyword_action_words_contain_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+    word_slice_contains_any_phrase(words, phrases)
+}
+
+fn keyword_action_words_end_with_any(words: &[&str], suffixes: &[&[&str]]) -> bool {
+    word_slice_ends_with_any(words, suffixes)
+}
+
+fn keyword_action_word_at_is(words: &[&str], idx: usize, expected: &str) -> bool {
+    word_slice_at_is(words, idx, expected)
+}
+
+fn keyword_action_word_at_is_any(words: &[&str], idx: usize, candidates: &[&str]) -> bool {
+    word_slice_at_is_any(words, idx, candidates)
+}
+
+fn keyword_action_token_is(token: &OwnedLexToken, expected: &str) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| token.parser_text() == expected)
+}
 
 const SIMPLE_HEAD_KEYWORD_ACTIONS: &[(&str, KeywordAction)] = &[
     ("evolve", KeywordAction::Evolve),
@@ -394,10 +390,13 @@ pub(crate) fn target_ast_to_object_filter(target: TargetAst) -> Option<ObjectFil
 }
 
 pub(crate) fn is_supported_untap_restriction_tail(words: &[&str]) -> bool {
-    if UNTAP_ONLY_TAIL_PATTERN.matches_words(words) {
+    if keyword_action_words_equal_any(words, UNTAP_ONLY_TAILS) {
         return true;
     }
-    if !UNTAP_RESTRICTION_TAIL_PATTERN.matches_words(words) {
+    if !keyword_action_words_start_with_any(words, UNTAP_RESTRICTION_PREFIXES)
+        || !keyword_action_words_contain_word(words, "during")
+        || !keyword_action_words_contain_any_word(words, &["step", "steps"])
+    {
         return false;
     }
 
@@ -428,19 +427,19 @@ pub(crate) fn normalize_cant_words(tokens: &[OwnedLexToken]) -> Vec<String> {
     let mut normalized = Vec::with_capacity(words.len());
     let mut idx = 0;
     while idx < words.len() {
-        if CANT_CONTRACTION_WORD_PATTERN.matches_word_at(&words, idx) {
+        if keyword_action_word_at_is_any(&words, idx, &["cannot", "can't"]) {
             normalized.push("cant".to_string());
             idx += 1;
-        } else if CAN_WORD_PATTERN.matches_word_at(&words, idx)
-            && T_WORD_PATTERN.matches_word_at(&words, idx + 1)
+        } else if keyword_action_word_at_is(&words, idx, "can")
+            && keyword_action_word_at_is(&words, idx + 1, "t")
         {
             normalized.push("cant".to_string());
             idx += 2;
-        } else if YOUVE_CONTRACTION_WORD_PATTERN.matches_word_at(&words, idx) {
+        } else if keyword_action_word_at_is(&words, idx, "you've") {
             normalized.push("youve".to_string());
             idx += 1;
-        } else if YOU_WORD_PATTERN.matches_word_at(&words, idx)
-            && VE_WORD_PATTERN.matches_word_at(&words, idx + 1)
+        } else if keyword_action_word_at_is(&words, idx, "you")
+            && keyword_action_word_at_is(&words, idx + 1, "ve")
         {
             normalized.push("youve".to_string());
             idx += 2;
@@ -504,7 +503,7 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
         return text;
     }
 
-    if ADD_MANA_PREFIX_PATTERN.matches_words(tail)
+    if keyword_action_words_start_with(tail, ADD_MANA_PREFIX)
         && let Some((cost, consumed)) = leading_mana_symbols_to_oracle(&tail[1..])
         && consumed + 1 == tail.len()
     {
@@ -516,7 +515,7 @@ fn cumulative_upkeep_text(words: &[&str]) -> String {
         return format!("Cumulative upkeep {cost}");
     }
     if tail.len() == 3
-        && OR_EXACT_WORD_PATTERN.matches_word(tail[1])
+        && tail[1] == "or"
         && let (Some((left, 1)), Some((right, 1))) = (
             leading_mana_symbols_to_oracle(&tail[..1]),
             leading_mana_symbols_to_oracle(&tail[2..3]),
@@ -622,8 +621,73 @@ fn parse_payment_clause_as_effects(
 
 fn find_payment_alternative_or(tokens: &[OwnedLexToken]) -> Option<usize> {
     find_index_with(tokens, |idx, token| {
-        OR_EXACT_WORD_PATTERN.matches_token(token) && !is_comparison_or_delimiter(tokens, idx)
+        keyword_action_token_is(token, "or") && !is_comparison_or_delimiter(tokens, idx)
     })
+}
+
+fn parse_single_graveyard_bottom_library_payment(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<TotalCost>, CardTextError> {
+    if !token_slice_first_is(tokens, "put") {
+        return Ok(None);
+    }
+    let Some((count, count_used)) = parse_value(&tokens[1..]) else {
+        return Ok(None);
+    };
+    let Value::Fixed(count) = count else {
+        return Ok(None);
+    };
+    if count <= 0 {
+        return Ok(None);
+    }
+    let card_idx = 1 + count_used;
+    if !tokens
+        .get(card_idx)
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "card" | "cards"))
+    {
+        return Ok(None);
+    }
+
+    let tail = trim_edge_punctuation(&trim_commas(&tokens[card_idx + 1..]));
+    let tail_words = words(&tail);
+    if !word_slice_starts_with(
+        &tail_words,
+        &[
+            "from",
+            "a",
+            "single",
+            "graveyard",
+            "on",
+            "the",
+            "bottom",
+            "of",
+        ],
+    ) {
+        return Ok(None);
+    }
+    let owner_tail = &tail_words[8..];
+    if !owner_tail
+        .first()
+        .is_some_and(|word| matches!(*word, "its" | "their"))
+        || !owner_tail
+            .iter()
+            .any(|word| matches!(*word, "owner" | "owners" | "owner's" | "owners'"))
+        || !owner_tail.iter().any(|word| *word == "library")
+    {
+        return Ok(None);
+    }
+
+    let filter = ObjectFilter::default()
+        .in_zone(Zone::Graveyard)
+        .single_graveyard();
+    crate::costs::payment_effects_to_total_cost(vec![Effect::move_to_zone(
+        ChooseSpec::Object(filter).with_count(ChoiceCount::exactly(count as usize)),
+        Zone::Library,
+        false,
+    )])
+    .map(Some)
+    .map_err(CardTextError::ParseError)
 }
 
 pub(crate) fn parse_payment_clause_as_total_cost(
@@ -655,6 +719,10 @@ pub(crate) fn parse_payment_clause_as_total_cost(
         return Ok(Some(dynamic_cost));
     }
 
+    if let Some(effect_cost) = parse_single_graveyard_bottom_library_payment(&trimmed)? {
+        return Ok(Some(effect_cost));
+    }
+
     if let Ok(total_cost) = parse_activation_cost(&trimmed)
         && !total_cost.is_free()
     {
@@ -673,7 +741,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
     let words_before_pay_strip = words(tokens);
-    let tokens = if PAY_PREFIX_PATTERN.matches_words(&words_before_pay_strip) {
+    let tokens = if keyword_action_words_start_with_any(&words_before_pay_strip, PAY_PREFIXES) {
         &tokens[1..]
     } else {
         tokens
@@ -686,7 +754,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
         return Ok(Some(energy_cost));
     }
     let token_words = words(&tokens);
-    if MANA_PREFIX_PATTERN.matches_words(&token_words)
+    if keyword_action_words_start_with(&token_words, MANA_PREFIX)
         && let Some(value) = parse_equal_to_aggregate_filter_value(&tokens)
             .or_else(|| parse_equal_to_number_of_filter_value(&tokens))
     {
@@ -738,7 +806,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
         if let Some((amount, used)) = parse_value(&life_tokens)
             && life_tokens
                 .get(used)
-                .is_some_and(|token| LIFE_WORD_PATTERN.matches_token(token))
+                .is_some_and(|token| keyword_action_token_is(token, "life"))
             && trim_edge_punctuation(&trim_commas(&life_tokens[used + 1..])).is_empty()
         {
             return Ok(Some(TotalCost::from_costs(vec![
@@ -747,7 +815,7 @@ fn parse_dynamic_payment_clause_as_total_cost(
             ])));
         }
         return Ok(None);
-    } else if WHERE_X_PREFIX_PATTERN.matches_words(&trailing_words) {
+    } else if keyword_action_words_start_with_any(&trailing_words, WHERE_X_PREFIXES) {
         if !mana_cost.has_x() {
             return Err(CardTextError::ParseError(format!(
                 "where-X payment clause has no X mana symbol (clause: '{}')",
@@ -755,7 +823,13 @@ fn parse_dynamic_payment_clause_as_total_cost(
             )));
         }
         x_value = parse_value_binding_clause(&trailing).or_else(|| {
-            if SAME_NAME_AS_TRIGGERING_SPELL_GRAVEYARD_PATTERN.matches_words(&trailing_words) {
+            if keyword_action_words_contain_any_phrase(
+                &trailing_words,
+                SAME_NAME_AS_TRIGGERING_SPELL_PHRASES,
+            ) && keyword_action_words_contain_any_word(
+                &trailing_words,
+                &["graveyard", "graveyards"],
+            ) {
                 Some(Value::Count(
                     ObjectFilter::default()
                         .in_zone(Zone::Graveyard)
@@ -1002,7 +1076,7 @@ where
     if words.first().copied() != Some(keyword) {
         return None;
     }
-    if COST_OR_COSTS_WORD_PATTERN.matches_word_at(words, 1) {
+    if keyword_action_word_at_is_any(words, 1, &["cost", "costs"]) {
         return None;
     }
     if let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[1..])
@@ -1199,11 +1273,42 @@ fn parse_exact_ability_phrase(words: &[&str]) -> Option<KeywordAction> {
         .find_map(|(phrase, kind)| (*phrase == words).then(|| exact_ability_phrase_action(*kind)))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cumulative_upkeep_accepts_single_graveyard_bottom_library_payment() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+            0,
+        )
+        .expect("line should lex");
+
+        let action = parse_ability_phrase(&tokens).expect("cumulative upkeep should parse");
+        let KeywordAction::CumulativeUpkeep { total_cost, .. } = action else {
+            panic!("expected cumulative upkeep action, got {action:?}");
+        };
+        let payment = crate::costs::total_cost_to_payment_effects(&total_cost);
+        let debug = format!("{payment:?}");
+        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+        assert!(debug.contains("single_graveyard: true"), "{debug}");
+
+        let actions =
+            crate::runtime_backend::families::clause_support::parse_ability_line_lexed(&tokens)
+                .expect("cumulative upkeep line should parse through ability-line facade");
+        assert!(
+            matches!(actions.as_slice(), [KeywordAction::CumulativeUpkeep { .. }]),
+            "{actions:?}"
+        );
+    }
+}
+
 pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
     let mut phrase_tokens = tokens;
     if phrase_tokens
         .first()
-        .is_some_and(|token| AND_EXACT_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| keyword_action_token_is(token, "and"))
     {
         phrase_tokens = &phrase_tokens[1..];
     }
@@ -1222,10 +1327,12 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_words(&words) {
+    if keyword_action_words_start_with(&words, CUMULATIVE_UPKEEP_PREFIX) {
         let reminder_start =
             find_index(phrase_tokens, |token| token.is_period()).unwrap_or(phrase_tokens.len());
-        let cost_tokens = trim_commas(&phrase_tokens[2..reminder_start]).to_vec();
+        let cost_tokens =
+            strip_leading_keyword_cost_separator(&trim_commas(&phrase_tokens[2..reminder_start]))
+                .to_vec();
         let text = cumulative_upkeep_text(&words);
 
         match parse_payment_clause_as_total_cost(&cost_tokens) {
@@ -1275,8 +1382,10 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         if words.len() >= 2
             && let Some(amount) = parse_named_number(words[1])
         {
-            let has_sorcery_speed = CREW_SORCERY_SPEED_REMINDER_PATTERN.matches_words(&words);
-            let has_once_per_turn = ONCE_PER_TURN_REMINDER_PATTERN.matches_words(&words);
+            let has_sorcery_speed =
+                keyword_action_words_contain_phrase(&words, CREW_SORCERY_SPEED_REMINDER_PHRASE);
+            let has_once_per_turn =
+                keyword_action_words_contain_any_phrase(&words, ONCE_PER_TURN_REMINDER_PHRASES);
 
             let mut additional_restrictions = Vec::new();
             let timing = if has_sorcery_speed {
@@ -1309,7 +1418,8 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         if words.len() >= 2
             && let Some(amount) = parse_named_number(words[1])
         {
-            let has_once_per_turn = ONCE_PER_TURN_REMINDER_PATTERN.matches_words(&words);
+            let has_once_per_turn =
+                keyword_action_words_contain_any_phrase(&words, ONCE_PER_TURN_REMINDER_PHRASES);
 
             let mut additional_restrictions = Vec::new();
             let timing = ActivationTiming::SorcerySpeed;
@@ -1351,12 +1461,13 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     if let Some(action) = parse_dynamic_soulshift_keyword_action(&words) {
         return Some(action);
     }
-    if let Some(action) = parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
+    if let Some(action) =
+        parse_numeric_keyword_action(&words, "soulshift", KeywordAction::Soulshift)
     {
         return Some(action);
     }
 
-    if AURA_SWAP_PREFIX_PATTERN.matches_words(&words)
+    if keyword_action_words_start_with(&words, AURA_SWAP_PREFIX)
         && let Some((cost_text, _consumed)) = leading_mana_symbols_to_oracle(&words[2..])
         && let Ok(cost) = parse_scryfall_mana_cost(&cost_text)
     {
@@ -1552,13 +1663,13 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
 
-    if EMERGE_FROM_PREFIX_PATTERN.matches_words(&words) {
+    if keyword_action_words_start_with(&words, EMERGE_FROM_PREFIX) {
         return marker_text_from_words(&words).map(KeywordAction::MarkerText);
     }
-    if JOB_SELECT_PREFIX_PATTERN.matches_words(&words) {
+    if keyword_action_words_start_with(&words, JOB_SELECT_PREFIX) {
         return Some(KeywordAction::MarkerText("Job select".to_string()));
     }
-    if UMBRA_ARMOR_PREFIX_PATTERN.matches_words(&words) {
+    if keyword_action_words_start_with(&words, UMBRA_ARMOR_PREFIX) {
         return Some(KeywordAction::UmbraArmor);
     }
 
@@ -1610,7 +1721,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     if keyword_head_is(head, "modular") {
-        if SUNBURST_WORD_PATTERN.matches_word_at(&words, 1) {
+        if keyword_action_word_at_is(&words, 1, "sunburst") {
             return Some(KeywordAction::ModularSunburst);
         }
         if words.len() >= 2
@@ -1772,11 +1883,11 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         return Some(action);
     }
 
-    if words.len() == 3 && PROTECTION_FROM_PREFIX_PATTERN.matches_words(&words) {
+    if words.len() == 3 && keyword_action_words_start_with(&words, PROTECTION_FROM_PREFIX) {
         let value = words[2];
         return if let Some(color) = parse_color(value) {
             Some(KeywordAction::ProtectionFrom(color))
-        } else if EVERYTHING_PATTERN.matches_words(&[value]) {
+        } else if value == "everything" {
             Some(KeywordAction::ProtectionFromEverything)
         } else {
             parse_card_type(value)
@@ -1786,25 +1897,25 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
     }
 
     // "toxic N" needs exactly 2 words
-    if words.len() == 2 && TOXIC_PREFIX_PATTERN.matches_words(&words) {
+    if words.len() == 2 && keyword_action_words_start_with(&words, TOXIC_PREFIX) {
         let amount = parse_named_number(words[1]).unwrap_or(1);
         return Some(KeywordAction::Toxic(amount));
     }
     if words.len() >= 2 {
-        if FIRST_STRIKE_PREFIX_PATTERN.matches_words(&words) {
-            if words.len() > 2 && AND_WORD_PATTERN.matches_words(&words) {
+        if keyword_action_words_start_with(&words, FIRST_STRIKE_PREFIX) {
+            if words.len() > 2 && keyword_action_words_contain_word(&words, "and") {
                 return None;
             }
             return Some(KeywordAction::FirstStrike);
         }
-        if DOUBLE_STRIKE_PREFIX_PATTERN.matches_words(&words) {
-            if words.len() > 2 && AND_WORD_PATTERN.matches_words(&words) {
+        if keyword_action_words_start_with(&words, DOUBLE_STRIKE_PREFIX) {
+            if words.len() > 2 && keyword_action_words_contain_word(&words, "and") {
                 return None;
             }
             return Some(KeywordAction::DoubleStrike);
         }
     }
-    if CANT_BE_BLOCKED_SUFFIX_PATTERN.matches_words(&words) {
+    if keyword_action_words_end_with_any(&words, CANT_BE_BLOCKED_SUFFIXES) {
         return Some(KeywordAction::Unblockable);
     }
     None
@@ -1816,9 +1927,9 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens(
 ) -> Vec<OwnedLexToken> {
     let trigger_words = crate::runtime_backend::token_word_refs(trigger_tokens);
     let references_enchanted_controller = find_window_by(&trigger_words, 3, |window| {
-        ENCHANTED_WORD_PATTERN.matches_word(window[0])
-            && ATTACHED_CONTROLLER_OBJECT_WORD_PATTERN.matches_word(window[1])
-            && CONTROLLER_WORD_PATTERN.matches_word(window[2])
+        window[0] == "enchanted"
+            && keyword_action_words_contain_word(ATTACHED_CONTROLLER_OBJECT_WORDS, window[1])
+            && window[2] == "controller"
     })
     .is_some();
     if !references_enchanted_controller {
@@ -1859,14 +1970,14 @@ pub(crate) fn maybe_strip_leading_damage_subject_tokens(
         return None;
     }
 
-    if IT_WORD_PATTERN.matches_word_at(&words, 0)
-        && DEAL_OR_DEALS_WORD_PATTERN.matches_word_at(&words, 1)
+    if keyword_action_word_at_is(&words, 0, "it")
+        && keyword_action_word_at_is_any(&words, 1, &["deal", "deals"])
     {
         return Some(&tokens[1..]);
     }
 
     for subject_len in 1..tokens.len() {
-        if !DEAL_OR_DEALS_WORD_PATTERN.matches_word_at(&words, subject_len) {
+        if !keyword_action_word_at_is_any(&words, subject_len, &["deal", "deals"]) {
             continue;
         }
         if crate::runtime_backend::front_end::shared::util::is_source_reference_words(
@@ -1888,7 +1999,7 @@ pub(crate) fn looks_like_trigger_object_list_tail(tokens: &[OwnedLexToken]) -> b
         return false;
     }
 
-    let starts_with_or = OR_EXACT_WORD_PATTERN.matches_word_at(&words, 0);
+    let starts_with_or = keyword_action_word_at_is(&words, 0, "or");
     let first_candidate = if starts_with_or {
         words.get(1).copied()
     } else {
@@ -1919,7 +2030,7 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     }
 
     let prefix_words = crate::runtime_backend::token_word_refs(trigger_prefix_tokens);
-    if !DISCARD_OR_DISCARDS_WORD_PATTERN.matches_words(&prefix_words) {
+    if !keyword_action_words_contain_any_word(&prefix_words, &["discard", "discards"]) {
         return false;
     }
 
@@ -1933,14 +2044,15 @@ pub(crate) fn looks_like_trigger_discard_qualifier_tail(
     };
     let typeish = parse_card_type(first_word).is_some()
         || parse_non_type(first_word).is_some()
-        || AND_OR_CONNECTOR_PATTERN.matches_word(first_word);
+        || first_word == "and"
+        || first_word == "or";
     if !typeish {
         return false;
     }
 
     find_index(tail_tokens, |token| token.is_comma()).is_some_and(|comma_idx| {
         let before_words = crate::runtime_backend::token_word_refs(&tail_tokens[..comma_idx]);
-        CARD_OR_CARDS_WORD_PATTERN.matches_words(&before_words)
+        keyword_action_words_contain_any_word(&before_words, &["card", "cards"])
     })
 }
 
@@ -1958,8 +2070,8 @@ pub(crate) fn looks_like_trigger_type_list_tail(tokens: &[OwnedLexToken]) -> boo
             parse_card_type(word).is_some() || parse_subtype_word(word).is_some()
         });
     first_is_card_type
-        && SPELL_OR_SPELLS_WORD_PATTERN.matches_words(&words)
-        && OR_WORD_PATTERN.matches_words(&words)
+        && keyword_action_words_contain_any_word(&words, &["spell", "spells"])
+        && keyword_action_words_contain_word(&words, "or")
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1972,7 +2084,7 @@ pub(crate) fn looks_like_trigger_color_list_tail(tokens: &[OwnedLexToken]) -> bo
         return false;
     }
     is_basic_color_word(words[0])
-        && OR_WORD_PATTERN.matches_words(&words)
+        && keyword_action_words_contain_word(&words, "or")
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1988,7 +2100,7 @@ pub(crate) fn looks_like_trigger_numeric_list_tail(tokens: &[OwnedLexToken]) -> 
         return false;
     }
     let has_second_number = words.iter().skip(1).any(|word| word.parse::<i32>().is_ok());
-    has_second_number && OR_WORD_PATTERN.matches_words(&words)
+    has_second_number && keyword_action_words_contain_word(&words, "or")
 }
 
 pub(crate) fn is_trigger_objectish_word(word: &str) -> bool {

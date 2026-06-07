@@ -260,7 +260,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
         } => {
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
-            let mut resolved_filter = subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
             resolved_filter.zone = Some(Zone::Library);
             let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
                 resolved_filter,

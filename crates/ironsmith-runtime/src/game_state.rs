@@ -4832,11 +4832,12 @@ impl GameState {
                                     .unwrap_or_default();
                                 for viewer_idx in 0..self.players.len() {
                                     let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                                    let mut view_ctx = crate::decisions::context::ViewCardsContext::look_at_hand(
-                                        viewer,
-                                        opponent_id,
-                                        Some(new_id),
-                                    );
+                                    let mut view_ctx =
+                                        crate::decisions::context::ViewCardsContext::look_at_hand(
+                                            viewer,
+                                            opponent_id,
+                                            Some(new_id),
+                                        );
                                     view_ctx.description = "Reveal that player's hand".to_string();
                                     view_ctx.public = true;
                                     decision_maker.view_cards(self, viewer, &cards, &view_ctx);

@@ -18,7 +18,11 @@ use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
 };
-use super::super::lexer::{LexStream, TokenKind, contains_token_kind, token_slice_at_is};
+use super::super::lexer::{
+    LexStream, TokenKind, contains_token_kind, token_slice_at_is, token_slice_first_is,
+    word_slice_contains_any_phrase, word_slice_contains_any_word, word_slice_contains_phrase,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_starts_with_any,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
     find_index as find_token_index, rfind_index as find_last_token_index,
@@ -32,8 +36,6 @@ use super::super::util::{
 use super::super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_equal_to_number_of_filter_value,
 };
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
-
 type ZoneCounterCompatWords<'a> = TokenWordView<'a>;
 
 const CREATURES_DIED_THIS_TURN_PREFIXES: &[&[&str]] = &[
@@ -43,108 +45,97 @@ const CREATURES_DIED_THIS_TURN_PREFIXES: &[&[&str]] = &[
 
 const REFERENTIAL_TAGGED_PREFIXES: &[&[&str]] = &[&["its"], &["those"], &["thiss"]];
 const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[&["that", "many"], &["that", "much"]];
-const SPELL_CAST_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(contains_any_words & [&["spell", "spells"], &["cast", "casts"]]; contains_words & ["turn"]);
-const YOU_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you"], &["your"], &["youve"]]);
-const OPPONENT_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["opponent"], &["opponents"]]);
-const THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["this", "turn"]);
-const THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(contains_phrases & [&["this", "way"]]);
-const OTHER_THAN_THE_FIRST_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["other", "than", "the", "first"]);
-const PUT_OR_PUTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["put"], &["puts"]]);
-const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["counter"], &["counters"]]);
-const EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
-const EQUAL_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["equal", "to"]);
-const EQUAL_TO_DIFFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["equal", "to", "the", "difference"],
-            &["equal", "to", "difference"]
-        ]]
-);
-const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
-const HIM_OR_HER_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["him"], &["her"]]);
-const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["each"]);
-const TARGET_OR_TARGETS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["target"], &["targets"]]);
-const REMOVE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["remove"]);
-const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
-const UNTIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["until"]);
-const POWER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["power"]);
-const SOURCE_LEAVES_BATTLEFIELD_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["leaves", "the", "battlefield"]);
-const ROUNDED_DOWN_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["rounded", "down"]);
-const ALL_OR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["all"], &["each"]]);
-const SELF_REFERENCE_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it"],
-            &["this"],
-            &["this", "creature"],
-            &["this", "land"],
-            &["this", "permanent"],
-        ]
-);
-const HALF_YOUR_STARTING_LIFE_TOTAL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["half", "your", "starting", "life", "total"],
-            &["half", "your", "starting", "life", "total", "rounded", "up"],
-            &[
-                "half", "your", "starting", "life", "total", "rounded", "down"
-            ],
-        ]
-);
-const HALF_TARGET_PLAYER_STARTING_LIFE_TOTAL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["half", "target", "players", "starting", "life", "total"],
-            &[
-                "half", "target", "players", "starting", "life", "total", "rounded", "up",
-            ],
-            &[
-                "half", "target", "players", "starting", "life", "total", "rounded", "down",
-            ],
-        ]
-);
-const HALF_OPPONENT_STARTING_LIFE_TOTAL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["half", "an", "opponents", "starting", "life", "total"],
-            &[
-                "half",
-                "an",
-                "opponents",
-                "starting",
-                "life",
-                "total",
-                "rounded",
-                "up",
-            ],
-            &[
-                "half",
-                "an",
-                "opponents",
-                "starting",
-                "life",
-                "total",
-                "rounded",
-                "down",
-            ],
-        ]
-);
+const ZONE_COUNTER_SPELL_WORDS: &[&str] = &["spell", "spells"];
+const ZONE_COUNTER_CAST_WORDS: &[&str] = &["cast", "casts"];
+const ZONE_COUNTER_YOU_REFERENCE_WORDS: &[&str] = &["you", "your", "youve"];
+const ZONE_COUNTER_OPPONENT_REFERENCE_WORDS: &[&str] = &["opponent", "opponents"];
+const ZONE_COUNTER_THIS_TURN_WORDS: &[&str] = &["this", "turn"];
+const ZONE_COUNTER_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const ZONE_COUNTER_OTHER_THAN_THE_FIRST_WORDS: &[&str] = &["other", "than", "the", "first"];
+const ZONE_COUNTER_PUT_WORDS: &[&str] = &["put", "puts"];
+const ZONE_COUNTER_COUNTER_WORDS: &[&str] = &["counter", "counters"];
+const ZONE_COUNTER_EQUAL_WORD: &str = "equal";
+const ZONE_COUNTER_EQUAL_TO_PREFIX: &[&str] = &["equal", "to"];
+const ZONE_COUNTER_EQUAL_TO_DIFFERENCE_PHRASES: &[&[&str]] = &[
+    &["equal", "to", "the", "difference"],
+    &["equal", "to", "difference"],
+];
+const ZONE_COUNTER_ON_WORD: &str = "on";
+const ZONE_COUNTER_HIM_OR_HER_WORDS: &[&str] = &["him", "her"];
+const ZONE_COUNTER_INSTEAD_WORD: &str = "instead";
+const ZONE_COUNTER_EACH_WORD: &str = "each";
+const ZONE_COUNTER_TARGET_WORDS: &[&str] = &["target", "targets"];
+const ZONE_COUNTER_REMOVE_WORD: &str = "remove";
+const ZONE_COUNTER_FROM_WORD: &str = "from";
+const ZONE_COUNTER_UNTIL_WORD: &str = "until";
+const ZONE_COUNTER_POWER_WORDS: &[&str] = &["power"];
+const ZONE_COUNTER_SOURCE_LEAVES_BATTLEFIELD_TAIL: &[&str] = &["leaves", "the", "battlefield"];
+const ZONE_COUNTER_ROUNDED_DOWN_TAIL: &[&str] = &["rounded", "down"];
+const ZONE_COUNTER_ALL_OR_EACH_PREFIXES: &[&[&str]] = &[&["all"], &["each"]];
+const ZONE_COUNTER_SELF_REFERENCE_TARGETS: &[&[&str]] = &[
+    &["it"],
+    &["this"],
+    &["this", "creature"],
+    &["this", "land"],
+    &["this", "permanent"],
+];
+const HALF_YOUR_STARTING_LIFE_TOTAL_PHRASES: &[&[&str]] = &[
+    &["half", "your", "starting", "life", "total"],
+    &["half", "your", "starting", "life", "total", "rounded", "up"],
+    &[
+        "half", "your", "starting", "life", "total", "rounded", "down",
+    ],
+];
+const HALF_TARGET_PLAYER_STARTING_LIFE_TOTAL_PHRASES: &[&[&str]] = &[
+    &["half", "target", "players", "starting", "life", "total"],
+    &[
+        "half", "target", "players", "starting", "life", "total", "rounded", "up",
+    ],
+    &[
+        "half", "target", "players", "starting", "life", "total", "rounded", "down",
+    ],
+];
+const HALF_OPPONENT_STARTING_LIFE_TOTAL_PHRASES: &[&[&str]] = &[
+    &["half", "an", "opponents", "starting", "life", "total"],
+    &[
+        "half",
+        "an",
+        "opponents",
+        "starting",
+        "life",
+        "total",
+        "rounded",
+        "up",
+    ],
+    &[
+        "half",
+        "an",
+        "opponents",
+        "starting",
+        "life",
+        "total",
+        "rounded",
+        "down",
+    ],
+];
 
-fn token_slice_matches_shape(tokens: &[OwnedLexToken], shape: &ClauseShape<'static>) -> bool {
-    shape.matches_words(&ZoneCounterCompatWords::new(tokens).to_word_refs())
+fn zone_counter_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word().is_some() && token.parser_text() == expected
+}
+
+fn zone_counter_token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| expected.contains(&token.parser_text()))
+}
+
+fn zone_counter_words_contain_word(words: &[&str], expected: &str) -> bool {
+    words.contains(&expected)
 }
 
 fn tokens_reference_objects_this_way(tokens: &[OwnedLexToken]) -> bool {
-    token_slice_matches_shape(tokens, &THIS_WAY_PATTERN)
+    let words = ZoneCounterCompatWords::new(tokens).to_word_refs();
+    word_slice_contains_phrase(&words, ZONE_COUNTER_THIS_WAY_PHRASE)
         && (grammar::contains_word(tokens, "destroyed")
             || grammar::contains_word(tokens, "died")
             || grammar::contains_word(tokens, "exiled")
@@ -174,31 +165,31 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     if grammar::words_match_any_prefix(tokens, CREATURES_DIED_THIS_TURN_PREFIXES).is_some() {
         return Some(Value::CreaturesDiedThisTurn);
     }
-    if SPELL_CAST_THIS_TURN_PATTERN.matches_words(&clause_words) {
-        let player = if clause_words
-            .iter()
-            .any(|word| YOU_REFERENCE_WORD_PATTERN.matches_word(word))
-        {
-            PlayerFilter::You
-        } else if clause_words
-            .iter()
-            .any(|word| OPPONENT_REFERENCE_WORD_PATTERN.matches_word(word))
-        {
-            PlayerFilter::Opponent
-        } else {
-            PlayerFilter::Any
-        };
+    if word_slice_contains_any_word(&clause_words, ZONE_COUNTER_SPELL_WORDS)
+        && word_slice_contains_any_word(&clause_words, ZONE_COUNTER_CAST_WORDS)
+        && zone_counter_words_contain_word(&clause_words, "turn")
+    {
+        let player =
+            if word_slice_contains_any_word(&clause_words, ZONE_COUNTER_YOU_REFERENCE_WORDS) {
+                PlayerFilter::You
+            } else if word_slice_contains_any_word(
+                &clause_words,
+                ZONE_COUNTER_OPPONENT_REFERENCE_WORDS,
+            ) {
+                PlayerFilter::Opponent
+            } else {
+                PlayerFilter::Any
+            };
 
-        let other_than_first = OTHER_THAN_THE_FIRST_PATTERN
-            .find_exact_window(&clause_words, 4)
-            .is_some();
+        let other_than_first =
+            word_slice_contains_phrase(&clause_words, ZONE_COUNTER_OTHER_THAN_THE_FIRST_WORDS);
         if other_than_first {
             return Some(Value::Add(
                 Box::new(Value::SpellsCastThisTurn(player)),
                 Box::new(Value::Fixed(-1)),
             ));
         }
-        if THIS_TURN_PATTERN.matches_words(&clause_words) {
+        if word_slice_contains_phrase(&clause_words, ZONE_COUNTER_THIS_TURN_WORDS) {
             return Some(Value::SpellsCastThisTurn(player));
         }
     }
@@ -330,7 +321,7 @@ pub(crate) fn parse_counter_descriptor(
     let rest = &descriptor[used..];
     if !rest
         .iter()
-        .any(|token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))
+        .any(|token| zone_counter_token_is_any_word(token, ZONE_COUNTER_COUNTER_WORDS))
     {
         return Err(CardTextError::ParseError(format!(
             "missing counter keyword (clause: '{}')",
@@ -367,7 +358,7 @@ fn parse_referential_counter_count_value(tokens: &[OwnedLexToken]) -> Option<(Va
         return None;
     };
 
-    let counter_type = if COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word) {
+    let counter_type = if ZONE_COUNTER_COUNTER_WORDS.contains(&word) {
         idx += 1;
         None
     } else if let Some(counter_type) = parse_counter_type_word(word) {
@@ -401,7 +392,8 @@ fn parse_put_counter_count_value(
         return Ok((value, used));
     }
     if grammar::words_match_any_prefix(tokens, &[&["a", "number", "of"]]).is_some() {
-        if token_slice_matches_shape(tokens, &EQUAL_TO_DIFFERENCE_PATTERN) {
+        let words = ZoneCounterCompatWords::new(tokens).to_word_refs();
+        if word_slice_contains_any_phrase(&words, ZONE_COUNTER_EQUAL_TO_DIFFERENCE_PHRASES) {
             return Ok((Value::Fixed(0), 3));
         }
         if let Some(value) = parse_add_mana_equal_amount_value(tokens)
@@ -416,10 +408,12 @@ fn parse_put_counter_count_value(
         if let Some(value) = parse_dynamic_cost_modifier_value(tokens)? {
             return Ok((value, 3));
         }
-        if let Some(equal_idx) =
-            find_token_index(tokens, |token| EQUAL_WORD_PATTERN.matches_token(token))
-            && token_slice_matches_shape(&tokens[equal_idx..], &EQUAL_TO_PREFIX_PATTERN)
-        {
+        if let Some(equal_idx) = find_token_index(tokens, |token| {
+            zone_counter_token_is_word(token, ZONE_COUNTER_EQUAL_WORD)
+        }) && word_slice_starts_with_any(
+            &ZoneCounterCompatWords::new(&tokens[equal_idx..]).to_word_refs(),
+            &[ZONE_COUNTER_EQUAL_TO_PREFIX],
+        ) {
             let value_tokens = trim_commas(&tokens[equal_idx + 2..]);
             if let Some((value, used)) = parse_value(&value_tokens)
                 && used == value_tokens.len()
@@ -430,13 +424,14 @@ fn parse_put_counter_count_value(
                 return Ok((value, 3));
             }
         }
-        if let Some(equal_idx) =
-            find_token_index(tokens, |token| EQUAL_WORD_PATTERN.matches_token(token))
-            && token_slice_matches_shape(&tokens[equal_idx..], &EQUAL_TO_PREFIX_PATTERN)
-            && let Some(on_idx) = find_token_index(&tokens[equal_idx + 2..], |token| {
-                ON_WORD_PATTERN.matches_token(token)
-            })
-        {
+        if let Some(equal_idx) = find_token_index(tokens, |token| {
+            zone_counter_token_is_word(token, ZONE_COUNTER_EQUAL_WORD)
+        }) && word_slice_starts_with_any(
+            &ZoneCounterCompatWords::new(&tokens[equal_idx..]).to_word_refs(),
+            &[ZONE_COUNTER_EQUAL_TO_PREFIX],
+        ) && let Some(on_idx) = find_token_index(&tokens[equal_idx + 2..], |token| {
+            zone_counter_token_is_word(token, ZONE_COUNTER_ON_WORD)
+        }) {
             let value_tokens = trim_commas(&tokens[equal_idx + 2..equal_idx + 2 + on_idx]);
             if let Some((value, used)) = parse_value(&value_tokens)
                 && used == value_tokens.len()
@@ -454,13 +449,17 @@ fn parse_put_counter_count_value(
     }
 
     if parse_counter_type_from_tokens(tokens).is_some()
-        && let Some(on_idx) = find_token_index(tokens, |token| ON_WORD_PATTERN.matches_token(token))
+        && let Some(on_idx) = find_token_index(tokens, |token| {
+            zone_counter_token_is_word(token, ZONE_COUNTER_ON_WORD)
+        })
     {
         let on_tail = trim_commas(&tokens[on_idx + 1..]);
-        if let Some(equal_idx) =
-            find_token_index(&on_tail, |token| EQUAL_WORD_PATTERN.matches_token(token))
-            && token_slice_matches_shape(&on_tail[equal_idx..], &EQUAL_TO_PREFIX_PATTERN)
-        {
+        if let Some(equal_idx) = find_token_index(&on_tail, |token| {
+            zone_counter_token_is_word(token, ZONE_COUNTER_EQUAL_WORD)
+        }) && word_slice_starts_with_any(
+            &ZoneCounterCompatWords::new(&on_tail[equal_idx..]).to_word_refs(),
+            &[ZONE_COUNTER_EQUAL_TO_PREFIX],
+        ) {
             let value_tokens = trim_commas(&on_tail[equal_idx + 2..]);
             if let Some((value, used)) = parse_value(&value_tokens)
                 && used == value_tokens.len()
@@ -480,7 +479,9 @@ fn parse_put_counter_count_value(
 
 fn parse_named_source_power_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = TokenWordView::new(tokens).to_word_refs();
-    if words.len() == 2 && POWER_WORD_PATTERN.matches_words(&words[1..]) && words[0].ends_with('s')
+    if words.len() == 2
+        && word_slice_eq(&words[1..], ZONE_COUNTER_POWER_WORDS)
+        && words[0].ends_with('s')
     {
         return Some(Value::PowerOf(Box::new(ChooseSpec::Source)));
     }
@@ -543,30 +544,41 @@ pub(crate) fn merge_it_match_filter_into_target(
 fn parse_counter_target_phrase(tokens: &[OwnedLexToken]) -> Result<TargetAst, CardTextError> {
     let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
-    if HIM_OR_HER_PATTERN.matches_words(&target_words) {
+    if word_slice_eq_any(&target_words, &[ZONE_COUNTER_HIM_OR_HER_WORDS]) {
         return Ok(TargetAst::Source(span_from_tokens(tokens)));
     }
     parse_target_phrase(tokens)
 }
 
 pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    let normalized_tokens;
+    let tokens = if token_slice_first_is(tokens, "put") {
+        normalized_tokens = trim_commas(&tokens[1..]);
+        normalized_tokens.as_slice()
+    } else {
+        tokens
+    };
     let (mut count_value, used) = parse_put_counter_count_value(tokens)?;
     let rest = &tokens[used..];
     let clause_text = render_clause_words(tokens);
-    let on_idx =
-        find_token_index(rest, |token| ON_WORD_PATTERN.matches_token(token)).ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing counter target (clause: '{}')",
-                clause_text
-            ))
-        })?;
+    let on_idx = find_token_index(rest, |token| {
+        zone_counter_token_is_word(token, ZONE_COUNTER_ON_WORD)
+    })
+    .ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing counter target (clause: '{}')",
+            clause_text
+        ))
+    })?;
 
     let mut target_tokens = rest[on_idx + 1..].to_vec();
     let mut equal_to_difference = false;
     if let Some(equal_idx) = find_token_index(&target_tokens, |token| {
-        EQUAL_WORD_PATTERN.matches_token(token)
-    }) && token_slice_matches_shape(&target_tokens[equal_idx..], &EQUAL_TO_PREFIX_PATTERN)
-        && equal_idx > 0
+        zone_counter_token_is_word(token, ZONE_COUNTER_EQUAL_WORD)
+    }) && word_slice_starts_with_any(
+        &ZoneCounterCompatWords::new(&target_tokens[equal_idx..]).to_word_refs(),
+        &[ZONE_COUNTER_EQUAL_TO_PREFIX],
+    ) && equal_idx > 0
     {
         let equal_words = ZoneCounterCompatWords::new(&target_tokens[equal_idx..]).to_word_refs();
         equal_to_difference = matches!(
@@ -582,7 +594,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
     }
     while target_tokens
         .last()
-        .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| zone_counter_token_is_word(token, ZONE_COUNTER_INSTEAD_WORD))
     {
         target_tokens.pop();
     }
@@ -687,7 +699,7 @@ pub(crate) fn parse_put_counters(tokens: &[OwnedLexToken]) -> Result<EffectAst, 
 
     if target_tokens
         .first()
-        .is_some_and(|token| EACH_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| zone_counter_token_is_word(token, ZONE_COUNTER_EACH_WORD))
     {
         let filter = parse_object_filter(&target_tokens[1..], false)?;
         return Ok(wrap_conditional(EffectAst::subject_verb_put_counters_all(
@@ -778,7 +790,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     let clause_words = clause_word_view.to_word_refs();
     if !clause_words
         .first()
-        .is_some_and(|word| PUT_OR_PUTS_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| ZONE_COUNTER_PUT_WORDS.contains(word))
     {
         return Ok(None);
     }
@@ -817,10 +829,10 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     let second_words = second_word_view.to_word_refs();
     if !first_words
         .iter()
-        .any(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+        .any(|word| ZONE_COUNTER_COUNTER_WORDS.contains(word))
         || !second_words
             .iter()
-            .any(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
+            .any(|word| ZONE_COUNTER_COUNTER_WORDS.contains(word))
     {
         return Ok(None);
     }
@@ -846,7 +858,7 @@ pub(crate) fn parse_sentence_put_multiple_counters_on_target(
     let target_words = target_word_view.to_word_refs();
     if !target_words
         .iter()
-        .any(|word| TARGET_OR_TARGETS_WORD_PATTERN.matches_word(word))
+        .any(|word| ZONE_COUNTER_TARGET_WORDS.contains(word))
     {
         return Ok(None);
     }
@@ -892,7 +904,9 @@ fn parse_put_or_remove_counter_choice(
     }
 
     let remove_tokens = trim_commas(&target_tokens[or_idx + 1..]);
-    if remove_tokens.len() < 2 || !REMOVE_WORD_PATTERN.matches_token(&remove_tokens[0]) {
+    if remove_tokens.len() < 2
+        || !zone_counter_token_is_word(&remove_tokens[0], ZONE_COUNTER_REMOVE_WORD)
+    {
         return Ok(None);
     }
 
@@ -907,7 +921,7 @@ fn parse_put_or_remove_counter_choice(
     idx += used_remove_count;
 
     let from_idx = find_token_index(&remove_tokens[idx..], |token| {
-        FROM_WORD_PATTERN.matches_token(token)
+        zone_counter_token_is_word(token, ZONE_COUNTER_FROM_WORD)
     })
     .map(|offset| idx + offset)
     .ok_or_else(|| {
@@ -923,7 +937,7 @@ fn parse_put_or_remove_counter_choice(
     } else {
         if !remove_descriptor_tokens
             .iter()
-            .any(|token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))
+            .any(|token| zone_counter_token_is_any_word(token, ZONE_COUNTER_COUNTER_WORDS))
         {
             return Err(CardTextError::ParseError(format!(
                 "missing counter keyword in put-or-remove remove clause (clause: '{}')",
@@ -1002,7 +1016,7 @@ pub(crate) fn parse_counter_target_count_prefix(
     let mut idx = 0usize;
     let mut each_prefix = false;
 
-    if EACH_WORD_PATTERN.matches_token(&tokens[idx]) {
+    if zone_counter_token_is_word(&tokens[idx], ZONE_COUNTER_EACH_WORD) {
         each_prefix = true;
         idx += 1;
         if token_slice_at_is(tokens, idx, "of") {
@@ -1092,9 +1106,9 @@ pub(crate) fn parse_counter_target_count_prefix(
 }
 
 pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
-    let Some(until_idx) =
-        find_last_token_index(tokens, |token| UNTIL_WORD_PATTERN.matches_token(token))
-    else {
+    let Some(until_idx) = find_last_token_index(tokens, |token| {
+        zone_counter_token_is_word(token, ZONE_COUNTER_UNTIL_WORD)
+    }) else {
         return (tokens, false);
     };
     if until_idx == 0 {
@@ -1102,7 +1116,8 @@ pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[Own
     }
     let tail_word_view = ZoneCounterCompatWords::new(&tokens[until_idx + 1..]);
     let tail_words = tail_word_view.to_word_refs();
-    let has_source_leaves_tail = SOURCE_LEAVES_BATTLEFIELD_TAIL_PATTERN.matches_words(&tail_words);
+    let has_source_leaves_tail =
+        word_slice_ends_with(&tail_words, ZONE_COUNTER_SOURCE_LEAVES_BATTLEFIELD_TAIL);
     if has_source_leaves_tail {
         (&tokens[..until_idx], true)
     } else {
@@ -1137,29 +1152,32 @@ pub(crate) fn parse_half_starting_life_total_value(
 ) -> Option<Value> {
     let clause_word_view = ZoneCounterCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let phrase_player_filter = if HALF_YOUR_STARTING_LIFE_TOTAL_PATTERN.matches_words(&clause_words)
-    {
-        Some(PlayerFilter::You)
-    } else if HALF_TARGET_PLAYER_STARTING_LIFE_TOTAL_PATTERN.matches_words(&clause_words) {
-        Some(PlayerFilter::target_player())
-    } else if HALF_OPPONENT_STARTING_LIFE_TOTAL_PATTERN.matches_words(&clause_words) {
-        Some(PlayerFilter::Opponent)
-    } else {
-        None
-    };
+    let phrase_player_filter =
+        if word_slice_eq_any(&clause_words, HALF_YOUR_STARTING_LIFE_TOTAL_PHRASES) {
+            Some(PlayerFilter::You)
+        } else if word_slice_eq_any(
+            &clause_words,
+            HALF_TARGET_PLAYER_STARTING_LIFE_TOTAL_PHRASES,
+        ) {
+            Some(PlayerFilter::target_player())
+        } else if word_slice_eq_any(&clause_words, HALF_OPPONENT_STARTING_LIFE_TOTAL_PHRASES) {
+            Some(PlayerFilter::Opponent)
+        } else {
+            None
+        };
     let inferred_player_filter = || phrase_player_filter.clone();
     let player_filter =
         player_filter_for_set_life_total_reference(player).or_else(inferred_player_filter)?;
 
     let phrase_matches_player = phrase_player_filter.as_ref() == Some(&player_filter);
-    let rounded_up =
-        phrase_matches_player && !ROUNDED_DOWN_TAIL_PATTERN.matches_words(&clause_words);
+    let rounded_up = phrase_matches_player
+        && !word_slice_ends_with(&clause_words, ZONE_COUNTER_ROUNDED_DOWN_TAIL);
     if rounded_up {
         return Some(Value::HalfStartingLifeTotalRoundedUp(player_filter));
     }
 
-    let rounded_down =
-        phrase_matches_player && ROUNDED_DOWN_TAIL_PATTERN.matches_words(&clause_words);
+    let rounded_down = phrase_matches_player
+        && word_slice_ends_with(&clause_words, ZONE_COUNTER_ROUNDED_DOWN_TAIL);
     if rounded_down {
         return Some(Value::HalfStartingLifeTotalRoundedDown(player_filter));
     }
@@ -1176,7 +1194,7 @@ fn parse_transform_like(
     }
     let target_word_view = ZoneCounterCompatWords::new(tokens);
     let target_words = target_word_view.to_word_refs();
-    if ALL_OR_EACH_PREFIX_PATTERN.matches_words(&target_words) {
+    if word_slice_starts_with_any(&target_words, ZONE_COUNTER_ALL_OR_EACH_PREFIXES) {
         let filter_tokens = &tokens[1..];
         let filter = parse_object_filter(filter_tokens, false)?;
         return Ok(EffectAst::ForEachObject {
@@ -1187,7 +1205,7 @@ fn parse_transform_like(
             ))],
         });
     }
-    if SELF_REFERENCE_TARGET_PATTERN.matches_words(&target_words) {
+    if word_slice_eq_any(&target_words, ZONE_COUNTER_SELF_REFERENCE_TARGETS) {
         let span = span_from_tokens(tokens);
         if let Some(surface) = this_source_surface_for_words(&target_words) {
             record_source_reference_surface(span, surface);

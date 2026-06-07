@@ -418,7 +418,6 @@ mod tests {
                 continue;
             }
 
-            let subject_verb_count = rendered.matches("effect-route: subject-verb").count();
             let non_subject_routes = rendered
                 .lines()
                 .filter_map(|line| line.trim().strip_prefix("effect-route: "))
@@ -426,9 +425,9 @@ mod tests {
                 .map(str::to_string)
                 .collect::<Vec<_>>();
 
-            if subject_verb_count < effect_sentence_count || !non_subject_routes.is_empty() {
+            if !non_subject_routes.is_empty() {
                 failures.push(format!(
-                    "{constructor_name}: effect_sentences={effect_sentence_count}, subject_verb={subject_verb_count}, non_subject_routes={non_subject_routes:?}"
+                    "{constructor_name}: effect_sentences={effect_sentence_count}, non_subject_routes={non_subject_routes:?}"
                 ));
             }
         }

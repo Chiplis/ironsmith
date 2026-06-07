@@ -1,10 +1,9 @@
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::grammar::values::parse_value_comparison_tokens;
 use super::lexer::{
     OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
-    token_slice_starts_with_at, token_word_refs, trim_lexed_commas, word_slice_starts_with,
-    word_slice_starts_with_any,
+    token_slice_starts_with_at, token_word_refs, trim_lexed_commas, word_slice_contains_phrase,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::object_filters::parse_object_filter;
 use super::token_primitives::{
@@ -17,11 +16,6 @@ use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
-const FROM_THE_TOP_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from", "the", "top"]);
-const SEARCH_SUPPORT_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const FOR_AS_LONG_AS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["for", "as", "long", "as"]]);
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum SearchLibraryManaConstraint {
     Equal(u32),
@@ -33,7 +27,7 @@ pub(crate) enum SearchLibraryManaConstraint {
 pub(crate) fn word_slice_mentions_nth_from_top(words: &[&str]) -> bool {
     words
         .windows(4)
-        .any(|window| FROM_THE_TOP_PATTERN.matches_words(&window[1..]))
+        .any(|window| window[1] == "from" && window[2] == "the" && window[3] == "top")
 }
 
 fn is_source_reference_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -56,7 +50,7 @@ fn is_as_long_as_you_control_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_source_remains_tapped_duration_tokens(tokens: &[OwnedLexToken]) -> bool {
-    FOR_AS_LONG_AS_PATTERN.matches_words(&token_word_refs(tokens))
+    word_slice_contains_phrase(&token_word_refs(tokens), &["for", "as", "long", "as"])
         && contains_token_word(tokens, "remains")
         && contains_token_word(tokens, "tapped")
         && is_source_reference_duration_tokens(tokens)
@@ -212,7 +206,7 @@ pub(crate) fn extract_search_library_mana_constraint(
         let [left, middle, right] = clause_tokens else {
             return None;
         };
-        if !SEARCH_SUPPORT_OR_WORD_PATTERN.matches_token(middle) {
+        if !middle.is_word("or") {
             return None;
         }
         SearchLibraryManaConstraint::OneOf(vec![

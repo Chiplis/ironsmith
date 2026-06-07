@@ -2808,9 +2808,13 @@ fn compile_subject_verb_effect(
                     ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
                 )
             {
-                spec = ChooseSpec::All(
-                    ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
-                );
+                spec = if let Some(tag) = ctx.last_exiled_collection_tag.clone() {
+                    ChooseSpec::Tagged(TagKey::from(tag))
+                } else {
+                    ChooseSpec::All(
+                        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+                    )
+                };
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {

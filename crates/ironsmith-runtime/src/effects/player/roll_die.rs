@@ -58,7 +58,9 @@ impl EffectExecutor for RollDieEffect {
             else {
                 return Ok(EffectOutcome::count(0));
             };
-            game.turn_store.turn_history.record_die_roll(player, adjusted);
+            game.turn_store
+                .turn_history
+                .record_die_roll(player, adjusted);
             return Ok(EffectOutcome::count(adjusted as i32)
                 .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                     DieRolledEvent::new(player, ctx.source, adjusted, self.sides),
@@ -73,7 +75,9 @@ impl EffectExecutor for RollDieEffect {
         let Some(adjusted) = apply_die_roll_result_adjustments(game, ctx, player, result) else {
             return Ok(EffectOutcome::count(0));
         };
-        game.turn_store.turn_history.record_die_roll(player, adjusted);
+        game.turn_store
+            .turn_history
+            .record_die_roll(player, adjusted);
         Ok(EffectOutcome::count(adjusted as i32)
             .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 DieRolledEvent::new(player, ctx.source, adjusted, self.sides),
@@ -309,12 +313,8 @@ mod tests {
             option: 0,
         };
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::roll_die(6, PlayerFilter::You),
-            &mut ctx,
-        )
-        .expect("die roll should resolve");
+        let outcome = execute_effect(&mut game, &Effect::roll_die(6, PlayerFilter::You), &mut ctx)
+            .expect("die roll should resolve");
 
         assert_eq!(outcome.as_count(), Some(5));
         assert_eq!(game.player(alice).unwrap().life, 20);
@@ -344,12 +344,8 @@ mod tests {
         };
         let mut ctx =
             ExecutionContext::new_default(source, alice).with_decision_maker(&mut increase_dm);
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::roll_die(6, PlayerFilter::You),
-            &mut ctx,
-        )
-        .expect("die roll should resolve");
+        let outcome = execute_effect(&mut game, &Effect::roll_die(6, PlayerFilter::You), &mut ctx)
+            .expect("die roll should resolve");
 
         assert_eq!(outcome.as_count(), Some(6));
         assert_eq!(game.player(alice).unwrap().life, 19);
@@ -367,12 +363,8 @@ mod tests {
         };
         let mut ctx =
             ExecutionContext::new_default(source, alice).with_decision_maker(&mut decrease_dm);
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::roll_die(6, PlayerFilter::You),
-            &mut ctx,
-        )
-        .expect("die roll should resolve");
+        let outcome = execute_effect(&mut game, &Effect::roll_die(6, PlayerFilter::You), &mut ctx)
+            .expect("die roll should resolve");
 
         assert_eq!(outcome.as_count(), Some(5));
         assert_eq!(game.player(alice).unwrap().life, 18);
@@ -395,12 +387,8 @@ mod tests {
             option: 0,
         };
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::roll_die(6, PlayerFilter::You),
-            &mut ctx,
-        )
-        .expect("die roll should resolve");
+        let outcome = execute_effect(&mut game, &Effect::roll_die(6, PlayerFilter::You), &mut ctx)
+            .expect("die roll should resolve");
 
         let die_event = outcome
             .events
@@ -429,12 +417,8 @@ mod tests {
             option: 0,
         };
         let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
-        let outcome = execute_effect(
-            &mut game,
-            &Effect::roll_die(6, PlayerFilter::You),
-            &mut ctx,
-        )
-        .expect("die roll should resolve");
+        let outcome = execute_effect(&mut game, &Effect::roll_die(6, PlayerFilter::You), &mut ctx)
+            .expect("die roll should resolve");
 
         let die_event = outcome
             .events

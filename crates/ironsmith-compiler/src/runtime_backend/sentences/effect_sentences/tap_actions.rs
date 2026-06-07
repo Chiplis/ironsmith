@@ -1,22 +1,17 @@
-use super::super::super::lexer::LexedClause;
+use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::super::super::lexer::{
+    LexedClause, token_word_refs, word_slice_contains_any_phrase, word_slice_eq,
+};
 use super::*;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
-const THEN_RETURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then", "return"]);
-const ALL_OR_EACH_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["all"], &["each"]]);
+const THEN_RETURN_WORDS: &[&str] = &["then", "return"];
 const OR_UNTAP_PREFIX: &[&str] = &["or", "untap"];
 const OR_UNTAP_ALL_PREFIX: &[&str] = &["or", "untap", "all"];
-const CHOSEN_TYPE_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["chosen", "type"], &["that", "type"],]]);
-const TARGET_PLAYER_CONTROLS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["target", "player", "controls"]]);
-const THAT_PLAYER_CONTROLS_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["that", "player", "controls"],
-            &["that", "players", "control"],
-        ]]
-);
+const CHOSEN_TYPE_MARKER_PHRASES: &[&[&str]] = &[&["chosen", "type"], &["that", "type"]];
+const TAP_CONTROL_ACTION_WORDS: &[&str] = &["control", "controls"];
+const TARGET_PLAYER_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["target", "player"]];
+const THAT_PLAYER_CONTROL_SUBJECT_PHRASES: &[&[&str]] =
+    &[&["that", "player"], &["that", "players"]];
 
 const TYPE_CHOICE_QUALIFIER_PHRASES: &[&[&str]] = &[
     &["of", "the", "chosen", "type"],
@@ -24,6 +19,21 @@ const TYPE_CHOICE_QUALIFIER_PHRASES: &[&[&str]] = &[
     &["of", "that", "type"],
     &["that", "type"],
 ];
+const TYPE_CHOICE_REFERENCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::object(
+        "filter_before_type_choice",
+        LexCaptureKind::UntilAnyPhrase(TYPE_CHOICE_QUALIFIER_PHRASES),
+    ),
+    LexPattern::modifier(
+        "type_choice",
+        LexCaptureKind::OneOfPhrase(TYPE_CHOICE_QUALIFIER_PHRASES),
+    ),
+    LexPattern::tail("filter_after_type_choice", LexCaptureKind::Rest),
+]);
+
+fn word_is_all_or_each(word: &str) -> bool {
+    matches!(word, "all" | "each")
+}
 
 pub(crate) fn collapse_leading_signed_pt_modifier_tokens(
     tokens: &[OwnedLexToken],
@@ -57,10 +67,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     if let Some(effect) = parse_tap_or_untap_all(tokens)? {
         return Ok(effect);
     }
-    if clause
-        .first_word()
-        .is_some_and(|word| ALL_OR_EACH_PATTERN.matches_word(word))
-    {
+    if clause.first_word().is_some_and(word_is_all_or_each) {
         let filter_clause = clause
             .after_words(1)
             .unwrap_or_else(|| clause.from(clause.len()));
@@ -69,7 +76,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
     }
     if let Some(then_idx) = tokens
         .windows(2)
-        .position(|window| THEN_RETURN_PATTERN.matches(LexedClause::new(window)))
+        .position(|window| word_slice_eq(&token_word_refs(window), THEN_RETURN_WORDS))
     {
         let tap_tokens = trim_commas(&tokens[..then_idx]);
         let return_tokens = trim_commas(&tokens[then_idx + 1..]);
@@ -92,10 +99,7 @@ pub(crate) fn parse_tap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextE
 
 fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    if !clause
-        .first_word()
-        .is_some_and(|word| ALL_OR_EACH_PATTERN.matches_word(word))
-    {
+    if !clause.first_word().is_some_and(word_is_all_or_each) {
         return Ok(None);
     }
     let Some(after_quantifier) = clause.from_word(1) else {
@@ -118,22 +122,11 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     let left_tokens = left_clause.tokens().to_vec();
     let right_tokens = right_clause.tokens().to_vec();
 
-    let analyze_type_choice_reference = |tokens: &[OwnedLexToken]| {
-        let clause = LexedClause::new(tokens);
-        let stripped = clause.without_any_phrase_trimmed(TYPE_CHOICE_QUALIFIER_PHRASES);
-        let mentions = stripped.is_some() || CHOSEN_TYPE_MARKER_PATTERN.matches(clause);
-        let tokens = if let Some((_, tokens)) = stripped {
-            tokens
-        } else {
-            clause.trim()
-        };
-        (tokens, mentions)
-    };
-
     let left_clause = LexedClause::new(&left_tokens);
     let right_clause = LexedClause::new(&right_tokens);
-    let (cleaned_left, left_mentions_chosen_type) = analyze_type_choice_reference(&left_tokens);
-    let (cleaned_right, right_mentions_chosen_type) = analyze_type_choice_reference(&right_tokens);
+    let (cleaned_left, left_mentions_chosen_type) = analyze_tap_type_choice_reference(&left_tokens);
+    let (cleaned_right, right_mentions_chosen_type) =
+        analyze_tap_type_choice_reference(&right_tokens);
 
     let mut tap_filter = parse_object_filter(&cleaned_left, false)?;
     let mut untap_filter = parse_object_filter(&cleaned_right, false)?;
@@ -143,10 +136,10 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
     if right_mentions_chosen_type {
         untap_filter.chosen_creature_type = true;
     }
-    if TARGET_PLAYER_CONTROLS_PATTERN.matches(left_clause) {
+    if clause_contains_control_relation(left_clause, TARGET_PLAYER_CONTROL_SUBJECT_PHRASES) {
         tap_filter.controller = Some(PlayerFilter::target_player());
     }
-    if THAT_PLAYER_CONTROLS_PATTERN.matches(right_clause) {
+    if clause_contains_control_relation(right_clause, THAT_PLAYER_CONTROL_SUBJECT_PHRASES) {
         untap_filter.controller = tap_filter
             .controller
             .clone()
@@ -157,4 +150,38 @@ fn parse_tap_or_untap_all(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>,
         tap_filter,
         untap_filter,
     )))
+}
+
+fn clause_contains_control_relation(
+    clause: LexedClause<'_>,
+    subject_phrases: &'static [&'static [&'static str]],
+) -> bool {
+    let atoms = [
+        LexPattern::subject("controller", LexCaptureKind::OneOfPhrase(subject_phrases)),
+        LexPattern::action("action", LexCaptureKind::OneOf(TAP_CONTROL_ACTION_WORDS)),
+    ];
+    LexPattern::new(&atoms).find_in_clause(clause).is_some()
+}
+
+fn analyze_tap_type_choice_reference(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+    let clause = LexedClause::new(tokens).trimmed();
+    if let Some(matched) = TYPE_CHOICE_REFERENCE_PATTERN.match_clause(clause) {
+        let before = matched
+            .capture_clause_by_role(LexCaptureRole::Object, clause)
+            .map(|clause| trim_commas(clause.tokens()).to_vec())
+            .unwrap_or_default();
+        let after = matched
+            .capture_clause_by_role(LexCaptureRole::Tail, clause)
+            .map(|clause| trim_commas(clause.tokens()).to_vec())
+            .unwrap_or_default();
+        let mut cleaned = Vec::with_capacity(before.len() + after.len());
+        cleaned.extend(before);
+        cleaned.extend(after);
+        return (cleaned, true);
+    }
+
+    (
+        clause.trim(),
+        word_slice_contains_any_phrase(&token_word_refs(tokens), CHOSEN_TYPE_MARKER_PHRASES),
+    )
 }

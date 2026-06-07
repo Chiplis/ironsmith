@@ -1,19 +1,46 @@
-const KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["each", "mana", "value", "among"]);
-const KEYWORD_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const KEYWORD_PROTECTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["protection"]);
-const KEYWORD_FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
-const KEYWORD_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["permanent"], &["permanents"]]);
-const KEYWORD_THE_CHOSEN_PLAYER_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["the", "chosen", "player"]);
-const KEYWORD_THE_CHOSEN_COLOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["the", "chosen", "color"]);
-const KEYWORD_THE_LAST_CHOSEN_COLOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["the", "last", "chosen", "color"]);
-const KEYWORD_COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["color"], &["colors"]]);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProtectionChosenTargetShape {
+    Player,
+    Color,
+}
+
+const KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["each", "mana", "value", "among"])]);
+const KEYWORD_THE_CHOSEN_PLAYER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["the", "chosen", "player"])]);
+const KEYWORD_THE_CHOSEN_COLOR_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &["the", "chosen", "color"],
+        &["the", "last", "chosen", "color"],
+    ])]);
+const KEYWORD_PERMANENT_WORDS: &[&str] = &["permanent", "permanents"];
+const KEYWORD_COLOR_WORDS: &[&str] = &["color", "colors"];
+
+fn keyword_word_at(words: &[&str], idx: usize, expected: &str) -> bool {
+    words.get(idx).copied() == Some(expected)
+}
+
+fn keyword_any_word_at(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words.get(idx).is_some_and(|word| expected.contains(word))
+}
+
+fn protection_chosen_target_shape(
+    target_tail: LexedClause<'_>,
+) -> Option<ProtectionChosenTargetShape> {
+    if KEYWORD_THE_CHOSEN_PLAYER_PATTERN
+        .match_prefix(target_tail)
+        .is_some()
+    {
+        return Some(ProtectionChosenTargetShape::Player);
+    }
+    if KEYWORD_THE_CHOSEN_COLOR_PATTERN
+        .match_prefix(target_tail)
+        .is_some()
+    {
+        return Some(ProtectionChosenTargetShape::Color);
+    }
+    None
+}
 
 pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
     if let Some(actions) = parse_flashback_keyword_line(tokens) {
@@ -23,6 +50,9 @@ pub(crate) fn parse_ability_line(tokens: &[OwnedLexToken]) -> Option<Vec<Keyword
     if let Some(action) =
         super::activation_and_restrictions::parse_dynamic_soulshift_keyword_action(&words)
     {
+        return Some(vec![action]);
+    }
+    if let Some(action @ KeywordAction::CumulativeUpkeep { .. }) = parse_ability_phrase(tokens) {
         return Some(vec![action]);
     }
 
@@ -82,9 +112,10 @@ pub(crate) fn reject_unimplemented_keyword_actions(
 }
 
 pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
+    let clause = LexedClause::new(tokens);
     let words_view = crate::runtime_backend::lexer::TokenWordView::new(tokens);
     let words = words_view.word_refs();
-    let first_word_idx = if KEYWORD_AND_WORD_PATTERN.matches_word_at(&words, 0) {
+    let first_word_idx = if keyword_word_at(&words, 0, "and") {
         1
     } else {
         0
@@ -92,8 +123,8 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     if words.len().saturating_sub(first_word_idx) < 3 {
         return None;
     }
-    if !KEYWORD_PROTECTION_WORD_PATTERN.matches_word_at(&words, first_word_idx)
-        || !KEYWORD_FROM_WORD_PATTERN.matches_word_at(&words, first_word_idx + 1)
+    if !keyword_word_at(&words, first_word_idx, "protection")
+        || !keyword_word_at(&words, first_word_idx + 1, "from")
     {
         return None;
     }
@@ -101,13 +132,12 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
     let mut actions = Vec::new();
     let parse_from_target = |words: &[&str], idx: usize| -> Option<KeywordAction> {
         let value = *words.get(idx + 1)?;
-        let target_tail = words.get(idx + 1..)?;
-        if KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN.matches_words(target_tail) {
-            let filter_tokens = trim_commas(
-                LexedClause::new(tokens)
-                    .from_word(idx + 5)?
-                    .tokens(),
-            );
+        let target_tail = clause.from_word(idx + 1)?;
+        if KEYWORD_PROTECTION_EACH_MANA_VALUE_PATTERN
+            .match_prefix(target_tail)
+            .is_some()
+        {
+            let filter_tokens = trim_commas(clause.from_word(idx + 5)?.tokens());
             let filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
             return Some(KeywordAction::ProtectionFromEachManaValueAmong(filter));
         }
@@ -115,8 +145,7 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             return Some(KeywordAction::ProtectionFromFilter(ObjectFilter::spell()));
         }
         if matches!(value, "permanent" | "permanents")
-            && words.get(idx + 2..idx + 7)
-                == Some(&["that", "were", "cast", "this", "turn"][..])
+            && words.get(idx + 2..idx + 7) == Some(&["that", "were", "cast", "this", "turn"][..])
         {
             let mut filter = ObjectFilter::permanent();
             filter.cast_this_turn = true;
@@ -124,23 +153,18 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
         }
         if value == "mana" && words.get(idx + 2).copied() == Some("value") {
             let comparison_tail = words.get(idx + 3..)?;
-            let (comparison, consumed) = parse_filter_comparison_tokens(
-                "mana value",
-                comparison_tail,
-                words,
-            )
-            .ok()??;
+            let (comparison, consumed) =
+                parse_filter_comparison_tokens("mana value", comparison_tail, words).ok()??;
             if consumed == comparison_tail.len() {
                 let mut filter = ObjectFilter::default();
                 filter.mana_value = Some(comparison);
                 return Some(KeywordAction::ProtectionFromFilter(filter));
             }
         }
-        if KEYWORD_PERMANENT_OR_PERMANENTS_WORD_PATTERN.matches_word(value)
-            && KEYWORD_WITH_WORD_PATTERN.matches_word_at(words, idx + 2)
-        {
+        if KEYWORD_PERMANENT_WORDS.contains(&value) && keyword_word_at(words, idx + 2, "with") {
             let counter_words = &words[idx + 3..];
-            if let Some((with_counter, consumed)) = parse_filter_counter_constraint_words(counter_words)
+            if let Some((with_counter, consumed)) =
+                parse_filter_counter_constraint_words(counter_words)
                 && consumed == counter_words.len()
             {
                 let mut filter = ObjectFilter::permanent();
@@ -149,21 +173,21 @@ pub(crate) fn parse_protection_chain(tokens: &[OwnedLexToken]) -> Option<Vec<Key
             }
         }
         match value {
-            "the" if KEYWORD_THE_CHOSEN_PLAYER_PATTERN.matches_words(&words[idx + 1..]) =>
+            "the"
+                if protection_chosen_target_shape(target_tail)
+                    == Some(ProtectionChosenTargetShape::Player) =>
             {
                 Some(KeywordAction::ProtectionFromChosenPlayer)
             }
-            "the" if KEYWORD_THE_CHOSEN_COLOR_PATTERN.matches_words(&words[idx + 1..]) =>
-            {
-                Some(KeywordAction::ProtectionFromChosenColor)
-            }
-            "the" if KEYWORD_THE_LAST_CHOSEN_COLOR_PATTERN.matches_words(&words[idx + 1..]) =>
+            "the"
+                if protection_chosen_target_shape(target_tail)
+                    == Some(ProtectionChosenTargetShape::Color) =>
             {
                 Some(KeywordAction::ProtectionFromChosenColor)
             }
             "colorless" => Some(KeywordAction::ProtectionFromColorless),
             "everything" => Some(KeywordAction::ProtectionFromEverything),
-            "all" if KEYWORD_COLOR_OR_COLORS_WORD_PATTERN.matches_word_at(words, idx + 2) => {
+            "all" if keyword_any_word_at(words, idx + 2, KEYWORD_COLOR_WORDS) => {
                 Some(KeywordAction::ProtectionFromAllColors)
             }
             _ => parse_color(value)

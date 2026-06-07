@@ -6,8 +6,8 @@ use super::activation_and_restrictions::{
     parse_activation_condition_lexed, parse_mana_spend_bonus_sentence_lexed,
     parse_mana_usage_restriction_sentence_lexed, parse_triggered_times_each_turn_lexed,
 };
-use super::effect_sentences::clause_pattern_helpers::ClauseShape;
-use super::lexer::{OwnedLexToken, TokenWordView, lex_line, render_token_slice, token_word_refs};
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::lexer::{LexedClause, OwnedLexToken, TokenWordView, lex_line, render_token_slice};
 
 const ACTIVATE_ONLY_ONCE_EACH_TURN_PHRASE: &[&str] = &["activate", "only", "once", "each", "turn"];
 const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX: &[&str] =
@@ -15,18 +15,127 @@ const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX: &[&str] =
 const AND_ONLY_ONCE_EACH_TURN_SUFFIX: &[&str] = &["and", "only", "once", "each", "turn"];
 const DID_NOT_ATTACK_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["didn't", "attack", "this", "turn"],
+    &["didnt", "attack", "this", "turn"],
     &["did", "not", "attack", "this", "turn"],
     &["has", "not", "attacked", "this", "turn"],
+    &["hasnt", "attacked", "this", "turn"],
+    &["hasn't", "attacked", "this", "turn"],
 ];
-const DID_NOT_ATTACK_THIS_TURN_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[DID_NOT_ATTACK_THIS_TURN_PHRASES]);
-const SOURCE_ATTACKED_THIS_TURN_PHRASES: &[&[&str]] = &[
-    &["this", "creature", "attacked", "this", "turn"],
-    &["it", "attacked", "this", "turn"],
-    &["that", "creature", "attacked", "this", "turn"],
-];
-const SOURCE_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[SOURCE_ATTACKED_THIS_TURN_PHRASES]);
+const SOURCE_ATTACKED_THIS_TURN_SUBJECTS: &[&[&str]] =
+    &[&["this", "creature"], &["it"], &["that", "creature"]];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TextOnlyActivationRestriction {
+    SourceDidNotAttackThisTurn,
+    SourceAttackedThisTurn,
+}
+
+fn text_only_activation_restriction_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<TextOnlyActivationRestriction> {
+    const ACTIVATE_ONLY_IF_PREFIX: &[&str] = &["activate", "only", "if"];
+    const ONLY_IF_PREFIX: &[&str] = &["only", "if"];
+    const DID_NOT_ATTACK_THIS_TURN_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "attack_condition",
+            LexCaptureKind::OneOfPhrase(DID_NOT_ATTACK_THIS_TURN_PHRASES),
+        )]);
+    const SOURCE_ATTACKED_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject(
+            "source",
+            LexCaptureKind::OneOfPhrase(SOURCE_ATTACKED_THIS_TURN_SUBJECTS),
+        ),
+        LexPattern::action(
+            "attack_condition",
+            LexCaptureKind::OneOfPhrase(&[&["attacked", "this", "turn"]]),
+        ),
+    ]);
+
+    fn strip_prefix_words_ci<'a>(
+        tokens: &'a [OwnedLexToken],
+        phrase: &[&str],
+    ) -> Option<&'a [OwnedLexToken]> {
+        let words = TokenWordView::new(tokens);
+        let word_refs = words.word_refs();
+        if word_refs.len() < phrase.len()
+            || !word_refs
+                .iter()
+                .zip(phrase.iter())
+                .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+        {
+            return None;
+        }
+        let token_idx = words.token_index_after_words(phrase.len())?;
+        Some(&tokens[token_idx..])
+    }
+
+    fn strip_suffix_words_ci<'a>(
+        tokens: &'a [OwnedLexToken],
+        phrase: &[&str],
+    ) -> Option<&'a [OwnedLexToken]> {
+        let words = TokenWordView::new(tokens);
+        let word_refs = words.word_refs();
+        if word_refs.len() < phrase.len() {
+            return None;
+        }
+        let start = word_refs.len() - phrase.len();
+        if !word_refs[start..]
+            .iter()
+            .zip(phrase.iter())
+            .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+        {
+            return None;
+        }
+        let range = words.token_range_for_word_range(start, word_refs.len())?;
+        Some(&tokens[..range.start])
+    }
+
+    let mut tokens = restriction_tokens_without_terminal_period(tokens);
+    if let Some(stripped) = strip_prefix_words_ci(tokens, ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX) {
+        tokens = stripped;
+    }
+    if let Some(stripped) = strip_prefix_words_ci(tokens, ACTIVATE_ONLY_IF_PREFIX) {
+        tokens = stripped;
+    } else if let Some(stripped) = strip_prefix_words_ci(tokens, ONLY_IF_PREFIX) {
+        tokens = stripped;
+    }
+    if let Some(stripped) = strip_suffix_words_ci(tokens, AND_ONLY_ONCE_EACH_TURN_SUFFIX) {
+        tokens = stripped;
+    }
+
+    let clause = LexedClause::new(tokens);
+    if let Some(matched) = DID_NOT_ATTACK_THIS_TURN_PATTERN.match_clause(clause)
+        && matched
+            .capture_clause_by_role(LexCaptureRole::Action, clause)
+            .is_some()
+    {
+        return Some(TextOnlyActivationRestriction::SourceDidNotAttackThisTurn);
+    }
+    for subject in SOURCE_ATTACKED_THIS_TURN_SUBJECTS {
+        let Some(tail) = strip_prefix_words_ci(tokens, subject) else {
+            continue;
+        };
+        let clause = LexedClause::new(tail);
+        if let Some(matched) = DID_NOT_ATTACK_THIS_TURN_PATTERN.match_clause(clause)
+            && matched
+                .capture_clause_by_role(LexCaptureRole::Action, clause)
+                .is_some()
+        {
+            return Some(TextOnlyActivationRestriction::SourceDidNotAttackThisTurn);
+        }
+    }
+    if let Some(matched) = SOURCE_ATTACKED_THIS_TURN_PATTERN.match_clause(clause)
+        && matched
+            .capture_clause_by_role(LexCaptureRole::Subject, clause)
+            .is_some()
+        && matched
+            .capture_clause_by_role(LexCaptureRole::Action, clause)
+            .is_some()
+    {
+        return Some(TextOnlyActivationRestriction::SourceAttackedThisTurn);
+    }
+    None
+}
 
 pub(crate) fn apply_pending_restrictions_to_ability(
     ability: &mut Ability,
@@ -93,18 +202,14 @@ pub(crate) fn apply_pending_activation_restriction(
     fn parse_text_only_activation_restriction_condition_tokens(
         tokens: &[OwnedLexToken],
     ) -> Option<crate::ConditionExpr> {
-        let words = token_word_refs(tokens);
-        if DID_NOT_ATTACK_THIS_TURN_PATTERN.matches_words(&words) {
-            return Some(crate::ConditionExpr::Not(Box::new(
-                crate::ConditionExpr::SourceAttackedThisTurn,
-            )));
+        match text_only_activation_restriction_shape(tokens)? {
+            TextOnlyActivationRestriction::SourceDidNotAttackThisTurn => Some(
+                crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::SourceAttackedThisTurn)),
+            ),
+            TextOnlyActivationRestriction::SourceAttackedThisTurn => {
+                Some(crate::ConditionExpr::SourceAttackedThisTurn)
+            }
         }
-
-        if SOURCE_ATTACKED_THIS_TURN_PATTERN.matches_words(&words) {
-            return Some(crate::ConditionExpr::SourceAttackedThisTurn);
-        }
-
-        None
     }
 
     let tokens = lex_line(restriction, 0).unwrap_or_default();

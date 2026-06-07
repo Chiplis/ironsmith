@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
 const PLAYERS_CANT_LOSE_OR_WIN_GAME_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
@@ -127,14 +128,13 @@ const CARD_TYPE_LIST_IGNORED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
             &["abilities"],
         ]
 );
-const CAST_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["cast"]);
-const SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
-const SPELLS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spells"]);
-const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["spell"], &["spells"]]);
-const NONCREATURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["noncreature"]);
-const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
+const CAST_WORD: &str = "cast";
+const SPELL_WORD: &str = "spell";
+const SPELLS_WORD: &str = "spells";
+const SPELL_OR_SPELLS_WORDS: &[&str] = &["spell", "spells"];
+const NONCREATURE_WORD: &str = "noncreature";
+const WITH_WORD: &str = "with";
+const ARTICLE_WORDS: &[&str] = &["a", "an"];
 const X_IN_MANA_COST_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
         & [
@@ -311,27 +311,21 @@ const LOSE_UNSPENT_MANA_STEPS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["lose", "unspent"]; contains_phrases & [&["mana", "as", "steps"]]);
 const LOSE_THIS_MANA_STEPS_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["lose", "this", "mana", "as", "steps"]);
-const NON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["non"]);
-const AND_OR_CONNECTOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["or"], &["and"]]);
-const DURING_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["during"]);
-const AND_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and/or"]);
+const NON_WORD: &str = "non";
+const AND_OR_CONNECTOR_WORDS: &[&str] = &["or", "and"];
+const DURING_WORD: &str = "during";
+const AND_OR_WORD: &str = "and/or";
 const AND_OR_PHRASE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["and", "or"]);
 const DEALT_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["dealt", "damage", "this", "way"]]);
-const CANT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["cant"], &["can't"], &["cannot"]]);
-const CAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["can"]);
-const T_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["t"]);
-const DOESNT_OR_DONT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["doesnt"], &["dont"]]);
-const CONTROL_OR_OWN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["control"], &["controls"], &["own"], &["owns"]]);
-const DOES_DO_CAN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["does"], &["do"], &["can"]]);
-const DOES_OR_DO_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["does"], &["do"]]);
-const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
+const CANT_WORDS: &[&str] = &["cant", "can't", "cannot"];
+const CAN_WORD: &str = "can";
+const T_WORD: &str = "t";
+const DOESNT_OR_DONT_WORDS: &[&str] = &["doesnt", "dont"];
+const CONTROL_OR_OWN_WORDS: &[&str] = &["control", "controls", "own", "owns"];
+const DOES_DO_CAN_WORDS: &[&str] = &["does", "do", "can"];
+const DOES_OR_DO_WORDS: &[&str] = &["does", "do"];
+const NOT_WORD: &str = "not";
 const DONT_LOSE_THIS_MANA_STEPS_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -360,26 +354,23 @@ const DAMAGE_RESTRICTION_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["damage"], &["the", "damage"], &["that", "damage"]]);
 const TAGGED_OBJECT_PRONOUN_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["it"], &["they"], &["them"], &["itself"], &["themselves"]]);
-const BLOCK_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["block"]);
+const BLOCK_WORD: &str = "block";
 const POWER_OR_TOUGHNESS_SUBJECT_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["power", "or", "toughness"], &["toughness", "or", "power"]]);
-const EFFECT_ACTION_RESTRICTION_TAIL_HEAD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["put"],
-            &["draw"],
-            &["reveal"],
-            &["look"],
-            &["search"],
-            &["create"],
-            &["return"],
-            &["exile"],
-            &["sacrifice"],
-            &["discard"],
-            &["gain"],
-            &["lose"],
-        ]
-);
+const EFFECT_ACTION_RESTRICTION_TAIL_HEAD_WORDS: &[&str] = &[
+    "put",
+    "draw",
+    "reveal",
+    "look",
+    "search",
+    "create",
+    "return",
+    "exile",
+    "sacrifice",
+    "discard",
+    "gain",
+    "lose",
+];
 const SIMPLE_NEGATED_OBJECT_TAIL_PATTERNS: &[(ClauseShape<'static>, ObjectRestrictionTailKind)] = &[
     (
         clause_shape!(exact_any & [&["attack"], &["attack", "this", "turn"]]),
@@ -465,17 +456,48 @@ const SIMPLE_NEGATED_OBJECT_TAIL_PATTERNS: &[(ClauseShape<'static>, ObjectRestri
 ];
 
 fn player_negated_restriction_subject(words: &[&str]) -> Option<PlayerFilter> {
-    if YOU_PLAYER_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, YOU_PLAYER_SUBJECT_PATTERN) {
         Some(PlayerFilter::You)
-    } else if NEGATED_RESTRICTION_OPPONENT_SUBJECT_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        NEGATED_RESTRICTION_OPPONENT_SUBJECT_PATTERN,
+    ) {
         Some(PlayerFilter::Opponent)
-    } else if ANY_PLAYER_SUBJECT_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, ANY_PLAYER_SUBJECT_PATTERN) {
         Some(PlayerFilter::Any)
-    } else if ENCHANTED_PLAYER_SUBJECT_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, ENCHANTED_PLAYER_SUBJECT_PATTERN) {
         Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted")))
     } else {
         None
     }
+}
+
+fn activation_restriction_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
+    shape.matches_words(words)
+}
+
+fn activation_restriction_word_is_any(word: &str, expected: &[&str]) -> bool {
+    expected.contains(&word)
+}
+
+fn activation_restriction_word_is(word: &str, expected: &str) -> bool {
+    activation_restriction_word_is_any(word, &[expected])
+}
+
+fn activation_restriction_word_at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
+    words
+        .get(idx)
+        .is_some_and(|word| activation_restriction_word_is_any(word, expected))
+}
+
+fn activation_restriction_word_at_is(words: &[&str], idx: usize, expected: &str) -> bool {
+    activation_restriction_word_at_is_any(words, idx, &[expected])
+}
+
+fn activation_restriction_token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
+    token
+        .as_word()
+        .is_some_and(|word| activation_restriction_word_is(word, expected))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -504,7 +526,7 @@ fn simple_negated_object_restriction(
 
     let (_, kind) = SIMPLE_NEGATED_OBJECT_TAIL_PATTERNS
         .iter()
-        .find(|(pattern, _)| pattern.matches_words(words))?;
+        .find(|(pattern, _)| activation_restriction_shape_matches_words(words, *pattern))?;
     Some(match kind {
         ObjectRestrictionTailKind::Attack => Restriction::attack(filter.clone()),
         ObjectRestrictionTailKind::AttackAlone => Restriction::attack_alone(filter.clone()),
@@ -599,7 +621,10 @@ fn source_filtered_target_restriction(
         ))
     })?;
 
-    if spell_filter.as_ref().is_some_and(|filter| filter != &source_filter) {
+    if spell_filter
+        .as_ref()
+        .is_some_and(|filter| filter != &source_filter)
+    {
         return Err(CardTextError::ParseError(format!(
             "unsupported source-filtered target restriction tail (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -634,10 +659,14 @@ fn source_only_target_restriction(
         Some(filter) => Some(filter),
         None => parse_subject_object_filter(&source_tokens)?,
     }
-    .or_else(|| match parse_object_filter(descriptor_tokens, false).ok() {
-        Some(filter) => Some(filter),
-        None => parse_subject_object_filter(descriptor_tokens).ok().flatten(),
-    })
+    .or_else(
+        || match parse_object_filter(descriptor_tokens, false).ok() {
+            Some(filter) => Some(filter),
+            None => parse_subject_object_filter(descriptor_tokens)
+                .ok()
+                .flatten(),
+        },
+    )
     .ok_or_else(|| {
         CardTextError::ParseError(format!(
             "unsupported source-filtered target restriction tail (clause: '{}')",
@@ -662,25 +691,37 @@ fn player_negated_restriction_from_tail(
 
     if let Some(spell_filter) = parse_cast_restriction_tail_filter(words) {
         Some(Restriction::cast_spells_matching(player, spell_filter))
-    } else if PLAYER_GAIN_LIFE_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, PLAYER_GAIN_LIFE_TAIL_PATTERN) {
         Some(Restriction::gain_life(player))
-    } else if PLAYER_SEARCH_LIBRARIES_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        PLAYER_SEARCH_LIBRARIES_TAIL_PATTERN,
+    ) {
         Some(Restriction::search_libraries(player))
-    } else if PLAYER_LOSE_GAME_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, PLAYER_LOSE_GAME_TAIL_PATTERN) {
         Some(Restriction::lose_game(player))
-    } else if PLAYER_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, PLAYER_LOSE_LIFE_TAIL_PATTERN) {
         Some(Restriction::lose_life(player))
-    } else if PLAYER_WIN_GAME_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, PLAYER_WIN_GAME_TAIL_PATTERN) {
         Some(Restriction::win_game(player))
-    } else if PLAYER_DRAW_CARDS_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, PLAYER_DRAW_CARDS_TAIL_PATTERN) {
         Some(Restriction::draw_cards(player))
-    } else if PLAYER_DRAW_MORE_THAN_ONE_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        PLAYER_DRAW_MORE_THAN_ONE_TAIL_PATTERN,
+    ) {
         Some(Restriction::draw_extra_cards(player))
-    } else if PLAYER_GET_POISON_COUNTERS_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        PLAYER_GET_POISON_COUNTERS_TAIL_PATTERN,
+    ) {
         Some(Restriction::poison_counters(player))
-    } else if PLAYER_CAST_MORE_THAN_ONE_SPELL_EACH_TURN_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        PLAYER_CAST_MORE_THAN_ONE_SPELL_EACH_TURN_TAIL_PATTERN,
+    ) {
         Some(Restriction::cast_more_than_one_spell_each_turn(player))
-    } else if CANT_CAST_SPELLS_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(words, CANT_CAST_SPELLS_TAIL_PATTERN) {
         Some(Restriction::cast_spells_matching(
             player,
             ObjectFilter::spell(),
@@ -695,11 +736,17 @@ fn damage_cause_life_loss_restriction_from_tail(
 ) -> Option<crate::effect::Restriction> {
     use crate::effect::Restriction;
 
-    if DAMAGE_CAUSE_YOU_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, DAMAGE_CAUSE_YOU_LOSE_LIFE_TAIL_PATTERN) {
         Some(Restriction::damage_cause_life_loss(PlayerFilter::You))
-    } else if DAMAGE_CAUSE_PLAYERS_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        DAMAGE_CAUSE_PLAYERS_LOSE_LIFE_TAIL_PATTERN,
+    ) {
         Some(Restriction::damage_cause_life_loss(PlayerFilter::Any))
-    } else if DAMAGE_CAUSE_THAT_PLAYER_LOSE_LIFE_TAIL_PATTERN.matches_words(words) {
+    } else if activation_restriction_shape_matches_words(
+        words,
+        DAMAGE_CAUSE_THAT_PLAYER_LOSE_LIFE_TAIL_PATTERN,
+    ) {
         Some(Restriction::damage_cause_life_loss(
             PlayerFilter::IteratedPlayer,
         ))
@@ -755,7 +802,10 @@ pub(crate) fn parse_cant_restrictions(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if PLAYERS_CANT_LOSE_OR_WIN_GAME_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(
+        &normalized,
+        PLAYERS_CANT_LOSE_OR_WIN_GAME_PATTERN,
+    ) {
         return Ok(Some(vec![
             ParsedCantRestriction {
                 restriction: crate::effect::Restriction::lose_game(PlayerFilter::Any),
@@ -815,7 +865,10 @@ pub(crate) fn parse_cant_restrictions(
             };
             let segment_words = normalize_cant_words(segment);
             let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
-            let has_or_win_tail = CANT_WIN_GAME_TAIL_PATTERN.matches_words(&segment_word_refs);
+            let has_or_win_tail = activation_restriction_shape_matches_words(
+                &segment_word_refs,
+                CANT_WIN_GAME_TAIL_PATTERN,
+            );
             if has_or_win_tail
                 && let crate::effect::Restriction::LoseGame(player_filter) =
                     restriction.restriction.clone()
@@ -867,8 +920,10 @@ pub(crate) fn parse_cant_restriction_clause(
     let restriction = if let Some(parsed) = parse_cant_cast_restriction_words(&normalized) {
         parsed
     } else {
-        if OPPONENTS_CANT_BLOCK_ODD_EVEN_MV_PATTERN.matches_words(&normalized)
-            && let Some(parity) = normalized.get(7).copied()
+        if activation_restriction_shape_matches_words(
+            &normalized,
+            OPPONENTS_CANT_BLOCK_ODD_EVEN_MV_PATTERN,
+        ) && let Some(parity) = normalized.get(7).copied()
         {
             let parity = match parity {
                 "odd" => crate::filter::ParityRequirement::Odd,
@@ -884,35 +939,77 @@ pub(crate) fn parse_cant_restriction_clause(
                 target: None,
             }));
         }
-        if PLAYERS_CANT_GAIN_LIFE_PATTERN.matches_words(&normalized) {
+        if activation_restriction_shape_matches_words(&normalized, PLAYERS_CANT_GAIN_LIFE_PATTERN) {
             Restriction::gain_life(PlayerFilter::Any)
-        } else if PLAYERS_CANT_SEARCH_LIBRARIES_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            PLAYERS_CANT_SEARCH_LIBRARIES_PATTERN,
+        ) {
             Restriction::search_libraries(PlayerFilter::Any)
-        } else if PLAYERS_CANT_DRAW_CARDS_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            PLAYERS_CANT_DRAW_CARDS_PATTERN,
+        ) {
             Restriction::draw_cards(PlayerFilter::Any)
-        } else if PLAYERS_CANT_DRAW_MORE_THAN_ONE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            PLAYERS_CANT_DRAW_MORE_THAN_ONE_PATTERN,
+        ) {
             Restriction::draw_extra_cards(PlayerFilter::Any)
-        } else if DAMAGE_CANT_BE_PREVENTED_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            DAMAGE_CANT_BE_PREVENTED_PATTERN,
+        ) {
             Restriction::prevent_damage()
-        } else if YOU_CANT_LOSE_GAME_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOU_CANT_LOSE_GAME_PATTERN,
+        ) {
             Restriction::lose_game(PlayerFilter::You)
-        } else if OPPONENTS_CANT_WIN_GAME_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            OPPONENTS_CANT_WIN_GAME_PATTERN,
+        ) {
             Restriction::win_game(PlayerFilter::Opponent)
-        } else if YOUR_LIFE_TOTAL_CANT_CHANGE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOUR_LIFE_TOTAL_CANT_CHANGE_PATTERN,
+        ) {
             Restriction::change_life_total(PlayerFilter::You)
-        } else if OPPONENTS_CANT_DRAW_MORE_THAN_ONE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            OPPONENTS_CANT_DRAW_MORE_THAN_ONE_PATTERN,
+        ) {
             Restriction::draw_extra_cards(PlayerFilter::Opponent)
-        } else if YOU_CANT_GAIN_LIFE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOU_CANT_GAIN_LIFE_PATTERN,
+        ) {
             Restriction::gain_life(PlayerFilter::You)
-        } else if YOU_CANT_SEARCH_LIBRARIES_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOU_CANT_SEARCH_LIBRARIES_PATTERN,
+        ) {
             Restriction::search_libraries(PlayerFilter::You)
-        } else if YOU_CANT_DRAW_CARDS_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOU_CANT_DRAW_CARDS_PATTERN,
+        ) {
             Restriction::draw_cards(PlayerFilter::You)
-        } else if YOU_CANT_BECOME_MONARCH_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            YOU_CANT_BECOME_MONARCH_PATTERN,
+        ) {
             Restriction::become_monarch(PlayerFilter::You)
-        } else if ITERATED_PLAYER_CANT_GAIN_LIFE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            ITERATED_PLAYER_CANT_GAIN_LIFE_PATTERN,
+        ) {
             Restriction::gain_life(PlayerFilter::IteratedPlayer)
-        } else if OPPONENTS_CANT_GAIN_LIFE_PATTERN.matches_words(&normalized) {
+        } else if activation_restriction_shape_matches_words(
+            &normalized,
+            OPPONENTS_CANT_GAIN_LIFE_PATTERN,
+        ) {
             Restriction::gain_life(PlayerFilter::Opponent)
         } else {
             return parse_negated_object_restriction_clause(tokens);
@@ -1025,8 +1122,8 @@ fn is_mana_retention_negated_clause(words: &[&str]) -> bool {
 }
 
 fn is_mana_retention_tail(words: &[&str]) -> bool {
-    LOSE_UNSPENT_MANA_STEPS_PATTERN.matches_words(words)
-        || LOSE_THIS_MANA_STEPS_PATTERN.matches_words(words)
+    activation_restriction_shape_matches_words(words, LOSE_UNSPENT_MANA_STEPS_PATTERN)
+        || activation_restriction_shape_matches_words(words, LOSE_THIS_MANA_STEPS_PATTERN)
 }
 
 pub(crate) fn parse_cant_cast_restriction_words(
@@ -1057,16 +1154,21 @@ pub(crate) fn parse_cant_cast_restriction_words(
 
         if !tail
             .first()
-            .is_some_and(|word| CANT_WORD_PATTERN.matches_word(word))
+            .is_some_and(|word| activation_restriction_word_is_any(word, CANT_WORDS))
         {
             return None;
         }
         let cant_tail = &tail[1..];
 
-        if CANT_CAST_SPELLS_TAIL_PATTERN.matches_words(cant_tail) {
+        if activation_restriction_shape_matches_words(cant_tail, CANT_CAST_SPELLS_TAIL_PATTERN) {
             return Some(Restriction::cast_spells(player));
         }
-        if cant_tail.len() >= 6 && CANT_CAST_SPELLS_WITH_PARITY_PATTERN.matches_words(cant_tail) {
+        if cant_tail.len() >= 6
+            && activation_restriction_shape_matches_words(
+                cant_tail,
+                CANT_CAST_SPELLS_WITH_PARITY_PATTERN,
+            )
+        {
             let parity = cant_tail[3];
             let parity = match parity {
                 "odd" => crate::filter::ParityRequirement::Odd,
@@ -1078,19 +1180,25 @@ pub(crate) fn parse_cant_cast_restriction_words(
                 ObjectFilter::spell().with_mana_value_parity(parity),
             ));
         }
-        if CANT_CAST_CREATURE_SPELLS_TAIL_PATTERN.matches_words(cant_tail) {
+        if activation_restriction_shape_matches_words(
+            cant_tail,
+            CANT_CAST_CREATURE_SPELLS_TAIL_PATTERN,
+        ) {
             return Some(Restriction::cast_creature_spells(player));
         }
         if cant_tail
             .first()
-            .is_some_and(|word| CAST_WORD_PATTERN.matches_word(word))
+            .is_some_and(|word| activation_restriction_word_is(word, CAST_WORD))
         {
             let mut idx = 1usize;
             if let Some((spell_filter, used)) = parse_cast_limit_qualifier(&cant_tail[idx..]) {
                 idx += used;
-                if SPELL_OR_SPELLS_WORD_PATTERN.matches_word_at(cant_tail, idx) {
+                if activation_restriction_word_at_is_any(cant_tail, idx, SPELL_OR_SPELLS_WORDS) {
                     idx += 1;
-                    if THIS_TURN_PREFIX_PATTERN.matches_words(&cant_tail[idx..]) {
+                    if activation_restriction_shape_matches_words(
+                        &cant_tail[idx..],
+                        THIS_TURN_PREFIX_PATTERN,
+                    ) {
                         idx += 2;
                     }
                     if idx == cant_tail.len() {
@@ -1116,7 +1224,9 @@ pub(crate) fn parse_cant_cast_restriction_words(
 }
 
 fn parse_spell_subject_cant_be_cast_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if !SPELL_CANT_BE_CAST_SUFFIX_PATTERN.matches_words(words) || words.len() <= 3 {
+    if !activation_restriction_shape_matches_words(words, SPELL_CANT_BE_CAST_SUFFIX_PATTERN)
+        || words.len() <= 3
+    {
         return None;
     }
     parse_spell_restriction_subject_filter(&words[..words.len() - 3])
@@ -1126,13 +1236,14 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
     let mut filter = ObjectFilter::spell();
     let mut idx = 0usize;
 
-    if NONCREATURE_WORD_PATTERN.matches_word_at(words, idx) {
+    if activation_restriction_word_at_is(words, idx, NONCREATURE_WORD) {
         filter = filter.without_type(CardType::Creature);
         idx += 1;
-    } else if NON_CREATURE_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    } else if activation_restriction_shape_matches_words(&words[idx..], NON_CREATURE_PREFIX_PATTERN)
+    {
         filter = filter.without_type(CardType::Creature);
         idx += 2;
-    } else if !SPELL_OR_SPELLS_WORD_PATTERN.matches_word_at(words, idx) {
+    } else if !activation_restriction_word_at_is_any(words, idx, SPELL_OR_SPELLS_WORDS) {
         let term = words.get(idx).copied()?;
         if let Some(card_type) = parse_card_type(term.trim_end_matches('s')) {
             filter = filter.with_type(card_type);
@@ -1143,18 +1254,18 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
         }
     }
 
-    if !SPELL_OR_SPELLS_WORD_PATTERN.matches_word_at(words, idx) {
+    if !activation_restriction_word_at_is_any(words, idx, SPELL_OR_SPELLS_WORDS) {
         return None;
     }
     idx += 1;
 
     while idx < words.len() {
-        if !WITH_WORD_PATTERN.matches_word_at(words, idx) {
+        if !activation_restriction_word_at_is(words, idx, WITH_WORD) {
             return None;
         }
         idx += 1;
 
-        if MANA_VALUE_PREFIX_PATTERN.matches_words(&words[idx..]) {
+        if activation_restriction_shape_matches_words(&words[idx..], MANA_VALUE_PREFIX_PATTERN) {
             let value = words.get(idx + 2)?.parse::<i32>().ok()?;
             let comparison = match (words.get(idx + 3).copied(), words.get(idx + 4).copied()) {
                 (Some("or"), Some("greater")) => {
@@ -1175,7 +1286,8 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
             continue;
         }
 
-        if X_IN_MANA_COST_PREFIX_PATTERN.matches_words(&words[idx..]) {
+        if activation_restriction_shape_matches_words(&words[idx..], X_IN_MANA_COST_PREFIX_PATTERN)
+        {
             filter.has_x_in_cost = true;
             idx += 5;
             continue;
@@ -1197,28 +1309,31 @@ fn parse_spell_restriction_subject_filter(words: &[&str]) -> Option<ObjectFilter
 }
 
 pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, usize)> {
-    if PLAYERS_DEALT_DAMAGE_THIS_WAY_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(
+        words,
+        PLAYERS_DEALT_DAMAGE_THIS_WAY_SUBJECT_PATTERN,
+    ) {
         return Some((PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")), 5));
     }
-    if THAT_PLAYER_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, THAT_PLAYER_SUBJECT_PATTERN) {
         return Some((PlayerFilter::IteratedPlayer, 2));
     }
-    if YOUR_OPPONENTS_WHO_HAVE_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, YOUR_OPPONENTS_WHO_HAVE_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Opponent, 4));
     }
-    if EACH_PLAYER_WHO_HAS_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, EACH_PLAYER_WHO_HAS_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Any, 4));
     }
-    if EACH_OPPONENT_WHO_HAS_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, EACH_OPPONENT_WHO_HAS_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Opponent, 4));
     }
-    if YOUR_OPPONENTS_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, YOUR_OPPONENTS_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Opponent, 2));
     }
-    if EACH_PLAYER_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, EACH_PLAYER_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Any, 2));
     }
-    if EACH_OPPONENT_SUBJECT_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, EACH_OPPONENT_SUBJECT_PATTERN) {
         return Some((PlayerFilter::Opponent, 2));
     }
     match words.first().copied() {
@@ -1231,18 +1346,20 @@ pub(crate) fn parse_cant_cast_subject(words: &[&str]) -> Option<(PlayerFilter, u
 }
 
 pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
-    if !CAST_MORE_THAN_ONE_PREFIX_PATTERN.matches_words(words) {
+    if !activation_restriction_shape_matches_words(words, CAST_MORE_THAN_ONE_PREFIX_PATTERN) {
         return None;
     }
     let mut idx = 4usize;
-    let (spell_filter, consumed) = if SPELL_WORD_PATTERN.matches_word_at(words, idx) {
+    let (spell_filter, consumed) = if activation_restriction_word_at_is(words, idx, SPELL_WORD) {
         (ObjectFilter::default(), 0usize)
     } else {
         parse_cast_limit_qualifier(&words[idx..])?
     };
     idx += consumed;
 
-    if !SPELL_EACH_TURN_TAIL_PATTERN.matches_words(&words[idx..]) || idx + 3 != words.len() {
+    if !activation_restriction_shape_matches_words(&words[idx..], SPELL_EACH_TURN_TAIL_PATTERN)
+        || idx + 3 != words.len()
+    {
         return None;
     }
 
@@ -1251,31 +1368,34 @@ pub(crate) fn parse_cast_more_than_one_limit_filter(words: &[&str]) -> Option<Ob
 
 pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<ObjectFilter> {
     let mut idx = 0usize;
-    if WHO_HAS_PREFIX_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, WHO_HAS_PREFIX_PATTERN) {
         idx += 2;
     }
 
-    if !CAST_WORD_PATTERN.matches_word_at(words, idx) {
+    if !activation_restriction_word_at_is(words, idx, CAST_WORD) {
         return None;
     }
     idx += 1;
-    if ARTICLE_WORD_PATTERN.matches_word_at(words, idx) {
+    if activation_restriction_word_at_is_any(words, idx, ARTICLE_WORDS) {
         idx += 1;
     }
 
     let (first_filter, first_used) = parse_cast_limit_qualifier(&words[idx..])?;
     idx += first_used;
 
-    if !SPELL_WORD_PATTERN.matches_word_at(words, idx) {
+    if !activation_restriction_word_at_is(words, idx, SPELL_WORD) {
         return None;
     }
     idx += 1;
 
-    if THIS_TURN_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    if activation_restriction_shape_matches_words(&words[idx..], THIS_TURN_PREFIX_PATTERN) {
         idx += 2;
     }
 
-    if !CANT_CAST_ADDITIONAL_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    if !activation_restriction_shape_matches_words(
+        &words[idx..],
+        CANT_CAST_ADDITIONAL_PREFIX_PATTERN,
+    ) {
         return None;
     }
     idx += 3;
@@ -1286,7 +1406,7 @@ pub(crate) fn parse_cast_additional_limit_filter(words: &[&str]) -> Option<Objec
     }
     idx += second_used;
 
-    if !SPELLS_WORD_PATTERN.matches_word_at(words, idx) || idx + 1 != words.len() {
+    if !activation_restriction_word_at_is(words, idx, SPELLS_WORD) || idx + 1 != words.len() {
         return None;
     }
 
@@ -1326,7 +1446,7 @@ pub(crate) fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter
     }
 
     if words.len() >= 2
-        && NON_WORD_PATTERN.matches_word(words[0])
+        && activation_restriction_word_is(words[0], NON_WORD)
         && let Some(filter) = parse_non_term(words[1])
     {
         return Some((filter, 2));
@@ -1339,7 +1459,7 @@ pub(crate) fn parse_cast_limit_qualifier(words: &[&str]) -> Option<(ObjectFilter
         let mut used = 1usize;
         while words
             .get(used)
-            .is_some_and(|word| AND_OR_CONNECTOR_PATTERN.matches_word(word))
+            .is_some_and(|word| activation_restriction_word_is_any(word, AND_OR_CONNECTOR_WORDS))
         {
             let Some(next_word) = words.get(used + 1).copied() else {
                 break;
@@ -1370,7 +1490,7 @@ pub(crate) fn strip_static_restriction_condition(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    if DURING_YOUR_TURN_PREFIX_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, DURING_YOUR_TURN_PREFIX_PATTERN) {
         let remainder = find_index(tokens, |token| token.is_comma())
             .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
             .unwrap_or_else(|| trim_commas(&tokens[3..]).to_vec());
@@ -1380,7 +1500,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if IF_RESTRICTION_PREFIX_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, IF_RESTRICTION_PREFIX_PATTERN) {
         let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
@@ -1394,7 +1514,7 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if DURING_COMBAT_PREFIX_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, DURING_COMBAT_PREFIX_PATTERN) {
         let remainder = find_index(tokens, |token| token.is_comma())
             .map(|idx| trim_commas(&tokens[idx + 1..]).to_vec())
             .unwrap_or_else(|| trim_commas(&tokens[2..]).to_vec());
@@ -1404,25 +1524,32 @@ pub(crate) fn strip_static_restriction_condition(
         )));
     }
 
-    if DURING_YOUR_TURN_SUFFIX_PATTERN.matches_words(&normalized) {
-        let cut = rfind_index(tokens, |token| DURING_WORD_PATTERN.matches_token(token))
-            .unwrap_or(tokens.len());
+    if activation_restriction_shape_matches_words(&normalized, DURING_YOUR_TURN_SUFFIX_PATTERN) {
+        let cut = rfind_index(tokens, |token| {
+            activation_restriction_token_word_is(token, DURING_WORD)
+        })
+        .unwrap_or(tokens.len());
         return Ok(Some((
             crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringYourTurn),
             trim_commas(&tokens[..cut]).to_vec(),
         )));
     }
 
-    if DURING_COMBAT_SUFFIX_PATTERN.matches_words(&normalized) {
-        let cut = rfind_index(tokens, |token| DURING_WORD_PATTERN.matches_token(token))
-            .unwrap_or(tokens.len());
+    if activation_restriction_shape_matches_words(&normalized, DURING_COMBAT_SUFFIX_PATTERN) {
+        let cut = rfind_index(tokens, |token| {
+            activation_restriction_token_word_is(token, DURING_WORD)
+        })
+        .unwrap_or(tokens.len());
         return Ok(Some((
             crate::ConditionExpr::ActivationTiming(ActivationTiming::DuringCombat),
             trim_commas(&tokens[..cut]).to_vec(),
         )));
     }
 
-    if AS_LONG_AS_RESTRICTION_PREFIX_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(
+        &normalized,
+        AS_LONG_AS_RESTRICTION_PREFIX_PATTERN,
+    ) {
         let Some(comma_idx) = find_index(tokens, |token| token.is_comma()) else {
             return Ok(None);
         };
@@ -1433,7 +1560,10 @@ pub(crate) fn strip_static_restriction_condition(
                 .iter()
                 .map(String::as_str)
                 .collect::<Vec<_>>();
-            if SOURCE_ATTACHED_TO_CREATURE_CONDITION_PATTERN.matches_words(&normalized_condition) {
+            if activation_restriction_shape_matches_words(
+                &normalized_condition,
+                SOURCE_ATTACHED_TO_CREATURE_CONDITION_PATTERN,
+            ) {
                 Ok(crate::ConditionExpr::SourceIsEquipped)
             } else {
                 Err(CardTextError::ParseError(format!(
@@ -1479,26 +1609,35 @@ pub(crate) fn parse_player_negated_restriction_clause(
             target,
         }));
     }
-    if CANT_CAST_SPELLS_TAIL_PATTERN.matches_words(&remainder_words) {
+    if activation_restriction_shape_matches_words(&remainder_words, CANT_CAST_SPELLS_TAIL_PATTERN) {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::cast_spells(player),
             target,
         }));
     }
-    if ACTIVATE_ABILITIES_THAT_ARENT_MANA_TAIL_PATTERN.matches_words(&remainder_words) {
+    if activation_restriction_shape_matches_words(
+        &remainder_words,
+        ACTIVATE_ABILITIES_THAT_ARENT_MANA_TAIL_PATTERN,
+    ) {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::activate_non_mana_abilities(player),
             target,
         }));
     }
-    if ACTIVATE_ABILITIES_OF_PREFIX_PATTERN.matches_words(&remainder_words) {
+    if activation_restriction_shape_matches_words(
+        &remainder_words,
+        ACTIVATE_ABILITIES_OF_PREFIX_PATTERN,
+    ) {
         let Some(mut filter) =
             parse_card_type_list_filter(&remainder_words[3..], Some(Zone::Battlefield))
         else {
             return Ok(None);
         };
         filter.controller = Some(player);
-        let restriction = if UNLESS_MANA_ABILITIES_SUFFIX_PATTERN.matches_words(&remainder_words) {
+        let restriction = if activation_restriction_shape_matches_words(
+            &remainder_words,
+            UNLESS_MANA_ABILITIES_SUFFIX_PATTERN,
+        ) {
             Restriction::activate_non_mana_abilities_of(filter)
         } else {
             Restriction::activate_abilities_of(filter)
@@ -1535,37 +1674,37 @@ pub(crate) fn parse_player_restriction_subject(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if YOU_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, YOU_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::You, None)));
     }
-    if ITERATED_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, ITERATED_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::IteratedPlayer, None)));
     }
-    if DAMAGED_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, DAMAGED_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((
             PlayerFilter::TaggedPlayer(TagKey::from("damaged_0")),
             None,
         )));
     }
-    if OPPONENT_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, OPPONENT_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::Opponent, None)));
     }
-    if ANY_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, ANY_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::Any, None)));
     }
-    if DEFENDING_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, DEFENDING_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::Defending, None)));
     }
-    if ATTACKING_PLAYER_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, ATTACKING_PLAYER_SUBJECT_PATTERN) {
         return Ok(Some((PlayerFilter::Attacking, None)));
     }
-    if CONTROLLER_OF_IT_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, CONTROLLER_OF_IT_SUBJECT_PATTERN) {
         return Ok(Some((
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG))),
             None,
         )));
     }
-    if OWNER_OF_IT_SUBJECT_PATTERN.matches_words(&normalized) {
+    if activation_restriction_shape_matches_words(&normalized, OWNER_OF_IT_SUBJECT_PATTERN) {
         return Ok(Some((
             PlayerFilter::OwnerOf(crate::filter::ObjectRef::tagged(TagKey::from(IT_TAG))),
             None,
@@ -1616,17 +1755,20 @@ pub(crate) fn target_ast_player_filter(
 pub(crate) fn parse_cast_restriction_tail_filter(words: &[&str]) -> Option<ObjectFilter> {
     if words
         .first()
-        .is_some_and(|word| CAST_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| activation_restriction_word_is(word, CAST_WORD))
         && let Some(mut filter) = parse_spell_restriction_subject_filter(&words[1..])
     {
         filter.zone = None;
         filter.stack_kind = None;
         return Some(filter);
     }
-    if CAST_SPELLS_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(words, CAST_SPELLS_PATTERN) {
         return Some(ObjectFilter::default());
     }
-    if CANT_CAST_SPELLS_OF_CHOSEN_TYPE_TAIL_PATTERN.matches_words(words) {
+    if activation_restriction_shape_matches_words(
+        words,
+        CANT_CAST_SPELLS_OF_CHOSEN_TYPE_TAIL_PATTERN,
+    ) {
         return Some(ObjectFilter::default().of_chosen_card_type());
     }
     if words.first() != Some(&"cast") || words.last() != Some(&"spells") || words.len() < 3 {
@@ -1644,7 +1786,12 @@ pub(crate) fn parse_card_type_list_filter(
     let cleaned = words
         .iter()
         .copied()
-        .filter(|word| !CARD_TYPE_LIST_IGNORED_WORD_PATTERN.matches_words(&[*word]))
+        .filter(|word| {
+            !activation_restriction_shape_matches_words(
+                &[*word],
+                CARD_TYPE_LIST_IGNORED_WORD_PATTERN,
+            )
+        })
         .collect::<Vec<_>>();
     if cleaned.is_empty() {
         return None;
@@ -1673,13 +1820,13 @@ fn parse_and_or_disjunction_filter(
     let mut separator_indices = Vec::new();
     let mut idx = 0usize;
     while idx < tokens.len() {
-        if AND_OR_WORD_PATTERN.matches_token(&tokens[idx]) {
+        if activation_restriction_token_word_is(&tokens[idx], AND_OR_WORD) {
             separator_indices.push((idx, idx + 1));
             idx += 1;
             continue;
         }
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[idx..]);
-        if AND_OR_PHRASE_PATTERN.matches_words(&tail_words) {
+        if activation_restriction_shape_matches_words(&tail_words, AND_OR_PHRASE_PATTERN) {
             separator_indices.push((idx, idx + 2));
             idx += 2;
             continue;
@@ -1773,7 +1920,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
     use crate::effect::Restriction;
 
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if DONT_LOSE_THIS_MANA_STEPS_PATTERN.matches_words(&words) {
+    if activation_restriction_shape_matches_words(&words, DONT_LOSE_THIS_MANA_STEPS_PATTERN) {
         return Ok(None);
     }
 
@@ -1788,7 +1935,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
         .collect::<Vec<_>>();
     if subject_words
         .first()
-        .is_some_and(|word| IF_RESTRICTION_PREFIX_PATTERN.matches_word(word))
+        .is_some_and(|word| activation_restriction_word_is(word, "if"))
     {
         return Ok(None);
     }
@@ -1814,7 +1961,10 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 Some(target),
                 None,
             )
-        } else if PLAYER_RESTRICTION_SUBJECT_PATTERN.matches_words(&subject_words) {
+        } else if activation_restriction_shape_matches_words(
+            &subject_words,
+            PLAYER_RESTRICTION_SUBJECT_PATTERN,
+        ) {
             (ObjectFilter::default(), None, None)
         } else {
             let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
@@ -1825,7 +1975,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
             };
             (filter, None, None)
         };
-    if DEALT_DAMAGE_THIS_WAY_PATTERN.matches_words(&words)
+    if activation_restriction_shape_matches_words(&words, DEALT_DAMAGE_THIS_WAY_PATTERN)
         && !filter
             .tagged_constraints
             .iter()
@@ -1873,16 +2023,20 @@ pub(crate) fn parse_negated_object_restriction_clause(
         target = None;
     }
 
-    if DAMAGE_RESTRICTION_SUBJECT_PATTERN.matches_words(&subject_words)
-        && BE_PREVENTED_TAIL_PATTERN.matches_words(&remainder_words)
+    if activation_restriction_shape_matches_words(
+        &subject_words,
+        DAMAGE_RESTRICTION_SUBJECT_PATTERN,
+    ) && activation_restriction_shape_matches_words(&remainder_words, BE_PREVENTED_TAIL_PATTERN)
     {
         return Ok(Some(ParsedCantRestriction {
             restriction: Restriction::prevent_damage(),
             target: None,
         }));
     }
-    if DAMAGE_RESTRICTION_SUBJECT_PATTERN.matches_words(&subject_words)
-        && let Some(restriction) = damage_cause_life_loss_restriction_from_tail(&remainder_words)
+    if activation_restriction_shape_matches_words(
+        &subject_words,
+        DAMAGE_RESTRICTION_SUBJECT_PATTERN,
+    ) && let Some(restriction) = damage_cause_life_loss_restriction_from_tail(&remainder_words)
     {
         return Ok(Some(ParsedCantRestriction {
             restriction,
@@ -1904,12 +2058,15 @@ pub(crate) fn parse_negated_object_restriction_clause(
         }));
     }
 
-    let restriction = if ATTACK_YOU_OR_PLANESWALKERS_YOU_CONTROL_TAIL_PATTERN
-        .matches_words(&remainder_words)
-    {
+    let restriction = if activation_restriction_shape_matches_words(
+        &remainder_words,
+        ATTACK_YOU_OR_PLANESWALKERS_YOU_CONTROL_TAIL_PATTERN,
+    ) {
         Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
-    } else if BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN.matches_words(&remainder_words)
-        && remainder_words.len() > 4
+    } else if activation_restriction_shape_matches_words(
+        &remainder_words,
+        BE_BLOCKED_EXCEPT_BY_PREFIX_PATTERN,
+    ) && remainder_words.len() > 4
     {
         let blocker_tokens = trim_commas(&remainder_tokens[4..]);
         let allowed_blocker_filter = parse_subject_object_filter(&blocker_tokens)?
@@ -1929,8 +2086,10 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 ))
             })?;
         Restriction::block_specific_attacker(blocker_filter, filter)
-    } else if BE_BLOCKED_BY_PREFIX_PATTERN.matches_words(&remainder_words)
-        && remainder_words.len() > 3
+    } else if activation_restriction_shape_matches_words(
+        &remainder_words,
+        BE_BLOCKED_BY_PREFIX_PATTERN,
+    ) && remainder_words.len() > 3
     {
         let blocker_tokens = trim_commas(&remainder_tokens[3..]);
         let blocker_filter = parse_subject_object_filter(&blocker_tokens)?
@@ -1943,7 +2102,10 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 ))
             })?;
         Restriction::block_specific_attacker(blocker_filter, filter)
-    } else if BE_ACTIVATED_TAIL_PATTERN.matches_words(&remainder_words) {
+    } else if activation_restriction_shape_matches_words(
+        &remainder_words,
+        BE_ACTIVATED_TAIL_PATTERN,
+    ) {
         match ability_scope {
             Some(ActivatedAbilityScope::All) => Restriction::activate_abilities_of(filter),
             Some(ActivatedAbilityScope::TapCostOnly) => {
@@ -1956,7 +2118,10 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 )));
             }
         }
-    } else if BE_ACTIVATED_UNLESS_MANA_ABILITIES_TAIL_PATTERN.matches_words(&remainder_words) {
+    } else if activation_restriction_shape_matches_words(
+        &remainder_words,
+        BE_ACTIVATED_UNLESS_MANA_ABILITIES_TAIL_PATTERN,
+    ) {
         match ability_scope {
             Some(ActivatedAbilityScope::All) => Restriction::activate_non_mana_abilities_of(filter),
             Some(ActivatedAbilityScope::TapCostOnly) | None => {
@@ -1968,7 +2133,7 @@ pub(crate) fn parse_negated_object_restriction_clause(
         }
     } else if remainder_words
         .first()
-        .is_some_and(|word| BLOCK_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| activation_restriction_word_is(word, BLOCK_WORD))
         && remainder_words.len() > 1
     {
         let attacker_tokens = trim_commas(&remainder_tokens[1..]);
@@ -1985,10 +2150,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
     } else if is_supported_untap_restriction_tail(&remainder_words) {
         Restriction::untap(filter)
     } else {
-        if remainder_words
-            .first()
-            .is_some_and(|word| EFFECT_ACTION_RESTRICTION_TAIL_HEAD_PATTERN.matches_word(word))
-        {
+        if remainder_words.first().is_some_and(|word| {
+            activation_restriction_word_is_any(word, EFFECT_ACTION_RESTRICTION_TAIL_HEAD_WORDS)
+        }) {
             return Ok(None);
         }
         return Err(CardTextError::ParseError(format!(
@@ -2045,7 +2209,10 @@ pub(crate) fn parse_activated_ability_subject(
         .map(String::as_str)
         .collect::<Vec<_>>();
     let word_view = ActivationRestrictionCompatWords::new(tokens);
-    let owner_tokens = if ACTIVATED_ABILITIES_OWNER_SUFFIX_PATTERN.matches_words(&subject_words) {
+    let owner_tokens = if activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_OWNER_SUFFIX_PATTERN,
+    ) {
         let owner_word_len = subject_words.len().saturating_sub(2);
         if owner_word_len == 0 {
             return Ok(None);
@@ -2054,7 +2221,10 @@ pub(crate) fn parse_activated_ability_subject(
             .token_index_after_words(owner_word_len)
             .unwrap_or(tokens.len());
         trim_commas(&tokens[..owner_end])
-    } else if ACTIVATED_ABILITIES_TAP_COST_OWNER_SUFFIX_PATTERN.matches_words(&subject_words) {
+    } else if activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_TAP_COST_OWNER_SUFFIX_PATTERN,
+    ) {
         let owner_word_len = subject_words.len().saturating_sub(7);
         if owner_word_len == 0 {
             return Ok(None);
@@ -2063,12 +2233,18 @@ pub(crate) fn parse_activated_ability_subject(
             .token_index_after_words(owner_word_len)
             .unwrap_or(tokens.len());
         trim_commas(&tokens[..owner_end])
-    } else if ACTIVATED_ABILITIES_OF_OWNER_PREFIX_PATTERN.matches_words(&subject_words) {
+    } else if activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_OF_OWNER_PREFIX_PATTERN,
+    ) {
         let Some(owner_start) = word_view.token_index_for_word_index(3) else {
             return Ok(None);
         };
         trim_commas(&tokens[owner_start..])
-    } else if ACTIVATED_ABILITIES_TAP_COST_OF_OWNER_PREFIX_PATTERN.matches_words(&subject_words) {
+    } else if activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_TAP_COST_OF_OWNER_PREFIX_PATTERN,
+    ) {
         let Some(owner_start) = word_view.token_index_for_word_index(8) else {
             return Ok(None);
         };
@@ -2077,9 +2253,13 @@ pub(crate) fn parse_activated_ability_subject(
         return Ok(None);
     };
 
-    let scope = if ACTIVATED_ABILITIES_TAP_COST_OWNER_SUFFIX_PATTERN.matches_words(&subject_words)
-        || ACTIVATED_ABILITIES_TAP_COST_OF_OWNER_PREFIX_PATTERN.matches_words(&subject_words)
-    {
+    let scope = if activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_TAP_COST_OWNER_SUFFIX_PATTERN,
+    ) || activation_restriction_shape_matches_words(
+        &subject_words,
+        ACTIVATED_ABILITIES_TAP_COST_OF_OWNER_PREFIX_PATTERN,
+    ) {
         ActivatedAbilityScope::TapCostOnly
     } else {
         ActivatedAbilityScope::All
@@ -2092,7 +2272,7 @@ pub(crate) fn parse_activated_ability_subject(
 
     let owner_word_view = ActivationRestrictionCompatWords::new(&normalized_owner_tokens);
     let owner_words = owner_word_view.to_word_refs();
-    if IT_OWNER_REFERENCE_PATTERN.matches_words(&owner_words) {
+    if activation_restriction_shape_matches_words(&owner_words, IT_OWNER_REFERENCE_PATTERN) {
         return Ok(Some(ParsedActivatedAbilitySubject {
             filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
             target: Some(TargetAst::Tagged(
@@ -2151,7 +2331,10 @@ pub(crate) fn ensure_it_tagged_constraint(filter: &mut ObjectFilter) {
 pub(crate) fn starts_with_possessive_activated_ability_subject(tokens: &[OwnedLexToken]) -> bool {
     let words_storage = normalize_cant_words(tokens);
     let words = words_storage.iter().map(String::as_str).collect::<Vec<_>>();
-    POSSESSIVE_ACTIVATED_ABILITIES_PREFIX_PATTERN.matches_words(&words)
+    activation_restriction_shape_matches_words(
+        &words,
+        POSSESSIVE_ACTIVATED_ABILITIES_PREFIX_PATTERN,
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -2200,44 +2383,46 @@ pub(crate) fn find_negation_span(tokens: &[OwnedLexToken]) -> Option<(usize, usi
         let Some(word) = word_view.get(word_idx) else {
             continue;
         };
-        if CANT_WORD_PATTERN.matches_word(word) {
+        if activation_restriction_word_is_any(word, CANT_WORDS) {
             let start = word_view.token_index_for_word_index(word_idx)?;
             let end = word_view.token_index_after_words(word_idx + 1)?;
             return Some((start, end));
         }
-        if CAN_WORD_PATTERN.matches_word(word)
+        if activation_restriction_word_is(word, CAN_WORD)
             && word_view
                 .get(word_idx + 1)
-                .is_some_and(|word| T_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| activation_restriction_word_is(word, T_WORD))
         {
             let start = word_view.token_index_for_word_index(word_idx)?;
             let end = word_view.token_index_after_words(word_idx + 2)?;
             return Some((start, end));
         }
-        if DOESNT_OR_DONT_WORD_PATTERN.matches_word(word) {
+        if activation_restriction_word_is_any(word, DOESNT_OR_DONT_WORDS) {
             if word_idx >= 2 && word_view.starts_with_at(word_idx - 2, &["if", "you"]) {
                 continue;
             }
             let next_word = word_view.get(word_idx + 1);
-            if next_word.is_some_and(|word| CONTROL_OR_OWN_WORD_PATTERN.matches_word(word)) {
+            if next_word
+                .is_some_and(|word| activation_restriction_word_is_any(word, CONTROL_OR_OWN_WORDS))
+            {
                 continue;
             }
             let start = word_view.token_index_for_word_index(word_idx)?;
             let end = word_view.token_index_after_words(word_idx + 1)?;
             return Some((start, end));
         }
-        if DOES_DO_CAN_WORD_PATTERN.matches_word(word)
+        if activation_restriction_word_is_any(word, DOES_DO_CAN_WORDS)
             && word_view
                 .get(word_idx + 1)
-                .is_some_and(|word| NOT_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| activation_restriction_word_is(word, NOT_WORD))
         {
             if word_idx >= 2 && word_view.starts_with_at(word_idx - 2, &["if", "you"]) {
                 continue;
             }
-            if DOES_OR_DO_WORD_PATTERN.matches_word(word)
-                && word_view
-                    .get(word_idx + 2)
-                    .is_some_and(|word| CONTROL_OR_OWN_WORD_PATTERN.matches_word(word))
+            if activation_restriction_word_is_any(word, DOES_OR_DO_WORDS)
+                && word_view.get(word_idx + 2).is_some_and(|word| {
+                    activation_restriction_word_is_any(word, CONTROL_OR_OWN_WORDS)
+                })
             {
                 continue;
             }
@@ -2261,16 +2446,22 @@ pub(crate) fn parse_subject_object_filter(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if DAMAGE_RESTRICTION_SUBJECT_PATTERN.matches_words(&normalized_words) {
+    if activation_restriction_shape_matches_words(
+        &normalized_words,
+        DAMAGE_RESTRICTION_SUBJECT_PATTERN,
+    ) {
         return Ok(Some(ObjectFilter::default()));
     }
-    if TAGGED_OBJECT_PRONOUN_SUBJECT_PATTERN.matches_words(&normalized_words) {
+    if activation_restriction_shape_matches_words(
+        &normalized_words,
+        TAGGED_OBJECT_PRONOUN_SUBJECT_PATTERN,
+    ) {
         return Ok(Some(ObjectFilter::tagged(TagKey::from(IT_TAG))));
     }
 
     let words_all = crate::runtime_backend::token_word_refs(tokens);
     if find_window_by(&words_all, 3, |window| {
-        POWER_OR_TOUGHNESS_SUBJECT_PATTERN.matches_words(window)
+        activation_restriction_shape_matches_words(window, POWER_OR_TOUGHNESS_SUBJECT_PATTERN)
     })
     .is_some()
     {

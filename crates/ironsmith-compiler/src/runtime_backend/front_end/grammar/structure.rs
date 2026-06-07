@@ -13,239 +13,149 @@ use crate::effect::{Comparison, Value};
 use crate::target::PlayerFilter;
 use ironsmith_core::ValueSurfaceHint;
 
-use super::super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::super::lexer::{
     LexStream, LexToken, OwnedLexToken, TokenKind, TokenWordView, contains_token_kind,
     token_slice_first_is_any, token_slice_starts_with_at, trim_lexed_commas,
-    word_slice_strip_prefix,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_starts_with_any, word_slice_strip_prefix,
 };
 use super::super::token_primitives::{find_index_with, rfind_index_with};
 use super::super::util::{parse_card_type, parse_color, parse_subtype_flexible};
 use super::{primitives, values};
 
-const TRIGGER_LIST_CONJUNCTION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["or"], &["and"], &["and/or"]]);
-const DISCARD_TRIGGER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["discard", "discards"]]);
-const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["card", "cards"]]);
-const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["spell", "spells"]]);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
-const ARTICLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"], &["the"]]);
-const TYPEISH_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["artifact"], &["artifacts"], &["creature"], &["creatures"]]);
-const FIRST_TIME_EACH_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    suffix_any
-        & [
-            &["for", "the", "first", "time", "each", "turn"],
-            &["for", "the", "first", "time", "this", "turn"],
-        ]
-);
-const ENCHANTED_CONTROLLER_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["enchanted", "creature", "controller"],
-            &["enchanted", "creatures", "controller"],
-            &["enchanted", "permanent", "controller"],
-            &["enchanted", "permanents", "controller"],
-            &["enchanted", "artifact", "controller"],
-            &["enchanted", "artifacts", "controller"],
-            &["enchanted", "enchantment", "controller"],
-            &["enchanted", "enchantments", "controller"],
-            &["enchanted", "land", "controller"],
-            &["enchanted", "lands", "controller"],
-        ]
-);
-const RESULT_VERB_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["remove"],
-            &["removed"],
-            &["sacrifice"],
-            &["sacrificed"],
-            &["discard"],
-            &["discarded"],
-            &["exile"],
-            &["exiled"],
-            &["mill"],
-            &["milled"],
-        ]
-);
-const SEARCH_RESULT_VERB_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["search"], &["searches"], &["searched"]]);
-const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
-const UNQUALIFIED_THIS_WAY_RESULT_QUALIFIER_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it"],
-            &["them"],
-            &["that"],
-            &["card"],
-            &["a", "card"],
-            &["a", "creature", "card"],
-            &["creature", "card"],
-        ]
-);
-const SHORT_NEGATED_RESULT_VERB_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["dont"], &["didnt"], &["cant"]]);
-const SHORT_DID_NOT_RESULT_VERB_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["dont"], &["didnt"]]);
-const SPLIT_NEGATED_RESULT_VERB_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["do", "not"], &["did", "not"], &["can", "not"]]);
-const SPLIT_DID_NOT_RESULT_VERB_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["do", "not"], &["did", "not"]]);
-const YOU_DO_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you", "do"]);
-const IT_CONNIVES_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "connives", "this", "way"],
-            &["it", "connive", "this", "way"],
-        ]
-);
-const YOU_WIN_RESULT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "win"], &["you", "won"]]);
-const CLASH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["clash"]);
-const RESULT_IS_VALUE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["result", "is"], &["result", "was"]]);
-const FLIP_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["flip"]);
-const THEY_DO_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["they", "do"]);
-const PLAYER_DO_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["player", "do"],
-            &["player", "does"],
-            &["players", "do"],
-            &["players", "does"]
-        ]
-);
-const THAT_PLAYER_DO_RESULT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["that", "player", "do"], &["that", "player", "does"]]);
-const FIRST_PLAYER_DO_RESULT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["first", "player", "do"], &["first", "player", "does"]]);
-const YOU_SEARCHED_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "searched"]; suffix & ["this", "way"]);
-const ONE_OR_MORE_THIS_WAY_RESULT_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["one", "or", "more"]; suffix & ["this", "way"]);
-const RESULT_OBJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["card"],
-            &["cards"],
-            &["creature"],
-            &["creatures"],
-            &["permanent"],
-            &["permanents"],
-        ]
-);
-const IS_OR_ARE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["is"], &["are"]]);
-const PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["a", "player", "is", "dealt", "damage", "this", "way"],
-            &["player", "is", "dealt", "damage", "this", "way"],
-        ]
-);
-const SPELL_COUNTERED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["that", "spell"], &["it", "spell"]]; suffix & ["this", "way"]; contains_words & ["countered"]);
-const OBJECT_DIES_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["that", "creature", "dies", "this", "way"],
-            &["that", "permanent", "dies", "this", "way"],
-            &["that", "card", "dies", "this", "way"],
-            &["it", "creature", "dies", "this", "way"],
-            &["it", "permanent", "dies", "this", "way"],
-            &["it", "card", "dies", "this", "way"],
-        ]
-);
-const OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "creature", "dealt", "damage", "this", "way", "would", "die", "this"
-            ],
-            &[
-                "permanent",
-                "dealt",
-                "damage",
-                "this",
-                "way",
-                "would",
-                "die",
-                "this"
-            ],
-            &[
-                "card", "dealt", "damage", "this", "way", "would", "die", "this"
-            ],
-        ]
-);
-const EXCESS_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["it", "deals", "excess", "damage", "this", "way"]);
-const EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["excess", "damage", "was", "dealt", "to"];
-    suffix & ["this", "way"];
-    contains_words & ["creature"]
-);
-const YOU_LOSE_FLIP_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "lose"], &["you", "lost"]]; contains_words & ["flip"]);
-const PLAYER_SHORT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["player", "dont"],
-            &["player", "doesnt"],
-            &["player", "didnt"],
-            &["player", "cant"],
-            &["players", "dont"],
-            &["players", "doesnt"],
-            &["players", "didnt"],
-            &["players", "cant"],
-        ]
-);
-const PLAYER_SPLIT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["player", "do", "not"],
-            &["player", "does", "not"],
-            &["player", "did", "not"],
-            &["player", "can", "not"],
-            &["players", "do", "not"],
-            &["players", "does", "not"],
-            &["players", "did", "not"],
-            &["players", "can", "not"],
-        ]
-);
-const THAT_PLAYER_SHORT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "player", "dont"],
-            &["that", "player", "doesnt"],
-            &["that", "player", "didnt"],
-            &["that", "player", "cant"],
-        ]
-);
-const THAT_PLAYER_SPLIT_NEGATED_RESULT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "player", "do", "not"],
-            &["that", "player", "does", "not"],
-            &["that", "player", "did", "not"],
-            &["that", "player", "can", "not"],
-        ]
-);
-const TURN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["turn"]);
-const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const WHEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["when"]);
-const WHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["who"]);
-const WHILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["while"]);
-const CONTROL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["control"]);
-const AS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["as"]);
-const WHEN_OR_WHENEVER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["when"], &["whenever"]]);
-const AND_OR_THEN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["and"], &["then"]]);
-const CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
+const TRIGGER_LIST_CONJUNCTION_WORDS: &[&str] = &["or", "and", "and/or"];
+const TYPEISH_WORDS: &[&str] = &["artifact", "artifacts", "creature", "creatures"];
+const FIRST_TIME_EACH_TURN_SUFFIXES: &[&[&str]] = &[
+    &["for", "the", "first", "time", "each", "turn"],
+    &["for", "the", "first", "time", "this", "turn"],
+];
+const ENCHANTED_CONTROLLER_TRIGGER_PREFIXES: &[&[&str]] = &[
+    &["enchanted", "creature", "controller"],
+    &["enchanted", "creatures", "controller"],
+    &["enchanted", "permanent", "controller"],
+    &["enchanted", "permanents", "controller"],
+    &["enchanted", "artifact", "controller"],
+    &["enchanted", "artifacts", "controller"],
+    &["enchanted", "enchantment", "controller"],
+    &["enchanted", "enchantments", "controller"],
+    &["enchanted", "land", "controller"],
+    &["enchanted", "lands", "controller"],
+];
+const RESULT_VERB_WORDS: &[&str] = &[
+    "remove",
+    "removed",
+    "sacrifice",
+    "sacrificed",
+    "discard",
+    "discarded",
+    "exile",
+    "exiled",
+    "mill",
+    "milled",
+];
+const SEARCH_RESULT_VERB_WORDS: &[&str] = &["search", "searches", "searched"];
+const UNQUALIFIED_THIS_WAY_RESULT_QUALIFIERS: &[&[&str]] = &[
+    &["it"],
+    &["them"],
+    &["that"],
+    &["card"],
+    &["a", "card"],
+    &["a", "creature", "card"],
+    &["creature", "card"],
+];
+const SHORT_NEGATED_RESULT_VERBS: &[&[&str]] = &[&["dont"], &["didnt"], &["cant"]];
+const SHORT_DID_NOT_RESULT_VERBS: &[&[&str]] = &[&["dont"], &["didnt"]];
+const SPLIT_NEGATED_RESULT_VERBS: &[&[&str]] = &[&["do", "not"], &["did", "not"], &["can", "not"]];
+const SPLIT_DID_NOT_RESULT_VERBS: &[&[&str]] = &[&["do", "not"], &["did", "not"]];
+const IT_CONNIVES_THIS_WAY_RESULTS: &[&[&str]] = &[
+    &["it", "connives", "this", "way"],
+    &["it", "connive", "this", "way"],
+];
+const YOU_WIN_RESULT_PREFIXES: &[&[&str]] = &[&["you", "win"], &["you", "won"]];
+const RESULT_IS_VALUE_PREFIXES: &[&[&str]] = &[&["result", "is"], &["result", "was"]];
+const PLAYER_DO_RESULTS: &[&[&str]] = &[
+    &["player", "do"],
+    &["player", "does"],
+    &["players", "do"],
+    &["players", "does"],
+];
+const THAT_PLAYER_DO_RESULTS: &[&[&str]] =
+    &[&["that", "player", "do"], &["that", "player", "does"]];
+const FIRST_PLAYER_DO_RESULTS: &[&[&str]] =
+    &[&["first", "player", "do"], &["first", "player", "does"]];
+const RESULT_OBJECT_WORDS: &[&str] = &[
+    "card",
+    "cards",
+    "creature",
+    "creatures",
+    "permanent",
+    "permanents",
+];
+const PLAYER_DEALT_DAMAGE_THIS_WAY_RESULTS: &[&[&str]] = &[
+    &["a", "player", "is", "dealt", "damage", "this", "way"],
+    &["player", "is", "dealt", "damage", "this", "way"],
+];
+const SPELL_COUNTERED_THIS_WAY_PREFIXES: &[&[&str]] = &[&["that", "spell"], &["it", "spell"]];
+const OBJECT_DIES_THIS_WAY_PREFIXES: &[&[&str]] = &[
+    &["that", "creature", "dies", "this", "way"],
+    &["that", "permanent", "dies", "this", "way"],
+    &["that", "card", "dies", "this", "way"],
+    &["it", "creature", "dies", "this", "way"],
+    &["it", "permanent", "dies", "this", "way"],
+    &["it", "card", "dies", "this", "way"],
+];
+const OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PREFIXES: &[&[&str]] = &[
+    &[
+        "creature", "dealt", "damage", "this", "way", "would", "die", "this",
+    ],
+    &[
+        "permanent",
+        "dealt",
+        "damage",
+        "this",
+        "way",
+        "would",
+        "die",
+        "this",
+    ],
+    &[
+        "card", "dealt", "damage", "this", "way", "would", "die", "this",
+    ],
+];
+const YOU_LOSE_FLIP_PREFIXES: &[&[&str]] = &[&["you", "lose"], &["you", "lost"]];
+const PLAYER_SHORT_NEGATED_RESULTS: &[&[&str]] = &[
+    &["player", "dont"],
+    &["player", "doesnt"],
+    &["player", "didnt"],
+    &["player", "cant"],
+    &["players", "dont"],
+    &["players", "doesnt"],
+    &["players", "didnt"],
+    &["players", "cant"],
+];
+const PLAYER_SPLIT_NEGATED_RESULTS: &[&[&str]] = &[
+    &["player", "do", "not"],
+    &["player", "does", "not"],
+    &["player", "did", "not"],
+    &["player", "can", "not"],
+    &["players", "do", "not"],
+    &["players", "does", "not"],
+    &["players", "did", "not"],
+    &["players", "can", "not"],
+];
+const THAT_PLAYER_SHORT_NEGATED_RESULTS: &[&[&str]] = &[
+    &["that", "player", "dont"],
+    &["that", "player", "doesnt"],
+    &["that", "player", "didnt"],
+    &["that", "player", "cant"],
+];
+const THAT_PLAYER_SPLIT_NEGATED_RESULTS: &[&[&str]] = &[
+    &["that", "player", "do", "not"],
+    &["that", "player", "does", "not"],
+    &["that", "player", "did", "not"],
+    &["that", "player", "can", "not"],
+];
 
 fn token_matches_dynamic_word(token: &OwnedLexToken, expected: &str) -> bool {
     token
@@ -253,8 +163,62 @@ fn token_matches_dynamic_word(token: &OwnedLexToken, expected: &str) -> bool {
         .is_some_and(|word| word.eq_ignore_ascii_case(expected))
 }
 
-fn find_token_shape(tokens: &[OwnedLexToken], shape: &ClauseShape<'static>) -> Option<usize> {
-    tokens.iter().position(|token| shape.matches_token(token))
+fn structure_token_is(token: &OwnedLexToken, expected: &str) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| token.parser_text() == expected)
+}
+
+fn structure_token_is_any(token: &OwnedLexToken, candidates: &[&str]) -> bool {
+    token
+        .as_word()
+        .is_some_and(|_| structure_word_is_any(token.parser_text(), candidates))
+}
+
+fn find_token_word(tokens: &[OwnedLexToken], expected: &str) -> Option<usize> {
+    tokens
+        .iter()
+        .position(|token| structure_token_is(token, expected))
+}
+
+fn structure_word_is_any(word: &str, candidates: &[&str]) -> bool {
+    candidates.iter().any(|candidate| word == *candidate)
+}
+
+fn structure_words_equal(words: &[&str], expected: &[&str]) -> bool {
+    word_slice_eq(words, expected)
+}
+
+fn structure_words_equal_any(words: &[&str], expected: &[&[&str]]) -> bool {
+    word_slice_eq_any(words, expected)
+}
+
+fn structure_words_start_with(words: &[&str], prefix: &[&str]) -> bool {
+    word_slice_starts_with(words, prefix)
+}
+
+fn structure_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
+    word_slice_starts_with_any(words, prefixes)
+}
+
+fn structure_words_end_with(words: &[&str], suffix: &[&str]) -> bool {
+    word_slice_ends_with(words, suffix)
+}
+
+fn structure_words_end_with_any(words: &[&str], suffixes: &[&[&str]]) -> bool {
+    word_slice_ends_with_any(words, suffixes)
+}
+
+fn structure_words_contain(words: &[&str], word: &str) -> bool {
+    word_slice_contains_word(words, word)
+}
+
+fn structure_words_contain_any(words: &[&str], candidates: &[&str]) -> bool {
+    word_slice_contains_any_word(words, candidates)
+}
+
+fn structure_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    word_slice_contains_phrase(words, phrase)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -403,7 +367,7 @@ fn parser_text_non_article_words(tokens: &[LexToken]) -> Vec<String> {
     tokens
         .iter()
         .filter_map(normalized_parser_word)
-        .filter(|word| !ARTICLE_WORD_PATTERN.matches_word(word))
+        .filter(|word| !structure_word_is_any(word.as_str(), &["a", "an", "the"]))
         .collect()
 }
 
@@ -495,7 +459,11 @@ pub(crate) fn classify_statement_line_family_lexed(
         return Some(StatementLineFamily::Generic);
     }
 
-    if primitives::parse_prefix(tokens, primitives::phrase(&["after", "you", "roll", "a", "die"])).is_some()
+    if primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&["after", "you", "roll", "a", "die"]),
+    )
+    .is_some()
         && primitives::contains_phrase(tokens, &["you", "may", "pay"])
         && primitives::contains_phrase(tokens, &["increase", "or", "decrease", "the", "result"])
     {
@@ -710,7 +678,8 @@ pub(crate) fn classify_static_line_family_lexed(
             ],
             &["if", "you", "would", "draw", "a", "card"],
         ],
-    ) {
+    ) || contains_characteristic_equal_to_shape(tokens)
+    {
         return Some(StaticLineFamily::Generic);
     }
 
@@ -745,53 +714,65 @@ pub(crate) fn classify_static_line_family_lexed(
     .then_some(StaticLineFamily::Generic)
 }
 
+fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens);
+    words
+        .find_phrase_start(&["power", "is", "equal", "to"])
+        .is_some()
+        || words
+            .find_phrase_start(&["toughness", "is", "equal", "to"])
+            .is_some()
+}
+
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()
 }
 
 fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
-    let is_result_verb = |word: &str| RESULT_VERB_WORD_PATTERN.matches_word(word);
+    let is_result_verb = |word: &str| structure_word_is_any(word, RESULT_VERB_WORDS);
     let is_unqualified_this_way_result = |subject: &str| {
         if words.len() < 4
             || words[0] != subject
             || !is_result_verb(words[1])
-            || !THIS_WAY_SUFFIX_PATTERN.matches_words(words)
+            || !structure_words_end_with(words, &["this", "way"])
         {
             return false;
         }
         let qualifiers = &words[2..words.len() - 2];
         qualifiers.is_empty()
-            || UNQUALIFIED_THIS_WAY_RESULT_QUALIFIER_PATTERN.matches_words(qualifiers)
+            || structure_words_equal_any(qualifiers, UNQUALIFIED_THIS_WAY_RESULT_QUALIFIERS)
     };
     let is_exact_negated_result = |subject: &str| {
         if words.first().copied() != Some(subject) {
             return false;
         }
-        SHORT_NEGATED_RESULT_VERB_PATTERN.matches_words(&words[1..])
-            || SPLIT_NEGATED_RESULT_VERB_PATTERN.matches_words(&words[1..])
+        structure_words_equal_any(&words[1..], SHORT_NEGATED_RESULT_VERBS)
+            || structure_words_equal_any(&words[1..], SPLIT_NEGATED_RESULT_VERBS)
     };
     let is_negated_this_way_result = |subject: &str| {
         if words.first().copied() != Some(subject) {
             return false;
         }
         let action_idx = if words.len() >= 5
-            && SHORT_DID_NOT_RESULT_VERB_PATTERN.matches_words(&words[1..2])
+            && structure_words_equal_any(&words[1..2], SHORT_DID_NOT_RESULT_VERBS)
         {
             2
-        } else if words.len() >= 6 && SPLIT_DID_NOT_RESULT_VERB_PATTERN.matches_words(&words[1..3])
+        } else if words.len() >= 6
+            && structure_words_equal_any(&words[1..3], SPLIT_DID_NOT_RESULT_VERBS)
         {
             3
         } else {
             return false;
         };
-        if !is_result_verb(words[action_idx]) || !THIS_WAY_SUFFIX_PATTERN.matches_words(words) {
+        if !is_result_verb(words[action_idx]) || !structure_words_end_with(words, &["this", "way"])
+        {
             return false;
         }
         let qualifiers = &words[action_idx + 1..words.len() - 2];
         qualifiers.is_empty() || matches!(qualifiers, ["it"] | ["them"] | ["that"])
     };
     let is_searched_library_this_way = || {
-        if words.len() < 5 || !THIS_WAY_SUFFIX_PATTERN.matches_words(words) {
+        if words.len() < 5 || !structure_words_end_with(words, &["this", "way"]) {
             return false;
         }
         let subject_len = match words {
@@ -802,7 +783,7 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         let Some(verb) = words.get(subject_len) else {
             return false;
         };
-        if !SEARCH_RESULT_VERB_WORD_PATTERN.matches_word(verb) {
+        if !structure_word_is_any(verb, SEARCH_RESULT_VERB_WORDS) {
             return false;
         }
         matches!(
@@ -811,43 +792,46 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         )
     };
 
-    if YOU_DO_RESULT_PATTERN.matches_words(words) {
+    if structure_words_equal(words, &["you", "do"]) {
         return Some(IfResultPredicate::Did);
     }
-    if IT_CONNIVES_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_equal_any(words, IT_CONNIVES_THIS_WAY_RESULTS) {
         return Some(IfResultPredicate::Did);
     }
-    if YOU_WIN_RESULT_PREFIX_PATTERN.matches_words(words)
-        && (words.len() == 2 || CLASH_WORD_PATTERN.matches_words(words))
+    if structure_words_start_with_any(words, YOU_WIN_RESULT_PREFIXES)
+        && (words.len() == 2 || structure_words_contain(words, "clash"))
     {
         return Some(IfResultPredicate::Value(
             crate::effect::Comparison::GreaterThan(0),
         ));
     }
     if words.len() == 3
-        && RESULT_IS_VALUE_PREFIX_PATTERN.matches_words(words)
+        && structure_words_start_with_any(words, RESULT_IS_VALUE_PREFIXES)
         && let Some(value) = ironsmith_core::parse_cardinal_word(words[2])
             .and_then(|value| i32::try_from(value).ok())
     {
         return Some(IfResultPredicate::Value(Comparison::Equal(value)));
     }
-    if YOU_WIN_RESULT_PREFIX_PATTERN.matches_words(words) && FLIP_WORD_PATTERN.matches_words(words)
+    if structure_words_start_with_any(words, YOU_WIN_RESULT_PREFIXES)
+        && structure_words_contain(words, "flip")
     {
         return Some(IfResultPredicate::Did);
     }
-    if THEY_DO_RESULT_PATTERN.matches_words(words) {
+    if structure_words_equal(words, &["they", "do"]) {
         return Some(IfResultPredicate::Did);
     }
-    if PLAYER_DO_RESULT_PATTERN.matches_words(words) {
+    if structure_words_equal_any(words, PLAYER_DO_RESULTS) {
         return Some(IfResultPredicate::Did);
     }
-    if THAT_PLAYER_DO_RESULT_PATTERN.matches_words(words) {
+    if structure_words_equal_any(words, THAT_PLAYER_DO_RESULTS) {
         return Some(IfResultPredicate::Did);
     }
-    if FIRST_PLAYER_DO_RESULT_PATTERN.matches_words(words) {
+    if structure_words_equal_any(words, FIRST_PLAYER_DO_RESULTS) {
         return Some(IfResultPredicate::Did);
     }
-    if YOU_SEARCHED_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_start_with(words, &["you", "searched"])
+        && structure_words_end_with(words, &["this", "way"])
+    {
         return Some(IfResultPredicate::Did);
     }
     if is_searched_library_this_way() {
@@ -860,30 +844,32 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         return Some(IfResultPredicate::Did);
     }
     let is_one_or_more_result = words.len() >= 6
-        && ONE_OR_MORE_THIS_WAY_RESULT_PATTERN.matches_words(words)
-        && RESULT_OBJECT_WORD_PATTERN.matches_word(words[3])
-        && ((IS_OR_ARE_WORD_PATTERN.matches_word(words[4])
+        && structure_words_start_with(words, &["one", "or", "more"])
+        && structure_words_end_with(words, &["this", "way"])
+        && structure_word_is_any(words[3], RESULT_OBJECT_WORDS)
+        && ((structure_word_is_any(words[4], &["is", "are"])
             && words.len() >= 7
             && is_result_verb(words[5]))
             || is_result_verb(words[4]));
     if is_one_or_more_result {
         return Some(IfResultPredicate::Did);
     }
-    if PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_equal_any(words, PLAYER_DEALT_DAMAGE_THIS_WAY_RESULTS) {
         return Some(IfResultPredicate::Did);
     }
 
-    if SPELL_COUNTERED_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_start_with_any(words, SPELL_COUNTERED_THIS_WAY_PREFIXES)
+        && structure_words_end_with(words, &["this", "way"])
+        && structure_words_contain(words, "countered")
+    {
         return Some(IfResultPredicate::Did);
     }
 
-    if OBJECT_DIES_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_start_with_any(words, OBJECT_DIES_THIS_WAY_PREFIXES) {
         return Some(IfResultPredicate::DiesThisWay);
     }
-    if OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PATTERN.matches_words(words)
-        && words
-            .get(8)
-            .is_some_and(|word| TURN_WORD_PATTERN.matches_word(word))
+    if structure_words_start_with_any(words, OBJECT_DAMAGE_WOULD_DIE_THIS_WAY_PREFIXES)
+        && words.get(8).is_some_and(|word| *word == "turn")
     {
         return Some(IfResultPredicate::DiesThisWay);
     }
@@ -895,29 +881,34 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
     ) {
         return Some(IfResultPredicate::Did);
     }
-    if EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_start_with(words, &["excess", "damage", "was", "dealt", "to"])
+        && structure_words_end_with(words, &["this", "way"])
+        && structure_words_contain(words, "creature")
+    {
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
-    if EXCESS_DAMAGE_THIS_WAY_PATTERN.matches_words(words) {
+    if structure_words_equal(words, &["it", "deals", "excess", "damage", "this", "way"]) {
         return Some(IfResultPredicate::Did);
     }
 
     if is_exact_negated_result("you") || is_negated_this_way_result("you") {
         return Some(IfResultPredicate::DidNot);
     }
-    if YOU_LOSE_FLIP_PREFIX_PATTERN.matches_words(words) {
+    if structure_words_start_with_any(words, YOU_LOSE_FLIP_PREFIXES)
+        && structure_words_contain(words, "flip")
+    {
         return Some(IfResultPredicate::DidNot);
     }
     if is_exact_negated_result("they") || is_negated_this_way_result("they") {
         return Some(IfResultPredicate::DidNot);
     }
-    if PLAYER_SHORT_NEGATED_RESULT_PATTERN.matches_words(words)
-        || PLAYER_SPLIT_NEGATED_RESULT_PATTERN.matches_words(words)
+    if structure_words_equal_any(words, PLAYER_SHORT_NEGATED_RESULTS)
+        || structure_words_equal_any(words, PLAYER_SPLIT_NEGATED_RESULTS)
     {
         return Some(IfResultPredicate::DidNot);
     }
-    if THAT_PLAYER_SHORT_NEGATED_RESULT_PATTERN.matches_words(words)
-        || THAT_PLAYER_SPLIT_NEGATED_RESULT_PATTERN.matches_words(words)
+    if structure_words_equal_any(words, THAT_PLAYER_SHORT_NEGATED_RESULTS)
+        || structure_words_equal_any(words, THAT_PLAYER_SPLIT_NEGATED_RESULTS)
     {
         return Some(IfResultPredicate::DidNot);
     }
@@ -1046,7 +1037,7 @@ fn looks_like_trigger_object_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
     }
     let starts_with_conjunction = words
         .first()
-        .is_some_and(|word| TRIGGER_LIST_CONJUNCTION_WORD_PATTERN.matches_word(word));
+        .is_some_and(|word| structure_word_is_any(word, TRIGGER_LIST_CONJUNCTION_WORDS));
     let first_candidate = if starts_with_conjunction {
         words.get(1).copied()
     } else {
@@ -1068,7 +1059,7 @@ fn looks_like_trigger_discard_qualifier_tail_lexed(
 
     let prefix_words_view = TokenWordView::new(trigger_prefix_tokens);
     let prefix_words = prefix_words_view.word_refs();
-    if !DISCARD_TRIGGER_WORD_PATTERN.matches_words(&prefix_words) {
+    if !structure_words_contain_any(&prefix_words, &["discard", "discards"]) {
         return false;
     }
 
@@ -1082,8 +1073,8 @@ fn looks_like_trigger_discard_qualifier_tail_lexed(
         return false;
     };
     let typeish = parse_card_type(first_word).is_some()
-        || TYPEISH_WORD_PATTERN.matches_word(first_word)
-        || TRIGGER_LIST_CONJUNCTION_WORD_PATTERN.matches_word(first_word);
+        || structure_word_is_any(first_word, TYPEISH_WORDS)
+        || structure_word_is_any(first_word, TRIGGER_LIST_CONJUNCTION_WORDS);
     if !typeish {
         return false;
     }
@@ -1092,7 +1083,7 @@ fn looks_like_trigger_discard_qualifier_tail_lexed(
         |comma_idx| {
             let before_words_view = TokenWordView::new(&tail_tokens[..comma_idx]);
             let before_words = before_words_view.word_refs();
-            CARD_OR_CARDS_WORD_PATTERN.matches_words(&before_words)
+            structure_words_contain_any(&before_words, &["card", "cards"])
         },
     )
 }
@@ -1112,8 +1103,8 @@ fn looks_like_trigger_type_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
             parse_card_type(word).is_some() || parse_subtype_flexible(word).is_some()
         });
     first_is_card_type
-        && SPELL_OR_SPELLS_WORD_PATTERN.matches_words(&words)
-        && OR_WORD_PATTERN.matches_words(&words)
+        && structure_words_contain_any(&words, &["spell", "spells"])
+        && structure_words_contain(&words, "or")
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1127,7 +1118,7 @@ fn looks_like_trigger_color_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
         return false;
     }
     parse_color(words[0]).is_some()
-        && OR_WORD_PATTERN.matches_words(&words)
+        && structure_words_contain(&words, "or")
         && contains_token_kind(tokens, TokenKind::Comma)
 }
 
@@ -1141,7 +1132,7 @@ fn looks_like_trigger_numeric_list_tail_lexed(tokens: &[OwnedLexToken]) -> bool 
         return false;
     }
     words.iter().skip(1).any(|word| word.parse::<i32>().is_ok())
-        && OR_WORD_PATTERN.matches_words(&words)
+        && structure_words_contain(&words, "or")
 }
 
 pub(crate) fn find_trigger_effect_list_tail_split_lexed(
@@ -1166,7 +1157,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
             }
             let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
             let before_words = before_words_view.word_refs();
-            CARD_OR_CARDS_WORD_PATTERN.matches_words(&before_words)
+            structure_words_contain_any(&before_words, &["card", "cards"])
         });
     }
 
@@ -1180,7 +1171,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
         }
         let before_words_view = TokenWordView::new(&tail_tokens[..idx]);
         let before_words = before_words_view.word_refs();
-        SPELL_OR_SPELLS_WORD_PATTERN.matches_words(&before_words)
+        structure_words_contain_any(&before_words, &["spell", "spells"])
     })
     .or_else(|| {
         if looks_like_trigger_color_list_tail_lexed(tail_tokens)
@@ -1194,7 +1185,7 @@ pub(crate) fn find_trigger_effect_list_tail_split_lexed(
                 else {
                     return false;
                 };
-                if TRIGGER_LIST_CONJUNCTION_WORD_PATTERN.matches_word(next_word) {
+                if structure_word_is_any(next_word, TRIGGER_LIST_CONJUNCTION_WORDS) {
                     return false;
                 }
 
@@ -1219,7 +1210,7 @@ pub(crate) fn split_first_time_each_turn_trigger_suffix_lexed(
 ) -> (&[OwnedLexToken], Option<u32>) {
     let trigger_words = TokenWordView::new(trigger_tokens);
     let words = trigger_words.word_refs();
-    if FIRST_TIME_EACH_TURN_SUFFIX_PATTERN.matches_words(&words) {
+    if structure_words_end_with_any(&words, FIRST_TIME_EACH_TURN_SUFFIXES) {
         let trimmed_word_len = words.len().saturating_sub(6);
         let trimmed_token_len = trigger_words
             .token_index_for_word_index(trimmed_word_len)
@@ -1235,8 +1226,9 @@ pub(crate) fn rewrite_attached_controller_trigger_effect_tokens_lexed(
 ) -> Vec<OwnedLexToken> {
     let trigger_words_view = TokenWordView::new(trigger_tokens);
     let trigger_words = trigger_words_view.word_refs();
-    let references_enchanted_controller = (0..trigger_words.len())
-        .any(|idx| ENCHANTED_CONTROLLER_TRIGGER_PATTERN.matches_words(&trigger_words[idx..]));
+    let references_enchanted_controller = (0..trigger_words.len()).any(|idx| {
+        structure_words_start_with_any(&trigger_words[idx..], ENCHANTED_CONTROLLER_TRIGGER_PREFIXES)
+    });
     if !references_enchanted_controller {
         return effects_tokens.to_vec();
     }
@@ -1305,16 +1297,16 @@ fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::t
     if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
         return Vec::new();
     }
-    let Some(if_idx) = find_token_shape(tokens, &IF_WORD_PATTERN) else {
+    let Some(if_idx) = find_token_word(tokens, "if") else {
         return Vec::new();
     };
     let Some(control_idx) =
-        find_token_shape(&tokens[if_idx + 1..], &CONTROL_WORD_PATTERN).map(|idx| if_idx + 1 + idx)
+        find_token_word(&tokens[if_idx + 1..], "control").map(|idx| if_idx + 1 + idx)
     else {
         return Vec::new();
     };
-    let Some(as_idx) = find_token_shape(&tokens[control_idx + 1..], &AS_WORD_PATTERN)
-        .map(|idx| control_idx + 1 + idx)
+    let Some(as_idx) =
+        find_token_word(&tokens[control_idx + 1..], "as").map(|idx| control_idx + 1 + idx)
     else {
         return Vec::new();
     };
@@ -1349,12 +1341,12 @@ pub(crate) fn split_leading_result_prefix_lexed<'a>(
     }
     let kind = if trimmed
         .first()
-        .is_some_and(|token| IF_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "if"))
     {
         LeadingResultPrefixKind::If
     } else if trimmed
         .first()
-        .is_some_and(|token| WHEN_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "when"))
     {
         LeadingResultPrefixKind::When
     } else {
@@ -1449,7 +1441,7 @@ pub(crate) fn split_if_clause_lexed(
             let trimmed = trim_lexed_commas(effect_tokens);
             let without_instead = if trimmed
                 .first()
-                .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
+                .is_some_and(|token| structure_token_is(token, "instead"))
             {
                 trim_lexed_commas(&trimmed[1..])
             } else {
@@ -1702,7 +1694,7 @@ pub(crate) fn parse_trailing_if_predicate_lexed(tokens: &[OwnedLexToken]) -> Opt
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
-        .is_some_and(|token| IF_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "if"))
     {
         return None;
     }
@@ -1721,7 +1713,7 @@ pub(crate) fn parse_conditional_predicate_tail_lexed(
     let mut trimmed = trim_lexed_commas(tokens).to_vec();
     while trimmed
         .last()
-        .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "instead"))
     {
         trimmed.pop();
     }
@@ -1797,7 +1789,7 @@ pub(crate) fn parse_who_player_predicate_lexed(tokens: &[OwnedLexToken]) -> Opti
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
-        .is_some_and(|token| WHO_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "who"))
     {
         return None;
     }
@@ -1827,10 +1819,10 @@ pub(crate) fn parse_trailing_instead_if_predicate_lexed(
     let trimmed = trim_lexed_commas(tokens);
     if !trimmed
         .first()
-        .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is(token, "instead"))
         || !trimmed
             .get(1)
-            .is_some_and(|token| IF_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| structure_token_is(token, "if"))
     {
         return None;
     }
@@ -1855,7 +1847,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
     let trigger_tokens = &leading_tokens[start_idx..];
     let after_first_comma = trim_lexed_commas(after_first_comma);
 
-    if let Some(while_idx) = find_token_shape(trigger_tokens, &WHILE_WORD_PATTERN)
+    if let Some(while_idx) = find_token_word(trigger_tokens, "while")
         && while_idx > 0
     {
         let predicate_tokens = trim_lexed_commas(&trigger_tokens[while_idx + 1..]);
@@ -1894,7 +1886,7 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         }
         if effects_tokens
             .first()
-            .is_some_and(|token| AND_OR_THEN_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| structure_token_is_any(token, &["and", "then"]))
         {
             continue;
         }
@@ -1920,7 +1912,7 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
     }
     if !tokens
         .first()
-        .is_some_and(|token| WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| structure_token_is_any(token, &["when", "whenever"]))
     {
         return None;
     }
@@ -1936,7 +1928,7 @@ pub(crate) fn split_state_triggered_clause_lexed<'a>(
         .position(|token| token.kind == TokenKind::Comma)
         && trigger_tokens
             .get(comma_idx + 1)
-            .is_some_and(|token| IF_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| structure_token_is(token, "if"))
     {
         let state_predicate =
             parse_modeled_predicate(trim_lexed_commas(&trigger_tokens[..comma_idx]))?;
@@ -2006,7 +1998,7 @@ fn parse_modal_header_choose_spec_inner<'a>(
     let choose_indices = tokens
         .iter()
         .enumerate()
-        .filter_map(|(idx, token)| CHOOSE_WORD_PATTERN.matches_token(token).then_some(idx))
+        .filter_map(|(idx, token)| structure_token_is(token, "choose").then_some(idx))
         .collect::<Vec<_>>();
     if choose_indices.is_empty() {
         input.finish();

@@ -5,12 +5,12 @@
 use super::{
     ChooseBasicLandTypeAsEntersSpec, ChooseCardNameAsEntersSpec, ChooseColorAsBecomesAttachedSpec,
     ChooseColorAsEntersSpec, ChooseCreatureTypeAsEntersSpec, ChooseLandTypeAsEntersSpec,
-    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec, DieRollResultAdjustmentSpec,
+    ChooseNamedOptionAsEntersSpec, ChoosePlayerAsEntersSpec,
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
-    ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, EnterAsCopyAsEntersSpec,
-    GraveyardCountMetric, NoteLifeTotalAsEntersSpec, PowerToughnessChoiceOption, StaticAbility,
-    StaticAbilityId, StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, DieRollResultAdjustmentSpec,
+    EnterAsCopyAsEntersSpec, GraveyardCountMetric, NoteLifeTotalAsEntersSpec,
+    PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
+    ThisSpellCastRestrictionKind, TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -1691,8 +1691,7 @@ impl ChooseCardNameAsEnters {
         Self {
             display,
             reveal_opponents_hands: spec.reveal_opponents_hands,
-            require_nonland_from_revealed_opponents: spec
-                .require_nonland_from_revealed_opponents,
+            require_nonland_from_revealed_opponents: spec.require_nonland_from_revealed_opponents,
         }
     }
 }
@@ -5264,7 +5263,9 @@ impl StaticAbilityKind for ExileWouldDieInstead {
             && self.exile_with_counters.is_empty()
             && self.follow_up_effects.is_empty()
         {
-            return Some(ReplacementEffect::exile_instead_of_dying(source, controller));
+            return Some(ReplacementEffect::exile_instead_of_dying(
+                source, controller,
+            ));
         }
 
         Some(ReplacementEffect::with_matcher(
@@ -7151,8 +7152,7 @@ mod tests {
         let damage_source = CardBuilder::new(CardId::new(), "Damage Source")
             .card_types(vec![CardType::Artifact])
             .build();
-        let damage_source_id =
-            game.create_object_from_card(&damage_source, bob, Zone::Battlefield);
+        let damage_source_id = game.create_object_from_card(&damage_source, bob, Zone::Battlefield);
 
         let mut filter = ObjectFilter::creature();
         filter.controller = Some(PlayerFilter::You);

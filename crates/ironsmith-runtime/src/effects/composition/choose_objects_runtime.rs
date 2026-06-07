@@ -1260,7 +1260,9 @@ pub(crate) fn run_choose_objects(
                 ctx.tag_objects(effect.tag.clone(), snapshots);
             }
         } else {
-            ctx.clear_object_tag(effect.tag.as_str());
+            if effect.replace_tagged_objects || is_implicit_object_tag(effect.tag.as_str()) {
+                ctx.clear_object_tag(effect.tag.as_str());
+            }
         }
 
         let outcome = EffectOutcome::with_objects(outcome_objects.clone())

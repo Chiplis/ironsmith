@@ -6,7 +6,8 @@ use super::grammar::structure::{MetadataLineKind, split_metadata_line_lexed};
 use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::lexer::{
     LexedClause, TokenKind, TokenWordView, lex_line, parser_token_word_refs, render_token_slice,
-    word_slice_eq, word_slice_find_phrase_start,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_eq, word_slice_find_phrase_start, word_slice_starts_with,
 };
 use super::parser_support::{
     looks_like_spell_resolution_followup_intro_lexed, spell_card_prefers_resolution_line_merge,
@@ -19,25 +20,21 @@ use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, LineInfo, MetadataLine, NormalizedLine, OwnedLexToken,
     ParseAnnotations,
 };
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::types::CardType;
 
 const MULTI_WORD_KEYWORD_ABILITY_NAMES: &[&str] = &["first strike", "double strike", "ward"];
 const LOWEST_LIFE_CONTROL_UPKEEP_SENTENCE: &str = "at the beginning of your upkeep, the player with the lowest life total gains control of this creature";
 const LOWEST_LIFE_CONTROL_TIE_SENTENCE: &str = "if two or more players are tied for lowest life total, you choose one of them, and that player gains control of this creature";
-const ADDITIONAL_COST_TO_CAST_THIS_SPELL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "as",
-            "an",
-            "additional",
-            "cost",
-            "to",
-            "cast",
-            "this",
-            "spell"
-        ]
-);
+const ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX: &[&str] = &[
+    "as",
+    "an",
+    "additional",
+    "cost",
+    "to",
+    "cast",
+    "this",
+    "spell",
+];
 const RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX: &[&str] = &[
     "return",
     "that",
@@ -53,8 +50,7 @@ const RETURN_THAT_CARD_UNDER_OWNER_CONTROL_WHEN_THIS_PREFIX: &[&str] = &[
     "this",
 ];
 const LEAVES_THE_BATTLEFIELD_SUFFIX: &[&str] = &["leaves", "the", "battlefield"];
-const UNTIL_THIS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["until", "this"]]);
+const UNTIL_THIS_PHRASE: &[&str] = &["until", "this"];
 const TRUTH_VOTE_DRAW_SENTENCE: &[&str] = &[
     "you", "draw", "cards", "equal", "to", "the", "number", "of", "truth", "votes",
 ];
@@ -76,14 +72,10 @@ const CONSEQUENCES_VOTE_DAMAGE_SENTENCE: &[&str] = &[
 const FOR_EACH_DEATH_VOTE_AND_PHRASE: &[&str] = &["for", "each", "death", "vote", "and"];
 const FOR_EACH_TAXES_VOTE_PHRASE: &[&str] = &["for", "each", "taxes", "vote"];
 const FOR_EACH_PHRASE: &[&str] = &["for", "each"];
-const VOTE_CHOICE_CLAUSE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["vote", "for"], &["votes", "for"]]]);
-const ITS_AN_ENCHANTMENT_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["its", "an", "enchantment"]]);
+const VOTE_CHOICE_CLAUSE_PHRASES: &[&[&str]] = &[&["vote", "for"], &["votes", "for"]];
+const ITS_AN_ENCHANTMENT_PHRASE: &[&str] = &["its", "an", "enchantment"];
 const ITS_NOT_A_CREATURE_PHRASE: &[&str] = &["its", "not", "a", "creature"];
-const AS_LONG_AS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["as", "long", "as"]);
-const EXILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["exile"]);
+const AS_LONG_AS_PREFIX: &[&str] = &["as", "long", "as"];
 
 #[derive(Debug, Clone)]
 pub(crate) struct PreprocessedDocument {
@@ -149,7 +141,7 @@ fn strip_parenthetical_segments(line: &str) -> String {
             .iter()
             .map(|(_, word)| *word)
             .collect::<Vec<_>>();
-        if !ITS_AN_ENCHANTMENT_PATTERN.matches_words(&words) {
+        if !word_slice_contains_phrase(&words, ITS_AN_ENCHANTMENT_PHRASE) {
             return false;
         }
         let Some(not_creature_idx) =
@@ -195,15 +187,15 @@ fn strip_parenthetical_segments(line: &str) -> String {
     collapse_whitespace_runs(out.as_str())
 }
 
-fn line_matches_shape(line: &str, shape: &ClauseShape<'_>) -> bool {
+fn line_words_start_with(line: &str, prefix: &[&str]) -> bool {
     lex_line(line.trim_start(), 0)
         .ok()
-        .is_some_and(|tokens| shape.matches_words(&parser_token_word_refs(&tokens)))
+        .is_some_and(|tokens| word_slice_starts_with(&parser_token_word_refs(&tokens), prefix))
 }
 
 fn split_parse_line_variants(line: &str) -> Vec<String> {
     let lower = line.to_ascii_lowercase();
-    if line_matches_shape(line, &ADDITIONAL_COST_TO_CAST_THIS_SPELL_PATTERN)
+    if line_words_start_with(line, ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX)
         && let Some(period_idx) = str_find_char(line, '.')
     {
         let first = line[..=period_idx].trim();
@@ -455,8 +447,7 @@ fn replace_names_with_map(
         let Ok(tokens) = lex_line(prefix, 0) else {
             return false;
         };
-        let words = parser_token_word_refs(&tokens);
-        VOTE_CHOICE_CLAUSE_PATTERN.matches_words(&words)
+        word_slice_contains_any_phrase(&parser_token_word_refs(&tokens), VOTE_CHOICE_CLAUSE_PHRASES)
     }
 
     fn is_short_name_self_reference_context(bytes: &[u8], idx: usize, len: usize) -> bool {
@@ -981,7 +972,7 @@ fn rewrite_borrow_static_sentence(sentence: &str) -> String {
     };
     let words = TokenWordView::new(&tokens);
 
-    if AS_LONG_AS_PREFIX_PATTERN.matches_words(&parser_token_word_refs(&tokens)) {
+    if word_slice_starts_with(&parser_token_word_refs(&tokens), AS_LONG_AS_PREFIX) {
         let Some(condition_start) = words.token_index_after_words(3) else {
             return sentence.to_string();
         };
@@ -1210,7 +1201,8 @@ fn rewrite_exile_return_when_source_leaves_line(text: &str) -> String {
             return false;
         };
         let words = parser_token_word_refs(&tokens);
-        EXILE_WORD_PATTERN.matches_words(&words) && !UNTIL_THIS_PATTERN.matches_words(&words)
+        word_slice_contains_word(&words, "exile")
+            && !word_slice_contains_phrase(&words, UNTIL_THIS_PHRASE)
     }
 
     let sentences = split_period_sentences(text);

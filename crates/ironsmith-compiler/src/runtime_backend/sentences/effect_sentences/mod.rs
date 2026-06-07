@@ -89,6 +89,7 @@ pub(crate) use clause_primitives::{
 #[cfg(test)]
 pub(crate) use conditionals::parse_conditional_sentence_lexed;
 pub(crate) use conditionals::*;
+pub(crate) use consult_family::parse_consult_condition_value;
 pub(crate) use dispatch_entry::SentenceInput;
 pub(crate) use dispatch_entry::*;
 pub(crate) use dispatch_inner::*;

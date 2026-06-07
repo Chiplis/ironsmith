@@ -1,18 +1,23 @@
 use super::super::grammar::structure;
+use super::super::lex_patterns::LexPattern;
 use super::*;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
-const REVEAL_THIS_CARD_FROM_HAND_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["reveal", "this", "card", "from", "your", "hand"]);
-const DIE_ROLL_RESULT_ADJUSTMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["after", "you", "roll", "a", "die"];
-    contains_phrases & [
-        &["you", "may", "pay"],
-        &["if", "you", "do"],
-        &["increase", "or", "decrease", "the", "result", "by"],
-        &["do", "this", "only", "once", "each", "turn"],
-    ]
-);
+const REVEAL_THIS_CARD_FROM_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["reveal", "this", "card", "from", "your", "hand"]),
+]);
+const DIE_ROLL_RESULT_ADJUSTMENT_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["after", "you", "roll", "a", "die"])]);
+
+fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
+    DIE_ROLL_RESULT_ADJUSTMENT_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens))
+        && contains_token_word_sequence(tokens, &["you", "may", "pay"])
+        && contains_token_word_sequence(tokens, &["if", "you", "do"])
+        && contains_token_word_sequence(
+            tokens,
+            &["increase", "or", "decrease", "the", "result", "by"],
+        )
+        && contains_token_word_sequence(tokens, &["do", "this", "only", "once", "each", "turn"])
+}
 
 fn join_statement_parse_sentence_group(sentences: &[Vec<OwnedLexToken>]) -> Vec<OwnedLexToken> {
     let mut joined = Vec::new();
@@ -38,7 +43,7 @@ pub(super) fn parse_statement_line_cst(
     if looks_like_day_night_starts_day_as_enters_static_line(&line.tokens) {
         return Ok(None);
     }
-    if DIE_ROLL_RESULT_ADJUSTMENT_PATTERN.matches_words(&token_word_refs(&line.tokens)) {
+    if is_die_roll_result_adjustment_statement(&line.tokens) {
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -47,6 +52,9 @@ pub(super) fn parse_statement_line_cst(
         }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
+    let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
+        .ok()
+        .flatten();
     let force_statement = matches!(line_family, Some(structure::StatementLineFamily::Divvy))
         || matches!(
             line_family,
@@ -73,15 +81,13 @@ pub(super) fn parse_statement_line_cst(
             ],
         ) && contains_token_word_sequence(&line.tokens, &["more", "to", "cast"]))
         || (token_slice_starts_with_any(&line.tokens, &[&["if"]])
-            && contains_token_word_sequence(&line.tokens, &["instead"]))
+            && contains_token_word_sequence(&line.tokens, &["instead"])
+            && static_probe.is_none())
         || (token_slice_starts_with_any(&line.tokens, &[&["each"], &["all"]])
             && contains_token_word_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
     if !force_statement
-        && parse_static_ability_ast_line_lexed(&line.tokens)
-            .ok()
-            .flatten()
-            .is_some()
+        && static_probe.is_some()
     {
         return Ok(None);
     }
@@ -301,6 +307,17 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
     ) {
         return false;
     }
+    let effect_sentences = split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if !effect_sentences.is_empty()
+        && effect_sentences.into_iter().all(|sentence| {
+            parse_effect_sentences_lexed(sentence).is_ok_and(|effects| !effects.is_empty())
+        })
+    {
+        return true;
+    }
     matches!(
         structure::classify_statement_line_family_lexed(tokens),
         Some(
@@ -449,7 +466,7 @@ pub(super) fn parse_colon_nonactivation_statement_fallback(
         return Ok(None);
     };
 
-    if REVEAL_THIS_CARD_FROM_HAND_PATTERN.matches_words(&token_word_refs(left_tokens)) {
+    if REVEAL_THIS_CARD_FROM_HAND_PATTERN.matches_clause(LexedClause::new(left_tokens)) {
         let left_line = rewrite_line_tokens(line, left_tokens);
         if let Some(statement) = parse_statement_line_cst(&left_line)? {
             return Ok(Some(statement));

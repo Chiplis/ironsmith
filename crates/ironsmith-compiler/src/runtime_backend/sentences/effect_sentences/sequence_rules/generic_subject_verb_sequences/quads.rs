@@ -12,8 +12,10 @@ use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
-use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::runtime_backend::front_end::lexer::{
+    LexedClause, OwnedLexToken, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_eq, word_slice_eq_any, word_slice_starts_with, word_slice_starts_with_any,
+};
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, non_article_token_word_refs, parse_choice_count_token_prefix_consumed,
@@ -84,89 +86,65 @@ fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
         .then_some(searched_tag)
 }
 
-const NAMED_REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix &["if", "you", "reveal"];
-    contains_phrases &[&["this", "way"]]
-);
-
-const PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["put", "it", "onto", "the", "battlefield"],
-            &["put", "that", "card", "onto", "the", "battlefield"],
-        ]]
-);
-
-const OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["put", "that", "card", "into", "your", "hand"],
-            &["put", "it", "into", "your", "hand"],
-        ]
-);
-
-const OTHERWISE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["otherwise"]);
-
-const THEN_SHUFFLE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["then", "shuffle"], &["shuffle"]]);
-
-const MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "may", "reveal"]);
-
-const BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["if", "this", "spell", "was", "bargained"];
-    contains_phrases & [&["put", "the", "revealed", "cards", "onto", "the", "battlefield"]]
-);
-
-const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "otherwise",
-            "put",
-            "the",
-            "revealed",
-            "cards",
-            "into",
-            "your",
-            "hand",
-        ]
-);
-
-const EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["exile", "one", "of", "them", "face", "down"];
-    contains_phrases & [&["put", "rest"], &["bottom", "of", "your", "library"]]
-);
-
-const CAST_EXILED_CARD_FREE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost"
-        ]
-);
-
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-
-const EXILED_CARD_HAND_FOLLOWUP_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "if", "you", "don't", "put", "that", "card", "into", "your", "hand"
-            ],
-            &[
-                "if", "you", "dont", "put", "that", "card", "into", "your", "hand"
-            ],
-            &[
-                "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"
-            ],
-        ]
-);
+const NAMED_REVEALED_PREFIX: &[&str] = &["if", "you", "reveal"];
+const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const PUT_LOOKED_CARD_ONTO_BATTLEFIELD_PHRASES: &[&[&str]] = &[
+    &["put", "it", "onto", "the", "battlefield"],
+    &["put", "that", "card", "onto", "the", "battlefield"],
+];
+const PUT_LOOKED_CARD_INTO_HAND_PREFIXES: &[&[&str]] = &[
+    &["put", "that", "card", "into", "your", "hand"],
+    &["put", "it", "into", "your", "hand"],
+];
+const THEN_SHUFFLE_CLAUSES: &[&[&str]] = &[&["then", "shuffle"], &["shuffle"]];
+const MAY_REVEAL_FROM_LOOKED_CARDS_PREFIX: &[&str] = &["you", "may", "reveal"];
+const BARGAINED_PREFIX: &[&str] = &["if", "this", "spell", "was", "bargained"];
+const PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PHRASE: &[&str] = &[
+    "put",
+    "the",
+    "revealed",
+    "cards",
+    "onto",
+    "the",
+    "battlefield",
+];
+const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PREFIX: &[&str] = &[
+    "otherwise",
+    "put",
+    "the",
+    "revealed",
+    "cards",
+    "into",
+    "your",
+    "hand",
+];
+const EXILE_ONE_LOOKED_CARD_FACE_DOWN_PREFIX: &[&str] =
+    &["exile", "one", "of", "them", "face", "down"];
+const PUT_REST_PHRASE: &[&str] = &["put", "rest"];
+const BOTTOM_OF_YOUR_LIBRARY_PHRASE: &[&str] = &["bottom", "of", "your", "library"];
+const CAST_EXILED_CARD_FREE_PREFIX: &[&str] = &[
+    "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost",
+];
+const EXILED_CARD_HAND_FOLLOWUP_CLAUSES: &[&[&str]] = &[
+    &[
+        "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
+    ],
+];
 
 fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let clause = LexedClause::new(tokens);
-    if !NAMED_REVEALED_THIS_WAY_PATTERN.matches(clause) {
+    let words = clause.word_refs();
+    if !word_slice_starts_with(&words, NAMED_REVEALED_PREFIX)
+        || !word_slice_contains_phrase(&words, THIS_WAY_PHRASE)
+    {
         return None;
     }
-    let words = clause.word_refs();
     let named_idx = clause.find_word("named")?;
     let this_way_idx = clause.find_phrase_start(&["this", "way"])?;
     if named_idx + 1 >= this_way_idx {
@@ -178,8 +156,8 @@ fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
 }
 
 fn puts_it_onto_battlefield(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN.matches(clause)
+    let words = LexedClause::new(tokens).word_refs();
+    word_slice_contains_any_phrase(&words, PUT_LOOKED_CARD_ONTO_BATTLEFIELD_PHRASES)
 }
 
 fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
@@ -187,37 +165,43 @@ fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
     if clause
         .word_refs()
         .first()
-        .is_some_and(|word| OTHERWISE_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| *word == "otherwise")
     {
         clause = clause.from(1).trimmed();
     }
-    OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN.matches(clause)
+    word_slice_starts_with_any(&clause.word_refs(), PUT_LOOKED_CARD_INTO_HAND_PREFIXES)
 }
 
 fn then_shuffle(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens).trimmed();
-    THEN_SHUFFLE_PATTERN.matches(clause)
+    let words = LexedClause::new(tokens).trimmed().word_refs();
+    word_slice_eq_any(&words, THEN_SHUFFLE_CLAUSES)
 }
 
 fn exiles_one_looked_card_face_down_and_bottoms_rest(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
     let words = non_article_token_word_refs(&trimmed);
-    EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN.matches_words(&words)
+    word_slice_starts_with(&words, EXILE_ONE_LOOKED_CARD_FACE_DOWN_PREFIX)
+        && word_slice_contains_phrase(&words, PUT_REST_PHRASE)
+        && word_slice_contains_phrase(&words, BOTTOM_OF_YOUR_LIBRARY_PHRASE)
 }
 
 fn parse_exiled_card_cast_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trimmed = trim_commas(tokens);
-    let words = non_article_token_word_refs(&trimmed);
-    let Some(if_word_idx) = IF_WORD_PATTERN.find_word(&words) else {
+    let clause = LexedClause::new(&trimmed);
+    let Some(if_word_idx) = clause.find_word("if") else {
         return Ok(None);
     };
-    if !CAST_EXILED_CARD_FREE_PREFIX_PATTERN.matches_words(&words[..if_word_idx]) {
+    if !clause.before_word(if_word_idx).is_some_and(|prefix| {
+        word_slice_eq(
+            &non_article_token_word_refs(prefix.tokens()),
+            CAST_EXILED_CARD_FREE_PREFIX,
+        )
+    }) {
         return Ok(None);
     }
 
-    let clause = LexedClause::new(&trimmed);
     let Some(condition_token_idx) = clause.token_index_for_word_index(if_word_idx + 1) else {
         return Ok(None);
     };
@@ -242,15 +226,17 @@ fn parse_exiled_card_cast_filter(
 
 fn puts_exiled_card_into_hand_if_not_cast(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
-    let words = LexedClause::new(&trimmed).word_refs();
-    EXILED_CARD_HAND_FOLLOWUP_PATTERN.matches_words(&words)
+    word_slice_eq_any(
+        &LexedClause::new(&trimmed).word_refs(),
+        EXILED_CARD_HAND_FOLLOWUP_CLAUSES,
+    )
 }
 
 fn parse_may_reveal_up_to_from_looked_cards(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
-    if !MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN.matches(clause) {
+    if !word_slice_starts_with(&clause.word_refs(), MAY_REVEAL_FROM_LOOKED_CARDS_PREFIX) {
         return Ok(None);
     }
 
@@ -390,8 +376,11 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered());
     let fourth_clause = LexedClause::new(sentences[sentence_idx + 3].lowered());
-    if !BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN.matches(third_clause)
-        || !OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN.matches(fourth_clause)
+    let third_words = third_clause.word_refs();
+    let fourth_words = fourth_clause.word_refs();
+    if !word_slice_starts_with(&third_words, BARGAINED_PREFIX)
+        || !word_slice_contains_phrase(&third_words, PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PHRASE)
+        || !word_slice_starts_with(&fourth_words, OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PREFIX)
         || !then_shuffle(sentences[sentence_idx + 4].lowered())
     {
         return Ok(None);

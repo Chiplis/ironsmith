@@ -25,7 +25,6 @@ use super::cst::{
     UnsupportedLineCst,
 };
 use super::cst_lowering::lower_non_metadata_rewrite_line_cst;
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::abilities::{
     is_activate_only_once_each_turn_line_lexed, is_doesnt_untap_during_your_untap_step_line_lexed,
     is_land_reveal_enters_static_line_lexed, is_land_reveal_enters_tapped_followup_line_lexed,
@@ -37,15 +36,18 @@ use super::grammar::structure::split_lexed_sentences;
 use super::ir::{RewriteSemanticDocument, RewriteSemanticItem};
 use super::keyword_registry::{parse_keyword_line_cst, rewrite_keyword_dash_parse_tokens};
 use super::keyword_static::{
-    parse_if_this_spell_costs_less_to_cast_line_lexed, parse_spells_cost_modifier_line,
+    parse_if_this_spell_costs_less_to_cast_line_lexed,
+    parse_spell_and_player_activated_ability_cost_modifier_line,
+    parse_spell_cost_increase_per_target_beyond_first_line, parse_spells_cost_modifier_line,
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
+use super::lex_patterns::LexPattern;
 use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, TokenWordPiece, TokenWordView,
     contains_token_word_sequence, find_token_kind, find_token_word, lex_line, render_token_slice,
     token_slice_ends_with, token_slice_first_is, token_slice_last_kind, token_slice_starts_with,
     token_slice_starts_with_any, token_slice_words_eq, token_slice_words_eq_any, token_word_refs,
-    trim_lexed_commas,
+    trim_lexed_commas, word_slice_eq_any,
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
@@ -65,19 +67,16 @@ use super::util::{
 };
 use std::sync::LazyLock;
 
-const TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "this", "ability", "triggers", "only", "once", "each", "turn"
-            ],
-            &["do", "this", "only", "once", "each", "turn"],
-        ]
-);
-const SOURCE_LEAVES_BATTLEFIELD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["leaves", "the", "battlefield"]]);
-const THIS_PERMANENT_PHRASE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["this", "permanent"]]);
+const TRIGGER_CAP_ONCE_SUFFIXES: &[&[&str]] = &[
+    &[
+        "this", "ability", "triggers", "only", "once", "each", "turn",
+    ],
+    &["do", "this", "only", "once", "each", "turn"],
+];
+const SOURCE_LEAVES_BATTLEFIELD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["leaves", "the", "battlefield"])]);
+const THIS_PERMANENT_PHRASE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["this", "permanent"])]);
 const HALF_STARTING_LIFE_PLUS_ONE_UNSUPPORTED_PHRASE: &[&str] = &[
     "if", "your", "life", "total", "is", "less", "than", "or", "equal", "to", "half", "your",
     "starting", "life", "total", "plus", "one",
@@ -124,16 +123,13 @@ const SOURCE_ALIAS_NON_VERB_FOLLOWUPS: &[&str] = &[
     "gets", "get", "has", "have", "is", "are", "enters", "attacks", "blocks", "becomes", "become",
     "can't", "cant", "can", "does", "doesn't", "doesnt",
 ];
-const WHEN_ONE_OR_MORE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["when", "one", "or", "more"],
-            &["whenever", "one", "or", "more"]
-        ]
-);
-const CUMULATIVE_UPKEEP_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["cumulative", "upkeep"]);
-const ECHO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["echo"]);
+const WHEN_ONE_OR_MORE_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &["when", "one", "or", "more"],
+        &["whenever", "one", "or", "more"],
+    ])]);
+const CUMULATIVE_UPKEEP_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["cumulative", "upkeep"])]);
 const FORMER_SECTION9_CANONICAL_GAPS: &[&str] = &[
     "destroy target creature if its white. a creature destroyed this way cant be regenerated.",
     "create two 1/1 white kithkin soldier creature tokens if {w} was spent to cast this spell. counter up to one target creature spell if {u} was spent to cast this spell.",
@@ -148,6 +144,10 @@ const FORMER_SECTION9_CANONICAL_WITHOUT_HYPHEN_GAPS: &[&str] = &[
 ];
 const LESS_THAN_ONE_MANA_REDUCTION_REMINDER: &str =
     "this effect can't reduce the mana in that cost to less than one mana.";
+
+fn trigger_cap_suffix_is_once_each_turn(words: &[&str]) -> bool {
+    word_slice_eq_any(words, TRIGGER_CAP_ONCE_SUFFIXES)
+}
 
 mod block_parsing;
 mod line_cst_parsing;
@@ -165,8 +165,8 @@ use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 #[cfg(test)]
 use statement_cst_support::looks_like_statement_line;
 use statement_cst_support::{
-    extend_activated_line_with_result_followups, extend_triggered_line_with_result_followups,
-    extend_statement_line_with_result_followups, looks_like_statement_line_lexed,
+    extend_activated_line_with_result_followups, extend_statement_line_with_result_followups,
+    extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
     normalize_statement_parse_groups_lexed, parse_colon_nonactivation_statement_fallback,
     parse_statement_line_cst,
 };
@@ -336,7 +336,7 @@ fn strip_trailing_trigger_cap_suffix_tokens(
     let Some((phrase, head)) = grammar::strip_lexed_suffix_phrases(tokens, &cap_suffixes) else {
         return (tokens, None);
     };
-    let count = if TRIGGERS_ONLY_ONCE_EACH_TURN_SUFFIX_PATTERN.matches_words(phrase) {
+    let count = if trigger_cap_suffix_is_once_each_turn(phrase) {
         1
     } else {
         2
@@ -718,6 +718,49 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
                 && contains_token_word_sequence(tokens, &["instead"])))
 }
 
+fn looks_like_leading_conditional_self_replacement(tokens: &[OwnedLexToken]) -> bool {
+    token_slice_starts_with_any(tokens, &[&["if"]])
+        && contains_token_word_sequence(tokens, &["instead"])
+}
+
+fn parse_labeled_conditional_replacement_sentence_split(
+    line: &PreprocessedLine,
+    idx: usize,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if !looks_like_leading_conditional_self_replacement(&line.tokens) {
+        return Ok(None);
+    }
+
+    let sentences = split_lexed_sentences(&line.tokens);
+    if sentences.len() < 2 {
+        return Ok(None);
+    }
+
+    let Some(first_sentence_tokens) = clone_sentence_chunk_tokens(&line.tokens, &sentences[..1])
+    else {
+        return Ok(None);
+    };
+    let first_sentence_line = rewrite_line_tokens(line, &first_sentence_tokens);
+    let Some(statement_line) = parse_statement_line_cst(&first_sentence_line)? else {
+        return Ok(None);
+    };
+
+    let mut lines = vec![RewriteLineCst::Statement(statement_line)];
+    for sentence_tokens in sentences.iter().skip(1) {
+        let sentence_line = rewrite_line_tokens(line, sentence_tokens);
+        if let Some(statement_line) = parse_statement_line_cst(&sentence_line)? {
+            lines.push(RewriteLineCst::Statement(statement_line));
+        } else if let Some(static_line) = parse_static_line_cst(&sentence_line)? {
+            lines.push(RewriteLineCst::Static(static_line));
+        }
+    }
+
+    Ok(Some(LineDispatchResult {
+        lines,
+        next_idx: idx + 1,
+    }))
+}
+
 fn should_parse_next_cast_trigger_line_as_spell_effect(
     preprocessed: &PreprocessedDocument,
     tokens: &[OwnedLexToken],
@@ -900,8 +943,8 @@ fn trigger_presentation_label_from_preprocessed_line(line: &PreprocessedLine) ->
 fn is_nonkeyword_choice_labeled_line(line: &PreprocessedLine) -> bool {
     split_label_prefix_lexed(strip_choice_bullet_prefix_tokens(&line.tokens)).is_some_and(
         |(label, _, _)| {
-        !preserve_keyword_prefix_for_parse(label.as_str())
-            && !is_named_ability_label(label.as_str())
+            !preserve_keyword_prefix_for_parse(label.as_str())
+                && !is_named_ability_label(label.as_str())
         },
     )
 }
@@ -1051,13 +1094,11 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
             let segment_words = TokenWordView::new(segment).word_refs();
+            let segment_clause = LexedClause::new(segment);
             let (keyword, cost_start, is_echo) =
-                if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_words(&segment_words) {
+                if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_prefix(segment_clause) {
                     ("cumulative upkeep", 2, false)
-                } else if segment_words
-                    .first()
-                    .is_some_and(|word| ECHO_WORD_PATTERN.matches_words(&[*word]))
-                {
+                } else if segment.first().is_some_and(|token| token.is_word("echo")) {
                     ("echo", 1, true)
                 } else {
                     continue;
@@ -1241,7 +1282,9 @@ fn trigger_head_is_source_alias_leaves_battlefield(
     let Ok(tokens) = lex_line(trigger_head.trim(), 0) else {
         return false;
     };
-    SOURCE_LEAVES_BATTLEFIELD_PATTERN.matches_words(&token_word_refs(&tokens))
+    SOURCE_LEAVES_BATTLEFIELD_PATTERN
+        .find_in_clause(LexedClause::new(&tokens))
+        .is_some()
         && normalized_line_mentions_source_alias(builder, trigger_head)
 }
 
@@ -2416,6 +2459,7 @@ mod tests {
             "Enchanted creature gets +1/+1.",
             "As long as you control an artifact, this creature has hexproof.",
             "Your maximum hand size is reduced by four.",
+            "Power Tester's power is equal to the number of creatures you control.",
         ] {
             let tokens =
                 lex_line(text, 0).expect("rewrite lexer should classify generic static head");
@@ -2500,12 +2544,14 @@ mod tests {
             "At the beginning of your end step, if a creature died under your control this turn, each opponent sacrifices a creature of their choice",
         );
 
-        let parsed = parse_triggered_line_cst(&line)
-            .expect("Barrensteppe Siege Mardu trigger should parse");
+        let parsed =
+            parse_triggered_line_cst(&line).expect("Barrensteppe Siege Mardu trigger should parse");
 
         assert_eq!(parsed.trigger_text, "the beginning of your end step");
         assert!(
-            parsed.effect_text.contains("each opponent sacrifices a creature of their choice"),
+            parsed
+                .effect_text
+                .contains("each opponent sacrifices a creature of their choice"),
             "expected sacrifice-choice effect text, got {}",
             parsed.effect_text
         );
@@ -2520,17 +2566,38 @@ mod tests {
     }
 
     #[test]
+    fn triggered_conditional_split_preserves_named_label_unpaid_gate() {
+        let line = single_preprocessed_line(
+            "When this creature enters, if tribute wasn't paid, it gains haste until end of turn.",
+        );
+
+        let parsed =
+            parse_triggered_line_cst(&line).expect("Thunder Brute tribute trigger should parse");
+
+        assert_eq!(parsed.trigger_text, "this creature enters");
+        assert_eq!(parsed.effect_text, "it gains haste until end of turn.");
+        assert_eq!(
+            parsed.intervening_if,
+            Some(crate::cards::builders::PredicateAst::Not(Box::new(
+                crate::cards::builders::PredicateAst::ThisSpellPaidLabel("Tribute".to_string()),
+            ))),
+        );
+    }
+
+    #[test]
     fn triggered_end_step_puts_counters_on_each_creature_you_control() {
         let line = single_preprocessed_line(
             "At the beginning of your end step, put a +1/+1 counter on each creature you control.",
         );
 
-        let parsed = parse_triggered_line_cst(&line)
-            .expect("Barrensteppe Siege Abzan trigger should parse");
+        let parsed =
+            parse_triggered_line_cst(&line).expect("Barrensteppe Siege Abzan trigger should parse");
 
         assert_eq!(parsed.trigger_text, "the beginning of your end step");
         assert!(
-            parsed.effect_text.contains("put a +1/+1 counter on each creature you control"),
+            parsed
+                .effect_text
+                .contains("put a +1/+1 counter on each creature you control"),
             "expected counter effect text, got {}",
             parsed.effect_text
         );
@@ -3152,7 +3219,9 @@ fn try_parse_triggered_line_with_named_source_rewrite(
 
 fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
     lex_line(text.trim(), 0).ok().is_some_and(|tokens| {
-        THIS_PERMANENT_PHRASE_PATTERN.matches_words(&token_word_refs(&tokens))
+        THIS_PERMANENT_PHRASE_PATTERN
+            .find_in_clause(LexedClause::new(&tokens))
+            .is_some()
     })
 }
 
@@ -3213,11 +3282,10 @@ fn split_trigger_sentence_chunks_rewrite_lexed(
 }
 
 fn starts_with_when_one_or_more_this_way_clause(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
     let this_way_in_prefix = grammar::split_lexed_once_on_delimiter(tokens, TokenKind::Comma)
         .map(|(before, _after)| grammar::contains_phrase(before, &["this", "way"]))
         .unwrap_or(false);
-    WHEN_ONE_OR_MORE_PREFIX_PATTERN.matches_words(&words) && this_way_in_prefix
+    WHEN_ONE_OR_MORE_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens)) && this_way_in_prefix
 }
 
 fn rewrite_when_one_or_more_this_way_line(line: &PreprocessedLine) -> PreprocessedLine {
@@ -3460,6 +3528,11 @@ fn try_parse_labeled_line_dispatch(
             RewriteLineCst::Statement(statement_line),
             next_idx,
         )));
+    }
+    if let Some(split_result) =
+        parse_labeled_conditional_replacement_sentence_split(&body_line, idx)?
+    {
+        return Ok(Some(split_result));
     }
 
     if normalized_line_mentions_source_alias(
@@ -4018,7 +4091,12 @@ pub(crate) fn parse_document_cst(
                 {
                     let stripped_line =
                         rewrite_line_tokens(line, strip_choice_bullet_prefix_tokens(&line.tokens));
-                    dispatch_standard_line_cst(preprocessed, idx, &stripped_line, allow_unsupported)?
+                    dispatch_standard_line_cst(
+                        preprocessed,
+                        idx,
+                        &stripped_line,
+                        allow_unsupported,
+                    )?
                 } else {
                     dispatch_standard_line_cst(preprocessed, idx, line, allow_unsupported)?
                 };

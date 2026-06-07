@@ -22,12 +22,11 @@ use super::super::lexer::{
     word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
-use super::conditions::{ControlConditionOptions, parse_control_condition};
+use super::conditions::{
+    ControlConditionOptions, parse_control_condition, parse_control_relation_tail_clause,
+};
 use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
 use crate::runtime_backend::util::{
     parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_less_than_or_equal_quantity_prefix, parse_number,
@@ -149,32 +148,43 @@ struct ActivateOnlyCountPerTurnCondition<'a> {
     count_tokens: &'a [OwnedLexToken],
 }
 
-const ARTICLE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["a"], &["an"]]);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ManaUsageSpecShape {
+    Unsupported,
+    PlainSpell,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ActivateOnlyTimingMarker {
+    OnceEachTurn,
+    DuringCombat,
+    DuringYourTurn,
+    DuringOpponentsTurn,
+}
+
+const ARTICLE_WORDS: &[&str] = &["a", "an"];
 const MANA_USAGE_UNCOUNTERABLE_TAILS: &[&[&str]] = &[
     &["and", "that", "spell", "can't", "be", "countered"],
     &["and", "that", "spell", "cant", "be", "countered"],
 ];
-const MANA_USAGE_UNSUPPORTED_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_words
-        & [&[
-            "activate",
-            "activates",
-            "activated",
-            "activation",
-            "ability",
-            "abilities",
-            "pay",
-            "foretell",
-            "unlock",
-            "turn",
-            "cost",
-            "costs",
-        ]]
-);
-const PLAIN_SPELL_USAGE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"], &["the"], &["spell"], &["spells"]]);
+const MANA_USAGE_UNSUPPORTED_MARKER_WORDS: &[&str] = &[
+    "activate",
+    "activates",
+    "activated",
+    "activation",
+    "ability",
+    "abilities",
+    "pay",
+    "foretell",
+    "unlock",
+    "turn",
+    "cost",
+    "costs",
+];
+const PLAIN_SPELL_USAGE_WORDS: &[&str] = &["a", "an", "the", "spell", "spells"];
 const MANA_SPEND_COUNTER_SUBJECT_NOUN_WORDS: &[&str] = &["creature", "spell", "permanent", "card"];
-const ADDITIONAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["additional"]);
+const ADDITIONAL_WORD: &str = "additional";
 const DRAW_REPLACEMENT_DOUBLE_PHRASE: &[&str] = &[
     "if", "you", "would", "draw", "a", "card", "draw", "two", "cards", "instead",
 ];
@@ -210,7 +220,7 @@ const OPPONENT_DISCARD_THIS_TO_BATTLEFIELD_REPLACEMENT_PHRASE: &[&str] = &[
     "your",
     "graveyard",
 ];
-const WHENEVER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["whenever"]);
+const WHENEVER_WORD: &str = "whenever";
 const TIMES_EACH_TURN_TAILS: &[&[&str]] = &[
     &["time", "each", "turn"],
     &["times", "each", "turn"],
@@ -563,7 +573,7 @@ pub(crate) fn split_nested_combat_whenever_clause_lexed(
     let (_, nested_trigger_tokens) = primitives::split_lexed_once_on_comma(after_pay)?;
     nested_trigger_tokens
         .first()
-        .is_some_and(|token| WHENEVER_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| token.is_word(WHENEVER_WORD))
         .then_some(nested_trigger_tokens)
 }
 
@@ -719,44 +729,92 @@ const THIS_ABILITY_TRIGGERS_ONLY_PREFIXES: &[&[&str]] = &[
     &["this", "ability", "triggers", "only"],
     &["do", "this", "only"],
 ];
-const ONCE_EACH_TURN_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["once", "each", "turn"]]);
-const DURING_COMBAT_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["during", "combat"]]);
-const DURING_YOUR_TURN_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["during", "your", "turn"]]);
-const DURING_OPPONENTS_TURN_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["during", "an", "opponents", "turn"],
-            &["during", "opponents", "turn"],
-        ]]
-);
+
+fn parse_activate_only_timing_marker(tokens: &[OwnedLexToken]) -> Option<ActivateOnlyTimingMarker> {
+    const ONCE_EACH_TURN_MARKER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "timing",
+            LexCaptureKind::OneOfPhrase(&[&["once", "each", "turn"]]),
+        )]);
+    const DURING_COMBAT_MARKER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "timing",
+            LexCaptureKind::OneOfPhrase(&[&["during", "combat"]]),
+        )]);
+    const DURING_YOUR_TURN_MARKER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "timing",
+            LexCaptureKind::OneOfPhrase(&[&["during", "your", "turn"]]),
+        )]);
+    const DURING_OPPONENTS_TURN_MARKER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "timing",
+            LexCaptureKind::OneOfPhrase(&[
+                &["during", "an", "opponents", "turn"],
+                &["during", "opponents", "turn"],
+            ]),
+        )]);
+
+    let clause = LexedClause::new(tokens);
+    for (pattern, marker) in [
+        (
+            ONCE_EACH_TURN_MARKER_PATTERN,
+            ActivateOnlyTimingMarker::OnceEachTurn,
+        ),
+        (
+            DURING_COMBAT_MARKER_PATTERN,
+            ActivateOnlyTimingMarker::DuringCombat,
+        ),
+        (
+            DURING_YOUR_TURN_MARKER_PATTERN,
+            ActivateOnlyTimingMarker::DuringYourTurn,
+        ),
+        (
+            DURING_OPPONENTS_TURN_MARKER_PATTERN,
+            ActivateOnlyTimingMarker::DuringOpponentsTurn,
+        ),
+    ] {
+        if let Some(matched) = pattern.find_in_clause(clause)
+            && matched
+                .capture_clause_by_role(LexCaptureRole::Action, clause)
+                .is_some()
+        {
+            return Some(marker);
+        }
+    }
+    None
+}
 
 pub(crate) fn parse_activate_only_timing_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivationTiming> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let timing_marker = parse_activate_only_timing_marker(tokens);
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_SORCERY_PREFIXES).is_some() {
         return Some(ActivationTiming::SorcerySpeed);
     }
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_ONCE_EACH_TURN_PREFIXES).is_some()
-        || ONCE_EACH_TURN_MARKER_PATTERN.matches_words(&words)
+        || matches!(timing_marker, Some(ActivateOnlyTimingMarker::OnceEachTurn))
     {
         return Some(ActivationTiming::OncePerTurn);
     }
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_COMBAT_PREFIXES).is_some()
-        || DURING_COMBAT_MARKER_PATTERN.matches_words(&words)
+        || matches!(timing_marker, Some(ActivateOnlyTimingMarker::DuringCombat))
     {
         return Some(ActivationTiming::DuringCombat);
     }
     if primitives::words_match_any_prefix(tokens, ACTIVATE_ONLY_DURING_YOUR_TURN_PREFIXES).is_some()
-        || DURING_YOUR_TURN_MARKER_PATTERN.matches_words(&words)
+        || matches!(
+            timing_marker,
+            Some(ActivateOnlyTimingMarker::DuringYourTurn)
+        )
     {
         return Some(ActivationTiming::DuringYourTurn);
     }
     if primitives::words_match_any_prefix(tokens, DURING_OPPONENTS_TURN_PREFIXES).is_some()
-        || DURING_OPPONENTS_TURN_MARKER_PATTERN.matches_words(&words)
+        || matches!(
+            timing_marker,
+            Some(ActivateOnlyTimingMarker::DuringOpponentsTurn)
+        )
     {
         return Some(ActivationTiming::DuringOpponentsTurn);
     }
@@ -807,10 +865,12 @@ fn parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(
     let spell_filter = parse_mana_usage_spell_filter_tokens(spell_tokens)?;
     let ability_source_filter = parse_mana_usage_ability_source_filter_tokens(source_tokens)?;
 
-    Some(ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-        spell_filter,
-        ability_source_filter,
-    })
+    Some(
+        ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+            spell_filter,
+            ability_source_filter,
+        },
+    )
 }
 
 fn parse_mana_usage_spell_filter_tokens(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
@@ -997,22 +1057,21 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
 ) -> Option<ManaUsageRestriction> {
     let parsed = parse_filter_mana_usage_cast_restriction_tokens(tokens)?;
     let spec_tokens = trim_lexed_commas(parsed.spec_tokens);
-    let spec_words = LexedClause::new(spec_tokens).word_refs();
+    let spec_clause = LexedClause::new(spec_tokens);
+    let spec_words = spec_clause.word_refs();
     if spec_words.is_empty() {
         return None;
     }
+    let spec_shape = classify_mana_usage_spec_shape(spec_clause);
     let special_filter = parse_special_mana_usage_spell_filter_tokens(spec_tokens);
-    if special_filter.is_none() && MANA_USAGE_UNSUPPORTED_MARKER_PATTERN.matches_words(&spec_words)
-    {
+    if special_filter.is_none() && spec_shape == ManaUsageSpecShape::Unsupported {
         return None;
     }
 
-    let is_plain_spell = spec_words
-        .iter()
-        .all(|word| PLAIN_SPELL_USAGE_WORD_PATTERN.matches_word(word));
     let filter = special_filter.or_else(|| {
         let filter = parse_spell_filter_with_grammar_entrypoint(spec_tokens);
-        (filter != ObjectFilter::default() || is_plain_spell).then_some(filter)
+        (filter != ObjectFilter::default() || spec_shape == ManaUsageSpecShape::PlainSpell)
+            .then_some(filter)
     })?;
 
     Some(ManaUsageRestriction::CastSpellMatching {
@@ -1022,6 +1081,31 @@ fn parse_filter_mana_usage_restriction_sentence_lexed(
         enters_with_counters: vec![],
         granted_abilities: vec![],
     })
+}
+
+fn classify_mana_usage_spec_shape(spec_clause: LexedClause<'_>) -> ManaUsageSpecShape {
+    const UNSUPPORTED_MARKER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+        "unsupported_marker",
+        LexCaptureKind::OneOf(MANA_USAGE_UNSUPPORTED_MARKER_WORDS),
+    )]);
+
+    if let Some(matched) = UNSUPPORTED_MARKER_PATTERN.find_in_clause(spec_clause)
+        && matched
+            .capture_clause_by_role(LexCaptureRole::Action, spec_clause)
+            .is_some()
+    {
+        return ManaUsageSpecShape::Unsupported;
+    }
+
+    let spec_words = spec_clause.word_refs();
+    if spec_words
+        .iter()
+        .all(|word| PLAIN_SPELL_USAGE_WORDS.contains(word))
+    {
+        return ManaUsageSpecShape::PlainSpell;
+    }
+
+    ManaUsageSpecShape::Other
 }
 
 fn parse_filter_mana_usage_cast_restriction_tokens<'a>(
@@ -1264,21 +1348,21 @@ fn parse_mana_spend_counter_bonus_tail(
 
     let (count, used) = if after_with
         .first()
-        .is_some_and(|token| ARTICLE_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| token.is_any_word(ARTICLE_WORDS))
         && after_with
             .get(1)
-            .is_some_and(|token| ADDITIONAL_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| token.is_word(ADDITIONAL_WORD))
     {
         (1, 2)
     } else if after_with
         .first()
-        .is_some_and(|token| ADDITIONAL_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| token.is_word(ADDITIONAL_WORD))
     {
         (1, 1)
     } else if let Some((parsed, number_used)) = parse_number(after_with) {
         let used = if after_with
             .get(number_used)
-            .is_some_and(|token| ADDITIONAL_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| token.is_word(ADDITIONAL_WORD))
         {
             number_used + 1
         } else {
@@ -1372,7 +1456,10 @@ pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bo
 
 fn parse_simple_mana_spend_bonus_card_type(spec_words: &[&str]) -> Option<crate::types::CardType> {
     let mut idx = 0usize;
-    if ARTICLE_WORD_PATTERN.matches_word_at(spec_words, 0) {
+    if spec_words
+        .first()
+        .is_some_and(|word| ARTICLE_WORDS.contains(word))
+    {
         idx += 1;
     }
     let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
@@ -1398,8 +1485,25 @@ pub(crate) fn is_trigger_only_restriction_sentence_lexed(tokens: &[OwnedLexToken
 }
 
 pub(crate) fn parse_triggered_times_each_turn_from_words(words: &[&str]) -> Option<u32> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    parse_triggered_times_each_turn_lexed(&tokens)
+    const TRIGGERED_TIMES_EACH_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(&[
+            &["this", "ability", "triggers", "only"],
+            &["do", "this", "only"],
+        ]),
+        LexPattern::amount(
+            "count",
+            LexCaptureKind::UntilAnyPhrase(TIMES_EACH_TURN_TAILS),
+        ),
+        LexPattern::tail("tail", LexCaptureKind::Rest),
+    ]);
+
+    let matched = TRIGGERED_TIMES_EACH_TURN_PATTERN.match_word_refs(words)?;
+    let count = matched.capture_by_role(LexCaptureRole::Amount)?;
+    let tail = matched.capture_by_role(LexCaptureRole::Tail)?;
+    parse_count_with_each_turn_tail_words(
+        words.get(count.word_range.clone())?,
+        words.get(tail.word_range.clone())?,
+    )
 }
 
 pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -1419,25 +1523,51 @@ pub(crate) fn parse_triggered_times_each_turn_lexed(tokens: &[OwnedLexToken]) ->
     let matched = TRIGGERED_TIMES_EACH_TURN_PATTERN.match_clause(clause)?;
     let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
     let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
-    parse_count_with_each_turn_tail(count_clause, tail_clause)
+    parse_count_with_each_turn_tail_words(&count_clause.word_refs(), &tail_clause.word_refs())
 }
 
-fn parse_count_with_each_turn_tail(
-    count_clause: LexedClause<'_>,
-    tail_clause: LexedClause<'_>,
-) -> Option<u32> {
-    if !matches_each_turn_count_tail(tail_clause) {
+fn parse_ability_count_words(words: &[&str]) -> Option<(u32, usize)> {
+    let word = words.first()?.to_ascii_lowercase();
+    if let Ok(value) = word.parse::<u32>() {
+        return Some((value, 1));
+    }
+    match word.as_str() {
+        "once" => return Some((1, 1)),
+        "twice" => return Some((2, 1)),
+        _ => {}
+    }
+    let trimmed_trailing_punctuation = word.trim_end_matches(|ch: char| !ch.is_ascii_digit());
+    if trimmed_trailing_punctuation.len() < word.len()
+        && !trimmed_trailing_punctuation.is_empty()
+        && trimmed_trailing_punctuation
+            .chars()
+            .all(|ch| ch.is_ascii_digit())
+        && let Ok(value) = trimmed_trailing_punctuation.parse::<u32>()
+    {
+        return Some((value, 1));
+    }
+    ironsmith_core::parse_cardinal_words(words)
+}
+
+fn parse_count_with_each_turn_tail_words(count_words: &[&str], tail_words: &[&str]) -> Option<u32> {
+    if !matches_each_turn_count_tail_words(tail_words) {
         return None;
     }
-    let (count, used) = parse_number(count_clause.tokens())?;
-    (used == count_clause.word_refs().len()).then_some(count)
+    let (count, used) = parse_ability_count_words(count_words)?;
+    (used == count_words.len()).then_some(count)
 }
 
 fn matches_each_turn_count_tail(tail_clause: LexedClause<'_>) -> bool {
+    matches_each_turn_count_tail_words(&tail_clause.word_refs())
+}
+
+fn matches_each_turn_count_tail_words(tail_words: &[&str]) -> bool {
     const EACH_TURN_COUNT_TAIL_PATTERN: LexPattern<'static> =
         LexPattern::new(&[LexPattern::any_phrase(TIMES_EACH_TURN_TAILS)]);
 
-    EACH_TURN_COUNT_TAIL_PATTERN.matches_clause(tail_clause)
+    EACH_TURN_COUNT_TAIL_PATTERN
+        .match_word_refs(tail_words)
+        .is_some()
 }
 
 fn parse_activate_only_if_card_in_graveyard_condition_tokens(
@@ -1575,8 +1705,16 @@ fn is_creature_object_clause(clause: LexedClause<'_>) -> bool {
     CREATURE_OBJECT_PATTERN.matches_clause(clause)
 }
 
+fn activate_only_you_control_options() -> ControlConditionOptions {
+    ControlConditionOptions {
+        allow_that_player: false,
+        ..ControlConditionOptions::default()
+    }
+}
+
 fn is_you_control_condition_clause(clause: LexedClause<'_>) -> bool {
-    parse_activate_only_if_you_control_object_clause(clause.tokens()).is_some()
+    parse_control_relation_tail_clause(clause.tokens(), activate_only_you_control_options())
+        .is_some()
 }
 
 fn parse_activate_only_if_sources_dealt_damage_condition_tokens(
@@ -1655,26 +1793,18 @@ fn parse_activate_only_if_sources_dealt_damage_condition(
 fn parse_activate_only_if_you_control_creature_power_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ActivateOnlyIfYouControlCreaturePowerCondition<'_>> {
-    const ACTIVATE_ONLY_IF_YOU_CONTROL_CREATURE_POWER_PATTERN: LexPattern<'static> =
-        LexPattern::new(&[
-            LexPattern::phrase(&["activate", "only", "if"]),
-            LexPattern::subject("controller", LexCaptureKind::WordCount(1)),
-            LexPattern::action("verb", LexCaptureKind::WordCount(1)),
-            LexPattern::object("object", LexCaptureKind::UntilPhrase(&["with", "power"])),
-            LexPattern::phrase(&["with", "power"]),
-            LexPattern::amount("comparison", LexCaptureKind::OneOrMoreWords),
-        ]);
+    const CONTROLLED_OBJECT_POWER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::object("object", LexCaptureKind::UntilPhrase(&["with", "power"])),
+        LexPattern::phrase(&["with", "power"]),
+        LexPattern::amount("comparison", LexCaptureKind::OneOrMoreWords),
+    ]);
 
-    let clause = LexedClause::new(tokens);
-    let matched = ACTIVATE_ONLY_IF_YOU_CONTROL_CREATURE_POWER_PATTERN.match_clause(clause)?;
-    let controller = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
-    let action = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
-    if !clause_matches_phrase(controller, &["you"]) || !clause_matches_phrase(action, &["control"])
-    {
-        return None;
-    }
-    let object = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
-    let comparison = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let condition_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
+    let controlled_tail =
+        parse_control_relation_tail_clause(condition_tokens, activate_only_you_control_options())?;
+    let matched = CONTROLLED_OBJECT_POWER_PATTERN.match_clause(controlled_tail)?;
+    let object = matched.capture_clause_by_role(LexCaptureRole::Object, controlled_tail)?;
+    let comparison = matched.capture_clause_by_role(LexCaptureRole::Amount, controlled_tail)?;
     Some(ActivateOnlyIfYouControlCreaturePowerCondition {
         object_tokens: object.tokens(),
         comparison_tokens: comparison.tokens(),
@@ -1758,24 +1888,13 @@ fn parse_activate_only_if_you_control_tail_tokens(
     Some(condition.tokens())
 }
 
-fn parse_activate_only_if_you_control_object_clause(
-    tokens: &[OwnedLexToken],
-) -> Option<LexedClause<'_>> {
-    const YOU_CONTROL_OBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::subject("controller", LexCaptureKind::OneOf(&["you"])),
-        LexPattern::action("control", LexCaptureKind::OneOf(&["control", "controls"])),
-        LexPattern::object("object", LexCaptureKind::OneOrMoreWords),
-    ]);
-
-    let clause = LexedClause::new(tokens);
-    let matched = YOU_CONTROL_OBJECT_PATTERN.match_clause(clause)?;
-    matched.capture_clause_by_role(LexCaptureRole::Object, clause)
-}
-
 fn activate_only_if_you_control_land_subtype_condition(
     control_condition_tokens: &[OwnedLexToken],
 ) -> Option<ConditionExpr> {
-    let object_clause = parse_activate_only_if_you_control_object_clause(control_condition_tokens)?;
+    let object_clause = parse_control_relation_tail_clause(
+        control_condition_tokens,
+        activate_only_you_control_options(),
+    )?;
     let mut subtypes = Vec::new();
     for word in object_clause.word_refs() {
         if let Some(subtype) = parse_subtype_flexible(word)
@@ -1839,9 +1958,10 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         return Some(condition);
     }
     let control_condition_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
-    if let Some(control_condition) =
-        parse_control_condition(control_condition_tokens, ControlConditionOptions::default())
-    {
+    if let Some(control_condition) = parse_control_condition(
+        control_condition_tokens,
+        activate_only_you_control_options(),
+    ) {
         let count = control_condition.at_least_count()?;
         return Some(ConditionExpr::PlayerHasAtLeast {
             player: control_condition.player_filter?,
@@ -1880,8 +2000,6 @@ fn parse_activate_count_each_turn_condition(tokens: &[OwnedLexToken]) -> Option<
 }
 
 pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
-    let clause = LexedClause::new(&tokens);
     let atoms = [
         LexPattern::amount(
             "count",
@@ -1889,10 +2007,13 @@ pub(crate) fn parse_activation_count_per_turn(words: &[&str]) -> Option<u32> {
         ),
         LexPattern::tail("tail", LexCaptureKind::Rest),
     ];
-    let matched = LexPattern::new(&atoms).match_clause(clause)?;
-    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
-    let tail_clause = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)?;
-    parse_count_with_each_turn_tail(count_clause, tail_clause)
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let count = matched.capture_by_role(LexCaptureRole::Amount)?;
+    let tail = matched.capture_by_role(LexCaptureRole::Tail)?;
+    parse_count_with_each_turn_tail_words(
+        words.get(count.word_range.clone())?,
+        words.get(tail.word_range.clone())?,
+    )
 }
 
 pub(crate) fn is_standard_gift_keyword_tokens_lexed(tokens: &[OwnedLexToken]) -> bool {
