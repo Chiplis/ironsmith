@@ -353,6 +353,11 @@ pub(super) fn parse_static_line_cst(
         chosen_option_label,
     };
     let lexed = &parse_tokens;
+    if super::super::families::keyword_static::parse_double_counters_replacement_line(lexed)?
+        .is_some()
+    {
+        return Ok(Some(make_static(None)));
+    }
     if matches!(
         normalized,
         "for each {B} in a cost, you may pay 2 life rather than pay that mana."

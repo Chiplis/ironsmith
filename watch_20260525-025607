@@ -1,0 +1,47 @@
+Every 10.0s: aws --profile ironsmith-843750990226 --region us-east-2 s3 cp s3://ironsmith-card-fixers-843750990226-us-east-2/controller-runs/2026052… Nicolass-MacBook-Air-3.local: 02:55:57
+                                                                                                                                                                               in 1.098s (0)
+Batch 1 state: succeeded=0/8, failed=0, running=8, missing=0                                                                                                                                
+Status prefix: s3://ironsmith-card-fixers-843750990226-us-east-2/20260525T054100Z-controller-dev-loop-batch0001/status/                                                                     
+Updated: 2026-05-25T05:48:34Z                                                                                                                                                               
+                                                                                                                                                                                            
+                                                                                                                                                                                            
+state    step            instance_id          card_name                  message                       pr_url  timestamp                                                                    
+-------  --------------  -------------------  -------------------------  ----------------------------  ------  --------------------                                                         
+running  prebuild_tools  i-02abe3921089cc9ee  Blinding Powder            checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+running  prebuild_tools  i-02b08e0fc4a2ecf28  Soul Transfer              checking compile_oracle_text          2026-05-25T05:47:15Z                                                         
+running  prebuild_tools  i-02b5d736067d3810d  Mul Daya Channelers        checking compile_oracle_text          2026-05-25T05:47:29Z                                                         
+running  prebuild_tools  i-04ce5c9c4545f9040  One Ring to Rule Them All  checking compile_oracle_text          2026-05-25T05:47:23Z                                                         
+running  prebuild_tools  i-0537352a4aa9a628b  Reality Twist              checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+running  prebuild_tools  i-07f653f46aab0e150  Global Ruin                checking compile_oracle_text          2026-05-25T05:47:25Z                                                         
+running  prebuild_tools  i-084b3f16d38668747  Cetavolver                 checking compile_oracle_text          2026-05-25T05:47:15Z                                                         
+running  prebuild_tools  i-0a2213fff487364ff  Auriok Steelshaper         checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+                                                                                                                                                                                            
+Summary: running=8                                                                                                                                                                          
+Batch 1 state: succeeded=0/8, failed=0, running=8, missing=0                                                                                                                                
+Status prefix: s3://ironsmith-card-fixers-843750990226-us-east-2/20260525T054100Z-controller-dev-loop-batch0001/status/                                                                     
+Updated: 2026-05-25T05:49:38Z                                                                                                                                                               
+                                                                                                                                                                                            
+                                                                                                                                                                                            
+state    step            instance_id          card_name                  message                       pr_url  timestamp                                                                    
+-------  --------------  -------------------  -------------------------  ----------------------------  ------  --------------------                                                         
+running  prebuild_tools  i-02abe3921089cc9ee  Blinding Powder            checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+running  prebuild_tools  i-02b08e0fc4a2ecf28  Soul Transfer              checking compile_oracle_text          2026-05-25T05:47:15Z                                                         
+running  prebuild_tools  i-02b5d736067d3810d  Mul Daya Channelers        checking compile_oracle_text          2026-05-25T05:47:29Z                                                         
+running  prebuild_tools  i-04ce5c9c4545f9040  One Ring to Rule Them All  checking compile_oracle_text          2026-05-25T05:47:23Z                                                         
+running  prebuild_tools  i-0537352a4aa9a628b  Reality Twist              checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+running  prebuild_tools  i-07f653f46aab0e150  Global Ruin                checking compile_oracle_text          2026-05-25T05:47:25Z                                                         
+running  prebuild_tools  i-084b3f16d38668747  Cetavolver                 checking compile_oracle_text          2026-05-25T05:47:15Z                                                         
+running  prebuild_tools  i-0a2213fff487364ff  Auriok Steelshaper         checking compile_oracle_text          2026-05-25T05:47:16Z                                                         
+                                                                                                                                                                                            
+Summary: running=8                                                                                                                                                                          
+Batch 1 state: succeeded=0/8, failed=0, running=8, missing=0                                                                                                                                
+Status prefix: s3://ironsmith-card-fixers-843750990226-us-east-2/20260525T054100Z-controller-dev-loop-batch0001/status/                                                                     
+Updated: 2026-05-25T05:50:43Z                                                                                                                                                               
+                                                                                                                                                                                            
+                                                                                                                                                                                            
+state      step            instance_id          card_name                  message                                               pr_url  timestamp                                          
+---------  --------------  -------------------  -------------------------  ----------------------------------------------------  ------  --------------------                               
+running    prebuild_tools  i-02abe3921089cc9ee  Blinding Powder            checking compile_oracle_text                                  2026-05-25T05:47:16Z                               
+succeeded  create_branch   i-02b08e0fc4a2ecf28  Soul Transfer              codex/aws-card-fix-i-02b08e0fc4a2ecf28-soul-transfer          2026-05-25T05:50:41Z                               
+running    opencode_run    i-02b5d736067d3810d  Mul Daya Channelers        OpenCode running (primary); output idle 0s                    2026-05-25T05:50:39Z                               
+running    prebuild_tools  i-04ce5c9c4545f9040  One Ring to Rule Them All  checking compile_oracle_text                                  2026-05-25T05:47:23Z                               

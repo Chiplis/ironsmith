@@ -1,0 +1,47 @@
+Every 10.0s: aws --profile ironsmith-843750990226 --region us-east-2 s3 cp s3://ironsmith-card-fixers-843750990226-us-east-2/controller-runs/2026052… Nicolass-MacBook-Air-3.local: 02:47:41
+                                                                                                                                                                               in 1.669s (0)
++            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { tag, .. } => {                                                                                            
+                 tag.as_str() == IT_TAG                                                                                                                                                     
+             }                                                                                                                                                                              
+             SubjectVerbActionAst::PutRestOnBottomOfLibrary => true,                                                                                                                        
+diff --git a/crates/ironsmith-compiler/src/runtime_backend/model/modal_support.rs b/crates/ironsmith-compiler/src/runtime_backend/model/modal_support.rs                                    
+index 3e72d20e..f8725f34 100644                                                                                                                                                             
+--- a/crates/ironsmith-compiler/src/runtime_backend/model/modal_support.rs                                                                                                                  
++++ b/crates/ironsmith-compiler/src/runtime_backend/model/modal_support.rs                                                                                                                  
+@@ -454,6 +454,7 @@ fn replace_modal_header_x_in_effect_ast(                                                                                                                                
+             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }                                                                                 
+             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }                                                                                                                
+             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }                                                                                                                
++            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }                                                                                                      
+             | SubjectVerbActionAst::ReturnToBattlefield { .. }                                                                                                                             
+             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }                                                                                                                          
+             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }                                                                                                                          
+diff --git a/crates/ironsmith-compiler/src/runtime_backend/references/reference_resolution.rs b/crates/ironsmith-compiler/src/runtime_backend/references/reference_resolution.rs            
+index 31cb9dae..414eba8c 100644                                                                                                                                                             
+--- a/crates/ironsmith-compiler/src/runtime_backend/references/reference_resolution.rs                                                                                                      
++++ b/crates/ironsmith-compiler/src/runtime_backend/references/reference_resolution.rs                                                                                                      
+@@ -729,6 +729,12 @@ fn advance_reference_frame_for_effect(                                                                                                                                 
+                 | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { player, .. } => {                                                                                               
+                     track_effect_player(*player, frame, true, true)?;                                                                                                                      
+                 }                                                                                                                                                                          
++                SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource {                                                                                                         
++                    player,                                                                                                                                                                
++                    ..                                                                                                                                                                     
++                } => {                                                                                                                                                                     
++                    track_effect_player(*player, frame, true, true)?;                                                                                                                      
++                }                                                                                                                                                                          
+                 SubjectVerbActionAst::RevealHand => {                                                                                                                                      
+                     frame.last_object_tag = None;                                                                                                                                          
+                 }                                                                                                                                                                          
+@@ -1747,6 +1753,7 @@ fn resolve_effect_result_values_in_fields(                                                                                                                            
+             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }                                                                                 
+             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }                                                                                                                
+             | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }                                                                                                                
++            | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }                                                                                                      
+             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }                                                                                                                          
+             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }                                                                                                                          
+             | SubjectVerbActionAst::MoveToZone { .. }                                                                                                                                      
+@@ -2544,7 +2551,8 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey                                                                                      
+                 ..                                                                                                                                                                         
+             }                                                                                                                                                                              
+             | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { tag, .. }                                                                                                           

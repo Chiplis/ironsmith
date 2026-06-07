@@ -723,6 +723,18 @@ fn has_where_x_value_binding(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    if let Some(effect) = parse_generic_play_exiled_cards_for_as_long_as_exiled(tokens) {
+        return Ok(Some((
+            "subject-verb verb=Play subject=implicit recognizer=exiled-cards-play-permission",
+            vec![effect],
+        )));
+    }
+    if let Some(effect) = parse_generic_mana_any_type_cast_tagged_this_way(tokens) {
+        return Ok(Some((
+            "subject-verb verb=Cast subject=implicit recognizer=tagged-any-mana-permission",
+            vec![effect],
+        )));
+    }
     if let Some(effects) = parse_source_gets_unblockable_subject_verb(tokens)? {
         return Ok(Some((
             "subject-verb verb=Get subject=source recognizer=source-pump-unblockable",
@@ -761,6 +773,10 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     } else if let Some(effect) = parse_generic_damage_replacement_counters_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::PreventDamageAndPutCounters { effect })
     } else if let Some(effects) =
+        parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(tokens)
+    {
+        Some(GenericTopLevelProgram::LookedCardsCountedRemainder { effects })
+    } else if let Some(effects) =
         parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(tokens)
     {
         Some(GenericTopLevelProgram::LookedCardsCountedRemainder { effects })
@@ -794,6 +810,63 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
         let route = program.route();
         (route, program.lower())
     }))
+}
+
+fn parse_generic_play_exiled_cards_for_as_long_as_exiled(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed).word_refs();
+    let matches = words
+        == [
+            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
+            "exiled",
+        ]
+        || words
+            == [
+                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
+                "exiled",
+            ];
+    matches.then(|| {
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            true,
+            false,
+            false,
+            None,
+        )
+    })
+}
+
+fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed).word_refs();
+    let matches = words
+        == [
+            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells",
+            "this", "way",
+        ]
+        || words
+            == [
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
+                "this", "way",
+            ]
+        || words
+            == [
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
+                "spell", "this", "way",
+            ];
+    matches.then(|| {
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            false,
+            false,
+            true,
+            None,
+        )
+    })
 }
 
 fn parse_source_gets_unblockable_subject_verb(
@@ -1056,6 +1129,7 @@ fn put_counted_top_cards_owner(
         None
     }
 }
+
 
 pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
     tokens: &[OwnedLexToken],
@@ -2095,6 +2169,124 @@ fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
         });
     }
     None
+}
+
+const EXILE_COUNTED_FACE_DOWN_OBJECT_PHRASES: &[&[&str]] = &[
+    &["of", "them"],
+    &["them"],
+    &["of", "those", "card"],
+    &["of", "those", "cards"],
+    &["those", "card"],
+    &["those", "cards"],
+];
+const LOOK_EXILE_COUNTED_FACE_DOWN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::capture("look_clause", LexCaptureKind::UntilPhrase(&["exile"])),
+    LexPattern::word("exile"),
+    LexPattern::amount(
+        "exile_count",
+        LexCaptureKind::UntilAnyPhrase(EXILE_COUNTED_FACE_DOWN_OBJECT_PHRASES),
+    ),
+    LexPattern::any_phrase(EXILE_COUNTED_FACE_DOWN_OBJECT_PHRASES),
+    LexPattern::phrase(&["face", "down"]),
+    LexPattern::tail("remainder", LexCaptureKind::Rest),
+]);
+const EXILE_FACE_DOWN_REST_BOTTOM_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("put"),
+    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::word("rest"),
+    LexPattern::any_word(&["on", "onto"]),
+    LexPattern::optional(OPTIONAL_THE_PATTERN_ATOMS),
+    LexPattern::word("bottom"),
+]);
+const EXILE_FACE_DOWN_REST_LIBRARY_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "zone",
+        LexCaptureKind::OneOf(&["library", "libraries"]),
+    )]);
+const EXILE_FACE_DOWN_REST_RANDOM_ORDER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "order",
+        LexCaptureKind::OneOfPhrase(&[&["random", "order"]]),
+    )]);
+const EXILE_FACE_DOWN_REST_ANY_ORDER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::modifier(
+        "order",
+        LexCaptureKind::OneOfPhrase(&[&["any", "order"]]),
+    )]);
+
+fn parse_generic_top_cards_exile_counted_face_down_rest_bottom_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let sentence_tokens = trim_commas(tokens);
+    let sentence_clause = LexedClause::new(&sentence_tokens).trimmed();
+    let matched = LOOK_EXILE_COUNTED_FACE_DOWN_PATTERN.match_clause(sentence_clause)?;
+    let look_clause = matched
+        .capture_clause("look_clause", sentence_clause)?
+        .trimmed();
+    let look_effect = super::verb_handlers::parse_look(look_clause.tokens(), None).ok()?;
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        subject: SubjectVerbSubjectAst { player, .. },
+        action: SubjectVerbActionAst::LookAtTopCards { count, .. },
+    }) = look_effect
+    else {
+        return None;
+    };
+
+    let count_clause = matched
+        .capture_clause("exile_count", sentence_clause)?
+        .trimmed();
+    let count_tokens = trim_commas(count_clause.tokens());
+    let (exile_count, _used) =
+        crate::runtime_backend::util::parse_choice_count_token_prefix_consumed(&count_tokens)?;
+
+    let remainder_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)?
+        .trimmed();
+    if EXILE_FACE_DOWN_REST_BOTTOM_PATTERN
+        .find_in_clause(remainder_clause)
+        .is_none()
+        || EXILE_FACE_DOWN_REST_LIBRARY_PATTERN
+            .find_in_clause(remainder_clause)
+            .is_none()
+    {
+        return None;
+    }
+    let bottom_order = if EXILE_FACE_DOWN_REST_RANDOM_ORDER_PATTERN
+        .find_in_clause(remainder_clause)
+        .is_some()
+    {
+        crate::cards::builders::LibraryBottomOrderAst::Random
+    } else if EXILE_FACE_DOWN_REST_ANY_ORDER_PATTERN
+        .find_in_clause(remainder_clause)
+        .is_some()
+    {
+        crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
+    } else {
+        return None;
+    };
+
+    let looked_tag = crate::runtime_backend::util::helper_tag_for_tokens(tokens, "looked");
+    let exiled_tag = TagKey::from(IT_TAG);
+    let mut choice_filter = ObjectFilter::tagged(looked_tag.clone());
+    choice_filter.zone = Some(Zone::Library);
+
+    Some(vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: exile_count,
+            count_value: None,
+            player: PlayerAst::You,
+            tag: exiled_tag.clone(),
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), true),
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(exiled_tag),
+            bottom_order,
+            PlayerAst::You,
+        ),
+    ])
 }
 
 #[cfg(test)]

@@ -483,6 +483,15 @@ const ANTHEM_FOR_EACH_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["for", "each"]);
 const ANTHEM_AFFECTED_ATTACKED_THIS_TURN_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["time", "it", "has", "attacked", "this", "turn"]);
+const CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["creature", "is", "blocking", "it"],
+            &["creature", "is", "blocking", "this", "creature"],
+            &["creatures", "are", "blocking", "it"],
+            &["creatures", "are", "blocking", "this", "creature"],
+        ]
+);
 const ANTHEM_AFFECTED_COLORS_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -3008,6 +3017,16 @@ pub(crate) fn parse_static_condition_clause(
     if let Some(condition) = parse_cards_drawn_this_turn_static_condition(&tokens) {
         return Ok(condition);
     }
+    if let Ok((comparison, used)) = parse_static_quantity_prefix(&tokens, true) {
+        let tail_words = &clause_words[used..];
+        if CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN.matches_words(tail_words) {
+            return Ok(crate::ConditionExpr::CountComparison {
+                count: AnthemCountExpression::BlockingSource,
+                comparison,
+                display: Some(clause_words.join(" ")),
+            });
+        }
+    }
     if anthem_shape_matches_words(&clause_words, YOUR_LIFE_HALF_STARTING_CONDITION_PATTERN) {
         return Ok(
             crate::ConditionExpr::PlayerLifeAtMostHalfStartingLifeTotal {
@@ -3485,6 +3504,10 @@ pub(crate) fn parse_anthem_for_each_expression(
             }
             _ => {}
         }
+    }
+
+    if CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN.matches_words(&rest_words) {
+        return Ok(AnthemCountExpression::BlockingSource);
     }
 
     if let Some(attached_idx) = anthem_token_offset(rest, |token| {

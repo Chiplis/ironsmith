@@ -1601,6 +1601,13 @@ fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
+        &ctx.line.tokens,
+    )?
+    .is_some()
+    {
+        return Ok(None);
+    }
     if should_prefer_statement_before_static_for_nonpermanent_spell(ctx.preprocessed, &ctx.line.tokens)
         && let Some(split_result) =
             parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?

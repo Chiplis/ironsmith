@@ -60,9 +60,9 @@ pub mod zone_changes;
 // Re-export core types
 pub use check::{
     ActiveStateTriggerKey, DelayedTrigger, TriggerIdentity, TriggerQueue, TriggeredAbilityEntry,
-    check_delayed_triggers, check_state_triggers, check_triggers, compute_delayed_trigger_identity,
-    compute_trigger_identity, generate_step_trigger_events, player_filter_matches_with_context,
-    verify_intervening_if,
+    TriggeredAbilitySourceKind, check_delayed_triggers, check_state_triggers, check_triggers,
+    compute_delayed_trigger_identity, compute_trigger_identity, generate_step_trigger_events,
+    player_filter_matches_with_context, verify_intervening_if,
 };
 pub use event::{AttackEventTarget, DamageEventTarget};
 pub use matcher_trait::{TriggerContext, TriggerMatcher};
@@ -812,6 +812,11 @@ impl Trigger {
     /// Create a "whenever [player] rolls [result]" trigger.
     pub fn player_rolls_result(player: PlayerFilter, result: u32) -> Self {
         Self::new(PlayerRollsResultTrigger::new(player, result))
+    }
+
+    /// Create a "whenever [player] rolls a die's highest natural result" trigger.
+    pub fn player_rolls_highest_natural_result(player: PlayerFilter) -> Self {
+        Self::new(PlayerRollsHighestNaturalResultTrigger::new(player))
     }
 
     /// Create a "whenever mana is added to [player]'s mana pool" trigger.

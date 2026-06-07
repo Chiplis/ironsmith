@@ -187,6 +187,14 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
+        name: "look-at-top-exile-counted-rest-bottom-play-while-exiled",
+        feature_tag: Some("looked-cards-exile-play-while-exiled"),
+        priority: 432,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_at_top_exile_counted_rest_bottom_play_while_exiled,
+    },
+    SequenceRuleDef {
         name: "search-reveal-named-match-battlefield-else-hand-then-shuffle",
         feature_tag: Some("search-named-card-branch"),
         priority: 431,

@@ -642,6 +642,63 @@ fn clause_may_contain_cast_or_play_permission(tokens: &[OwnedLexToken]) -> bool 
         })
 }
 
+fn parse_play_exiled_cards_for_as_long_as_exiled_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed).word_refs();
+    let matches = words
+        == [
+            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
+            "exiled",
+        ]
+        || words
+            == [
+                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
+                "exiled",
+            ];
+    matches.then(|| {
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            true,
+            false,
+            false,
+            None,
+        )
+    })
+}
+
+fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed).word_refs();
+    let matches = words
+        == [
+            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells",
+            "this", "way",
+        ]
+        || words
+            == [
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
+                "this", "way",
+            ]
+        || words
+            == [
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
+                "spell", "this", "way",
+            ];
+    matches.then(|| {
+        EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
+            TagKey::from(IT_TAG),
+            PlayerAst::You,
+            false,
+            false,
+            true,
+            None,
+        )
+    })
+}
+
 fn parse_for_each_prevent_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -905,6 +962,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             return Ok(build_may_cast_tagged_effect(&spec));
         }
 
+        if let Some(effect) = parse_play_exiled_cards_for_as_long_as_exiled_clause(tokens) {
+            return Ok(effect);
+        }
+
         if let Some(effect) = parse_cast_or_play_tagged_clause(tokens)? {
             return Ok(effect);
         }
@@ -916,6 +977,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         if let Some(effect) = parse_cast_single_spell_from_among_hand_cards_clause(tokens) {
             return Ok(effect);
         }
+    }
+
+    if let Some(effect) = parse_mana_any_type_cast_tagged_this_way_clause(tokens) {
+        return Ok(effect);
     }
 
     if let Some(player) = parse_leading_player_may(tokens) {

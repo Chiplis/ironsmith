@@ -696,6 +696,7 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::CreatureTypesAmong(filter) => {
             format!("creature type among {}", pluralized_subject_text(filter))
         }
+        AnthemCountExpression::BlockingSource => "creature blocking it".to_string(),
         AnthemCountExpression::CommanderCastCount(player) => match player {
             crate::target::PlayerFilter::You => {
                 "times you've cast your commander from the command zone this game".to_string()
@@ -799,6 +800,7 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
             "creature type among {}",
             pluralized_subject_text(filter)
         )),
+        AnthemCountExpression::BlockingSource => Some("creature blocking it".to_string()),
         AnthemCountExpression::CommanderCastCount(player) => Some(match player {
             crate::target::PlayerFilter::You => {
                 "time you've cast your commander from the command zone this game".to_string()
@@ -832,6 +834,7 @@ fn describe_anthem_where_x_count_expression(expr: &AnthemCountExpression) -> Str
                 pluralized_subject_text(filter)
             )
         }
+        AnthemCountExpression::BlockingSource => "the number of creatures blocking it".to_string(),
         _ => format!("the number of {}", describe_anthem_count_expression(expr)),
     }
 }
@@ -1652,6 +1655,12 @@ pub(crate) fn resolve_anthem_count_expression(
             }
             seen.len() as i32
         }
+        AnthemCountExpression::BlockingSource => game
+            .combat
+            .as_ref()
+            .and_then(|combat| combat.blockers.get(&source))
+            .map(|blockers| blockers.len() as i32)
+            .unwrap_or(0),
         AnthemCountExpression::CommanderCastCount(player_filter) => game
             .players
             .iter()
@@ -2235,7 +2244,8 @@ impl StaticAbilityKind for GrantAbility {
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
-        ) {
+        ) || self.ability.id() == StaticAbilityId::DungeonRoomTriggerDuplication
+        {
             ability_text = format!("\"{ability_text}\"");
         }
         let mut text = match self.ability.id() {

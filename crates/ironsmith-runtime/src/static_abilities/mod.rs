@@ -1070,7 +1070,17 @@ pub struct EnterAsCopyLinkedExilePairSpec {
 pub struct TriggerDuplicationSpec {
     pub source_filter: Option<crate::target::ObjectFilter>,
     pub event_matcher: Option<crate::triggers::Trigger>,
+    pub source_matcher: TriggerDuplicationSourceMatcher,
     pub copies: usize,
+}
+
+/// Additional source matching for trigger duplication rules that do not refer to
+/// ordinary object abilities.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TriggerDuplicationSourceMatcher {
+    #[default]
+    ObjectAbility,
+    DungeonRoomAbilityOwnedByStaticController,
 }
 
 /// Spec for static abilities that suppress matching triggered abilities.
@@ -3003,6 +3013,18 @@ impl StaticAbility {
         ))
     }
 
+    pub fn double_player_counters_replacement(
+        player_filter: crate::target::PlayerFilter,
+        counter_type: Option<crate::object::CounterType>,
+        display: String,
+    ) -> Self {
+        Self::new(DoubleCountersReplacement::new_for_player(
+            player_filter,
+            counter_type,
+            display,
+        ))
+    }
+
     pub fn double_token_creation_replacement(
         controller: crate::target::PlayerFilter,
         display: String,
@@ -3046,6 +3068,10 @@ impl StaticAbility {
             copies,
             display,
         ))
+    }
+
+    pub fn dungeon_room_trigger_duplication(display: impl Into<String>) -> Self {
+        Self::new(DungeonRoomTriggerDuplication::new(display))
     }
 
     pub fn draw_replacement_exile_top_face_down() -> Self {

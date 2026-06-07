@@ -615,6 +615,14 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
+    if matches!(
+        crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
+            tokens,
+        ),
+        Ok(Some(_))
+    ) {
+        return false;
+    }
     if linked_statement_should_stay_grouped(tokens) {
         return true;
     }
@@ -1623,6 +1631,16 @@ fn lower_rewrite_static_to_chunk_impl(
     {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbilities(abilities),
+            chosen_option_label,
+        );
+    }
+    if let Some(ability) =
+        crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
+            &lexed,
+        )?
+    {
+        return wrap_chosen_option_static_chunk(
+            LineAst::StaticAbility(ability.into()),
             chosen_option_label,
         );
     }

@@ -471,6 +471,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     DoubleCountersReplacement {
         filter: ObjectFilter,
+        player_filter: Option<PlayerFilter>,
         counter_type: Option<CounterType>,
         display: String,
     },
@@ -1418,10 +1419,12 @@ where
             },
             StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
+                player_filter,
                 counter_type,
                 display,
             } => StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
+                player_filter,
                 counter_type,
                 display,
             },
@@ -1884,6 +1887,10 @@ impl<
 
     pub fn rule_fallback_text(text: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::RuleFallbackText, text)
+    }
+
+    pub fn dungeon_room_trigger_duplication(text: impl Into<String>) -> Self {
+        Self::identified(StaticAbilityId::DungeonRoomTriggerDuplication, text)
     }
 
     fn known_keyword_marker(text: &str) -> Option<Self> {
@@ -3959,6 +3966,25 @@ impl<
             label: display.clone(),
             payload: StaticAbilityPayload::DoubleCountersReplacement {
                 filter,
+                player_filter: None,
+                counter_type,
+                display,
+            },
+        }
+    }
+
+    pub fn double_player_counters_replacement(
+        player_filter: PlayerFilter,
+        counter_type: Option<CounterType>,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::DoubleCountersReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::DoubleCountersReplacement {
+                filter: ObjectFilter::default(),
+                player_filter: Some(player_filter),
                 counter_type,
                 display,
             },

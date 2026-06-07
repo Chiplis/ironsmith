@@ -33,7 +33,7 @@ pub use permanent_turned_face_up::PermanentTurnedFaceUpTrigger;
 pub use player_gives_gift::PlayerGivesGiftTrigger;
 pub use player_plays_land::PlayerPlaysLandTrigger;
 pub use player_reveals_card::PlayerRevealsCardTrigger;
-pub use player_rolls_result::PlayerRollsResultTrigger;
+pub use player_rolls_result::{PlayerRollsHighestNaturalResultTrigger, PlayerRollsResultTrigger};
 pub use player_sacrifices::PlayerSacrificesTrigger;
 pub use player_searches_library::PlayerSearchesLibraryTrigger;
 pub use player_shuffles_library::PlayerShufflesLibraryTrigger;

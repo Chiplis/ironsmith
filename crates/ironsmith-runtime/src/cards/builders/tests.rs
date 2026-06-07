@@ -386,6 +386,31 @@ fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn aether_refinery_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Aether Refinery");
+
+    let def = parse_oracle_card_definition("Aether Refinery");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let rendered = compiled_text_lines(&def).join("\n");
+
+    assert!(
+        ability_debug.contains("DoubleCountersReplacement")
+            && ability_debug.contains("Energy")
+            && ability_debug.contains("PayAnyEnergyEffect")
+            && ability_debug.contains("min_amount: 1")
+            && ability_debug.contains("CreateTokenEffect"),
+        "expected player energy replacement and paid-energy token activation, got {ability_debug}"
+    );
+    assert!(
+        rendered.contains("If you would get one or more {E}, you get twice that many {E} instead.")
+            && rendered.contains(
+                "{T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way."
+            ),
+        "expected Aether Refinery compiled text to preserve energy replacement and activation surface, got {rendered}"
+    );
+}
+
+#[test]
 fn wondrous_crucible_strict_parser_compiled_text_and_model_regression() {
     assert_oracle_card_parses_strict("Wondrous Crucible");
 
@@ -9828,6 +9853,32 @@ fn test_parse_complaints_clerk_roll_one_trigger_creates_clown_robot() {
     );
 }
 
+#[test]
+fn netherese_puzzle_ward_strict_parser_compiled_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Netherese Puzzle-Ward");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("At the beginning of your upkeep")
+            && rendered.contains("roll a d4")
+            && rendered.contains("Scry X, where X is the result"),
+        "expected Focus Beam upkeep roll-and-scry text, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Whenever you roll a die's highest natural result, draw a card"),
+        "expected Perfect Illumination highest-natural-result trigger text, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RollDieEffect") && debug.contains("sides: 4"),
+        "expected Netherese Puzzle-Ward to roll a d4, got {debug}"
+    );
+    assert!(
+        debug.contains("PlayerRollsHighestNaturalResult") && debug.contains("DrawCardsEffect"),
+        "expected highest-natural-result die-roll trigger to draw a card, got {debug}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
@@ -17660,6 +17711,31 @@ fn test_parse_cant_be_blocked_by_more_than_one_creature() {
     assert!(
         has_max_blockers,
         "expected max-blockers text to compile to static ability"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn rampaging_cyclops_parses_blocker_count_static_condition() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rampaging Cyclops")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 4))
+        .parse_text(
+            "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+        )
+        .expect("Rampaging Cyclops should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+        "expected Rampaging Cyclops compiled text to preserve its blocker-count condition"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("CountComparison") && debug.contains("BlockingSource"),
+        "expected Rampaging Cyclops to lower to a structural blocking-source count condition, got {debug}"
     );
 }
 
@@ -32750,6 +32826,49 @@ fn parse_the_mana_rig_tracks_trigger_and_xxx_tap_activation_shape() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_black_cat_cunning_thief_oracle_text_strictly() {
+    let oracle = "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Black Cat, Cunning Thief")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Rogue, Subtype::Villain])
+        .parse_text(oracle)
+        .expect("Black Cat, Cunning Thief should parse strictly");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join(" "),
+        "When this creature enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_black_cat_cunning_thief_tracks_targets_and_exiled_card_grants() {
+    let oracle = "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Black Cat, Cunning Thief")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Black Cat, Cunning Thief should parse strictly");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("Target(")
+            && debug.contains("Opponent")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("count: ChoiceCount")
+            && debug.contains("min: 2")
+            && debug.contains("max: Some")
+            && debug.contains("ExileEffect")
+            && debug.contains("face_down: true")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect")
+            && debug.contains("GrantPlayTaggedEffect")
+            && debug.contains("allow_land: true")
+            && debug.contains("allow_any_color_for_cast: true"),
+        "expected Black Cat target, two-card face-down exile, remainder, and any-mana grants, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_token_with_banding_keyword_modifier() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Errand of Duty Variant")
         .parse_text("Create a 1/1 white Knight creature token with banding.");
@@ -38398,6 +38517,41 @@ fn guild_artisan_stays_static_and_grants_the_treasure_trigger_to_commanders() {
         abilities_debug.contains("intervening_if: Some")
             && abilities_debug.contains("PlayerHasNoOpponentWithMoreLifeThan"),
         "expected Guild Artisan's granted trigger to keep its intervening-if gate, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dungeon_delver_strictly_grants_room_trigger_duplication_to_commanders() {
+    assert_oracle_card_parses_strict("Dungeon Delver");
+
+    let def = parse_oracle_card_definition("Dungeon Delver");
+    assert!(
+        def.spell_effect.is_none(),
+        "Dungeon Delver should not compile as a spell effect: {:?}",
+        def.spell_effect
+    );
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("GrantAbility")
+            && abilities_debug.contains("is_commander: true")
+            && abilities_debug.contains("DungeonRoomTriggerDuplication"),
+        "expected Dungeon Delver to grant room trigger duplication to commander creatures, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn dungeon_delver_compiled_text_preserves_room_trigger_duplication_clause() {
+    let def = parse_oracle_card_definition("Dungeon Delver");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        rendered.contains(
+            "Commander creatures you own have \"Room abilities of dungeons you own trigger an additional time.\""
+        ),
+        "expected Dungeon Delver compiled text to render its granted room ability, got {rendered}"
     );
 }
 
@@ -59844,6 +59998,36 @@ fn parse_oracle_gwen_stacy_ghost_spider_compiled_text_regression() {
     assert!(
         rendered.contains("Transform Gwen Stacy"),
         "expected Gwen Stacy transform clause to preserve the explicit source-name surface, got {rendered}"
+    );
+}
+
+#[test]
+fn scroll_of_isildur_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Scroll of Isildur");
+    let def = parse_oracle_card_definition("Scroll of Isildur");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "Gain control of up to one target artifact for as long as you control this Saga"
+        ),
+        "expected Scroll of Isildur chapter I to render the source-control duration, got {rendered}"
+    );
+    assert!(
+        rendered.to_ascii_lowercase().contains("ring tempts you"),
+        "expected Scroll of Isildur chapter I to render the Ring tempts clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Tap up to two target creatures. Put a stun counter on each of them"),
+        "expected Scroll of Isildur chapter II to render counters on the tapped targets, got {rendered}"
+    );
+    assert!(
+        debug.contains("YouStopControllingThis")
+            && debug.contains("RingTemptsYouEffect")
+            && debug.contains("ForEachObject")
+            && debug.contains("Stun"),
+        "expected Scroll of Isildur to keep source-control, Ring, and tagged stun-counter structures, got {debug}"
     );
 }
 

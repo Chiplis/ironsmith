@@ -122,7 +122,8 @@ const CCA_OWNER_WORDS: &[&str] = &["owner", "owners", "owner's", "owners'"];
 const CCA_PLAYER_WORDS: &[&str] = &["player", "players", "player's", "players'"];
 const CCA_FOR_AS_LONG_AS_PHRASE: &[&str] = &["for", "as", "long", "as"];
 const CCA_YOU_CONTROL_WORDS: &[&str] = &["you", "control"];
-const CCA_SOURCE_REFERENCE_WORDS: &[&str] = &["this", "thiss", "source", "creature", "permanent"];
+const CCA_SOURCE_REFERENCE_WORDS: &[&str] =
+    &["this", "thiss", "source", "creature", "permanent", "saga"];
 const CCA_DURING_NEXT_TURN_WORDS: &[&str] = &["during", "next", "turn"];
 const CCA_UNTIL_END_NEXT_TURN_WORDS: &[&str] = &["until", "end", "next", "turn"];
 const CCA_UNTIL_END_TURN_WORDS: &[&str] = &["until", "end", "turn"];
@@ -451,6 +452,23 @@ fn cca_battlefield_controller_tail(
         });
     }
     None
+}
+
+fn cca_tokens_are_you_control_source_duration(tokens: &[OwnedLexToken]) -> bool {
+    if cca_tokens_contain_all(tokens, CCA_YOU_CONTROL_WORDS)
+        && cca_tokens_contain_any_word(tokens, CCA_SOURCE_REFERENCE_WORDS)
+    {
+        return true;
+    }
+
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(control_idx) = words.iter().position(|word| *word == "control") else {
+        return false;
+    };
+    let source_words = &words[control_idx + 1..];
+    !source_words.is_empty()
+        && (this_source_surface_for_words(source_words).is_some()
+            || source_reference_surface_for_words(source_words).is_some())
 }
 
 fn parse_put_choice_count_prefix(
@@ -900,8 +918,7 @@ pub(crate) fn parse_control_duration(
     }
 
     if cca_tokens_contain_phrase(tokens, CCA_FOR_AS_LONG_AS_PHRASE)
-        && cca_tokens_contain_all(tokens, CCA_YOU_CONTROL_WORDS)
-        && cca_tokens_contain_any_word(tokens, CCA_SOURCE_REFERENCE_WORDS)
+        && cca_tokens_are_you_control_source_duration(tokens)
     {
         return Ok(ControlDurationAst::AsLongAsYouControlSource);
     }

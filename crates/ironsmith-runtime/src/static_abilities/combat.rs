@@ -276,6 +276,7 @@ impl StaticAbilityKind for ExertAttack {
                     source_name: source_object.name.clone(),
                     source_snapshot: None,
                     tagged_objects: Default::default(),
+                    source_kind: crate::triggers::TriggeredAbilitySourceKind::Object,
                     trigger_identity: crate::triggers::compute_trigger_identity(linked_trigger),
                 });
             }

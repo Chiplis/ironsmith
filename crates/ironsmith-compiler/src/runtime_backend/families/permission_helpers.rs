@@ -230,6 +230,7 @@ const PERMISSION_LIFETIME_PREFIXES: &[&[&str]] = &[
     &[
         "for", "as", "long", "as", "those", "cards", "remain", "exiled",
     ],
+    &["for", "as", "long", "as", "they", "remain", "exiled"],
     &[
         "for", "as", "long", "as", "you", "control", "this", "creature",
     ],
@@ -455,7 +456,12 @@ fn parse_tagged_cast_or_play_target_inner<'a>(
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
             }),
-            grammar::phrase(&["those", "cards"]).value(TaggedPermissionTarget {
+            alt((
+                grammar::phrase(&["those", "cards"]),
+                grammar::phrase(&["the", "exiled", "cards"]),
+                grammar::phrase(&["exiled", "cards"]),
+            ))
+            .value(TaggedPermissionTarget {
                 tag: TagKey::from(IT_TAG),
                 as_copy: false,
             }),

@@ -1555,7 +1555,14 @@ impl ActiveManaSpendPermission {
                 let Some(source_obj) = game.object(source_id) else {
                     return false;
                 };
-                stable_ids.contains(&source_obj.stable_id)
+                if !stable_ids.contains(&source_obj.stable_id) {
+                    return false;
+                }
+                source_obj.zone == Zone::Exile
+                    || (source_obj.zone == Zone::Stack
+                        && game
+                            .cast_origin_snapshot(source_id)
+                            .is_some_and(|snapshot| snapshot.zone == Zone::Exile))
             }
             crate::effect::ManaSpendScope::CastingSpellsMatching(filter) => {
                 let Some(source_id) = source else {
@@ -2393,7 +2400,7 @@ impl GameState {
         }
     }
 
-    fn mark_continuous_state_dirty(&self) {
+    pub(crate) fn mark_continuous_state_dirty(&self) {
         self.runtime_cache.continuous_state_dirty.set(true);
         self.runtime_cache
             .calculated_characteristics_cache
@@ -5549,6 +5556,23 @@ impl GameState {
                 .cant_effects
                 .can_get_poison_counters(player_id)
         {
+            return None;
+        }
+
+        let cause = match (source, source_controller) {
+            (Some(source), Some(controller)) => {
+                crate::events::cause::EventCause::from_effect(source, controller)
+            }
+            _ => crate::events::cause::EventCause::effect(),
+        };
+        let amount = crate::events::processing::process_player_counters_with_event(
+            self,
+            player_id,
+            counter_type,
+            amount,
+            cause,
+        );
+        if amount == 0 {
             return None;
         }
 

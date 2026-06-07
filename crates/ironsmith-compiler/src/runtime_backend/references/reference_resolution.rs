@@ -1469,6 +1469,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::RevealCardsFromHand { .. }
                 | SubjectVerbActionAst::LookAtTopCards { .. }
                 | SubjectVerbActionAst::Draw { .. }
+                | SubjectVerbActionAst::PayAnyEnergy { .. }
+                | SubjectVerbActionAst::PayAnyLife { .. }
         ),
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
