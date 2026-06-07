@@ -533,7 +533,7 @@ const PAY_PER_PLUS_ONE_COUNTER_ATTACK_COST_PATTERN: ClauseShape<'static> = claus
         ]
 );
 fn activation_cost_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn activation_word_is_any(word: &str, expected: &[&str]) -> bool {
@@ -673,7 +673,7 @@ fn player_controls_at_least_condition_from_tail(tail: &[&str]) -> Option<crate::
                 default_filter_zone: Some(Zone::Battlefield),
             },
         )?;
-    if !control_condition.has_explicit_quantity() {
+    if control_condition.quantity_token_count == 0 {
         return None;
     }
     let count = control_condition.at_least_count()?;

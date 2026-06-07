@@ -90,6 +90,21 @@ const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
 const CHOSEN_WORD: &str = "chosen";
 const REVEAL_FROM_AMONG_WORDS: &[&str] = &["from", "among"];
 const REVEAL_FROM_AMONG_REFERENCES: &[&str] = &["them", "those"];
+const REVEAL_FULL_HAND_PHRASES: &[&[&str]] = &[
+    &["your", "hand"],
+    &["their", "hand"],
+    &["his", "or", "her", "hand"],
+];
+const TOP_LIBRARY_TAIL_PREFIXES: &[&[&str]] = &[
+    &["card", "of", "your", "library"],
+    &["card", "of", "your", "libraries"],
+    &["card", "of", "their", "library"],
+    &["card", "of", "their", "libraries"],
+    &["cards", "of", "your", "library"],
+    &["cards", "of", "your", "libraries"],
+    &["cards", "of", "their", "library"],
+    &["cards", "of", "their", "libraries"],
+];
 const REVEAL_OUTSIDE_GAME_PHRASE: &[&str] = &["outside", "game"];
 const REVEAL_FIRST_CARD_YOU_DRAW_PREFIX: &[&str] = &["the", "first", "card", "you", "draw"];
 const REVEAL_CARD_WORDS: &[&str] = &["card", "cards"];
@@ -213,6 +228,10 @@ fn counter_words_contain_any(words: &[&str], choices: &[&str]) -> bool {
         .find_in_word_refs(words)
         .and_then(|matched| matched.capture_word_range("word"))
         .is_some()
+}
+
+fn counter_words_contain_all(words: &[&str], required: &[&str]) -> bool {
+    required.iter().all(|word| word_slice_contains_word(words, word))
 }
 
 fn counter_words_find_word_index(words: &[&str], expected: &str) -> Option<usize> {
@@ -352,38 +371,35 @@ const REVEAL_LIBRARY_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
 ]);
 
 fn reveal_tagged_reference_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_TAGGED_REFERENCE_PATTERN
-        .match_clause(LexedClause::new(tokens))
+        .match_word_refs(&words)
         .and_then(|matched| matched.capture_word_range("reference"))
         .is_some()
 }
 
 fn reveal_from_among_tagged_matches(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    REVEAL_FROM_AMONG_TAGGED_PATTERN
-        .find_in_clause(clause)
-        .and_then(|matched| matched.capture_clause("among", clause))
-        .map(|tail| {
-            counter_words_contain_any(tail.word_refs().as_slice(), REVEAL_FROM_AMONG_REFERENCES)
-        })
-        .unwrap_or(false)
+    let words = TokenWordView::new(tokens).word_refs();
+    counter_words_contain_all(&words, REVEAL_FROM_AMONG_WORDS)
+        && counter_words_contain_any(&words, REVEAL_FROM_AMONG_REFERENCES)
 }
 
 fn reveal_outside_game_matches(tokens: &[OwnedLexToken]) -> bool {
-    REVEAL_OUTSIDE_GAME_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
-        .is_some()
+    let words = TokenWordView::new(tokens).word_refs();
+    REVEAL_OUTSIDE_GAME_PATTERN.find_in_word_refs(&words).is_some()
 }
 
 fn reveal_first_card_you_draw_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_FIRST_CARD_YOU_DRAW_PATTERN
-        .match_prefix(LexedClause::new(tokens))
+        .match_prefix_word_refs(&words)
         .is_some()
 }
 
 fn reveal_card_this_way_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_CARD_THIS_WAY_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .find_in_word_refs(&words)
         .and_then(|matched| {
             matched
                 .capture_word_range("card")
@@ -393,8 +409,9 @@ fn reveal_card_this_way_matches(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn reveal_conditional_it_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_CONDITIONAL_IT_PATTERN
-        .match_prefix(LexedClause::new(tokens))
+        .match_prefix_word_refs(&words)
         .and_then(|matched| {
             matched
                 .capture_word_range("reference")
@@ -404,19 +421,14 @@ fn reveal_conditional_it_matches(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn reveal_full_hand_source_matches(tokens: &[OwnedLexToken]) -> bool {
-    REVEAL_FULL_HAND_SOURCE_PATTERN
-        .match_clause(LexedClause::new(tokens))
-        .and_then(|matched| {
-            matched
-                .capture_word_range("owner")
-                .zip(matched.capture_word_range("zone"))
-        })
-        .is_some()
+    let words = TokenWordView::new(tokens).word_refs();
+    word_slice_eq_any(&words, REVEAL_FULL_HAND_PHRASES)
 }
 
 fn reveal_hand_source_tail_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_HAND_SOURCE_TAIL_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .find_in_word_refs(&words)
         .and_then(|matched| {
             matched
                 .capture_word_range("owner")
@@ -426,21 +438,21 @@ fn reveal_hand_source_tail_matches(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn reveal_from_preposition_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_FROM_PREPOSITION_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+        .find_in_word_refs(&words)
         .is_some()
 }
 
 fn reveal_explicit_top_card_matches(tokens: &[OwnedLexToken]) -> bool {
-    REVEAL_EXPLICIT_TOP_CARD_PATTERN
-        .match_clause(LexedClause::new(tokens))
-        .and_then(|matched| matched.capture_word_range("top_card"))
-        .is_some()
+    let words = TokenWordView::new(tokens).word_refs();
+    word_slice_eq_any(&words, EXPLICIT_TOP_CARD_PHRASES)
 }
 
 fn reveal_top_library_source_matches(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
     REVEAL_TOP_LIBRARY_SOURCE_PATTERN
-        .match_prefix(LexedClause::new(tokens))
+        .match_prefix_word_refs(&words)
         .and_then(|matched| {
             matched
                 .capture_word_range("top")
@@ -451,14 +463,8 @@ fn reveal_top_library_source_matches(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn reveal_library_tail_matches(tokens: &[OwnedLexToken]) -> bool {
-    REVEAL_LIBRARY_TAIL_PATTERN
-        .match_prefix(LexedClause::new(tokens))
-        .and_then(|matched| {
-            matched
-                .capture_word_range("card")
-                .zip(matched.capture_word_range("zone"))
-        })
-        .is_some()
+    let after_count_words = crate::runtime_backend::token_word_refs(tokens);
+    counter_words_start_with_any(&after_count_words, TOP_LIBRARY_TAIL_PREFIXES).is_some()
 }
 
 fn generic_mana_amount_from_group(group: &[ManaSymbol]) -> Option<i32> {
@@ -482,7 +488,7 @@ pub(crate) fn parse_counter_target_phrase(
         return Ok(target);
     }
 
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = TokenWordView::new(tokens).word_refs();
     if counter_words_contain_any(&words, COUNTER_ABILITY_MARKER_WORDS)
         && counter_words_contain_any(&words, COUNTER_ACTIVATED_OR_TRIGGERED_MARKER_WORDS)
     {
@@ -892,7 +898,7 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
 
     let filter_tokens = trim_commas(&tokens[idx + 1..]);
     let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
-    if !counter_words_prefix_pattern_matches(&filter_words, FOR_EACH_PATTERN, "loop") {
+    if !word_slice_starts_with(&filter_words, FOR_EACH_PREFIX) {
         return Err(CardTextError::ParseError(format!(
             "unsupported additional counter payment tail (clause: '{}')",
             crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -944,11 +950,7 @@ pub(crate) fn parse_reveal(
                     let tail = &words[equal_idx..];
                     let equal_token_idx =
                         token_index_for_word_index(tokens, equal_idx).unwrap_or(equal_idx);
-                    let count_value = if counter_words_prefix_pattern_matches(
-                        tail,
-                        PARTY_SIZE_EQUAL_TO_PATTERN,
-                        "party",
-                    ) {
+                    let count_value = if word_slice_starts_with(tail, PARTY_SIZE_EQUAL_TO_PREFIX) {
                         Some(Value::PartySize(PlayerFilter::You))
                     } else {
                         parse_dynamic_cost_modifier_value(&tokens[equal_token_idx..])?
@@ -1054,7 +1056,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     let tokens = trim_commas(tokens);
     let word_view = TokenWordView::new(&tokens);
     let words = word_view.word_refs();
-    if !counter_words_prefix_pattern_matches(&words, WHERE_X_IS_PATTERN, "where_x") {
+    if !word_slice_starts_with(&words, WHERE_X_IS_PREFIX) {
         return None;
     }
 
@@ -1062,13 +1064,12 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
     if words.get(idx).copied() == Some(THE_WORD) {
         idx += 1;
     }
-    if !counter_words_prefix_pattern_matches(&words[idx..], NUMBER_OF_PATTERN, "count") {
+    if !word_slice_starts_with(&words[idx..], NUMBER_OF_PREFIX) {
         return None;
     }
 
     let object_words = &words[idx + 2..];
-    let references_this_way =
-        counter_words_contain_pattern(object_words, THIS_WAY_PATTERN, "reference");
+    let references_this_way = word_slice_contains_phrase(object_words, THIS_WAY_PHRASE);
     let references_memory_action = object_words.iter().any(|word| {
         matches!(
             *word,
@@ -1086,7 +1087,7 @@ fn parse_prior_effect_count_binding_clause(tokens: &[OwnedLexToken]) -> Option<V
         return None;
     }
 
-    let source = if counter_words_contain_pattern(object_words, CHOSEN_WORD_PATTERN, "memory") {
+    let source = if word_slice_contains_word(object_words, CHOSEN_WORD) {
         ironsmith_core::EffectMetricSource::ChosenObjects
     } else {
         ironsmith_core::EffectMetricSource::AffectedObjects
@@ -1102,7 +1103,7 @@ pub(crate) fn parse_life_amount(
     amount_kind: &str,
 ) -> Result<(Value, usize), CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if counter_words_exact_pattern_matches(&clause_words, THAT_MUCH_LIFE_PATTERN, "life") {
+    if word_slice_eq(&clause_words, THAT_MUCH_LIFE_WORDS) {
         // "that much life" binds to the triggering event amount.
         return Ok((Value::EventValue(EventValueSpec::Amount), 2));
     }
@@ -1119,8 +1120,7 @@ pub(crate) fn parse_life_equal_to_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !counter_words_prefix_pattern_matches(&clause_words, LIFE_EQUAL_TO_PATTERN, "life_equal_to")
-    {
+    if !word_slice_starts_with(&clause_words, LIFE_EQUAL_TO_PREFIX) {
         return Ok(None);
     }
 
@@ -1414,7 +1414,7 @@ pub(crate) fn parse_life_amount_from_trailing(
 
 fn parse_for_each_counter_on_reference_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !counter_words_prefix_pattern_matches(&words, COUNTER_FOR_EACH_PATTERN, "loop") {
+    if !word_slice_starts_with(&words, COUNTER_FOR_EACH_PREFIX) {
         return None;
     }
     let counter_idx = find_index(words.as_slice(), |word| {
@@ -1507,15 +1507,14 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
 fn parse_half_life_value(tokens: &[OwnedLexToken], player: PlayerAst) -> Option<Value> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if !clause_words.first().is_some_and(|word| *word == HALF_WORD)
-        || !counter_words_contain_pattern(&clause_words, LIFE_WORD_PATTERN, "life")
-        || counter_words_contain_pattern(&clause_words, LOST_WORD_PATTERN, "lost")
+        || !word_slice_contains_word(&clause_words, LIFE_WORD)
+        || word_slice_contains_word(&clause_words, LOST_WORD)
     {
         return None;
     }
 
     let player_filter = player_filter_for_life_reference(player)?;
-    let rounded_down =
-        counter_words_contain_pattern(&clause_words, ROUNDED_DOWN_PATTERN, "rounding");
+    let rounded_down = word_slice_contains_phrase(&clause_words, ROUNDED_DOWN_PHRASE);
     if rounded_down {
         Some(Value::HalfLifeTotalRoundedDown(player_filter))
     } else {

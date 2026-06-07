@@ -1,7 +1,7 @@
 use crate::host::{EffectAst, TriggerSpec};
 
 fn anthem_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn anthem_shape_matches_word<'a>(word: &str, shape: ClauseShape<'a>) -> bool {
@@ -2353,19 +2353,13 @@ pub(crate) struct StaticAnimationBundleAst {
 fn is_granted_blitz_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
     let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
     let trailing_word_refs = trailing_words.word_refs();
-    anthem_shape_matches_words(
-        &trailing_word_refs,
-        ANTHEM_BLITZ_COST_EQUALS_MANA_COST_PATTERN,
-    )
+    anthem_shape_matches_words(&trailing_word_refs, ANTHEM_BLITZ_COST_EQUALS_MANA_COST_PATTERN)
 }
 
 fn is_granted_emerge_cost_tail(trailing_tokens: &[OwnedLexToken]) -> bool {
     let trailing_words = AnthemNormalizedWords::new(trailing_tokens);
     let trailing_word_refs = trailing_words.word_refs();
-    anthem_shape_matches_words(
-        &trailing_word_refs,
-        ANTHEM_EMERGE_COST_EQUALS_MANA_COST_PATTERN,
-    )
+    anthem_shape_matches_words(&trailing_word_refs, ANTHEM_EMERGE_COST_EQUALS_MANA_COST_PATTERN)
 }
 
 fn normalize_granted_alternative_spell_filter(
@@ -2758,10 +2752,8 @@ fn parse_anthem_subject_with_attached_fallback(
     tokens: &[OwnedLexToken],
     attached_subject_filter: Option<&ObjectFilter>,
 ) -> Result<AnthemSubjectAst, CardTextError> {
-    if anthem_shape_matches_words(
-        &crate::runtime_backend::token_word_refs(tokens),
-        SOURCE_IT_PATTERN,
-    ) && let Some(filter) = attached_subject_filter
+    if anthem_shape_matches_words(&crate::runtime_backend::token_word_refs(tokens), SOURCE_IT_PATTERN)
+        && let Some(filter) = attached_subject_filter
     {
         return Ok(AnthemSubjectAst::Filter(filter.clone()));
     }
@@ -2873,10 +2865,7 @@ pub(crate) fn parse_static_condition_clause(
         return Ok(crate::ConditionExpr::SourceIsEquipped);
     }
 
-    if anthem_shape_matches_words(
-        &clause_words,
-        OPPONENT_LOST_LIFE_THIS_TURN_CONDITION_PATTERN,
-    ) {
+    if anthem_shape_matches_words(&clause_words, OPPONENT_LOST_LIFE_THIS_TURN_CONDITION_PATTERN) {
         return Ok(crate::ConditionExpr::OpponentLostLifeThisTurn);
     }
 
@@ -3019,7 +3008,7 @@ pub(crate) fn parse_static_condition_clause(
     }
     if let Ok((comparison, used)) = parse_static_quantity_prefix(&tokens, true) {
         let tail_words = &clause_words[used..];
-        if CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN.matches_words(tail_words) {
+        if anthem_shape_matches_words(tail_words, CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN) {
             return Ok(crate::ConditionExpr::CountComparison {
                 count: AnthemCountExpression::BlockingSource,
                 comparison,
@@ -3184,7 +3173,11 @@ pub(crate) fn parse_static_condition_clause(
             },
         )
     {
-        return Ok(control_condition.into_matching_filter_count_comparison(clause_words.join(" ")));
+        return Ok(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(control_condition.filter),
+            comparison: control_condition.comparison,
+            display: Some(clause_words.join(" ")),
+        });
     }
 
     if let Some(ownership_condition) =
@@ -3197,9 +3190,11 @@ pub(crate) fn parse_static_condition_clause(
             },
         )
     {
-        return Ok(
-            ownership_condition.into_matching_filter_count_comparison(clause_words.join(" "))
-        );
+        return Ok(crate::ConditionExpr::CountComparison {
+            count: AnthemCountExpression::MatchingFilter(ownership_condition.filter),
+            comparison: ownership_condition.comparison,
+            display: Some(clause_words.join(" ")),
+        });
     }
 
     if anthem_shape_matches_words(&clause_words, ANTHEM_ENTERED_WORD_MARKER_PATTERN)
@@ -3219,10 +3214,7 @@ pub(crate) fn parse_static_condition_clause(
         });
     }
 
-    if anthem_shape_matches_words(
-        &clause_words,
-        YOU_COMMITTED_CRIME_THIS_TURN_CONDITION_PATTERN,
-    ) {
+    if anthem_shape_matches_words(&clause_words, YOU_COMMITTED_CRIME_THIS_TURN_CONDITION_PATTERN) {
         return Ok(crate::ConditionExpr::PlayerCommittedCrimeThisTurn {
             player: PlayerFilter::You,
         });
@@ -3506,7 +3498,7 @@ pub(crate) fn parse_anthem_for_each_expression(
         }
     }
 
-    if CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN.matches_words(&rest_words) {
+    if anthem_shape_matches_words(&rest_words, CREATURES_ARE_BLOCKING_SOURCE_TAIL_PATTERN) {
         return Ok(AnthemCountExpression::BlockingSource);
     }
 
@@ -6463,10 +6455,7 @@ pub(crate) fn parse_conditional_all_creatures_able_to_block_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if anthem_shape_matches_words(
-        &remainder_words,
-        ALL_CREATURES_BLOCK_THIS_CREATURE_TAIL_PATTERN,
-    ) {
+    if anthem_shape_matches_words(&remainder_words, ALL_CREATURES_BLOCK_THIS_CREATURE_TAIL_PATTERN) {
         return Ok(Some(StaticAbilityAst::ConditionalStaticAbility {
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::must_block())),
             condition,

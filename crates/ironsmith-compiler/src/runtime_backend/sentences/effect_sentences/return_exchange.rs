@@ -1,10 +1,9 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
-use crate::runtime_backend::front_end::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use crate::runtime_backend::lexer::{
     token_slice_at_is, token_slice_first_is, word_slice_contains_any_word,
-    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
-    word_slice_starts_with_any,
+    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
 use crate::runtime_backend::util::{
     parse_choice_count_before_target_prefix, parse_subtype_flexible,
@@ -54,16 +53,6 @@ const RETURN_CHOSEN_CREATURE_TYPE_TAILS: &[&[&str]] = &[
     &["that", "aren't", "of", "the", "chosen", "type"],
     &["that", "are", "not", "of", "the", "chosen", "type"],
 ];
-const RETURN_CHOSEN_CREATURE_TYPE_FILTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "filter",
-        LexCaptureKind::UntilLastAnyPhrase(RETURN_CHOSEN_CREATURE_TYPE_TAILS),
-    ),
-    LexPattern::tail(
-        "chosen_type_tail",
-        LexCaptureKind::OneOfPhrase(RETURN_CHOSEN_CREATURE_TYPE_TAILS),
-    ),
-]);
 const EXCHANGE_LIFE_TOTALS_WORDS: &[&str] = &["life", "totals"];
 const EXCHANGE_VERB_WORDS: &[&str] = &["exchange", "exchanges"];
 const EXCHANGE_YOUR_PREFIX: &[&str] = &["your"];
@@ -104,28 +93,25 @@ fn return_words_match_phrase<'a>(
 }
 
 fn split_chosen_creature_type_tail(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool, bool) {
-    let clause = SubjectVerbPrimitiveClause::new(tokens);
-    let Some(matched) = clause.match_pattern(RETURN_CHOSEN_CREATURE_TYPE_FILTER_PATTERN) else {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(tail) = RETURN_CHOSEN_CREATURE_TYPE_TAILS
+        .iter()
+        .find(|tail| word_slice_ends_with(&words, tail))
+    else {
         return (tokens.to_vec(), false, false);
     };
-    let Some(filter_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Object) else {
-        return (tokens.to_vec(), false, false);
-    };
-    let Some(tail_clause) = clause.pattern_capture_role(&matched, LexCaptureRole::Tail) else {
-        return (tokens.to_vec(), false, false);
-    };
-    let tail_words = crate::runtime_backend::token_word_refs(tail_clause.tokens());
-    let excluded = word_slice_eq_any(&tail_words, RETURN_CHOSEN_CREATURE_TYPE_EXCLUDED_TAILS);
-    let included = word_slice_eq_any(&tail_words, RETURN_CHOSEN_CREATURE_TYPE_INCLUDED_TAILS);
+    let excluded = word_slice_eq_any(tail, RETURN_CHOSEN_CREATURE_TYPE_EXCLUDED_TAILS);
+    let included = word_slice_eq_any(tail, RETURN_CHOSEN_CREATURE_TYPE_INCLUDED_TAILS);
     if !included && !excluded {
         return (tokens.to_vec(), false, false);
     }
+    let filter_word_len = words.len() - tail.len();
+    let filter_tokens = match token_index_for_word_index(tokens, filter_word_len) {
+        Some(idx) => &tokens[..idx],
+        None => tokens,
+    };
 
-    (
-        trim_commas(filter_clause.tokens()).to_vec(),
-        included,
-        excluded,
-    )
+    (trim_commas(filter_tokens).to_vec(), included, excluded)
 }
 
 #[derive(Debug, Clone, PartialEq)]

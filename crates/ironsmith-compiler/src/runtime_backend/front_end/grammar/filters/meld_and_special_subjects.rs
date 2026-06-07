@@ -297,6 +297,16 @@ pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
     parse_mana_symbol_word_flexible(word)
 }
 
+/// Token-backed view of a captured mana-symbol clause.
+///
+/// Hosts the `word_refs` derivation for mana-spent symbol parsing so the
+/// predicate-side parser can validate symbol words and parse each symbol from
+/// its token text without rebuilding the word slice locally.
+pub(super) fn mana_spent_symbol_clause_words<'a>(symbol_clause: LexedClause<'a>) -> Vec<&'a str> {
+    let symbol_words = symbol_clause.word_refs();
+    symbol_words
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

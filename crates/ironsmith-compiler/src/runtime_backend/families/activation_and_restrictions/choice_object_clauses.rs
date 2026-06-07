@@ -130,7 +130,7 @@ const BOTTOM_OF_YOUR_LIBRARY_WORD_PATTERN: ClauseShape<'static> =
 const OTHER_OR_ANOTHER_WORDS: &[&str] = &["other", "another"];
 
 fn choice_object_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn choice_word_is_any(word: &str, expected: &[&str]) -> bool {

@@ -1,8 +1,7 @@
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
-use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::{
-    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_ends_with, word_slice_eq_any,
-    word_slice_find_any_word, word_slice_find_phrase_start, word_slice_find_word,
+    LexedClause, OwnedLexToken, word_slice_at_is, word_slice_ends_with, word_slice_ends_with_any,
+    word_slice_eq_any, word_slice_find_any_word, word_slice_find_phrase_start, word_slice_find_word,
     word_slice_starts_with,
 };
 use super::super::object_filters::parse_simple_object_filter_words;
@@ -29,16 +28,6 @@ const AND_THE_NEXT_PHRASE: &[&str] = &["and", "the", "next"];
 const IT_GAINS_PREFIX: &[&str] = &["it", "gains"];
 const IT_HAS_PREFIX: &[&str] = &["it", "has"];
 const HAS_OR_HAVE_WORDS: &[&str] = &["has", "have"];
-const NEXT_SPELL_SUBJECT_FILTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "object",
-        LexCaptureKind::UntilAnyPhrase(SHARED_CAST_SUFFIXES),
-    ),
-    LexPattern::action(
-        "cast_suffix",
-        LexCaptureKind::OneOfPhrase(SHARED_CAST_SUFFIXES),
-    ),
-]);
 
 fn next_spell_grant_player_ast(filter: &ObjectFilter) -> Option<PlayerAst> {
     match filter.cast_by.as_ref()? {
@@ -102,18 +91,21 @@ fn parse_next_spell_keyword_action_words(words: &[&str]) -> Option<KeywordAction
     }
 }
 
+fn next_spell_split_cast_suffix<'a>(words: &'a [&'a str]) -> Option<(&'a [&'a str], &'a [&'a str])> {
+    if !word_slice_ends_with_any(words, SHARED_CAST_SUFFIXES) {
+        return None;
+    }
+    let suffix = SHARED_CAST_SUFFIXES
+        .iter()
+        .find(|suffix| word_slice_ends_with(words, suffix))?;
+    let split = words.len() - suffix.len();
+    Some((&words[..split], &words[split..]))
+}
+
 fn parse_next_spell_subject_filter(words: &[&str]) -> Result<Option<ObjectFilter>, CardTextError> {
-    let Some(matched) = NEXT_SPELL_SUBJECT_FILTER_PATTERN.match_word_refs(words) else {
+    let Some((object_words, cast_suffix)) = next_spell_split_cast_suffix(words) else {
         return Ok(None);
     };
-    let Some(object_range) = matched.capture_word_range("object") else {
-        return Ok(None);
-    };
-    let Some(cast_suffix_range) = matched.capture_word_range("cast_suffix") else {
-        return Ok(None);
-    };
-    let object_words = &words[object_range];
-    let cast_suffix = &words[cast_suffix_range];
     if object_words.is_empty() {
         return Ok(None);
     }
@@ -230,23 +222,15 @@ pub(crate) fn parse_next_spell_grant_sentence_lexed(
             return Ok(None);
         }
         let subject_without_turn = &subject_words[..subject_words.len() - 2];
-        let Some(matched_subject) =
-            NEXT_SPELL_SUBJECT_FILTER_PATTERN.match_word_refs(subject_without_turn)
+        let Some((shared_prefix, shared_cast_words)) =
+            next_spell_split_cast_suffix(subject_without_turn)
         else {
             return Ok(None);
         };
-        let Some(shared_prefix_range) = matched_subject.capture_word_range("object") else {
-            return Ok(None);
-        };
-        let Some(shared_cast_range) = matched_subject.capture_word_range("cast_suffix") else {
-            return Ok(None);
-        };
-        let shared_prefix = &subject_without_turn[shared_prefix_range];
         if !word_slice_starts_with(shared_prefix, &["the", "next"]) {
             return Ok(None);
         }
         let shared_prefix = &shared_prefix[2..];
-        let shared_cast_words = &subject_without_turn[shared_cast_range];
         let Some(split_idx) = word_slice_find_phrase_start(shared_prefix, AND_THE_NEXT_PHRASE)
         else {
             return Ok(None);

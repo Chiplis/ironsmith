@@ -6505,7 +6505,9 @@ fn collect_choose_spec_player_target_choices(spec: &ChooseSpec, choices: &mut Ve
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
-        | ChooseSpec::WithCount(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
+        | ChooseSpec::WithCount(spec, _) => {
+            collect_choose_spec_player_target_choices(spec, choices)
+        }
         ChooseSpec::Player(player)
         | ChooseSpec::PlayerOrPlaneswalker(player)
         | ChooseSpec::EachPlayer(player) => collect_player_filter_target_choice(player, choices),
@@ -6526,7 +6528,9 @@ fn collect_object_filter_player_target_choices(
         filter.owner.as_ref(),
         filter.targets_player.as_ref(),
         filter.targets_only_player.as_ref(),
-        filter.attacking_player_or_planeswalker_controlled_by.as_ref(),
+        filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),

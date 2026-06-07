@@ -95,6 +95,7 @@ const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
     "those",
     "creatures",
 ];
+const NON_TURN_UNTAP_SUFFIX_PATTERN: &[&[&str]] = &[NON_TURN_UNTAP_SUFFIX];
 const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
     "you",
     "may",
@@ -174,6 +175,7 @@ const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
 ];
 
 fn line_family_words_match_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
+    use super::super::lex_patterns::LexPattern as _;
     pattern.match_word_refs(words).is_some()
 }
 
@@ -1558,10 +1560,10 @@ fn non_turn_conditional_untap_first_sentence_tokens(
     line: &PreprocessedLine,
 ) -> Option<&[OwnedLexToken]> {
     let words = TokenWordView::new(&line.tokens);
-    if !line_family_words_end_with_any(
-        &crate::runtime_backend::token_word_refs(&line.tokens),
-        &[NON_TURN_UNTAP_SUFFIX],
-    ) {
+    if !NON_TURN_UNTAP_SUFFIX_PATTERN
+        .iter()
+        .any(|suffix| crate::runtime_backend::token_word_refs(&line.tokens).ends_with(suffix))
+    {
         return None;
     }
     let suffix_word_idx = words.len().checked_sub(NON_TURN_UNTAP_SUFFIX.len())?;
@@ -1608,9 +1610,11 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
-    if should_prefer_statement_before_static_for_nonpermanent_spell(ctx.preprocessed, &ctx.line.tokens)
-        && let Some(split_result) =
-            parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
+    if should_prefer_statement_before_static_for_nonpermanent_spell(
+        ctx.preprocessed,
+        &ctx.line.tokens,
+    ) && let Some(split_result) =
+        parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
     {
         return Ok(Some(split_result));
     }

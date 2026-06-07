@@ -118,10 +118,6 @@ const RETURN_DESTINATION_TAPPED_PATTERN: LexPattern<'static> =
         "tapped",
         LexCaptureKind::OneOf(RETURN_DESTINATION_TAPPED_WORDS),
     )]);
-const TARGET_REFERENCE_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "target",
-    LexCaptureKind::OneOf(TARGET_REFERENCE_WORDS),
-)]);
 const LITERAL_TARGET_REFERENCE_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "target",
@@ -254,16 +250,16 @@ fn parse_return_destination_shape(
 
 fn target_reference_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     clause
-        .match_prefix_pattern(TARGET_REFERENCE_HEAD_PATTERN)
-        .and_then(|matched| matched.capture_word_range("target"))
-        .is_some()
+        .word_refs()
+        .first()
+        .is_some_and(|word| TARGET_REFERENCE_WORDS.contains(word))
 }
 
 fn broad_target_reference_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     clause
-        .match_prefix_pattern(BROAD_TARGET_REFERENCE_HEAD_PATTERN)
-        .and_then(|matched| matched.capture_word_range("target"))
-        .is_some()
+        .word_refs()
+        .first()
+        .is_some_and(|word| TARGET_REFERENCE_HEAD_WORDS.contains(word))
 }
 
 fn literal_target_reference_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
@@ -283,9 +279,9 @@ fn return_segment_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
 
 fn zone_suffix_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     clause
-        .match_prefix_pattern(ZONE_SUFFIX_HEAD_PATTERN)
-        .and_then(|matched| matched.capture_word_range("zone_suffix"))
-        .is_some()
+        .word_refs()
+        .first()
+        .is_some_and(|word| ZONE_SUFFIX_START_WORDS.contains(word))
 }
 
 fn all_or_each_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
@@ -294,14 +290,10 @@ fn all_or_each_head_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
 
 fn all_or_each_head_word(clause: SubjectVerbPrimitiveClause<'_>) -> Option<String> {
     clause
-        .match_prefix_pattern(ALL_OR_EACH_HEAD_PATTERN)
-        .and_then(|matched| matched.capture_word_range("quantifier"))
-        .and_then(|range| {
-            clause
-                .token(range.start)
-                .and_then(|token| token.as_word())
-                .map(str::to_string)
-        })
+        .word_refs()
+        .first()
+        .filter(|word| ALL_OR_EACH_WORDS.contains(word))
+        .map(|word| (*word).to_string())
 }
 
 fn parse_choose_all_source_zone_pair(clause: SubjectVerbPrimitiveClause<'_>) -> Option<[Zone; 2]> {

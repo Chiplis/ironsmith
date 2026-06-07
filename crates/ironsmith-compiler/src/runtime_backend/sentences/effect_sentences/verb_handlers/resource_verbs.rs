@@ -77,76 +77,76 @@ const RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORDS: &[&str] = &[
 const RESOURCE_THIS_WAY_WORDS: &[&str] = &["this", "way"];
 const RESOURCE_ALL_ABILITIES_PHRASES: &[&[&str]] =
     &[&["all", "abilities"], &["all", "other", "abilities"]];
-const RESOURCE_TAKE_EXTRA_TURN_AFTER_THIS_ONE_PATTERN: LexPattern<'static> =
+const RESOURCE_TAKE_EXTRA_TURN_AFTER_THIS_ONE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::action(
         "extra_turn",
         LexCaptureKind::OneOfPhrase(&[TAKE_EXTRA_TURN_AFTER_THIS_ONE_WORDS]),
     )]);
-const RESOURCE_PROLIFERATE_TRAILING_OK_PATTERN: LexPattern<'static> =
+const RESOURCE_PROLIFERATE_TRAILING_OK_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "trailing",
         LexCaptureKind::OneOfPhrase(PROLIFERATE_TRAILING_OK_PHRASES),
     )]);
-const RESOURCE_NTH_FROM_TOP_DESTINATION_TAIL_PATTERN: LexPattern<'static> =
+const RESOURCE_NTH_FROM_TOP_DESTINATION_TAIL_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "tail",
         LexCaptureKind::OneOfPhrase(&[NTH_FROM_TOP_DESTINATION_TAIL_WORDS]),
     )]);
-const RESOURCE_BENEATH_TOP_AMOUNT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const RESOURCE_BENEATH_TOP_AMOUNT_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::modifier(
         "position",
         LexCaptureKind::OneOfPhrase(BENEATH_TOP_AMOUNT_PREFIXES),
     ),
     LexPattern::amount("amount", LexCaptureKind::Rest),
 ]);
-const RESOURCE_THAT_LIBRARY_AMOUNT_TAIL_PATTERN: LexPattern<'static> =
+const RESOURCE_THAT_LIBRARY_AMOUNT_TAIL_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "tail",
         LexCaptureKind::OneOfPhrase(&[THAT_LIBRARY_AMOUNT_TAIL_WORDS]),
     )]);
-const RESOURCE_PLAY_THOSE_EXILED_PATTERN: LexPattern<'static> =
+const RESOURCE_PLAY_THOSE_EXILED_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::action(
         "permission",
         LexCaptureKind::OneOfPhrase(&[RESOURCE_PLAY_THOSE_EXILED_WORDS]),
     )]);
-const RESOURCE_NOTE_YOUR_LIFE_TOTAL_PATTERN: LexPattern<'static> =
+const RESOURCE_NOTE_YOUR_LIFE_TOTAL_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "life_total",
         LexCaptureKind::OneOfPhrase(&[NOTE_YOUR_LIFE_TOTAL_WORDS]),
     )]);
-const RESOURCE_ALL_ABILITIES_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const RESOURCE_ALL_ABILITIES_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "abilities",
     LexCaptureKind::OneOfPhrase(RESOURCE_ALL_ABILITIES_PHRASES),
 )]);
-const RESOURCE_IT_OR_THEM_TARGET_PATTERN: LexPattern<'static> =
+const RESOURCE_IT_OR_THEM_TARGET_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "target",
         LexCaptureKind::OneOfPhrase(RESOURCE_IT_OR_THEM_WORDS),
     )]);
-const RESOURCE_AS_YOU_CHOOSE_PATTERN: LexPattern<'static> =
+const RESOURCE_AS_YOU_CHOOSE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "choice",
         LexCaptureKind::OneOfPhrase(&[RESOURCE_AS_YOU_CHOOSE_WORDS]),
     )]);
-const RESOURCE_THE_REST_TARGET_PATTERN: LexPattern<'static> =
+const RESOURCE_THE_REST_TARGET_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "remainder",
         LexCaptureKind::OneOfPhrase(&[RESOURCE_THE_REST_PREFIX]),
     )]);
-const RESOURCE_ALL_OTHER_REMAINDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const RESOURCE_ALL_OTHER_REMAINDER_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(RESOURCE_ALL_OTHER_PREFIX),
     LexPattern::object("remainder", LexCaptureKind::Rest),
 ]);
-const RESOURCE_CARDS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const RESOURCE_CARDS_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "cards",
     LexCaptureKind::OneOf(RESOURCE_CARDS_WORDS),
 )]);
-const RESOURCE_REVEALED_OR_EXILED_PATTERN: LexPattern<'static> =
+const RESOURCE_REVEALED_OR_EXILED_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "source",
         LexCaptureKind::OneOf(RESOURCE_REVEALED_OR_EXILED_WORDS),
     )]);
-const RESOURCE_CHOSEN_NAME_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const RESOURCE_CHOSEN_NAME_TAIL_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object("name", LexCaptureKind::OneOf(RESOURCE_NAME_OR_NAMES_WORDS)),
     LexPattern::modifier(
         "choice",
@@ -158,7 +158,7 @@ const RESOURCE_CHOSEN_NAME_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&
     ),
     LexPattern::tail("tail", LexCaptureKind::Rest),
 ]);
-const RESOURCE_THIS_WAY_WORD_PATTERN: LexPattern<'static> =
+const RESOURCE_THIS_WAY_WORD_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "this_way",
         LexCaptureKind::OneOf(RESOURCE_THIS_WAY_WORDS),
@@ -185,14 +185,14 @@ const LOOK_TOP_THAT_PLAYER_LIBRARY_PREFIXES: &[&[&str]] = &[
     &["the", "top", "card", "of", "their", "library"],
     &["top", "card", "of", "their", "library"],
 ];
-const LOOK_TOP_THAT_PLAYER_LIBRARY_PATTERN: LexPattern<'static> =
+const LOOK_TOP_THAT_PLAYER_LIBRARY_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "library",
         LexCaptureKind::OneOfPhrase(LOOK_TOP_THAT_PLAYER_LIBRARY_PREFIXES),
     )]);
 
 struct LookZoneOwnerEntry {
-    owner_phrases: &'static [&'static [&'static str]],
+    phrases: &'static [&'static [&'static str]],
     player: PlayerAst,
 }
 
@@ -245,86 +245,90 @@ fn resource_find_pattern_matches(
 
 const LOOK_HAND_OWNER_PREFIXES: &[LookZoneOwnerEntry] = &[
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_YOUR_OWNER_PHRASES,
+        phrases: LOOK_YOUR_OWNER_PHRASES,
         player: PlayerAst::You,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_EACH_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_EACH_PLAYER_OWNER_PHRASES,
         player: PlayerAst::Any,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_THEIR_OWNER_PHRASES,
+        phrases: LOOK_THEIR_OWNER_PHRASES,
         player: PlayerAst::That,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_THAT_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_THAT_PLAYER_OWNER_PHRASES,
         player: PlayerAst::That,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_TARGET_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_TARGET_PLAYER_OWNER_PHRASES,
         player: PlayerAst::Target,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_TARGET_OPPONENT_OWNER_PHRASES,
+        phrases: LOOK_TARGET_OPPONENT_OWNER_PHRASES,
         player: PlayerAst::TargetOpponent,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_OPPONENT_OWNER_PHRASES,
+        phrases: LOOK_OPPONENT_OWNER_PHRASES,
         player: PlayerAst::Opponent,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_HIS_OR_HER_OWNER_PHRASES,
+        phrases: LOOK_HIS_OR_HER_OWNER_PHRASES,
         player: PlayerAst::That,
     },
 ];
 
 const LOOK_LIBRARY_OWNER_PREFIXES: &[LookZoneOwnerEntry] = &[
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_YOUR_OWNER_PHRASES,
+        phrases: LOOK_YOUR_OWNER_PHRASES,
         player: PlayerAst::You,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_EACH_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_EACH_PLAYER_OWNER_PHRASES,
         player: PlayerAst::Any,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_THEIR_OWNER_PHRASES,
+        phrases: LOOK_THEIR_OWNER_PHRASES,
         player: PlayerAst::That,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_THAT_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_THAT_PLAYER_OWNER_PHRASES,
         player: PlayerAst::That,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_TARGET_PLAYER_OWNER_PHRASES,
+        phrases: LOOK_TARGET_PLAYER_OWNER_PHRASES,
         player: PlayerAst::Target,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_TARGET_OPPONENT_OWNER_PHRASES,
+        phrases: LOOK_TARGET_OPPONENT_OWNER_PHRASES,
         player: PlayerAst::TargetOpponent,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_ITS_OWNER_PHRASES,
+        phrases: LOOK_ITS_OWNER_PHRASES,
         player: PlayerAst::ItsOwner,
     },
     LookZoneOwnerEntry {
-        owner_phrases: LOOK_HIS_OR_HER_OWNER_PHRASES,
+        phrases: LOOK_HIS_OR_HER_OWNER_PHRASES,
         player: PlayerAst::That,
     },
 ];
 
+const LOOK_ZONE_NOUN_WORDS: &[&str] = &["hand", "hands", "library", "libraries"];
+
 fn parse_look_zone_owner_lexed(
     tokens: &[OwnedLexToken],
     entries: &[LookZoneOwnerEntry],
-    zone_words: &'static [&'static str],
 ) -> Option<LookZoneOwner> {
-    let clause = LexedClause::new(tokens);
+    let words = LexedClause::new(tokens).word_refs();
     entries.iter().find_map(|entry| {
-        let atoms = [
-            LexPattern::subject("owner", LexCaptureKind::OneOfPhrase(entry.owner_phrases)),
-            LexPattern::object("zone", LexCaptureKind::OneOf(zone_words)),
-        ];
-        let matched = LexPattern::new(&atoms).match_prefix(clause)?;
+        let owner_atom = LexPattern::object(
+            "owner",
+            LexCaptureKind::OneOfPhrase(entry.phrases),
+        );
+        let zone_atom = LexPattern::object("zone", LexCaptureKind::OneOf(LOOK_ZONE_NOUN_WORDS));
+        let atoms = [owner_atom, zone_atom];
+        let matched = LexPattern::new(&atoms).match_prefix_word_refs(&words)?;
+        matched.capture_word_range("owner")?;
         let zone_range = matched.capture_word_range("zone")?;
         Some(LookZoneOwner {
             player: entry.player,
@@ -336,7 +340,7 @@ fn parse_look_zone_owner_lexed(
 fn is_it_or_them_target(tokens: &[OwnedLexToken]) -> bool {
     resource_exact_pattern_matches(
         &crate::runtime_backend::token_word_refs(tokens),
-        RESOURCE_IT_OR_THEM_TARGET_PATTERN,
+        RESOURCE_IT_OR_THEM_TARGET_SHAPE,
         "target",
     )
 }
@@ -351,7 +355,7 @@ enum ResourceLibraryDestinationPlayer {
 }
 
 struct ResourceLibraryDestinationEntry {
-    owner_phrases: &'static [&'static [&'static str]],
+    phrases: &'static [&'static [&'static str]],
     player: ResourceLibraryDestinationPlayer,
 }
 
@@ -372,34 +376,34 @@ const SHUFFLE_LIBRARY_ZONE_WORDS: &[&str] = &["library", "libraries"];
 
 const SHUFFLE_LIBRARY_DESTINATION_PREFIXES: &[ResourceLibraryDestinationEntry] = &[
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_BARE_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_BARE_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::Default,
     },
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_YOUR_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_YOUR_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::You,
     },
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_THEIR_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_THEIR_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::DefaultOrController,
     },
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_THAT_PLAYER_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_THAT_PLAYER_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::That,
     },
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_ITS_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_ITS_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::ItsOwner,
     },
     ResourceLibraryDestinationEntry {
-        owner_phrases: SHUFFLE_LIBRARY_HIS_OR_HER_OWNER_PHRASES,
+        phrases: SHUFFLE_LIBRARY_HIS_OR_HER_OWNER_PHRASES,
         player: ResourceLibraryDestinationPlayer::DefaultOrController,
     },
 ];
 
 const SHUFFLE_TAGGED_TARGET_PHRASES: &[&[&str]] =
     &[&["it"], &["them"], &["that", "card"], &["those", "cards"]];
-const SHUFFLE_TARGET_INTO_THEIR_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const SHUFFLE_TARGET_INTO_THEIR_LIBRARY_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object(
         "target",
         LexCaptureKind::OneOfPhrase(SHUFFLE_TAGGED_TARGET_PHRASES),
@@ -422,14 +426,24 @@ const SHUFFLE_SOURCE_OWNER_PHRASES: &[&[&str]] = &[
     &[],
 ];
 const SHUFFLE_GRAVEYARD_ZONE_WORDS: &[&str] = &["graveyard", "graveyards"];
-const SUPPORTED_SHUFFLE_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::word(RESOURCE_FROM_WORD),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(SHUFFLE_SOURCE_OWNER_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(SHUFFLE_GRAVEYARD_ZONE_WORDS)),
-]);
+const SUPPORTED_SHUFFLE_SOURCE_TAIL_PHRASES: &[&[&str]] = &[
+    &["from", "your", "graveyard"],
+    &["from", "your", "graveyards"],
+    &["from", "their", "graveyard"],
+    &["from", "their", "graveyards"],
+    &["from", "that", "player", "graveyard"],
+    &["from", "that", "player", "graveyards"],
+    &["from", "that", "players", "graveyard"],
+    &["from", "that", "players", "graveyards"],
+    &["from", "its", "owner", "graveyard"],
+    &["from", "its", "owner", "graveyards"],
+    &["from", "its", "owners", "graveyard"],
+    &["from", "its", "owners", "graveyards"],
+    &["from", "his", "or", "her", "graveyard"],
+    &["from", "his", "or", "her", "graveyards"],
+    &["from", "graveyard"],
+    &["from", "graveyards"],
+];
 
 fn resource_non_article_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     tokens
@@ -452,7 +466,7 @@ fn word_is_any_resource_word(word: &str, expected: &[&str]) -> bool {
 }
 
 fn resource_all_other_revealed_or_exiled_cards(words: &[&str]) -> bool {
-    let Some(remainder_range) = RESOURCE_ALL_OTHER_REMAINDER_PATTERN
+    let Some(remainder_range) = RESOURCE_ALL_OTHER_REMAINDER_SHAPE
         .match_prefix_word_refs(words)
         .and_then(|matched| matched.capture_word_range("remainder"))
     else {
@@ -462,10 +476,10 @@ fn resource_all_other_revealed_or_exiled_cards(words: &[&str]) -> bool {
         return false;
     };
 
-    resource_find_pattern_matches(remainder_words, RESOURCE_CARDS_PATTERN, "cards")
+    resource_find_pattern_matches(remainder_words, RESOURCE_CARDS_SHAPE, "cards")
         && resource_find_pattern_matches(
             remainder_words,
-            RESOURCE_REVEALED_OR_EXILED_PATTERN,
+            RESOURCE_REVEALED_OR_EXILED_SHAPE,
             "source",
         )
 }
@@ -488,20 +502,26 @@ fn resource_word_pattern_matches(words: &[&str], expected: &str) -> bool {
         .is_some()
 }
 
-fn resource_chosen_name_tail_matches(words: &[&str]) -> bool {
-    let Some(tail_range) = RESOURCE_CHOSEN_NAME_TAIL_PATTERN
-        .match_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("tail"))
-    else {
+fn resource_chosen_name_tail_matches(tail: &[&str]) -> bool {
+    if !tail
+        .first()
+        .is_some_and(|word| RESOURCE_NAME_OR_NAMES_WORDS.contains(word))
+    {
         return false;
-    };
-    let Some(tail_words) = words.get(tail_range) else {
+    }
+    if !word_slice_starts_with(&tail[1..], RESOURCE_CHOSEN_NAME_TAIL_PREFIX) {
         return false;
-    };
-
-    tail_words.iter().all(|word| {
-        resource_exact_pattern_matches(&[*word], RESOURCE_THIS_WAY_WORD_PATTERN, "this_way")
-    })
+    }
+    let after_prefix = 1 + RESOURCE_CHOSEN_NAME_TAIL_PREFIX.len();
+    if !tail
+        .get(after_prefix)
+        .is_some_and(|word| RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORDS.contains(word))
+    {
+        return false;
+    }
+    tail[after_prefix + 1..]
+        .iter()
+        .all(|word| RESOURCE_THIS_WAY_WORDS.contains(word))
 }
 
 fn default_or_controller_player(default_player: PlayerAst) -> PlayerAst {
@@ -531,15 +551,19 @@ fn parse_library_destination_player_lexed(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ParsedLibraryDestination> {
-    let clause = LexedClause::new(tokens);
+    let words = LexedClause::new(tokens).word_refs();
     SHUFFLE_LIBRARY_DESTINATION_PREFIXES
         .iter()
         .find_map(|entry| {
-            let atoms = [
-                LexPattern::subject("owner", LexCaptureKind::OneOfPhrase(entry.owner_phrases)),
-                LexPattern::object("zone", LexCaptureKind::OneOf(SHUFFLE_LIBRARY_ZONE_WORDS)),
-            ];
-            let matched = LexPattern::new(&atoms).match_prefix(clause)?;
+            let destination_atom = LexPattern::object(
+                "destination",
+                LexCaptureKind::OneOfPhrase(entry.phrases),
+            );
+            let zone_atom =
+                LexPattern::object("zone", LexCaptureKind::OneOf(SHUFFLE_LIBRARY_ZONE_WORDS));
+            let atoms = [destination_atom, zone_atom];
+            let matched = LexPattern::new(&atoms).match_prefix_word_refs(&words)?;
+            matched.capture_word_range("destination")?;
             let zone_range = matched.capture_word_range("zone")?;
             Some(ParsedLibraryDestination {
                 player: resolve_library_destination_player(entry.player, default_player),
@@ -560,7 +584,7 @@ fn is_tagged_shuffle_target_lexed(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_tagged_shuffle_target_into_their_library_lexed(tokens: &[OwnedLexToken]) -> bool {
-    SHUFFLE_TARGET_INTO_THEIR_LIBRARY_PATTERN
+    SHUFFLE_TARGET_INTO_THEIR_LIBRARY_SHAPE
         .match_clause(LexedClause::new(tokens))
         .and_then(|matched| {
             matched
@@ -576,9 +600,14 @@ fn is_supported_shuffle_source_tail_lexed(tokens: &[OwnedLexToken]) -> bool {
         return true;
     }
 
-    SUPPORTED_SHUFFLE_SOURCE_TAIL_PATTERN
-        .match_clause(LexedClause::new(&normalized_tokens))
-        .and_then(|matched| matched.capture_word_range("zone"))
+    let atoms = [LexPattern::object(
+        "tail",
+        LexCaptureKind::OneOfPhrase(SUPPORTED_SHUFFLE_SOURCE_TAIL_PHRASES),
+    )];
+    let words = LexedClause::new(&normalized_tokens).word_refs();
+    LexPattern::new(&atoms)
+        .match_word_refs(&words)
+        .and_then(|matched| matched.capture_word_range("tail"))
         .is_some()
 }
 
@@ -628,7 +657,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Look => parse_look(tokens, subject),
         Verb::Lose => {
             let words = crate::runtime_backend::token_word_refs(tokens);
-            if resource_exact_pattern_matches(&words, RESOURCE_ALL_ABILITIES_PATTERN, "abilities")
+            if resource_exact_pattern_matches(&words, RESOURCE_ALL_ABILITIES_SHAPE, "abilities")
                 && matches!(subject, Some(SubjectAst::This) | None)
             {
                 return Ok(EffectAst::subject_verb_remove_abilities_from_target(
@@ -711,7 +740,7 @@ pub(crate) fn parse_effect_with_verb(
 
 fn parse_note(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if resource_exact_pattern_matches(&words, RESOURCE_NOTE_YOUR_LIFE_TOTAL_PATTERN, "life_total") {
+    if word_slice_eq(&words, NOTE_YOUR_LIFE_TOTAL_WORDS) {
         return Ok(subject_verb_player_resource_effect(
             SubjectVerbRoleAst::Actor,
             PlayerAst::You,
@@ -729,11 +758,7 @@ fn parse_take(
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if resource_exact_pattern_matches(
-        &words,
-        RESOURCE_TAKE_EXTRA_TURN_AFTER_THIS_ONE_PATTERN,
-        "extra_turn",
-    ) {
+    if word_slice_eq(&words, TAKE_EXTRA_TURN_AFTER_THIS_ONE_WORDS) {
         return Ok(EffectAst::subject_verb_extra_turn_after_turn(
             extract_subject_player(subject).unwrap_or(PlayerAst::You),
             ExtraTurnAnchorAst::CurrentTurn,
@@ -773,7 +798,7 @@ fn parse_proliferate(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextErro
     let trailing_ok = trailing.is_empty()
         || resource_exact_pattern_matches(
             &crate::runtime_backend::token_word_refs(&trailing),
-            RESOURCE_PROLIFERATE_TRAILING_OK_PATTERN,
+            RESOURCE_PROLIFERATE_TRAILING_OK_SHAPE,
             "trailing",
         );
     if !trailing_ok {
@@ -797,18 +822,14 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
 
     let filtered_tail = crate::runtime_backend::util::non_article_token_word_refs(&tail_tokens);
     if let Some((position, used)) = ironsmith_core::parse_ordinal_words(&filtered_tail)
-        && filtered_tail.get(used..).is_some_and(|tail| {
-            resource_exact_pattern_matches(
-                tail,
-                RESOURCE_NTH_FROM_TOP_DESTINATION_TAIL_PATTERN,
-                "tail",
-            )
-        })
+        && filtered_tail
+            .get(used..)
+            .is_some_and(|tail| word_slice_eq(tail, NTH_FROM_TOP_DESTINATION_TAIL_WORDS))
     {
         return Some(Value::Fixed(position as i32));
     }
 
-    let amount_range = RESOURCE_BENEATH_TOP_AMOUNT_PATTERN
+    let amount_range = RESOURCE_BENEATH_TOP_AMOUNT_SHAPE
         .match_prefix_word_refs(&filtered_tail)
         .and_then(|matched| matched.capture_word_range("amount"))?;
     let amount_words = filtered_tail.get(amount_range)?;
@@ -824,7 +845,7 @@ fn parse_library_nth_from_top_destination(tokens: &[OwnedLexToken]) -> Option<Va
     }
     if !resource_exact_pattern_matches(
         &amount_words[used + 1..],
-        RESOURCE_THAT_LIBRARY_AMOUNT_TAIL_PATTERN,
+        RESOURCE_THAT_LIBRARY_AMOUNT_TAIL_SHAPE,
         "tail",
     ) {
         return None;
@@ -840,7 +861,7 @@ pub(crate) fn parse_look(
     fn parse_look_tail_at_same_player(words: &[&str]) -> Option<Vec<EffectAst>> {
         let top_prefix_len = resource_prefix_pattern_capture_end(
             words,
-            LOOK_TOP_THAT_PLAYER_LIBRARY_PATTERN,
+            LOOK_TOP_THAT_PLAYER_LIBRARY_SHAPE,
             "library",
         )?;
         let mut rest = &words[top_prefix_len..];
@@ -895,11 +916,7 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
 
-    if resource_exact_pattern_matches(
-        &clause_words,
-        RESOURCE_PLAY_THOSE_EXILED_PATTERN,
-        "permission",
-    ) {
+    if word_slice_eq(&clause_words, RESOURCE_PLAY_THOSE_EXILED_WORDS) {
         return Ok(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
                 TagKey::from(IT_TAG),
@@ -925,7 +942,7 @@ pub(crate) fn parse_look(
         .map(String::as_str)
         .collect::<Vec<_>>();
     if let Some(owner) =
-        parse_look_zone_owner_lexed(&hand_tokens, LOOK_HAND_OWNER_PREFIXES, LOOK_HAND_ZONE_WORDS)
+        parse_look_zone_owner_lexed(&hand_tokens, LOOK_HAND_OWNER_PREFIXES)
     {
         let target = match owner.player {
             PlayerAst::You => TargetAst::Player(PlayerFilter::You, None),
@@ -1086,12 +1103,7 @@ pub(crate) fn parse_look(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let owner = parse_look_zone_owner_lexed(
-        owner_tokens,
-        LOOK_LIBRARY_OWNER_PREFIXES,
-        LOOK_LIBRARY_ZONE_WORDS,
-    )
-    .or_else(|| {
+    let owner = parse_look_zone_owner_lexed(owner_tokens, LOOK_LIBRARY_OWNER_PREFIXES).or_else(|| {
         // If the clause uses a subject ("target player looks ..."), treat that as the default.
         subject.and_then(|s| match s {
             SubjectAst::Player(player) => Some(LookZoneOwner {
@@ -1166,7 +1178,7 @@ pub(crate) fn parse_reorder(
     if !rest.is_empty()
         && !resource_exact_pattern_matches(
             &crate::runtime_backend::token_word_refs(&rest),
-            RESOURCE_AS_YOU_CHOOSE_PATTERN,
+            RESOURCE_AS_YOU_CHOOSE_SHAPE,
             "choice",
         )
     {
@@ -1242,7 +1254,7 @@ pub(crate) fn parse_shuffle(
         let consult_style_remainder_shuffle =
             resource_prefix_pattern_matches(
                 &target_words,
-                RESOURCE_THE_REST_TARGET_PATTERN,
+                RESOURCE_THE_REST_TARGET_SHAPE,
                 "remainder",
             ) || resource_all_other_revealed_or_exiled_cards(&target_words);
         if consult_style_remainder_shuffle

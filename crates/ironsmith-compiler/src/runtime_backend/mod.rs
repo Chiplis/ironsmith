@@ -294,15 +294,16 @@ fn trigger_frequency_text_ast(text: &str) -> TriggerFrequencyTextAst {
 }
 
 fn parse_do_this_only_each_turn_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let words = lexer::parser_token_word_refs(tokens);
+    let normalized_tokens = tokens.to_vec();
+    let clause = LexedClause::new(&normalized_tokens);
     let atoms = [
         LexPattern::phrase(&["do", "this", "only"]),
         LexPattern::amount("limit", LexCaptureKind::OneOf(&["once", "twice"])),
         LexPattern::phrase(&["each", "turn"]),
     ];
-    let matched = LexPattern::new(&atoms).find_in_word_refs(&words)?;
-    let limit_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
-    match words.get(limit_capture.word_range.clone())? {
+    let matched = LexPattern::new(&atoms).find_in_clause(clause)?;
+    let limit_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    match limit_clause.word_refs().as_slice() {
         ["once"] => Some(1),
         ["twice"] => Some(2),
         _ => None,

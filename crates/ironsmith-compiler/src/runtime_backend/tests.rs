@@ -8684,7 +8684,10 @@ fn aether_refinery_oracle_dispatches_energy_doubling_line_as_static() {
         .expect("Aether Refinery oracle should dispatch");
 
     assert!(
-        matches!(cst.lines.first(), Some(super::cst::RewriteLineCst::Static(_))),
+        matches!(
+            cst.lines.first(),
+            Some(super::cst::RewriteLineCst::Static(_))
+        ),
         "expected Aether Refinery energy replacement to dispatch as static, got {cst:?}"
     );
 }

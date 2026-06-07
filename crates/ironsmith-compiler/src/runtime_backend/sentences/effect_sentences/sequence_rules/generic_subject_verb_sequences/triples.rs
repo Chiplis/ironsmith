@@ -13,12 +13,12 @@ use crate::cards::builders::{
 use crate::effect::{ChoiceCount, Value};
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
-use crate::runtime_backend::front_end::lex_patterns::{LexCaptureKind, LexPattern};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, find_token_word};
 use crate::runtime_backend::lexer::{
     TokenWordView, word_slice_contains_all_words, word_slice_contains_any_phrase,
-    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
-    word_slice_find_word, word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::token_primitives::{
@@ -142,16 +142,6 @@ const YOU_CAST_THIS_TURN_TAILS: &[&[&str]] = &[
     &["you", "have", "cast", "this", "turn"],
     &["you", "cast", "this", "turn"],
 ];
-const SPELL_FILTER_YOU_CAST_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "spell_filter",
-        LexCaptureKind::UntilLastAnyPhrase(YOU_CAST_THIS_TURN_TAILS),
-    ),
-    LexPattern::tail(
-        "cast_this_turn_tail",
-        LexCaptureKind::OneOfPhrase(YOU_CAST_THIS_TURN_TAILS),
-    ),
-]);
 const ONE_CHOSEN_TO_BATTLEFIELD_PREFIX: &[&str] = &[
     "put",
     "one",
@@ -1795,15 +1785,15 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
     let filter_tokens = trim_commas(&second_tokens[filter_start..filter_end]);
     let filter_word_view = TokenWordView::new(&filter_tokens);
     let filter_words = filter_word_view.word_refs();
-    let Some(matched) = SPELL_FILTER_YOU_CAST_THIS_TURN_PATTERN.match_word_refs(&filter_words)
+    let Some(cast_tail) = YOU_CAST_THIS_TURN_TAILS
+        .iter()
+        .find(|tail| word_slice_ends_with(&filter_words, tail))
     else {
         return Ok(None);
     };
-    let Some(spell_filter_word_range) = matched.capture_word_range("spell_filter") else {
-        return Ok(None);
-    };
+    let spell_filter_word_end = filter_words.len() - cast_tail.len();
     let filter_token_end = filter_word_view
-        .token_index_for_word_index(spell_filter_word_range.end)
+        .token_index_for_word_index(spell_filter_word_end)
         .unwrap_or(filter_tokens.len());
     let filter_prefix_tokens = trim_commas(&filter_tokens[..filter_token_end]);
     let mut spell_filter = crate::runtime_backend::parse_spell_filter_lexed(&filter_prefix_tokens);

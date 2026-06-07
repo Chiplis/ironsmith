@@ -1958,10 +1958,9 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         return Some(condition);
     }
     let control_condition_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
-    if let Some(control_condition) = parse_control_condition(
-        control_condition_tokens,
-        activate_only_you_control_options(),
-    ) {
+    if let Some(control_condition) =
+        parse_control_condition(control_condition_tokens, ControlConditionOptions::default())
+    {
         let count = control_condition.at_least_count()?;
         return Some(ConditionExpr::PlayerHasAtLeast {
             player: control_condition.player_filter?,

@@ -403,17 +403,11 @@ const CHOICE_COMPLEMENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action("choose", LexCaptureKind::OneOf(&["choose", "chooses"])),
     LexPattern::object("choice_clause", LexCaptureKind::UntilPhrase(&["then"])),
     LexPattern::word("then"),
-    LexPattern::action(
-        "sacrifice",
-        LexCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
-    ),
+    LexPattern::action("sacrifice", LexCaptureKind::OneOf(&["sacrifice", "sacrifices"])),
     LexPattern::phrase(&["the", "rest"]),
 ]);
 const CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "choice_list",
-        LexCaptureKind::UntilPhrase(&["from", "among"]),
-    ),
+    LexPattern::object("choice_list", LexCaptureKind::UntilPhrase(&["from", "among"])),
     LexPattern::phrase(&["from", "among"]),
     LexPattern::tail("base_filter", LexCaptureKind::Rest),
 ]);
@@ -617,10 +611,7 @@ const OPTIONAL_THEN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::wo
 const THOSE_CHOICES_PHRASES: &[&[&str]] = &[&["those", "choices"]];
 const VOTE_REVEAL_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(OPTIONAL_THEN_PATTERN_ATOMS),
-    LexPattern::subject(
-        "choices",
-        LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES),
-    ),
+    LexPattern::subject("choices", LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES)),
     LexPattern::word("are"),
     LexPattern::action("reveal", LexCaptureKind::OneOf(&["revealed"])),
 ]);
@@ -1074,22 +1065,13 @@ fn parse_target_controlled_pump_program(
 fn keyword_abilities_from_clause(ability_clause: LexedClause<'_>) -> Vec<GrantedAbilityAst> {
     let ability_clause = ability_clause.trimmed();
     let mut abilities = Vec::new();
-    if ABILITY_FIRST_STRIKE_PATTERN
-        .find_in_clause(ability_clause)
-        .is_some()
-    {
+    if ABILITY_FIRST_STRIKE_PATTERN.find_in_clause(ability_clause).is_some() {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
     }
-    if ABILITY_HASTE_PATTERN
-        .find_in_clause(ability_clause)
-        .is_some()
-    {
+    if ABILITY_HASTE_PATTERN.find_in_clause(ability_clause).is_some() {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
     }
-    if ABILITY_TRAMPLE_PATTERN
-        .find_in_clause(ability_clause)
-        .is_some()
-    {
+    if ABILITY_TRAMPLE_PATTERN.find_in_clause(ability_clause).is_some() {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
     }
     abilities
@@ -1497,11 +1479,7 @@ fn parse_generic_meld_subject_verb(
             clause_display.trim()
         )));
     }
-    Ok(Some(EffectAst::subject_verb_meld(
-        result_name,
-        false,
-        false,
-    )))
+    Ok(Some(EffectAst::subject_verb_meld(result_name, false, false)))
 }
 
 fn parse_generic_control_combat_choices_subject_verb(

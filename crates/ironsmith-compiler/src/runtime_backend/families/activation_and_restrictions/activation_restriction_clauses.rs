@@ -473,7 +473,7 @@ fn player_negated_restriction_subject(words: &[&str]) -> Option<PlayerFilter> {
 }
 
 fn activation_restriction_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn activation_restriction_word_is_any(word: &str, expected: &[&str]) -> bool {

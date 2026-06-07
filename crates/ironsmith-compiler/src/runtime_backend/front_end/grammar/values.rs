@@ -398,7 +398,15 @@ pub(crate) fn parse_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
 }
 
 pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
-    finish_text_parse(raw, spaced(parse_mana_symbol_inner), "mana-symbol")
+    // Tolerate an enclosing mana brace pair (e.g. "{s}") so callers that parse
+    // a single mana symbol straight from a token's parser text match callers that
+    // parse from brace-stripped word pieces, consistent with `parse_mana_symbol_group`.
+    let trimmed = raw.trim();
+    let unbraced = trimmed
+        .strip_prefix('{')
+        .and_then(|inner| inner.strip_suffix('}'))
+        .unwrap_or(trimmed);
+    finish_text_parse(unbraced, spaced(parse_mana_symbol_inner), "mana-symbol")
 }
 
 pub(crate) fn parse_mana_symbol_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {

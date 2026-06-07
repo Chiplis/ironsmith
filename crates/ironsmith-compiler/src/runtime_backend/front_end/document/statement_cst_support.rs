@@ -86,9 +86,7 @@ pub(super) fn parse_statement_line_cst(
         || (token_slice_starts_with_any(&line.tokens, &[&["each"], &["all"]])
             && contains_token_word_sequence(&line.tokens, &["until", "end", "of", "turn"]))
         || looks_like_statement_line_lexed(line);
-    if !force_statement
-        && static_probe.is_some()
-    {
+    if !force_statement && static_probe.is_some() {
         return Ok(None);
     }
     if matches!(line_family, Some(structure::StatementLineFamily::Divvy)) {

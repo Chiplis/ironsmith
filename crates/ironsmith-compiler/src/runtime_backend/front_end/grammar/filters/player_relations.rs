@@ -295,10 +295,11 @@ fn parse_relation_subject_shape(
 fn parse_negated_you_relation_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
     let (verb, consumed) =
         relation_captured_prefix(words, NEGATED_YOU_RELATION_PATTERN, LexCaptureRole::Action)?;
-    if verb.ends_with("control") || verb.ends_with("controls") {
+    let verb_tail = verb.split(' ').next_back();
+    if verb_tail == Some("control") || verb_tail == Some("controls") {
         return Some((PlayerRelationVerb::Control, consumed));
     }
-    if verb.ends_with("own") || verb.ends_with("owns") {
+    if verb_tail == Some("own") || verb_tail == Some("owns") {
         return Some((PlayerRelationVerb::Own, consumed));
     }
     None
@@ -339,10 +340,16 @@ fn parse_entered_battlefield_this_turn_shape(
         ENTERED_BATTLEFIELD_THIS_TURN_PATTERN,
         LexCaptureRole::Action,
     )?;
-    if event.contains("under your control") {
+    let event_words: Vec<&str> = event.split(' ').collect();
+    let contains_phrase = |phrase: &[&str]| {
+        !phrase.is_empty() && event_words.windows(phrase.len()).any(|window| window == phrase)
+    };
+    if contains_phrase(&["under", "your", "control"]) {
         return Some((Some(PlayerFilter::You), consumed));
     }
-    if event.contains("under opponent control") || event.contains("under opponents control") {
+    if contains_phrase(&["under", "opponent", "control"])
+        || contains_phrase(&["under", "opponents", "control"])
+    {
         return Some((Some(PlayerFilter::Opponent), consumed));
     }
     Some((None, consumed))

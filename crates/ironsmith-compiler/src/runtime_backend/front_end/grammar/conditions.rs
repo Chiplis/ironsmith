@@ -1558,8 +1558,9 @@ fn parse_player_life_relation_shape(
 
     let relation = parse_has_relation_clauses(tokens)?;
     let subject = parse_life_relation_player_subject_clause(relation.subject_clause)?;
+    let relation_clause = relation.tail_clause;
 
-    match parse_life_relation_shape(relation.tail_clause)? {
+    match parse_life_relation_shape(relation_clause)? {
         LifeRelationShape::MoreThanYou => Some(PlayerLifeRelationConditionAst {
             player: subject,
             relation: PlayerLifeRelationAst::HasMoreLifeThanYou,
@@ -1584,6 +1585,31 @@ fn parse_player_life_relation_shape(
     }
 }
 
+const MORE_LIFE_THAN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["more", "life", "than"]),
+    LexPattern::subject(
+        "player",
+        LexCaptureKind::OneOfPhrase(&[&["you", "do"], &["you"]]),
+    ),
+]);
+const MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["more", "life", "than"]),
+    LexPattern::subject(
+        "player",
+        LexCaptureKind::OneOfPhrase(&[
+            &["each", "other", "player"],
+            &["each", "other", "players"],
+        ]),
+    ),
+]);
+const MORE_LIFE_THAN_EACH_OPPONENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["more", "life", "than"]),
+    LexPattern::subject(
+        "player",
+        LexCaptureKind::OneOfPhrase(&[&["each", "opponent"], &["each", "opponents"]]),
+    ),
+]);
+
 fn parse_life_relation_shape(relation_clause: LexedClause<'_>) -> Option<LifeRelationShape> {
     const MORE_LIFE_THAN_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
         LexPattern::phrase(&["more", "life", "than"]),
@@ -1591,23 +1617,17 @@ fn parse_life_relation_shape(relation_clause: LexedClause<'_>) -> Option<LifeRel
     ]);
 
     let relation_clause = relation_clause.trimmed();
-    let matched = MORE_LIFE_THAN_PLAYER_PATTERN.match_clause(relation_clause)?;
-    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)?;
-    if clause_matches_any_phrase(player_clause, &[&["you"], &["you", "do"]]) {
+    if MORE_LIFE_THAN_YOU_PATTERN.matches(relation_clause) {
         return Some(LifeRelationShape::MoreThanYou);
     }
-    if clause_matches_any_phrase(
-        player_clause,
-        &[&["each", "other", "player"], &["each", "other", "players"]],
-    ) {
+    if MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
         return Some(LifeRelationShape::MoreThanEachOtherPlayer);
     }
-    if clause_matches_any_phrase(
-        player_clause,
-        &[&["each", "opponent"], &["each", "opponents"]],
-    ) {
+    if MORE_LIFE_THAN_EACH_OPPONENT_PATTERN.matches(relation_clause) {
         return Some(LifeRelationShape::MoreThanEachOpponent);
     }
+    let matched = MORE_LIFE_THAN_PLAYER_PATTERN.match_clause(relation_clause)?;
+    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)?;
     let player = parse_life_relation_player_subject_clause(player_clause)?;
     Some(LifeRelationShape::MoreThanPlayer(player))
 }
@@ -1644,8 +1664,9 @@ fn parse_player_cards_in_hand_relation_shape(
 ) -> Option<PlayerCardsInHandRelationConditionAst> {
     let relation = parse_has_relation_clauses(tokens)?;
     let subject = parse_life_relation_player_subject_clause(relation.subject_clause)?;
+    let relation_clause = relation.tail_clause;
 
-    match parse_cards_in_hand_relation_shape(relation.tail_clause)? {
+    match parse_cards_in_hand_relation_shape(relation_clause)? {
         CardsInHandRelationShape::MoreThanYou => Some(PlayerCardsInHandRelationConditionAst {
             player: subject,
             relation: PlayerCardsInHandRelationAst::HasMoreCardsInHandThanYou,
@@ -1659,34 +1680,45 @@ fn parse_player_cards_in_hand_relation_shape(
     }
 }
 
+const MORE_CARDS_IN_HAND_THAN_PREFIXES: &[&[&str]] = &[
+    &["more", "card"],
+    &["more", "cards"],
+    &["more", "card", "in", "hand"],
+    &["more", "cards", "in", "hand"],
+    &["more", "card", "in", "your", "hand"],
+    &["more", "cards", "in", "your", "hand"],
+    &["more", "card", "in", "their", "hand"],
+    &["more", "cards", "in", "their", "hand"],
+];
 fn parse_cards_in_hand_relation_shape(
     relation_clause: LexedClause<'_>,
 ) -> Option<CardsInHandRelationShape> {
-    const HAND_LOCATION_PHRASES: &[&[&str]] = &[
-        &["in", "hand"],
-        &["in", "your", "hand"],
-        &["in", "their", "hand"],
-    ];
-    const OPTIONAL_HAND_LOCATION: &[LexPatternAtom<'static>] =
-        &[LexPattern::any_phrase(HAND_LOCATION_PHRASES)];
-    const MORE_CARDS_IN_HAND_RELATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
-        LexPattern::word("more"),
-        LexPattern::object("object", LexCaptureKind::OneOf(&["card", "cards"])),
-        LexPattern::optional(OPTIONAL_HAND_LOCATION),
+    const MORE_CARDS_IN_HAND_THAN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(MORE_CARDS_IN_HAND_THAN_PREFIXES),
         LexPattern::word("than"),
-        LexPattern::subject("player", LexCaptureKind::Rest),
+        LexPattern::subject(
+            "player",
+            LexCaptureKind::OneOfPhrase(&[&["you", "do"], &["you"]]),
+        ),
     ]);
+    const MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[
+            LexPattern::any_phrase(MORE_CARDS_IN_HAND_THAN_PREFIXES),
+            LexPattern::word("than"),
+            LexPattern::subject(
+                "player",
+                LexCaptureKind::OneOfPhrase(&[
+                    &["each", "other", "player"],
+                    &["each", "other", "players"],
+                ]),
+            ),
+        ]);
 
     let relation_clause = relation_clause.trimmed();
-    let matched = MORE_CARDS_IN_HAND_RELATION_PATTERN.match_clause(relation_clause)?;
-    let player_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)?;
-    if clause_matches_any_phrase(player_clause, &[&["you"], &["you", "do"]]) {
+    if MORE_CARDS_IN_HAND_THAN_YOU_PATTERN.matches(relation_clause) {
         return Some(CardsInHandRelationShape::MoreThanYou);
     }
-    if clause_matches_any_phrase(
-        player_clause,
-        &[&["each", "other", "player"], &["each", "other", "players"]],
-    ) {
+    if MORE_CARDS_IN_HAND_THAN_EACH_OTHER_PLAYER_PATTERN.matches(relation_clause) {
         return Some(CardsInHandRelationShape::MoreThanEachOtherPlayer);
     }
     None
@@ -2592,7 +2624,10 @@ fn parse_spell_cast_this_turn_subject_clause(clause: LexedClause<'_>) -> Option<
     if clause_matches_any_phrase(clause, &[&["you"], &["youve"]]) {
         return Some(PlayerFilter::You);
     }
-    if clause_matches_any_phrase(clause, &[&["opponent"], &["opponents"], &["an", "opponent"]]) {
+    if clause_matches_any_phrase(
+        clause,
+        &[&["opponent"], &["opponents"], &["an", "opponent"]],
+    ) {
         return Some(PlayerFilter::Opponent);
     }
     None

@@ -47,11 +47,11 @@ pub(crate) type SubjectVerbPatternPrimitiveParser =
 pub(super) type SubjectVerbPrimitiveNormalizedWords<'a> = TokenWordView<'a>;
 
 const REGISTRY_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const REGISTRY_TARGET_OPPONENT_OBJECT_PHRASES: &[&[&str]] =
+const REGISTRY_TARGET_OPPONENT_OBJECT_WORDS: &[&[&str]] =
     &[&["target", "opponent"], &["target", "opponents"]];
-const REGISTRY_TARGET_PLAYER_OBJECT_PHRASES: &[&[&str]] =
+const REGISTRY_TARGET_PLAYER_OBJECT_WORDS: &[&[&str]] =
     &[&["target", "player"], &["target", "players"]];
-const REGISTRY_THAT_PLAYER_OBJECT_PHRASES: &[&[&str]] =
+const REGISTRY_THAT_PLAYER_OBJECT_WORDS: &[&[&str]] =
     &[&["that", "player"], &["that", "players"]];
 const PRIMITIVE_ROUTE_VERBS: &[(&[&str], &str)] = &[
     (&["choose"], "Choose"),
@@ -83,26 +83,6 @@ const THEIR_HAND_OWNER_WORD: &str = "their";
 const YOUR_HAND_OWNER_WORD: &str = "your";
 const SHUFFLES_THEN_DRAWS_PHRASE: &[&str] = &["shuffles", "then", "draws"];
 
-struct RegistryPlayerObjectEntry {
-    phrases: &'static [&'static [&'static str]],
-    player: PlayerAst,
-}
-
-const REGISTRY_PLAYER_OBJECTS: &[RegistryPlayerObjectEntry] = &[
-    RegistryPlayerObjectEntry {
-        phrases: REGISTRY_TARGET_OPPONENT_OBJECT_PHRASES,
-        player: PlayerAst::TargetOpponent,
-    },
-    RegistryPlayerObjectEntry {
-        phrases: REGISTRY_TARGET_PLAYER_OBJECT_PHRASES,
-        player: PlayerAst::Target,
-    },
-    RegistryPlayerObjectEntry {
-        phrases: REGISTRY_THAT_PLAYER_OBJECT_PHRASES,
-        player: PlayerAst::That,
-    },
-];
-
 fn registry_token_matches_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
 }
@@ -124,16 +104,16 @@ fn registry_token_is_life(token: &OwnedLexToken) -> bool {
 fn parse_registry_player_object_clause(
     object_clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Option<PlayerAst> {
-    REGISTRY_PLAYER_OBJECTS.iter().find_map(|entry| {
-        let atoms = [LexPattern::object(
-            "player",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        object_clause
-            .match_pattern(LexPattern::new(&atoms))
-            .and_then(|matched| matched.capture_word_range("player"))
-            .map(|_| entry.player)
-    })
+    let words = object_clause.word_refs();
+    if word_slice_eq_any(&words, REGISTRY_TARGET_OPPONENT_OBJECT_WORDS) {
+        Some(PlayerAst::TargetOpponent)
+    } else if word_slice_eq_any(&words, REGISTRY_TARGET_PLAYER_OBJECT_WORDS) {
+        Some(PlayerAst::Target)
+    } else if word_slice_eq_any(&words, REGISTRY_THAT_PLAYER_OBJECT_WORDS) {
+        Some(PlayerAst::That)
+    } else {
+        None
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

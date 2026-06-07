@@ -241,6 +241,16 @@ impl<'p> ClauseShape<'p> {
         self.matches_first_word(&clause.word_refs())
     }
 
+    /// Token-backed word-slice gate exposed for shared-util shape helpers.
+    ///
+    /// Behaviorally identical to [`Self::matches_words`]; provided under a
+    /// distinct name so callers outside this primitive module can route shape
+    /// gates through a helper without invoking the `matches_words` adapter
+    /// directly.
+    pub(crate) fn matches_word_slice(self, words: &[&str]) -> bool {
+        self.matches_words(words)
+    }
+
     pub(crate) fn matches_words(self, words: &[&str]) -> bool {
         if let Some(exact) = self.exact
             && !word_slice_eq(words, exact)

@@ -4,22 +4,11 @@ const ATTACH_TAGGED_EQUIPMENT_WORDS: &[&[&str]] =
 const ATTACH_TAGGED_AURA_WORDS: &[&[&str]] = &[&["that", "aura"], &["those", "auras"]];
 const ATTACH_TAGGED_ARTIFACT_WORDS: &[&[&str]] = &[&["that", "artifact"], &["those", "artifacts"]];
 const ATTACH_TAGGED_ENCHANTMENT_WORDS: &[&[&str]] = &[&["that", "enchantment"]];
-const ATTACH_IT_PHRASES: &[&[&str]] = &[&["it"]];
-const ATTACH_TOKEN_TARGET_PHRASES: &[&[&str]] = &[&["the", "token"]];
+const ATTACH_IT_WORDS: &[&str] = &["it"];
+const ATTACH_TOKEN_TARGET_WORDS: &[&str] = &["the", "token"];
 const DAMAGE_EACH_OPPONENT_HAND_SIZE_PREFIX: &[&str] =
     &["damage", "to", "each", "opponent", "equal", "to"];
 const DAMAGE_HAND_SIZE_WORDS: &[&str] = &["number", "cards", "hand"];
-const DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(DAMAGE_EACH_OPPONENT_HAND_SIZE_PREFIX),
-    LexPattern::tail("tail", LexCaptureKind::Rest),
-]);
-const DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::modifier(
-        "target",
-        LexCaptureKind::OneOfPhrase(DAMAGE_TO_EACH_OPPONENT_PREFIXES),
-    ),
-    LexPattern::tail("tail", LexCaptureKind::Rest),
-]);
 const COMBAT_EQUAL_TO_WORDS: &[&str] = &["equal", "to"];
 const COMBAT_IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 const COMBAT_TO_WORD: &str = "to";
@@ -37,6 +26,7 @@ const COMBAT_EACH_OTHER_OPPONENT_TARGET_WORDS: &[&[&str]] = &[
     &["all", "other", "opponents"],
 ];
 const COMBAT_EACH_OR_ALL_WORDS: &[&str] = &["each", "all"];
+const COMBAT_EACH_OR_ALL_HEAD_PREFIXES: &[&[&str]] = &[&["each"], &["all"]];
 const COMBAT_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
 const COMBAT_ITERATED_PLAYER_CONTROL_PHRASES: &[&[&str]] =
     &[&["they", "control"], &["that", "player", "controls"]];
@@ -50,7 +40,7 @@ const COMBAT_PLAYER_OR_PLAYERS_WORDS: &[&str] = &["player", "players"];
 const COMBAT_NEGATION_WORDS: &[&str] = &["does", "doesnt", "doesn", "dont", "not"];
 const COMBAT_INSTEAD_WORD: &str = "instead";
 const COMBAT_IF_WORD: &str = "if";
-const COMBAT_EVENLY_WORDS: &[&str] = &["evenly"];
+const COMBAT_EVENLY_WORD: &str = "evenly";
 const COMBAT_INSTEAD_TARGET_PHRASES: &[&[&str]] = &[&["instead"]];
 const COMBAT_CREATURE_CONTROLLER_TARGET_WORDS: &[&[&str]] = &[
     &["the", "creatures", "controller"],
@@ -67,77 +57,16 @@ const COMBAT_END_OF_COMBAT_TIMINGS: &[&[&str]] = &[
 ];
 const COMBAT_AS_YOU_CAST_THIS_SPELL_MARKER_WORDS: &[&str] = &["as", "you", "cast", "this", "spell"];
 const COMBAT_THIS_TURN_MARKER_WORDS: &[&str] = &["this", "turn"];
+const COMBAT_CAST_OR_TURN_MARKER_PHRASES: &[&[&str]] = &[
+    COMBAT_AS_YOU_CAST_THIS_SPELL_MARKER_WORDS,
+    COMBAT_THIS_TURN_MARKER_WORDS,
+];
 const COMBAT_WITH_DIFFERENT_POWER_SUFFIXES: &[&[&str]] = &[
     &["with", "different", "powers"],
     &["with", "different", "power"],
 ];
 const COMBAT_AT_WORD: &str = "at";
 const COMBAT_OTHER_WORDS: &[&str] = &["another", "other"];
-const COMBAT_EQUAL_TO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "equal_to",
-    LexCaptureKind::OneOfPhrase(&[COMBAT_EQUAL_TO_WORDS]),
-)]);
-const COMBAT_THE_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "result",
-    LexCaptureKind::OneOfPhrase(&[COMBAT_THE_RESULT_WORDS]),
-)]);
-const COMBAT_TARGET_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "target",
-    LexCaptureKind::OneOf(COMBAT_TARGET_OR_TARGETS_WORDS),
-)]);
-const COMBAT_EACH_OR_ALL_HEAD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::amount(
-        "scope",
-        LexCaptureKind::OneOf(COMBAT_EACH_OR_ALL_WORDS),
-    )]);
-const COMBAT_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "reference",
-    LexCaptureKind::OneOfPhrase(&[COMBAT_THIS_WAY_PHRASE]),
-)]);
-const COMBAT_MAX_SPEED_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
-    "speed",
-    LexCaptureKind::OneOfPhrase(&[COMBAT_MAX_SPEED_PHRASE]),
-)]);
-const COMBAT_DOES_NOT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::condition(
-    "negation",
-    LexCaptureKind::OneOfPhrase(&[COMBAT_DOES_NOT_PHRASE]),
-)]);
-const COMBAT_ITERATED_PLAYER_CONTROL_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::condition(
-        "controller",
-        LexCaptureKind::OneOfPhrase(COMBAT_ITERATED_PLAYER_CONTROL_PHRASES),
-    )]);
-const COMBAT_AND_EACH_OR_ALL_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "split",
-        LexCaptureKind::OneOfPhrase(COMBAT_AND_EACH_OR_ALL_PHRASES),
-    )]);
-const COMBAT_AND_EACH_PLAYER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "split",
-        LexCaptureKind::OneOfPhrase(COMBAT_AND_EACH_PLAYER_PHRASES),
-    )]);
-const COMBAT_EVENLY_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "distribution",
-    LexCaptureKind::OneOf(COMBAT_EVENLY_WORDS),
-)]);
-const COMBAT_END_OF_COMBAT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "timing",
-    LexCaptureKind::OneOfPhrase(COMBAT_END_OF_COMBAT_TIMINGS),
-)]);
-const COMBAT_CAST_OR_TURN_MARKER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "marker",
-        LexCaptureKind::OneOfPhrase(&[
-            COMBAT_AS_YOU_CAST_THIS_SPELL_MARKER_WORDS,
-            COMBAT_THIS_TURN_MARKER_WORDS,
-        ]),
-    )]);
-const COMBAT_DIFFERENT_POWER_SUFFIX_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "suffix",
-        LexCaptureKind::OneOfPhrase(COMBAT_WITH_DIFFERENT_POWER_SUFFIXES),
-    )]);
 
 #[derive(Clone, Copy)]
 enum AttachTaggedObjectShape {
@@ -162,58 +91,10 @@ enum CombatSimpleDamageTarget {
     IteratedPlayer,
 }
 
-struct AttachTaggedObjectEntry {
-    phrases: &'static [&'static [&'static str]],
-    shape: AttachTaggedObjectShape,
-}
-
-struct CombatPlayerDamageTargetEntry {
-    phrases: &'static [&'static [&'static str]],
-    target: CombatPlayerDamageTarget,
-}
-
 struct CombatSimpleDamageTargetEntry {
     phrases: &'static [&'static [&'static str]],
     target: CombatSimpleDamageTarget,
 }
-
-const ATTACH_TAGGED_OBJECT_SHAPES: &[AttachTaggedObjectEntry] = &[
-    AttachTaggedObjectEntry {
-        phrases: ATTACH_TAGGED_OBJECT_WORDS,
-        shape: AttachTaggedObjectShape::Plain,
-    },
-    AttachTaggedObjectEntry {
-        phrases: ATTACH_TAGGED_EQUIPMENT_WORDS,
-        shape: AttachTaggedObjectShape::Equipment,
-    },
-    AttachTaggedObjectEntry {
-        phrases: ATTACH_TAGGED_AURA_WORDS,
-        shape: AttachTaggedObjectShape::Aura,
-    },
-    AttachTaggedObjectEntry {
-        phrases: ATTACH_TAGGED_ARTIFACT_WORDS,
-        shape: AttachTaggedObjectShape::Artifact,
-    },
-    AttachTaggedObjectEntry {
-        phrases: ATTACH_TAGGED_ENCHANTMENT_WORDS,
-        shape: AttachTaggedObjectShape::Enchantment,
-    },
-];
-
-const COMBAT_PLAYER_DAMAGE_TARGETS: &[CombatPlayerDamageTargetEntry] = &[
-    CombatPlayerDamageTargetEntry {
-        phrases: COMBAT_EACH_PLAYER_TARGET_WORDS,
-        target: CombatPlayerDamageTarget::EachPlayer,
-    },
-    CombatPlayerDamageTargetEntry {
-        phrases: COMBAT_EACH_OTHER_OPPONENT_TARGET_WORDS,
-        target: CombatPlayerDamageTarget::EachOtherOpponent,
-    },
-    CombatPlayerDamageTargetEntry {
-        phrases: COMBAT_EACH_OPPONENT_TARGET_WORDS,
-        target: CombatPlayerDamageTarget::EachOpponent,
-    },
-];
 
 const COMBAT_SIMPLE_DAMAGE_TARGETS: &[CombatSimpleDamageTargetEntry] = &[
     CombatSimpleDamageTargetEntry {
@@ -231,31 +112,23 @@ const COMBAT_SIMPLE_DAMAGE_TARGETS: &[CombatSimpleDamageTargetEntry] = &[
 ];
 
 fn parse_attach_tagged_object_shape(tokens: &[OwnedLexToken]) -> Option<AttachTaggedObjectShape> {
-    let clause = LexedClause::new(tokens);
-    ATTACH_TAGGED_OBJECT_SHAPES.iter().find_map(|entry| {
-        let atoms = [LexPattern::object(
-            "target",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        LexPattern::new(&atoms)
-            .match_clause(clause)
-            .and_then(|matched| matched.capture_word_range("target"))
-            .map(|_| entry.shape)
-    })
-}
-
-fn attach_phrase_matches(
-    tokens: &[OwnedLexToken],
-    phrases: &'static [&'static [&'static str]],
-) -> bool {
-    let atoms = [LexPattern::object(
-        "phrase",
-        LexCaptureKind::OneOfPhrase(phrases),
-    )];
-    LexPattern::new(&atoms)
-        .match_clause(LexedClause::new(tokens))
-        .and_then(|matched| matched.capture_word_range("phrase"))
-        .is_some()
+    let object_words = TokenWordView::new(tokens).word_refs();
+    if word_slice_eq_any(&object_words, ATTACH_TAGGED_OBJECT_WORDS) {
+        return Some(AttachTaggedObjectShape::Plain);
+    }
+    if word_slice_eq_any(&object_words, ATTACH_TAGGED_EQUIPMENT_WORDS) {
+        return Some(AttachTaggedObjectShape::Equipment);
+    }
+    if word_slice_eq_any(&object_words, ATTACH_TAGGED_AURA_WORDS) {
+        return Some(AttachTaggedObjectShape::Aura);
+    }
+    if word_slice_eq_any(&object_words, ATTACH_TAGGED_ARTIFACT_WORDS) {
+        return Some(AttachTaggedObjectShape::Artifact);
+    }
+    if word_slice_eq_any(&object_words, ATTACH_TAGGED_ENCHANTMENT_WORDS) {
+        return Some(AttachTaggedObjectShape::Enchantment);
+    }
+    None
 }
 
 fn combat_words_contain_word(words: &[&str], expected: &str) -> bool {
@@ -270,78 +143,13 @@ fn combat_words_contain_word(words: &[&str], expected: &str) -> bool {
         .is_some()
 }
 
-fn combat_words_contain_pattern(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
-
-fn combat_words_start_with_pattern(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
-
-fn combat_words_exact_pattern_matches(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .match_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
-
-fn combat_words_find_pattern_start(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> Option<usize> {
-    pattern
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .map(|range| range.start)
-}
-
-fn combat_words_end_with_pattern(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some_and(|range| range.end == words.len())
-}
-
 fn combat_words_contain_all(words: &[&str], required: &[&str]) -> bool {
     required
         .iter()
         .all(|word| combat_words_contain_word(words, word))
 }
 
-fn combat_hand_size_damage_shape_matches(words: &[&str], pattern: LexPattern<'static>) -> bool {
-    let Some(tail_range) = pattern
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("tail"))
-    else {
-        return false;
-    };
-    let Some(tail_words) = words.get(tail_range) else {
-        return false;
-    };
-
+fn combat_hand_size_damage_tail_contains(tail_words: &[&str]) -> bool {
     combat_words_contain_all(tail_words, DAMAGE_HAND_SIZE_WORDS)
 }
 
@@ -376,20 +184,32 @@ fn parse_combat_player_damage_target(
     tokens: &[OwnedLexToken],
     allow_prefix: bool,
 ) -> Option<CombatPlayerDamageTarget> {
-    let clause = LexedClause::new(tokens);
-    COMBAT_PLAYER_DAMAGE_TARGETS.iter().find_map(|entry| {
-        let atoms = [LexPattern::object(
-            "target",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        let pattern = LexPattern::new(&atoms);
-        let matched = if allow_prefix {
-            pattern.match_prefix(clause)
-        } else {
-            pattern.match_clause(clause)
-        }?;
-        matched.capture_word_range("target").map(|_| entry.target)
-    })
+    let target_words = TokenWordView::new(tokens).word_refs();
+    let each_player = if allow_prefix {
+        word_slice_starts_with_any(&target_words, COMBAT_EACH_PLAYER_TARGET_WORDS)
+    } else {
+        word_slice_eq_any(&target_words, COMBAT_EACH_PLAYER_TARGET_WORDS)
+    };
+    if each_player {
+        return Some(CombatPlayerDamageTarget::EachPlayer);
+    }
+    let each_other_opponent = if allow_prefix {
+        word_slice_starts_with_any(&target_words, COMBAT_EACH_OTHER_OPPONENT_TARGET_WORDS)
+    } else {
+        word_slice_eq_any(&target_words, COMBAT_EACH_OTHER_OPPONENT_TARGET_WORDS)
+    };
+    if each_other_opponent {
+        return Some(CombatPlayerDamageTarget::EachOtherOpponent);
+    }
+    let each_opponent = if allow_prefix {
+        word_slice_starts_with_any(&target_words, COMBAT_EACH_OPPONENT_TARGET_WORDS)
+    } else {
+        word_slice_eq_any(&target_words, COMBAT_EACH_OPPONENT_TARGET_WORDS)
+    };
+    if each_opponent {
+        return Some(CombatPlayerDamageTarget::EachOpponent);
+    }
+    None
 }
 
 fn combat_player_damage_target_effect(
@@ -414,14 +234,11 @@ fn combat_player_damage_target_effect(
 }
 
 fn parse_combat_simple_damage_target(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
-    let clause = LexedClause::new(tokens);
+    let target_words = TokenWordView::new(tokens).word_refs();
     COMBAT_SIMPLE_DAMAGE_TARGETS.iter().find_map(|entry| {
-        let atoms = [LexPattern::object(
-            "target",
-            LexCaptureKind::OneOfPhrase(entry.phrases),
-        )];
-        let matched = LexPattern::new(&atoms).match_clause(clause)?;
-        matched.capture_word_range("target")?;
+        if !word_slice_eq_any(&target_words, entry.phrases) {
+            return None;
+        }
         Some(match entry.target {
             CombatSimpleDamageTarget::DefaultAny => {
                 TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, None)
@@ -495,7 +312,7 @@ pub(crate) fn parse_attach_object_phrase(
     }
 
     if object_words.len() >= 2
-        && !combat_words_contain_pattern(&object_words, COMBAT_TARGET_WORD_PATTERN, "target")
+        && !word_slice_contains_any_word(&object_words, COMBAT_TARGET_OR_TARGETS_WORDS)
         && object_words
             .iter()
             .all(|word| word.chars().all(|ch| ch.is_ascii_alphanumeric()))
@@ -563,8 +380,10 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
 
     let object = parse_attach_object_phrase(&object_tokens)?;
-    if attach_phrase_matches(&object_tokens, ATTACH_IT_PHRASES)
-        && attach_phrase_matches(&target_tokens, ATTACH_TOKEN_TARGET_PHRASES)
+    let object_words = crate::runtime_backend::token_word_refs(&object_tokens);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    if word_slice_eq(&object_words, ATTACH_IT_WORDS)
+        && word_slice_eq(&target_words, ATTACH_TOKEN_TARGET_WORDS)
     {
         return Ok(EffectAst::subject_verb_attach(
             TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(&object_tokens)),
@@ -596,7 +415,10 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
             tokens
         };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if combat_hand_size_damage_shape_matches(&clause_words, DAMAGE_EACH_OPPONENT_HAND_SIZE_PATTERN)
+    if word_slice_starts_with(&clause_words, DAMAGE_EACH_OPPONENT_HAND_SIZE_PREFIX)
+        && combat_hand_size_damage_tail_contains(
+            &clause_words[DAMAGE_EACH_OPPONENT_HAND_SIZE_PREFIX.len()..],
+        )
     {
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
@@ -635,10 +457,11 @@ pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, C
         return parse_deal_damage_with_amount(tokens, value, used);
     }
 
-    if combat_hand_size_damage_shape_matches(
-        &clause_words,
-        DAMAGE_TO_EACH_OPPONENT_HAND_SIZE_PATTERN,
-    ) {
+    if let Some(prefix) = DAMAGE_TO_EACH_OPPONENT_PREFIXES
+        .iter()
+        .find(|prefix| word_slice_starts_with(&clause_words, prefix))
+        && combat_hand_size_damage_tail_contains(&clause_words[prefix.len()..])
+    {
         let value = Value::CardsInHand(PlayerFilter::IteratedPlayer);
         return Ok(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
@@ -694,8 +517,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         return Ok(None);
     }
 
-    let Some(equal_word_idx) =
-        combat_words_find_pattern_start(&clause_words, COMBAT_EQUAL_TO_PATTERN, "equal_to")
+    let Some(equal_word_idx) = word_slice_find_phrase_start(&clause_words, COMBAT_EQUAL_TO_WORDS)
     else {
         return Ok(None);
     };
@@ -722,10 +544,9 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
         .or(parse_devotion_value_from_add_clause(tokens)?)
         .or(parse_equal_to_number_of_filter_value(tokens))
         .or_else(|| {
-            combat_words_exact_pattern_matches(
+            word_slice_eq(
                 &crate::runtime_backend::token_word_refs(&tokens[equal_token_idx + 2..]),
-                COMBAT_THE_RESULT_PATTERN,
-                "result",
+                COMBAT_THE_RESULT_WORDS,
             )
             .then_some(Value::EventValue(EventValueSpec::Amount))
         })
@@ -743,7 +564,7 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             target,
         )));
     }
-    if combat_words_start_with_pattern(&target_words, COMBAT_EACH_OR_ALL_HEAD_PATTERN, "scope") {
+    if word_slice_starts_with_any(&target_words, COMBAT_EACH_OR_ALL_HEAD_PREFIXES) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -774,7 +595,7 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
             continue;
         }
         let looks_like_target =
-            combat_words_contain_pattern(&tail_words, COMBAT_TARGET_WORD_PATTERN, "target")
+            word_slice_contains_any_word(&tail_words, COMBAT_TARGET_OR_TARGETS_WORDS)
                 || matches!(
                     tail_words.first().copied(),
                     Some(
@@ -847,10 +668,9 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
     let mut normalized_target_tokens = target_tokens;
     if grammar::words_match_any_prefix(target_tokens, EACH_OF_PREFIXES).is_some() {
         let each_of_tokens = &target_tokens[2..];
-        if combat_words_contain_pattern(
+        if word_slice_contains_any_word(
             &crate::runtime_backend::token_word_refs(each_of_tokens),
-            COMBAT_TARGET_WORD_PATTERN,
-            "target",
+            COMBAT_TARGET_OR_TARGETS_WORDS,
         ) {
             normalized_target_tokens = each_of_tokens;
         }
@@ -961,10 +781,9 @@ fn parse_divided_damage_with_amount(
     if crate::runtime_backend::lexer::token_slice_first_is(target_tokens, "to") {
         target_tokens = &target_tokens[1..];
     }
-    if combat_words_contain_pattern(
+    if word_slice_contains_word(
         &crate::runtime_backend::token_word_refs(target_tokens),
-        COMBAT_EVENLY_PATTERN,
-        "distribution",
+        COMBAT_EVENLY_WORD,
     ) && let Some(among_idx) = find_index(target_tokens, |token: &OwnedLexToken| {
         token.is_word(COMBAT_AMONG_WORD)
     }) {
@@ -1113,10 +932,9 @@ pub(crate) fn parse_deal_damage_with_amount(
             );
             return Ok(EffectAst::subject_verb_damage(amount, target));
         }
-        if combat_words_contain_pattern(
+        if word_slice_contains_any_word(
             &crate::runtime_backend::token_word_refs(each_of_tokens),
-            COMBAT_TARGET_WORD_PATTERN,
-            "target",
+            COMBAT_TARGET_OR_TARGETS_WORDS,
         ) {
             let target = parse_target_phrase(each_of_tokens)?;
             return Ok(EffectAst::subject_verb_damage(amount, target));
@@ -1127,27 +945,17 @@ pub(crate) fn parse_deal_damage_with_amount(
     }
     let normalized_target_words =
         crate::runtime_backend::lexer::parser_token_word_refs(target_tokens);
-    let each_player_max_speed_filter = combat_words_start_with_pattern(
-        &normalized_target_words,
-        COMBAT_EACH_OR_ALL_HEAD_PATTERN,
-        "scope",
-    ) && normalized_target_words
-        .iter()
-        .any(|word| COMBAT_PLAYER_OR_PLAYERS_WORDS.contains(word))
-        && combat_words_contain_pattern(
-            &normalized_target_words,
-            COMBAT_MAX_SPEED_PATTERN,
-            "speed",
-        );
+    let each_player_max_speed_filter =
+        word_slice_starts_with_any(&normalized_target_words, COMBAT_EACH_OR_ALL_HEAD_PREFIXES)
+            && normalized_target_words
+                .iter()
+                .any(|word| COMBAT_PLAYER_OR_PLAYERS_WORDS.contains(word))
+            && word_slice_contains_phrase(&normalized_target_words, COMBAT_MAX_SPEED_PHRASE);
     if each_player_max_speed_filter {
         let has_max_speed = !(normalized_target_words
             .iter()
             .any(|word| COMBAT_NEGATION_WORDS.contains(word))
-            || combat_words_contain_pattern(
-                &normalized_target_words,
-                COMBAT_DOES_NOT_PATTERN,
-                "negation",
-            ));
+            || word_slice_contains_phrase(&normalized_target_words, COMBAT_DOES_NOT_PHRASE));
         let filter = if has_max_speed {
             PlayerFilter::with_max_speed(PlayerFilter::Any)
         } else {
@@ -1162,7 +970,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_WHO_PREFIXES).is_some()
-        && combat_words_contain_pattern(&target_words, COMBAT_THIS_WAY_PATTERN, "reference")
+        && word_slice_contains_phrase(&target_words, COMBAT_THIS_WAY_PHRASE)
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachOpponentDid {
@@ -1174,7 +982,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
     if grammar::words_match_any_prefix(target_tokens, EACH_PLAYER_WHO_PREFIXES).is_some()
-        && combat_words_contain_pattern(&target_words, COMBAT_THIS_WAY_PATTERN, "reference")
+        && word_slice_contains_phrase(&target_words, COMBAT_THIS_WAY_PHRASE)
     {
         let predicate = parse_who_did_this_way_predicate(&target_tokens[2..])?;
         return Ok(EffectAst::ForEachPlayerDid {
@@ -1186,8 +994,8 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if let Some(and_each_idx) =
-        combat_words_find_pattern_start(&target_words, COMBAT_AND_EACH_OR_ALL_PATTERN, "split")
+    if let Some((_, and_each_idx)) =
+        word_slice_find_any_phrase_start(&target_words, COMBAT_AND_EACH_OR_ALL_PHRASES)
         && and_each_idx > 0
     {
         let player_target_tokens = trim_commas(&target_tokens[..and_each_idx]);
@@ -1217,9 +1025,9 @@ pub(crate) fn parse_deal_damage_with_amount(
         }
     }
 
-    if combat_words_start_with_pattern(&target_words, COMBAT_EACH_OR_ALL_HEAD_PATTERN, "scope")
-        && let Some(and_each_idx) =
-            combat_words_find_pattern_start(&target_words, COMBAT_AND_EACH_PLAYER_PATTERN, "split")
+    if word_slice_starts_with_any(&target_words, COMBAT_EACH_OR_ALL_HEAD_PREFIXES)
+        && let Some((_, and_each_idx)) =
+            word_slice_find_any_phrase_start(&target_words, COMBAT_AND_EACH_PLAYER_PHRASES)
         && and_each_idx >= 1
         && and_each_idx + 3 == target_words.len()
     {
@@ -1242,11 +1050,7 @@ pub(crate) fn parse_deal_damage_with_amount(
     if grammar::words_match_any_prefix(target_tokens, EACH_OPPONENT_AND_EACH_PREFIXES).is_some()
         && combat_words_contain_word(&target_words, "creature")
         && combat_words_contain_word(&target_words, "planeswalker")
-        && combat_words_contain_pattern(
-            &target_words,
-            COMBAT_ITERATED_PLAYER_CONTROL_PATTERN,
-            "controller",
-        )
+        && word_slice_contains_any_phrase(&target_words, COMBAT_ITERATED_PLAYER_CONTROL_PHRASES)
     {
         let mut filter = ObjectFilter::default();
         filter.card_types = vec![CardType::Creature, CardType::Planeswalker];
@@ -1262,7 +1066,7 @@ pub(crate) fn parse_deal_damage_with_amount(
         });
     }
 
-    if combat_words_start_with_pattern(&target_words, COMBAT_EACH_OR_ALL_HEAD_PATTERN, "scope") {
+    if word_slice_starts_with_any(&target_words, COMBAT_EACH_OR_ALL_HEAD_PREFIXES) {
         if target_tokens.len() < 2 {
             return Err(CardTextError::ParseError(
                 "missing damage target filter after 'each'".to_string(),
@@ -1273,20 +1077,20 @@ pub(crate) fn parse_deal_damage_with_amount(
         return Ok(EffectAst::subject_verb_damage_each(amount.clone(), filter));
     }
 
-    if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word(COMBAT_AT_WORD)) {
-        let matches_end_of_combat = combat_words_exact_pattern_matches(
-            &crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]),
-            COMBAT_END_OF_COMBAT_PATTERN,
-            "timing",
-        );
-        if matches_end_of_combat && at_idx >= 1 {
-            let pre_target_tokens = trim_commas(&target_tokens[..at_idx]);
-            if !pre_target_tokens.is_empty() {
-                let target = parse_target_phrase(&pre_target_tokens)?;
-                return Ok(EffectAst::DelayedUntilEndOfCombat {
-                    effects: vec![EffectAst::subject_verb_damage(amount, target)],
-                });
-            }
+    if let Some(at_idx) = find_index(&target_tokens, |token| token.is_word(COMBAT_AT_WORD))
+        && at_idx >= 1
+    {
+        let pre_target_tokens = trim_commas(&target_tokens[..at_idx]);
+        if !pre_target_tokens.is_empty()
+            && word_slice_eq_any(
+                &crate::runtime_backend::token_word_refs(&target_tokens[at_idx..]),
+                COMBAT_END_OF_COMBAT_TIMINGS,
+            )
+        {
+            let target = parse_target_phrase(&pre_target_tokens)?;
+            return Ok(EffectAst::DelayedUntilEndOfCombat {
+                effects: vec![EffectAst::subject_verb_damage(amount, target)],
+            });
         }
     }
 
@@ -1320,18 +1124,17 @@ pub(crate) fn parse_instead_if_control_predicate(
         }
     }
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-    if let Some(idx) =
-        combat_words_find_pattern_start(&filter_words, COMBAT_CAST_OR_TURN_MARKER_PATTERN, "marker")
+    if let Some((_, idx)) =
+        word_slice_find_any_phrase_start(&filter_words, COMBAT_CAST_OR_TURN_MARKER_PHRASES)
     {
         let cut_idx = token_index_for_word_index(filter_tokens, idx).unwrap_or(filter_tokens.len());
         filter_tokens = &filter_tokens[..cut_idx];
     }
     let mut filter_tokens = trim_commas(filter_tokens);
     let mut requires_different_powers = false;
-    if combat_words_end_with_pattern(
+    if word_slice_ends_with_any(
         &crate::runtime_backend::token_word_refs(&filter_tokens),
-        COMBAT_DIFFERENT_POWER_SUFFIX_PATTERN,
-        "suffix",
+        COMBAT_WITH_DIFFERENT_POWER_SUFFIXES,
     ) {
         requires_different_powers = true;
         let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);

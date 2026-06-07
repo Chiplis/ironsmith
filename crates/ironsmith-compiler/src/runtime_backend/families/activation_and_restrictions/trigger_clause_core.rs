@@ -646,7 +646,8 @@ const DURING_YOUR_TURN_TRIGGER_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["during", "your", "turn"]);
 const DIES_DURING_YOUR_TURN_SUFFIX: ClauseShape<'static> =
     clause_shape!(suffix & ["dies", "during", "your", "turn"]);
-const DIES_THIS_TURN_SUFFIX: ClauseShape<'static> = clause_shape!(suffix & ["dies", "this", "turn"]);
+const DIES_THIS_TURN_SUFFIX: ClauseShape<'static> =
+    clause_shape!(suffix & ["dies", "this", "turn"]);
 const YOU_GAIN_LIFE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(exact & ["you", "gain", "life"]);
 const LOSE_LIFE_TRIGGER_SUFFIX: ClauseShape<'static> =
@@ -795,24 +796,24 @@ fn token_words_match_prefix(tokens: &[OwnedLexToken], shape: &ClauseShape<'stati
     trigger_clause_shape_matches_words(&words, *shape)
 }
 
-fn trigger_clause_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+fn trigger_clause_shape_matches_words(words: &[&str], shape: ClauseShape<'static>) -> bool {
+    shape.matches_word_slice(words)
 }
 
-fn trigger_clause_shape_matches_word<'a>(word: &str, shape: ClauseShape<'a>) -> bool {
+fn trigger_clause_shape_matches_word(word: &str, shape: ClauseShape<'static>) -> bool {
     trigger_clause_shape_matches_words(&[word], shape)
 }
 
-fn trigger_clause_token_matches_shape<'a>(token: &OwnedLexToken, shape: ClauseShape<'a>) -> bool {
+fn trigger_clause_token_matches_shape(token: &OwnedLexToken, shape: ClauseShape<'static>) -> bool {
     token
         .as_word()
         .is_some_and(|word| trigger_clause_shape_matches_word(word, shape))
 }
 
-fn trigger_clause_shape_matches_word_at<'a>(
+fn trigger_clause_shape_matches_word_at(
     words: &[&str],
     idx: usize,
-    shape: ClauseShape<'a>,
+    shape: ClauseShape<'static>,
 ) -> bool {
     words
         .get(idx)
@@ -3844,27 +3845,29 @@ pub(crate) fn parse_trigger_clause_lexed(
                 let filter_word_view = ActivationRestrictionCompatWords::new(filter_tokens);
                 let filter_words = filter_word_view.to_word_refs();
                 let mut filter = ObjectFilter::source();
-                if trigger_clause_shape_matches_words(&filter_words, SOURCE_ARTIFACT_WORD_PATTERN) {
-                    filter = filter.with_type(CardType::Artifact);
-                } else if trigger_clause_shape_matches_words(
-                    &filter_words,
-                    SOURCE_CREATURE_WORD_PATTERN,
-                ) {
-                    filter = filter.with_type(CardType::Creature);
-                } else if trigger_clause_shape_matches_words(
+                let is_artifact =
+                    trigger_clause_shape_matches_words(&filter_words, SOURCE_ARTIFACT_WORD_PATTERN);
+                let is_creature =
+                    trigger_clause_shape_matches_words(&filter_words, SOURCE_CREATURE_WORD_PATTERN);
+                let is_enchantment = trigger_clause_shape_matches_words(
                     &filter_words,
                     SOURCE_ENCHANTMENT_WORD_PATTERN,
-                ) {
-                    filter = filter.with_type(CardType::Enchantment);
-                } else if trigger_clause_shape_matches_words(
-                    &filter_words,
-                    SOURCE_LAND_WORD_PATTERN,
-                ) {
-                    filter = filter.with_type(CardType::Land);
-                } else if trigger_clause_shape_matches_words(
+                );
+                let is_land =
+                    trigger_clause_shape_matches_words(&filter_words, SOURCE_LAND_WORD_PATTERN);
+                let is_planeswalker = trigger_clause_shape_matches_words(
                     &filter_words,
                     SOURCE_PLANESWALKER_WORD_PATTERN,
-                ) {
+                );
+                if is_artifact {
+                    filter = filter.with_type(CardType::Artifact);
+                } else if is_creature {
+                    filter = filter.with_type(CardType::Creature);
+                } else if is_enchantment {
+                    filter = filter.with_type(CardType::Enchantment);
+                } else if is_land {
+                    filter = filter.with_type(CardType::Land);
+                } else if is_planeswalker {
                     filter = filter.with_type(CardType::Planeswalker);
                 }
                 filter
@@ -4382,12 +4385,13 @@ pub(crate) fn parse_trigger_clause_lexed(
                     words.join(" ")
                 )));
             }
-            let mut filter = parse_trigger_subject_filter_lexed(subject_tokens)?.ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported dies-this-turn trigger subject filter (clause: '{}')",
-                    words.join(" ")
-                ))
-            })?;
+            let mut filter =
+                parse_trigger_subject_filter_lexed(subject_tokens)?.ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported dies-this-turn trigger subject filter (clause: '{}')",
+                        words.join(" ")
+                    ))
+                })?;
             if other {
                 filter.other = true;
             }

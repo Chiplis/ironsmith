@@ -177,10 +177,7 @@ const REPLACE_SACRIFICE_TOKEN_END_COMBAT_PATTERN: LexPattern<'static> = LexPatte
 const REPLACE_TAKE_EXTRA_TURN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action("take", LexCaptureKind::OneOf(&["take"])),
     LexPattern::phrase(&["an", "extra", "turn"]),
-    LexPattern::modifier(
-        "anchor",
-        LexCaptureKind::OneOfPhrase(&[&["after", "this", "one"]]),
-    ),
+    LexPattern::modifier("anchor", LexCaptureKind::OneOfPhrase(&[&["after", "this", "one"]])),
 ]);
 const REPLACE_TAKE_EXTRA_TURN_CHOSEN_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::subject(

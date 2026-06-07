@@ -5,6 +5,7 @@ use crate::runtime_backend::effect_sentences::{
 };
 use crate::runtime_backend::lexer::{
     word_slice_contains_any_phrase, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_matching_phrase, word_slice_matching_prefix,
 };
 
 macro_rules! sentence_unsupported_adapters_lexed {
@@ -656,19 +657,20 @@ fn sentence_words_contain_any_phrase(words: &[&str], phrases: &[&[&str]]) -> boo
 fn parse_it_is_aura_enchantment_sentence_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
-    let tail = if let Some(prefix) = sentence_words_starting_phrase(&words, SENTENCE_ITS_AN_PREFIXES)
+    let tail = if let Some(prefix) =
+        word_slice_matching_prefix(&words, SENTENCE_ITS_AN_PREFIXES)
     {
         clause.after_words(prefix.len())?
-    } else if sentence_words_start_with(&words, SENTENCE_IT_IS_AN_PREFIX) {
+    } else if word_slice_starts_with(&words, SENTENCE_IT_IS_AN_PREFIX) {
         clause.after_words(3)?
     } else {
         return None;
     };
-    if !sentence_words_start_with(&tail.word_refs(), SENTENCE_AURA_ENCHANT_CREATURE_PREFIX) {
+    if !word_slice_starts_with(&tail.word_refs(), SENTENCE_AURA_ENCHANT_CREATURE_PREFIX) {
         return None;
     }
 
-    let attachment_filter = if sentence_words_start_with(
+    let attachment_filter = if word_slice_starts_with(
         &tail.after_words(5)?.word_refs(),
         SENTENCE_YOU_CONTROL_PREFIX,
     ) {
@@ -682,7 +684,7 @@ fn parse_it_is_aura_enchantment_sentence_lexed(tokens: &[OwnedLexToken]) -> Opti
         Until::Forever,
     )];
 
-    if sentence_words_contain_any_phrase(&tail.word_refs(), SENTENCE_LOSES_ALL_ABILITIES_PHRASES) {
+    if word_slice_contains_any_phrase(&tail.word_refs(), SENTENCE_LOSES_ALL_ABILITIES_PHRASES) {
         effects.push(EffectAst::subject_verb_remove_abilities_all(
             ObjectFilter::default(),
             Vec::new(),

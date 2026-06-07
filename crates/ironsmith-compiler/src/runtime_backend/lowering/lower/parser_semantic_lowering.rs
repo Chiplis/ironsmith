@@ -2,6 +2,7 @@ use super::*;
 use crate::KeywordAction;
 use crate::ZoneReplacementDurationAst;
 use crate::runtime_backend::ast::{SubjectVerbEffectAst, SubjectVerbSubjectAst};
+use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::grammar::abilities::{
     is_minimum_spell_total_mana_three_line_lexed, is_players_cant_pay_life_or_sacrifice_line_lexed,
 };
@@ -186,6 +187,45 @@ const OPPONENT_WOULD_DRAW_PHRASES: &[&[&str]] = &[
     &["opponent", "would", "draw"],
 ];
 
+const IF_YOU_DO_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [IF_YOU_DO_PHRASE]);
+const IF_YOU_DONT_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [IF_YOU_DONT_PHRASES]);
+const EFFECT_STARTS_IF_PATTERN: ClauseShape<'static> = clause_shape!(prefix IF_PREFIX);
+const FULL_PARTY_INSTEAD_PATTERN: ClauseShape<'static> = ClauseShape::new().contains_phrases(&[
+    IF_YOU_HAVE_FULL_PARTY_PHRASE,
+    UNTIL_END_OF_TURN_INSTEAD_PHRASE,
+]);
+const FULL_PARTY_CONDITION_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_phrases & [IF_YOU_HAVE_FULL_PARTY_PHRASE]);
+const ADDITIONAL_LAND_PLAY_STATIC_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix ADDITIONAL_LAND_PLAY_STATIC_PREFIX);
+const ADDITIONAL_LAND_PLAY_STATIC_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any ADDITIONAL_LAND_PLAY_STATIC_TAILS);
+const CANT_BE_BLOCKED_LINE_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix_any CANT_BE_BLOCKED_SUFFIXES);
+const THIS_OR_IT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any THIS_OR_IT_PREFIXES);
+const KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_WORDS);
+const BOAST_TWICE_STATIC_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact BOAST_TWICE_STATIC_WORDS);
+const EQUIP_ABILITIES_INSTANT_SPEED_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact EQUIP_ABILITIES_INSTANT_SPEED_WORDS);
+const VOTE_ADDITIONAL_TIME_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact VOTE_ADDITIONAL_TIME_WORDS);
+const VOTE_ADDITIONAL_VOTE_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact VOTE_ADDITIONAL_VOTE_WORDS);
+const CHARACTER_SELECT_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix CHARACTER_SELECT_PREFIX);
+const PARTNER_WITH_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_WITH_PREFIX);
+const SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_WORDS);
+const SELF_X_COUNTER_ETB_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any SELF_ENTERS_WITH_X_PLUS_ONE_COUNTER_PREFIXES);
+const REVEALED_CARDS_TOTAL_MANA_VALUE_X_PATTERN: ClauseShape<'static> =
+    clause_shape!(contains_any_phrases & [REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES]);
+
 fn parse_effect_sentences_from_text(
     text: &str,
     line_index: usize,
@@ -219,17 +259,15 @@ fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToke
 }
 
 fn full_parse_tokens_contain_if_you_do(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_phrase(&token_word_refs(tokens), IF_YOU_DO_PHRASE)
+    IF_YOU_DO_PATTERN.matches_word_slice(&token_word_refs(tokens))
 }
 
 fn full_parse_tokens_contain_if_you_dont(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_any_phrase(&token_word_refs(tokens), IF_YOU_DONT_PHRASES)
+    IF_YOU_DONT_PATTERN.matches_word_slice(&token_word_refs(tokens))
 }
 
 fn full_parse_tokens_contain_full_party_instead(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
-    word_slice_contains_phrase(&words, IF_YOU_HAVE_FULL_PARTY_PHRASE)
-        && word_slice_contains_phrase(&words, UNTIL_END_OF_TURN_INSTEAD_PHRASE)
+    FULL_PARTY_INSTEAD_PATTERN.matches_word_slice(&token_word_refs(tokens))
 }
 
 fn looks_like_combined_spell_and_activation_tax(words: &[&str]) -> bool {
@@ -685,15 +723,13 @@ fn statement_leading_effect_verb(word: &str) -> bool {
 
 fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> Option<LineAst> {
     let words = token_word_refs(tokens);
-    if word_slice_eq_any(&words, SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_WORDS) {
+    if SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN.matches_word_slice(&words) {
         return Some(single_plus_one_counter_enters_static_chunk());
     }
 
     if let Some((predicate_tokens, effect_tokens)) = split_once_at_comma_tokens(tokens)
-        && word_slice_eq_any(
-            &token_word_refs(effect_tokens),
-            SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_WORDS,
-        )
+        && SELF_ENTERS_WITH_SINGLE_PLUS_ONE_COUNTER_PATTERN
+            .matches_word_slice(&token_word_refs(effect_tokens))
         && let Some((condition, predicate_body)) =
             parse_adamant_counter_condition_tokens(predicate_tokens)
     {
@@ -727,24 +763,19 @@ fn parse_self_enters_with_x_counters_static_chunk(tokens: &[OwnedLexToken]) -> O
 }
 
 fn tokens_start_with_self_x_counter_etb(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_starts_with_any(
-        &token_word_refs(tokens),
-        SELF_ENTERS_WITH_X_PLUS_ONE_COUNTER_PREFIXES,
-    )
+    SELF_X_COUNTER_ETB_PATTERN.matches_word_slice(&token_word_refs(tokens))
 }
 
 fn revealed_cards_total_mana_value_x_value_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::effect::Value> {
-    word_slice_contains_any_phrase(
-        &token_word_refs(tokens),
-        REVEALED_CARDS_TOTAL_MANA_VALUE_X_PHRASES,
-    )
-    .then(|| {
-        crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
-            "__public_revealed",
-        )))
-    })
+    REVEALED_CARDS_TOTAL_MANA_VALUE_X_PATTERN
+        .matches_word_slice(&token_word_refs(tokens))
+        .then(|| {
+            crate::effect::Value::TotalManaValue(ObjectFilter::tagged(TagKey::from(
+                "__public_revealed",
+            )))
+        })
 }
 
 fn single_plus_one_counter_enters_static_chunk() -> LineAst {
@@ -930,16 +961,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
     if full_parse_tokens_contain_full_party_instead(full_parse_tokens)
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
-        let effect_tokens = if word_slice_contains_phrase(
-            &token_word_refs(effect_parse_tokens),
-            IF_YOU_HAVE_FULL_PARTY_PHRASE,
-        ) {
-            effect_parse_tokens
-        } else {
-            split_once_at_comma_tokens(full_parse_tokens)
-                .map(|(_, rest)| rest)
-                .unwrap_or(effect_parse_tokens)
-        };
+        let effect_tokens =
+            if FULL_PARTY_CONDITION_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))
+            {
+                effect_parse_tokens
+            } else {
+                split_once_at_comma_tokens(full_parse_tokens)
+                    .map(|(_, rest)| rest)
+                    .unwrap_or(effect_parse_tokens)
+            };
         let effects = parse_effect_sentences_lexed(effect_tokens)?;
         if !effects.is_empty() {
             return apply_chosen_option_to_triggered_chunk(
@@ -1066,7 +1096,7 @@ fn lower_rewrite_triggered_to_chunk_impl(
         && !full_parse_tokens_have_triggered_intervening_if_clause(full_parse_tokens)
         && !full_parse_tokens_contain_if_you_do(full_parse_tokens)
         && !full_parse_tokens_contain_if_you_dont(full_parse_tokens)
-        && !word_slice_starts_with(&token_word_refs(effect_parse_tokens), IF_PREFIX)
+        && !EFFECT_STARTS_IF_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))
     {
         let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
         let direct_effects = parse_effect_sentences_lexed(effect_parse_tokens)
@@ -1499,7 +1529,7 @@ fn lower_rewrite_static_to_chunk_impl(
         );
     }
     let parse_words = token_word_refs(parse_tokens);
-    if word_slice_eq(&parse_words, KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_WORDS) {
+    if KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN.matches_word_slice(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::krrik_black_mana_may_be_paid_with_life().into()),
             chosen_option_label,
@@ -1519,7 +1549,7 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if word_slice_eq(&parse_words, BOAST_TWICE_STATIC_WORDS) {
+    if BOAST_TWICE_STATIC_PATTERN.matches_word_slice(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::boast_twice_each_turn().into()),
             chosen_option_label,
@@ -1552,19 +1582,19 @@ fn lower_rewrite_static_to_chunk_impl(
             chosen_option_label,
         );
     }
-    if word_slice_eq(&parse_words, EQUIP_ABILITIES_INSTANT_SPEED_WORDS) {
+    if EQUIP_ABILITIES_INSTANT_SPEED_PATTERN.matches_word_slice(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::equip_abilities_any_time().into()),
             chosen_option_label,
         );
     }
-    if word_slice_eq(&parse_words, VOTE_ADDITIONAL_TIME_WORDS) {
+    if VOTE_ADDITIONAL_TIME_PATTERN.matches_word_slice(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::vote_additional_time_while_voting().into()),
             chosen_option_label,
         );
     }
-    if word_slice_eq(&parse_words, VOTE_ADDITIONAL_VOTE_WORDS) {
+    if VOTE_ADDITIONAL_VOTE_PATTERN.matches_word_slice(&parse_words) {
         return wrap_chosen_option_static_chunk(
             LineAst::StaticAbility(StaticAbility::vote_additional_vote_while_voting().into()),
             chosen_option_label,
@@ -1734,8 +1764,8 @@ fn looks_like_ability_word_marker_tokens(parse_tokens: &[OwnedLexToken]) -> bool
 
 fn should_skip_keyword_action_static_probe_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    word_slice_ends_with_any(&words, CANT_BE_BLOCKED_SUFFIXES)
-        && !word_slice_starts_with_any(&words, THIS_OR_IT_PREFIXES)
+    CANT_BE_BLOCKED_LINE_PATTERN.matches_word_slice(&words)
+        && !THIS_OR_IT_PREFIX_PATTERN.matches_word_slice(&words)
 }
 
 fn is_draft_rule_static_line(parse_tokens: &[OwnedLexToken]) -> bool {
@@ -1786,12 +1816,12 @@ fn additional_land_play_static_count_uses_token_words() {
 
 fn parse_additional_land_play_static_count_tokens(parse_tokens: &[OwnedLexToken]) -> Option<u32> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(parse_tokens);
-    if !word_slice_starts_with(&words, ADDITIONAL_LAND_PLAY_STATIC_PREFIX) {
+    if !ADDITIONAL_LAND_PLAY_STATIC_PREFIX_PATTERN.matches_word_slice(&words) {
         return None;
     }
     let (count, used) = ironsmith_core::parse_cardinal_words(&words[3..])?;
     let tail_words = words.get(3 + used..)?;
-    if !word_slice_eq_any(tail_words, ADDITIONAL_LAND_PLAY_STATIC_TAILS) {
+    if !ADDITIONAL_LAND_PLAY_STATIC_TAIL_PATTERN.matches_word_slice(tail_words) {
         return None;
     }
     Some(count)
@@ -2321,14 +2351,13 @@ fn try_lower_partner_variant_keyword(
 }
 
 fn visible_partner_label_is_variant_tokens(tokens: &[OwnedLexToken]) -> bool {
-    let label_tokens = tokens_before_reminder_or_period(tokens);
-    let words = parser_token_word_refs(label_tokens);
+    let words = parser_token_word_refs(tokens_before_reminder_or_period(tokens));
     if word_slice_eq(&words, PARTNER_KEYWORD_WORDS)
-        || word_slice_starts_with(&words, PARTNER_WITH_PREFIX)
+        || PARTNER_WITH_PATTERN.matches_word_slice(&words)
     {
         return false;
     }
-    word_slice_starts_with(&words, CHARACTER_SELECT_PREFIX)
+    CHARACTER_SELECT_PREFIX_PATTERN.matches_word_slice(&words)
         || matches!(
             words.as_slice(),
             ["partner", second, ..] if *second != "with"

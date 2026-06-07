@@ -22,9 +22,10 @@ const EACH_PLAYER_REVEALS_TOP_PREFIX: &[&str] = &[
 ];
 const EACH_PLAYER_PUTS_REST_GRAVEYARD: &[&str] =
     &["puts", "the", "rest", "into", "their", "graveyard"];
-const TOKEN_COPY_EXILE_HEAD_PHRASES: &[&[&str]] = &[&["exile"], &["you", "exile"]];
 const TOKEN_COPY_EXILE_LEADING_WORDS: &[&str] = &["exile"];
 const TOKEN_COPY_YOU_EXILE_LEADING_WORDS: &[&str] = &["you", "exile"];
+const YOU_EXILE_PREFIX: &[&str] = &["you", "exile"];
+const EXILE_HEAD_PREFIX: &[&str] = &["exile"];
 const TOKEN_COPY_AND_OR_WORDS: &[&str] = &["and", "or"];
 
 fn where_x_is_prefixed_clause(
@@ -52,10 +53,6 @@ const TOKEN_COPY_THAT_TARGET_REFERENCE_PHRASES: &[&[&str]] = &[
 ];
 const TOKEN_COPY_TIMING_TAIL_WORDS: &[&str] =
     &["at", "beginning", "end", "combat", "turn", "step", "until"];
-const IT_OR_THEM_REFERENCE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "reference",
-    LexCaptureKind::OneOfPhrase(IT_OR_THEM_PHRASES),
-)]);
 const TOKEN_COPY_TARGET_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "target_head",
     LexCaptureKind::OneOf(TARGET_HEAD_WORDS),
@@ -75,10 +72,6 @@ const TOKEN_COPY_TIMING_TAIL_PATTERN: LexPattern<'static> =
         "timing",
         LexCaptureKind::OneOf(TOKEN_COPY_TIMING_TAIL_WORDS),
     )]);
-const EACH_PLAYER_REVEALS_TOP_COUNT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(EACH_PLAYER_REVEALS_TOP_PREFIX),
-    LexPattern::role_capture("count", LexCaptureRole::Amount, LexCaptureKind::Rest),
-]);
 const EACH_PLAYER_PUTS_REVEALED_PERMANENTS_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(PUTS_ALL_PERMANENT_CARDS_PREFIX),
     LexPattern::role_capture(
@@ -94,12 +87,6 @@ const EACH_PLAYER_PUTS_REVEALED_PERMANENTS_PATTERN: LexPattern<'static> = LexPat
     ),
     LexPattern::phrase(ONTO_THE_BATTLEFIELD_PHRASE),
 ]);
-const EACH_PLAYER_PUTS_REST_GRAVEYARD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::phrase(EACH_PLAYER_PUTS_REST_GRAVEYARD)]);
-const TOKEN_COPY_EXILE_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "exile",
-    LexCaptureKind::OneOfPhrase(TOKEN_COPY_EXILE_HEAD_PHRASES),
-)]);
 const TOKEN_COPY_THAT_PLAYER_TAIL_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::subject(
         "player",
@@ -125,13 +112,6 @@ const TOKEN_COPY_HAND_LOCATION_PHRASES: &[&[&str]] = &[&["hand"], &["hands"]];
 const TOKEN_COPY_HAND_LOCATION_WORDS: &[&str] = &["hand", "hands"];
 const TOKEN_COPY_LIBRARY_LOCATION_PHRASES: &[&[&str]] = &[&["library"], &["libraries"]];
 const TOKEN_COPY_GRAVEYARD_LOCATION_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
-fn it_or_them_reference_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause
-        .match_pattern(IT_OR_THEM_REFERENCE_PATTERN)
-        .and_then(|matched| matched.capture_word_range("reference"))
-        .is_some()
-}
-
 fn token_copy_destroy_attached_supported_target(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     let words = clause.word_refs();
     TOKEN_COPY_TARGET_HEAD_PATTERN
@@ -159,10 +139,15 @@ fn token_copy_destroy_attached_has_timing_tail(clause: SubjectVerbPrimitiveClaus
 fn token_copy_each_player_reveal_count_clause(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Option<SubjectVerbPrimitiveClause<'_>> {
-    clause
-        .match_pattern(EACH_PLAYER_REVEALS_TOP_COUNT_PATTERN)
-        .and_then(|matched| clause.pattern_capture_role(&matched, LexCaptureRole::Amount))
-        .map(SubjectVerbPrimitiveClause::trimmed)
+    let reveal_words = clause.word_refs();
+    if !word_slice_starts_with(&reveal_words, EACH_PLAYER_REVEALS_TOP_PREFIX) {
+        return None;
+    }
+    let count_clause = clause.after_words(EACH_PLAYER_REVEALS_TOP_PREFIX.len())?;
+    if count_clause.is_empty() {
+        return None;
+    }
+    Some(count_clause.trimmed())
 }
 
 fn token_copy_each_player_puts_revealed_permanents_matches(
@@ -174,32 +159,12 @@ fn token_copy_each_player_puts_revealed_permanents_matches(
         .is_some()
 }
 
-fn token_copy_each_player_rest_graveyard_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause
-        .match_pattern(EACH_PLAYER_PUTS_REST_GRAVEYARD_PATTERN)
-        .is_some()
-}
-
-fn token_copy_exile_head_matches(words: &[&str]) -> bool {
-    TOKEN_COPY_EXILE_HEAD_PATTERN
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("exile"))
-        .is_some_and(|range| range.start == 0)
-}
-
-fn token_copy_exile_head_leading_words(words: &[&str]) -> &'static [&'static str] {
-    TOKEN_COPY_EXILE_HEAD_PATTERN
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("exile"))
-        .filter(|range| range.start == 0)
-        .map(|range| {
-            if range.end - range.start == 2 {
-                TOKEN_COPY_YOU_EXILE_LEADING_WORDS
-            } else {
-                TOKEN_COPY_EXILE_LEADING_WORDS
-            }
-        })
-        .unwrap_or(TOKEN_COPY_EXILE_LEADING_WORDS)
+fn token_copy_exile_head_leading_words(head_words: &[&str]) -> &'static [&'static str] {
+    if word_slice_starts_with(head_words, YOU_EXILE_PREFIX) {
+        TOKEN_COPY_YOU_EXILE_LEADING_WORDS
+    } else {
+        TOKEN_COPY_EXILE_LEADING_WORDS
+    }
 }
 
 fn token_copy_action_starts_clause(words: &[&str], pattern: LexPattern<'static>) -> bool {
@@ -556,7 +521,7 @@ pub(crate) fn parse_sentence_each_player_reveals_top_count_put_permanents_onto_b
     }
 
     let rest_clause = segments[2].without_leading_connectors_clause();
-    if !token_copy_each_player_rest_graveyard_matches(rest_clause) {
+    if !word_slice_eq(&rest_clause.word_refs(), EACH_PLAYER_PUTS_REST_GRAVEYARD) {
         return Ok(None);
     }
 
@@ -1178,7 +1143,9 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
     }
 
     let head_words = head_slice.word_refs();
-    if !token_copy_exile_head_matches(&head_words) {
+    if !word_slice_starts_with(&head_words, YOU_EXILE_PREFIX)
+        && !word_slice_starts_with(&head_words, EXILE_HEAD_PREFIX)
+    {
         return Ok(None);
     }
 
@@ -1262,7 +1229,7 @@ pub(crate) fn parse_exile_source_with_counters_sentence(
     }
 
     let on_target_clause = counter_clause.from(on_idx + 1);
-    if !it_or_them_reference_matches(on_target_clause) {
+    if !word_slice_eq_any(&on_target_clause.word_refs(), IT_OR_THEM_PHRASES) {
         return Ok(None);
     }
 

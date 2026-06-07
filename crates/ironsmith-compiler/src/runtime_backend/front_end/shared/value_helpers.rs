@@ -170,6 +170,7 @@ const OR_POWER_TOUGHNESS_PATTERN: LexPattern<'static> =
     ])]);
 
 fn value_helper_words_match_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
+    use super::lex_patterns::LexPattern as _;
     pattern.match_word_refs(words).is_some()
 }
 

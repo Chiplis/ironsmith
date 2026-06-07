@@ -1,4 +1,3 @@
-use super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::super::lexer::{
     LexedClause, OwnedLexToken, word_slice_contains_all_words, word_slice_contains_phrase,
     word_slice_eq_any, word_slice_first_is, word_slice_starts_with, word_slice_starts_with_any,
@@ -75,21 +74,12 @@ const LOOKED_REST_BOTTOM_LIBRARY_REQUIRED_WORDS: &[&str] = &["rest", "bottom", "
 const LOOKED_PUT_OR_PUTS_WORDS: &[&str] = &["put", "puts"];
 const LOOKED_OR_WORD: &str = "or";
 const LOOKED_AND_WORD: &str = "and";
+const LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX: &[&str] = &["with", "the", "chosen", "name"];
 const LOOKED_SAME_NAME_SUFFIXES: &[&[&str]] = &[
     &["with", "that", "name"],
-    &["with", "the", "chosen", "name"],
+    LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX,
     &["with", "chosen", "name"],
 ];
-const LOOKED_SAME_NAME_FILTER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
-        "filter",
-        LexCaptureKind::UntilLastAnyPhrase(LOOKED_SAME_NAME_SUFFIXES),
-    ),
-    LexPattern::tail(
-        "same_name_tail",
-        LexCaptureKind::OneOfPhrase(LOOKED_SAME_NAME_SUFFIXES),
-    ),
-]);
 const LOOKED_CHOSEN_CARD_PHRASES: &[&[&str]] = &[&["chosen", "card"], &["chosen", "cards"]];
 const LOOKED_CARD_WORDS: &[&str] = &["card", "cards"];
 
@@ -166,10 +156,7 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     let (count, used) = parse_number_or_x_value_lexed(count_clause.tokens())?;
     let tail_clause = count_clause.from(used).trimmed();
     let tail_words = tail_clause.word_refs();
-    if !word_slice_starts_with_any(
-        &tail_clause.word_refs(),
-        LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES,
-    ) {
+    if !word_slice_starts_with_any(&tail_clause.word_refs(), LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES) {
         return None;
     }
 
@@ -525,18 +512,25 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
 
 pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let raw_clause = LexedClause::new(tokens).trimmed();
-    let same_name_suffix;
-    let filter_tokens =
-        if let Some(matched) = LOOKED_SAME_NAME_FILTER_PATTERN.match_clause(raw_clause) {
-            same_name_suffix = true;
-            matched
-                .capture_clause_by_role(LexCaptureRole::Object, raw_clause)
-                .map(|filter_clause| filter_clause.trim())
-                .unwrap_or_else(|| raw_clause.trim())
-        } else {
-            same_name_suffix = false;
-            raw_clause.trim()
-        };
+    let raw_word_refs = raw_clause.word_refs();
+    let same_name_suffix = {
+        LOOKED_SAME_NAME_SUFFIXES
+            .iter()
+            .any(|suffix| raw_word_refs.ends_with(suffix))
+    };
+    let filter_tokens = if same_name_suffix {
+        let suffix_len = LOOKED_SAME_NAME_SUFFIXES
+            .iter()
+            .find(|suffix| raw_word_refs.ends_with(suffix))
+            .map(|suffix| suffix.len())
+            .unwrap_or(0);
+        raw_clause
+            .before_word(raw_word_refs.len() - suffix_len)
+            .unwrap_or(raw_clause)
+            .trim()
+    } else {
+        raw_clause.trim()
+    };
 
     let filter_clause = LexedClause::new(&filter_tokens);
     let words_all_refs = filter_clause.word_refs();

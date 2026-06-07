@@ -18,10 +18,7 @@ pub(crate) fn parse_gain_life_equal_to_power_sentence(
         return Ok(None);
     };
 
-    if !word_slice_starts_with(
-        &words[gain_idx + 1..],
-        UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX,
-    ) {
+    if !word_slice_starts_with(&words[gain_idx + 1..], UNSUPPORTED_GAIN_LIFE_EQUAL_TO_PREFIX) {
         return Ok(None);
     }
 

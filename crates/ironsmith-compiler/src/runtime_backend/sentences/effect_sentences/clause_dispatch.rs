@@ -649,13 +649,11 @@ fn parse_play_exiled_cards_for_as_long_as_exiled_clause(
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-            "exiled",
+            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
         ]
         || words
             == [
-                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-                "exiled",
+                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -674,18 +672,18 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells",
-            "this", "way",
+            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells", "this",
+            "way",
         ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
-                "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them", "this",
+                "way",
             ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
-                "spell", "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+                "this", "way",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(

@@ -319,7 +319,7 @@ const ATTACHED_CONTROLLER_OBJECT_WORDS: &[&str] = &[
 const CONTROLLER_WORD: &str = "controller";
 
 fn trigger_subject_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn trigger_subject_word_is_any(word: &str, expected: &[&str]) -> bool {
@@ -2028,12 +2028,7 @@ pub(crate) fn append_token_reminder_to_effect(
                 ["that", owner]
                     if matches!(
                         *owner,
-                        "cards"
-                            | "card's"
-                            | "creatures"
-                            | "creature's"
-                            | "objects"
-                            | "object's"
+                        "cards" | "card's" | "creatures" | "creature's" | "objects" | "object's"
                     ) =>
                 {
                     Some(value_for_it())

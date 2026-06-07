@@ -254,6 +254,22 @@ const ETB_CARD_TYPES_AMONG_CARDS_PREFIX_PATTERN: ClauseShape<'static> = clause_s
 );
 const ETB_CARD_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["card", "type", "among"], &["card", "types", "among"]]);
+const ETB_BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["basic", "land", "type", "among"],
+            &["basic", "land", "types", "among"],
+        ]
+);
+const ETB_CREATURE_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["creature", "type", "among"],
+            &["creature", "types", "among"],
+        ]
+);
+const ETB_COLORS_AMONG_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["color", "among"], &["colors", "among"]]);
 const ETB_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["graveyard"]);
 const ETB_AND_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> =
@@ -547,6 +563,10 @@ fn is_etb_source_reference_clause(clause: LexedClause<'_>) -> bool {
         || parse_subtype_flexible(words[1]).is_some()
 }
 
+fn starts_with_etb_source_reference(tokens: &[OwnedLexToken]) -> bool {
+    is_etb_source_reference_clause(LexedClause::new(tokens))
+}
+
 fn is_enters_with_counters_clause(clause: LexedClause<'_>) -> bool {
     const COUNTER_WORD_PATTERN: LexPattern<'static> =
         LexPattern::new(&[LexPattern::any_word(&["counter", "counters"])]);
@@ -731,7 +751,7 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
     counter_line_tokens.extend_from_slice(captured.with_tokens);
     counter_line_tokens.extend_from_slice(captured.counter_clause_tokens);
 
-    let Some(counters) = parse_enters_with_counters_line(&counter_line_tokens)? else {
+    let Some(counters) = parse_enters_with_counter_line(&counter_line_tokens)? else {
         return Ok(None);
     };
 
@@ -936,14 +956,12 @@ pub(crate) fn parse_enters_with_counters_line(
                 full_words.join(" ")
             )));
         } else {
-            count = parse_value_binding_clause(&tail)
-                .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
-                .ok_or_else(|| {
-                    CardTextError::ParseError(format!(
-                        "unsupported trailing self ETB counter clause (clause: '{}')",
-                        full_words.join(" ")
-                    ))
-                })?;
+            count = parse_enters_with_fallback_counter_value(&tail).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported trailing self ETB counter clause (clause: '{}')",
+                    full_words.join(" ")
+                ))
+            })?;
         }
     }
 
@@ -996,6 +1014,12 @@ fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Ve
         abilities.push(Ability::static_ability(static_ability));
     }
     (!abilities.is_empty()).then_some(abilities)
+}
+
+fn parse_enters_with_counter_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    parse_enters_with_counters_line(tokens)
 }
 
 fn parse_enters_with_added_abilities_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
@@ -1430,6 +1454,12 @@ fn parse_enters_with_counter_condition_clause(
     }
 
     parse_static_condition_clause(&condition_tokens).ok()
+}
+
+fn parse_enters_with_counter_object_filter_tokens(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    parse_object_filter(subject_tokens, false).ok()
 }
 
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -2034,6 +2064,10 @@ pub(crate) fn parse_where_x_source_stat_value(tokens: &[OwnedLexToken]) -> Optio
     }
 }
 
+fn parse_enters_with_fallback_counter_value(tail: &[OwnedLexToken]) -> Option<Value> {
+    parse_value_binding_clause(tail).map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+}
+
 pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
@@ -2047,16 +2081,19 @@ pub(crate) fn parse_where_x_is_fixed_plus_reference_value(
         return None;
     }
 
-    let reference_value = if ETB_SACRIFICED_CREATURE_POWER_PREFIX_PATTERN
-        .matches(captured.reference_clause)
-    {
-        Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-    } else if ETB_SACRIFICED_CREATURE_TOUGHNESS_PREFIX_PATTERN.matches(captured.reference_clause) {
-        Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-    } else if ETB_TAGGED_CREATURE_MANA_VALUE_PREFIX_PATTERN.matches(captured.reference_clause) {
-        Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
-    } else {
-        return None;
+    let reference_value = {
+        let it = || ChooseSpec::Tagged(TagKey::from(IT_TAG));
+        if ETB_SACRIFICED_CREATURE_POWER_PREFIX_PATTERN.matches(captured.reference_clause) {
+            Value::PowerOf(Box::new(it()))
+        } else if ETB_SACRIFICED_CREATURE_TOUGHNESS_PREFIX_PATTERN
+            .matches(captured.reference_clause)
+        {
+            Value::ToughnessOf(Box::new(it()))
+        } else if ETB_TAGGED_CREATURE_MANA_VALUE_PREFIX_PATTERN.matches(captured.reference_clause) {
+            Value::ManaValueOf(Box::new(it()))
+        } else {
+            return None;
+        }
     };
 
     Some(Value::Add(
@@ -2365,8 +2402,8 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
 
     let filter_tokens = parsed.filter_clause.tokens();
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-    let should_try_split = ETB_AND_GRAVEYARD_MARKER_PATTERN
-        .matches(LexedClause::new(filter_tokens))
+    let has_and_graveyard = ETB_AND_GRAVEYARD_MARKER_PATTERN.matches(LexedClause::new(filter_tokens));
+    let should_try_split = has_and_graveyard
         && filter_words
             .iter()
             .any(|word| etb_word_is_any(word, ETB_CONTROL_OWN_WORDS));
@@ -2575,6 +2612,9 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     if let Some(value) = parse_number_of_counters_on_source_value(&filter_words) {
         return Some(value);
     }
+    if let Some(value) = parse_among_types_scope_value(filter_tokens) {
+        return Some(scale_where_x_number_value(value, multiplier));
+    }
     if let Some(value) = parse_aggregate_scope_value_lexed(filter_tokens) {
         return Some(scale_where_x_number_value(value, multiplier));
     }
@@ -2666,6 +2706,37 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
     Some(scale_where_x_number_value(Value::Count(filter), multiplier))
+}
+
+fn parse_among_types_scope_value(filter_tokens: &[OwnedLexToken]) -> Option<Value> {
+    let clause = LexedClause::new(filter_tokens);
+    let build = |metric_words: usize, make: fn(ObjectFilter) -> Value| -> Option<Value> {
+        let mut scope = clause.after_words(metric_words)?;
+        if scope
+            .word_refs()
+            .first()
+            .is_some_and(|word| etb_word_is(word, ETB_THE_WORD))
+        {
+            scope = scope.after_words(1)?;
+        }
+        let scope_tokens = trim_edge_punctuation(scope.tokens());
+        if scope_tokens.is_empty() {
+            return None;
+        }
+        let filter = parse_object_filter_lexed(&scope_tokens, false).ok()?;
+        Some(make(filter))
+    };
+
+    if ETB_BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN.matches(LexedClause::new(filter_tokens)) {
+        return build(4, Value::BasicLandTypesAmong);
+    }
+    if ETB_CREATURE_TYPES_AMONG_PREFIX_PATTERN.matches(LexedClause::new(filter_tokens)) {
+        return build(4, Value::CreatureTypesAmong);
+    }
+    if ETB_COLORS_AMONG_PREFIX_PATTERN.matches(LexedClause::new(filter_tokens)) {
+        return build(2, Value::ColorsAmong);
+    }
+    None
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -3326,7 +3397,7 @@ fn parse_enters_tapped_unless_control_quantity_static_ability(
             default_filter_zone: Some(Zone::Battlefield),
         },
     )?;
-    if !control_condition.has_explicit_quantity() {
+    if control_condition.quantity_token_count == 0 {
         return None;
     }
     if let Some(ability) =
@@ -3976,7 +4047,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    if is_etb_source_reference_clause(LexedClause::new(&subject_tokens)) {
+    if starts_with_etb_source_reference(&subject_tokens) {
         return Ok(None);
     }
     if ETB_TRIGGER_INTRO_AFTER_LABEL_PATTERN.matches(LexedClause::new(&subject_tokens)) {
@@ -3987,7 +4058,7 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
         return Ok(None);
     }
 
-    let Ok(filter) = parse_object_filter(&subject_tokens, false) else {
+    let Some(filter) = parse_enters_with_counter_object_filter_tokens(&subject_tokens) else {
         return Ok(None);
     };
 

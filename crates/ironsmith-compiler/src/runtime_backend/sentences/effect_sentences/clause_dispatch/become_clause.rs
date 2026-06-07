@@ -5,21 +5,20 @@ use super::super::super::lexer::{
     LexedClause, OwnedLexToken, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
     word_slice_strip_any_suffix,
 };
+use super::super::super::object_filters::parse_object_filter_lexed;
 use super::super::super::util::{
     parse_card_type, parse_color, parse_subject, parse_target_phrase, parse_value,
     span_from_tokens, word_refs_except,
 };
-use super::super::super::object_filters::parse_object_filter_lexed;
 use super::super::clause_pattern_helpers::extract_subject_player;
 use super::super::parse_granted_abilities_for_gain_clause;
 use super::super::parse_subtype_word;
 use super::super::search_library::parse_restriction_duration;
 use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
 use super::helpers::{
-    parse_become_base_pt_tail, parse_become_creature_descriptor_words,
-    parse_pt_value_words, parse_subtype_word_or_plural, push_unique_card_type,
-    push_unique_subtype, render_lower_words, strip_base_power_toughness_subject_tokens,
-    subject_references_base_power_toughness,
+    parse_become_base_pt_tail, parse_become_creature_descriptor_words, parse_pt_value_words,
+    parse_subtype_word_or_plural, push_unique_card_type, push_unique_subtype, render_lower_words,
+    strip_base_power_toughness_subject_tokens, subject_references_base_power_toughness,
 };
 use crate::cards::builders::GrantedAbilityAst;
 use crate::effect::{Until, Value};
@@ -200,9 +199,7 @@ pub(crate) fn parse_become_clause(
     }
 
     let mut target = if target_subject_words.as_slice() == ["all"] {
-        let inferred_filter = if become_words.len() == 1
-            && parse_color(become_words[0]).is_some()
-        {
+        let inferred_filter = if become_words.len() == 1 && parse_color(become_words[0]).is_some() {
             Some(ObjectFilter::creature())
         } else if become_words.len() == 1
             && parse_subtype_word_or_plural(become_words[0]).is_some_and(|subtype| {
@@ -235,7 +232,11 @@ pub(crate) fn parse_become_clause(
         .is_some_and(|word| matches!(*word, "all" | "each"))
         && target_subject_words.len() > 1
     {
-        TargetAst::Object(parse_object_filter_lexed(&target_subject_tokens[1..], false)?, None, None)
+        TargetAst::Object(
+            parse_object_filter_lexed(&target_subject_tokens[1..], false)?,
+            None,
+            None,
+        )
     } else if target_subject_words.is_empty()
         || word_slice_eq_any(&target_subject_words, IT_THEY_THEM_CLAUSES)
         || super::is_tagged_object_reference(&target_subject_words)
@@ -364,8 +365,7 @@ pub(crate) fn parse_become_clause(
         }
     }
 
-    if let Some((power, toughness, pt_word_count)) = parse_pt_value_words(become_words)
-    {
+    if let Some((power, toughness, pt_word_count)) = parse_pt_value_words(become_words) {
         if subject_targets_base_pt || become_words.len() == 1 {
             return Ok(EffectAst::subject_verb_set_base_power_toughness(
                 power, toughness, target, duration,

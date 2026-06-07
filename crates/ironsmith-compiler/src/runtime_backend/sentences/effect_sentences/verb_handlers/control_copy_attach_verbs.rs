@@ -34,44 +34,44 @@ const CCA_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const CCA_HAND_OR_HANDS_WORDS: &[&str] = &["hand", "hands"];
 const CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS: &[&str] = &["graveyard", "graveyards"];
 const CCA_LIBRARY_OR_LIBRARIES_WORDS: &[&str] = &["library", "libraries"];
-const CCA_HAND_DESTINATION_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_HAND_DESTINATION_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "zone",
     LexCaptureKind::OneOf(CCA_HAND_OR_HANDS_WORDS),
 )]);
-const CCA_GRAVEYARD_DESTINATION_PATTERN: LexPattern<'static> =
+const CCA_GRAVEYARD_DESTINATION_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "zone",
         LexCaptureKind::OneOf(CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS),
     )]);
-const CCA_THE_GAME_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_THE_GAME_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "game",
     LexCaptureKind::OneOfPhrase(&[CCA_THE_GAME_WORDS]),
 )]);
-const CCA_LIBRARY_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_LIBRARY_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "zone",
     LexCaptureKind::OneOf(CCA_LIBRARY_WORDS),
 )]);
-const CCA_REST_TARGET_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_REST_TARGET_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "rest",
     LexCaptureKind::OneOfPhrase(CCA_REST_TARGET_PHRASES),
 )]);
-const CCA_ATTACKING_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+const CCA_ATTACKING_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
     "attacking",
     LexCaptureKind::OneOf(CCA_ATTACKING_WORDS),
 )]);
-const CCA_TAPPED_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+const CCA_TAPPED_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
     "tapped",
     LexCaptureKind::OneOf(CCA_TAPPED_WORDS),
 )]);
-const CCA_PERMANENT_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_PERMANENT_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "permanent",
     LexCaptureKind::OneOf(CCA_PERMANENT_WORDS),
 )]);
-const CCA_STICKER_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
+const CCA_STICKER_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "sticker",
     LexCaptureKind::OneOf(CCA_STICKER_WORDS),
 )]);
-const CCA_FROM_COMMAND_ZONE_PATTERN: LexPattern<'static> =
+const CCA_FROM_COMMAND_ZONE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "source_zone",
         LexCaptureKind::OneOfPhrase(CCA_FROM_COMMAND_ZONE_PHRASES),
@@ -101,7 +101,7 @@ const CCA_OWNER_CONTROLLER_PHRASES: &[&[&str]] = &[
     &["that", "players"],
     &["that", "player"],
 ];
-const CCA_UNDER_YOU_CONTROL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_UNDER_YOU_CONTROL_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("under"),
     LexPattern::subject(
         "controller",
@@ -109,7 +109,7 @@ const CCA_UNDER_YOU_CONTROL_PATTERN: LexPattern<'static> = LexPattern::new(&[
     ),
     LexPattern::action("action", LexCaptureKind::OneOf(CCA_CONTROL_ACTION_WORDS)),
 ]);
-const CCA_UNDER_OWNER_CONTROL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_UNDER_OWNER_CONTROL_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("under"),
     LexPattern::subject(
         "controller",
@@ -128,14 +128,18 @@ const CCA_DURING_NEXT_TURN_WORDS: &[&str] = &["during", "next", "turn"];
 const CCA_UNTIL_END_NEXT_TURN_WORDS: &[&str] = &["until", "end", "next", "turn"];
 const CCA_UNTIL_END_TURN_WORDS: &[&str] = &["until", "end", "turn"];
 const CCA_YOU_PLAYER_REFERENCE_WORDS: &[&str] = &["you", "your"];
+const CCA_YOUR_WORD: &str = "your";
+const CCA_YOU_WORD: &str = "you";
+const CCA_THAT_PLAYER_PREFIXES: &[&[&str]] =
+    &[&["their"], &["that", "player"], &["that", "players"]];
 const CCA_THAT_PLAYER_REFERENCE_PHRASES: &[&[&str]] =
     &[&["their"], &["that", "player"], &["that", "players"]];
-const CCA_YOU_PLAYER_REFERENCE_PATTERN: LexPattern<'static> =
+const CCA_YOU_PLAYER_REFERENCE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::subject(
         "player",
         LexCaptureKind::OneOf(CCA_YOU_PLAYER_REFERENCE_WORDS),
     )]);
-const CCA_THAT_PLAYER_REFERENCE_PATTERN: LexPattern<'static> =
+const CCA_THAT_PLAYER_REFERENCE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::subject(
         "player",
         LexCaptureKind::OneOfPhrase(CCA_THAT_PLAYER_REFERENCE_PHRASES),
@@ -143,13 +147,13 @@ const CCA_THAT_PLAYER_REFERENCE_PATTERN: LexPattern<'static> =
 const CCA_FROM_AMONG_PREPOSITION_PHRASES: &[&[&str]] = &[&["from", "among"]];
 const CCA_HAND_LOCATION_PHRASES: &[&[&str]] = &[&["hand"], &["hands"]];
 const CCA_ANY_ORDER_PHRASES: &[&[&str]] = &[&["any", "order"]];
-const CCA_BACK_IN_ANY_ORDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_BACK_IN_ANY_ORDER_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object("object", LexCaptureKind::OneOf(CCA_IT_OR_THEM_WORDS)),
     LexPattern::word("back"),
     LexPattern::optional(&[LexPattern::word("in")]),
     LexPattern::modifier("order", LexCaptureKind::OneOfPhrase(CCA_ANY_ORDER_PHRASES)),
 ]);
-const CCA_FROM_AMONG_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_FROM_AMONG_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action(
         "preposition",
         LexCaptureKind::OneOfPhrase(CCA_FROM_AMONG_PREPOSITION_PHRASES),
@@ -162,7 +166,7 @@ const CCA_FROM_AMONG_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
 ]);
 const CCA_EXILED_WORD_PHRASE: &[&str] = &["exiled"];
 const CCA_INTO_WORD_PHRASE: &[&str] = &["into"];
-const CCA_PUT_ALL_EXILED_CARDS_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_PUT_ALL_EXILED_CARDS_INTO_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("put"),
     LexPattern::amount("count", LexCaptureKind::OneOf(CCA_ALL_OR_EACH_WORDS)),
     LexPattern::modifier(
@@ -191,7 +195,7 @@ const CCA_OF_TAGGED_CARDS_TARGET_PHRASES: &[&[&str]] = &[
     &["those", "card"],
     &["those", "cards"],
 ];
-const CCA_PUT_TAGGED_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_PUT_TAGGED_INTO_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(&[LexPattern::word("put")]),
     LexPattern::object("object", LexCaptureKind::OneOf(CCA_IT_OR_THEM_WORDS)),
     LexPattern::word("into"),
@@ -202,7 +206,7 @@ const CCA_PUT_TAGGED_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object("zone", LexCaptureKind::OneOf(CCA_HAND_OR_HANDS_WORDS)),
     LexPattern::tail("rest", LexCaptureKind::Rest),
 ]);
-const CCA_PUT_COUNTED_THEM_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_PUT_COUNTED_THEM_INTO_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(&[LexPattern::word("put")]),
     LexPattern::amount(
         "count",
@@ -217,7 +221,7 @@ const CCA_PUT_COUNTED_THEM_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::
     LexPattern::object("zone", LexCaptureKind::OneOf(CCA_HAND_OR_HANDS_WORDS)),
     LexPattern::tail("rest", LexCaptureKind::Rest),
 ]);
-const CCA_PUT_TAGGED_ON_TOP_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_PUT_TAGGED_ON_TOP_LIBRARY_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(&[LexPattern::word("put")]),
     LexPattern::amount(
         "count",
@@ -242,7 +246,7 @@ const CCA_REST_LIBRARY_PREPOSITION_WORDS: &[&str] = &["on", "into", "to"];
 const CCA_REST_GRAVEYARD_PREPOSITION_WORDS: &[&str] = &["into", "to"];
 const CCA_LIBRARY_LOCATION_PHRASES: &[&[&str]] = &[&["library"], &["libraries"]];
 const CCA_GRAVEYARD_LOCATION_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
-const CCA_REST_BOTTOM_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_REST_BOTTOM_LIBRARY_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::any_word(CCA_AND_OR_THEN_WORDS),
     LexPattern::object("rest", LexCaptureKind::OneOfPhrase(CCA_REST_TARGET_PHRASES)),
     LexPattern::modifier(
@@ -261,7 +265,7 @@ const CCA_REST_BOTTOM_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
         LexCaptureKind::OneOf(CCA_LIBRARY_OR_LIBRARIES_WORDS),
     ),
 ]);
-const CCA_REST_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
+const CCA_REST_GRAVEYARD_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::any_word(CCA_AND_OR_THEN_WORDS),
     LexPattern::object("rest", LexCaptureKind::OneOfPhrase(CCA_REST_TARGET_PHRASES)),
     LexPattern::modifier(
@@ -287,6 +291,16 @@ const CCA_THEN_SHUFFLE_YOUR_GRAVEYARD_INTO_YOUR_PHRASE: &[&str] =
     &["then", "shuffle", "your", "graveyard", "into", "your"];
 const CCA_FROM_IT_PHRASE: &[&str] = &["from", "it"];
 const CCA_AMONG_THEM_WORDS: &[&str] = &["among", "them"];
+const CCA_BACK_ANY_ORDER_WORDS: &[&str] = &["back", "any", "order"];
+const CCA_REST_TOP_BOTTOM_LIBRARY_WORDS: &[&str] = &["rest", "bottom", "library"];
+const CCA_OWNER_CONTROL_TAIL_PREFIXES: &[&[&str]] = &[
+    &["its", "owners", "control"],
+    &["its", "owner", "control"],
+    &["their", "owners", "control"],
+    &["their", "owner", "control"],
+    &["that", "players", "control"],
+    &["that", "player", "control"],
+];
 
 fn cca_token_is(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -325,7 +339,7 @@ fn cca_tokens_contain_any_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) 
 }
 
 fn cca_tokens_start_with_any(tokens: &[OwnedLexToken], prefixes: &[&[&str]]) -> bool {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = TokenWordView::new(tokens).word_refs();
     let atoms = [LexPattern::object(
         "prefix",
         LexCaptureKind::OneOfPhrase(prefixes),
@@ -413,17 +427,22 @@ fn cca_tokens_contain_pattern(
     cca_words_contain_pattern(&words, pattern, capture)
 }
 
+fn cca_capture_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+    matched: &crate::runtime_backend::lex_patterns::LexPatternMatch<'_>,
+    capture: &str,
+) -> Option<&'a [OwnedLexToken]> {
+    let range = matched.capture_word_range(capture)?;
+    let start = token_index_for_word_index(tokens, range.start).unwrap_or(tokens.len());
+    let end = token_index_for_word_index(tokens, range.end).unwrap_or(tokens.len());
+    tokens.get(start..end)
+}
+
 fn cca_destination_zone_from_tokens(tokens: &[OwnedLexToken]) -> Option<Zone> {
-    let clause = LexedClause::new(tokens);
-    if CCA_HAND_DESTINATION_PATTERN
-        .find_in_clause(clause)
-        .is_some()
-    {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if word_slice_contains_any_word(&words, CCA_HAND_OR_HANDS_WORDS) {
         Some(Zone::Hand)
-    } else if CCA_GRAVEYARD_DESTINATION_PATTERN
-        .find_in_clause(clause)
-        .is_some()
-    {
+    } else if word_slice_contains_any_word(&words, CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS) {
         Some(Zone::Graveyard)
     } else {
         None
@@ -438,14 +457,14 @@ struct CcaBattlefieldControllerTail {
 fn cca_battlefield_controller_tail(
     tokens: &[OwnedLexToken],
 ) -> Option<CcaBattlefieldControllerTail> {
-    let clause = LexedClause::new(tokens);
-    if let Some(matched) = CCA_UNDER_YOU_CONTROL_PATTERN.match_prefix(clause) {
+    let words = TokenWordView::new(tokens).word_refs();
+    if let Some(matched) = CCA_UNDER_YOU_CONTROL_SHAPE.match_prefix_word_refs(&words) {
         return Some(CcaBattlefieldControllerTail {
             controller: ReturnControllerAst::You,
             consumed_words: matched.word_range.end,
         });
     }
-    if let Some(matched) = CCA_UNDER_OWNER_CONTROL_PATTERN.match_prefix(clause) {
+    if let Some(matched) = CCA_UNDER_OWNER_CONTROL_SHAPE.match_prefix_word_refs(&words) {
         return Some(CcaBattlefieldControllerTail {
             controller: ReturnControllerAst::Owner,
             consumed_words: matched.word_range.end,
@@ -500,16 +519,12 @@ fn parse_counted_card_target_prefix(
 }
 
 fn cca_destination_player_from_tokens(tokens: &[OwnedLexToken], fallback: PlayerAst) -> PlayerAst {
-    let clause = LexedClause::new(tokens);
-    if CCA_YOU_PLAYER_REFERENCE_PATTERN
-        .find_in_clause(clause)
-        .is_some()
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if word_slice_contains_word(&words, CCA_YOUR_WORD)
+        || word_slice_contains_word(&words, CCA_YOU_WORD)
     {
         PlayerAst::You
-    } else if CCA_THAT_PLAYER_REFERENCE_PATTERN
-        .find_in_clause(clause)
-        .is_some()
-    {
+    } else if word_slice_starts_with_any(&words, CCA_THAT_PLAYER_PREFIXES) {
         PlayerAst::That
     } else {
         fallback
@@ -529,14 +544,16 @@ struct CcaPutTaggedIntoHandShape {
 }
 
 fn cca_rest_destination_from_tokens(tokens: &[OwnedLexToken]) -> Option<CcaRestDestination> {
-    let clause = LexedClause::new(tokens);
-    if CCA_REST_BOTTOM_LIBRARY_PATTERN
-        .find_in_clause(clause)
-        .is_some()
+    let clause_words = TokenWordView::new(tokens).word_refs();
+    let words = clause_words.as_slice();
+    if cca_words_contain_all(&clause_words, CCA_REST_TOP_BOTTOM_LIBRARY_WORDS)
+        && CCA_REST_BOTTOM_LIBRARY_SHAPE
+            .find_in_word_refs(words)
+            .is_some()
     {
         return Some(CcaRestDestination::BottomOfLibrary);
     }
-    if CCA_REST_GRAVEYARD_PATTERN.find_in_clause(clause).is_some() {
+    if CCA_REST_GRAVEYARD_SHAPE.find_in_word_refs(words).is_some() {
         return Some(CcaRestDestination::Graveyard);
     }
     None
@@ -546,19 +563,18 @@ fn parse_cca_put_tagged_into_hand_shape(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<CcaPutTaggedIntoHandShape>, CardTextError> {
-    let clause = LexedClause::new(tokens);
-    if let Some(matched) = CCA_PUT_COUNTED_THEM_INTO_HAND_PATTERN.match_prefix(clause) {
-        let count_clause = matched
-            .capture_clause("count", clause)
+    let words = TokenWordView::new(tokens).word_refs();
+    if let Some(matched) = CCA_PUT_COUNTED_THEM_INTO_HAND_SHAPE.match_prefix_word_refs(&words) {
+        let count_tokens = cca_capture_tokens(tokens, &matched, "count")
             .ok_or_else(|| CardTextError::ParseError("missing put count capture".to_string()))?;
-        if count_clause.tokens().is_empty() {
+        if count_tokens.is_empty() {
             return Ok(Some(CcaPutTaggedIntoHandShape {
                 count: None,
                 rest_destination: cca_rest_destination_from_tokens(tokens),
             }));
         }
-        let (count, used) = parse_put_choice_count_prefix(count_clause.tokens(), clause_words)?;
-        if used != count_clause.tokens().len() {
+        let (count, used) = parse_put_choice_count_prefix(count_tokens, clause_words)?;
+        if used != count_tokens.len() {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put count prefix (clause: '{}')",
                 clause_words.join(" ")
@@ -570,8 +586,8 @@ fn parse_cca_put_tagged_into_hand_shape(
         }));
     }
 
-    if CCA_PUT_TAGGED_INTO_HAND_PATTERN
-        .match_prefix(clause)
+    if CCA_PUT_TAGGED_INTO_HAND_SHAPE
+        .match_prefix_word_refs(&words)
         .is_some()
     {
         return Ok(Some(CcaPutTaggedIntoHandShape {
@@ -591,15 +607,14 @@ fn parse_cca_put_tagged_on_top_library_count(
         return Ok(None);
     }
 
-    let clause = LexedClause::new(tokens);
-    let Some(matched) = CCA_PUT_TAGGED_ON_TOP_LIBRARY_PATTERN.match_prefix(clause) else {
+    let words = TokenWordView::new(tokens).word_refs();
+    let Some(matched) = CCA_PUT_TAGGED_ON_TOP_LIBRARY_SHAPE.match_prefix_word_refs(&words) else {
         return Ok(None);
     };
-    let count_clause = matched
-        .capture_clause("count", clause)
+    let count_tokens = cca_capture_tokens(tokens, &matched, "count")
         .ok_or_else(|| CardTextError::ParseError("missing put count capture".to_string()))?;
-    let (choice_count, used) = parse_put_choice_count_prefix(count_clause.tokens(), clause_words)?;
-    if used != count_clause.tokens().len() {
+    let (choice_count, used) = parse_put_choice_count_prefix(count_tokens, clause_words)?;
+    if used != count_tokens.len() {
         return Err(CardTextError::ParseError(format!(
             "unsupported library rearrange put count (clause: '{}')",
             clause_words.join(" ")
@@ -640,7 +655,7 @@ pub(crate) fn parse_lose_life(
             SubjectVerbActionAst::LoseLife { amount },
         ));
     }
-    if cca_words_exact_pattern_matches(&clause_words, CCA_THE_GAME_PATTERN, "game") {
+    if word_slice_eq(&clause_words, CCA_THE_GAME_WORDS) {
         return Ok(EffectAst::subject_verb_lose_game(player));
     }
 
@@ -732,7 +747,7 @@ pub(crate) fn parse_gain_life(
     let trailing = trim_commas(&rest[1..]);
     if !trailing.is_empty() {
         if cca_tokens_contain_phrase(&trailing, CCA_THEN_SHUFFLE_YOUR_GRAVEYARD_INTO_YOUR_PHRASE)
-            && cca_tokens_contain_pattern(&trailing, CCA_LIBRARY_WORD_PATTERN, "zone")
+            && cca_tokens_contain_pattern(&trailing, CCA_LIBRARY_WORD_SHAPE, "zone")
         {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing life-gain shuffle-graveyard clause (clause: '{}')",
@@ -970,13 +985,10 @@ pub(crate) fn parse_put_into_hand(
         mut target: TargetAst,
         target_tokens: &[OwnedLexToken],
     ) -> TargetAst {
-        let target_clause = LexedClause::new(target_tokens);
-        let has_graveyard = CCA_GRAVEYARD_DESTINATION_PATTERN
-            .find_in_clause(target_clause)
-            .is_some();
-        let has_hand = CCA_HAND_DESTINATION_PATTERN
-            .find_in_clause(target_clause)
-            .is_some();
+        let target_words = crate::runtime_backend::token_word_refs(target_tokens);
+        let has_graveyard =
+            word_slice_contains_any_word(&target_words, CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS);
+        let has_hand = word_slice_contains_any_word(&target_words, CCA_HAND_OR_HANDS_WORDS);
         if !(has_graveyard && has_hand) {
             return target;
         }
@@ -1130,24 +1142,25 @@ pub(crate) fn parse_put_into_hand(
     }
 
     // "Put them/it back in any order." (typically after looking at the top cards of a library).
-    if CCA_BACK_IN_ANY_ORDER_PATTERN
-        .match_prefix(LexedClause::new(tokens))
-        .is_some()
+    if cca_words_contain_all(&clause_words, CCA_BACK_ANY_ORDER_WORDS)
+        && word_slice_contains_any_word(&clause_words, CCA_IT_OR_THEM_WORDS)
     {
         return Ok(EffectAst::subject_verb_reorder_top_of_library(
             TagKey::from(IT_TAG),
         ));
     }
 
-    if CCA_FROM_AMONG_HAND_PATTERN
-        .find_in_clause(LexedClause::new(tokens))
+    let from_among_words = TokenWordView::new(tokens).word_refs();
+    if CCA_FROM_AMONG_HAND_SHAPE
+        .find_in_word_refs(&from_among_words)
         .is_some()
     {
         return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(player, 1));
     }
 
-    if CCA_PUT_ALL_EXILED_CARDS_INTO_HAND_PATTERN
-        .match_prefix(LexedClause::new(tokens))
+    let put_all_exiled_words = TokenWordView::new(tokens).word_refs();
+    if CCA_PUT_ALL_EXILED_CARDS_INTO_HAND_SHAPE
+        .match_prefix_word_refs(&put_all_exiled_words)
         .is_some()
         && let Some(into_idx) = find_index(tokens, |token| {
             token.as_word().is_some_and(|word| word == CCA_INTO_WORD)
@@ -1371,7 +1384,7 @@ pub(crate) fn parse_put_into_hand(
                 clause_words.join(" ")
             )));
         }
-        if !cca_tokens_contain_pattern(after_on_top_of, CCA_LIBRARY_WORD_PATTERN, "zone") {
+        if !cca_tokens_contain_pattern(after_on_top_of, CCA_LIBRARY_WORD_SHAPE, "zone") {
             return Err(CardTextError::ParseError(format!(
                 "unsupported put destination after 'on top of' (clause: '{}')",
                 clause_words.join(" ")
@@ -1416,7 +1429,7 @@ pub(crate) fn parse_put_into_hand(
             }
             if !cca_tokens_contain_pattern(
                 &tokens[bottom_idx + 2..],
-                CCA_LIBRARY_WORD_PATTERN,
+                CCA_LIBRARY_WORD_SHAPE,
                 "zone",
             ) {
                 return Err(CardTextError::ParseError(format!(
@@ -1427,7 +1440,7 @@ pub(crate) fn parse_put_into_hand(
 
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             let is_rest_target =
-                cca_words_exact_pattern_matches(&target_words, CCA_REST_TARGET_PATTERN, "rest");
+                cca_words_exact_pattern_matches(&target_words, CCA_REST_TARGET_SHAPE, "rest");
             if is_rest_target {
                 return Ok(EffectAst::subject_verb_put_rest_on_bottom_of_library());
             }
@@ -1487,7 +1500,7 @@ pub(crate) fn parse_put_into_hand(
             };
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             if zone == Zone::Graveyard
-                && cca_words_exact_pattern_matches(&target_words, CCA_REST_TARGET_PATTERN, "rest")
+                && cca_words_exact_pattern_matches(&target_words, CCA_REST_TARGET_SHAPE, "rest")
             {
                 return Ok(EffectAst::subject_verb_move_to_zone(
                     TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None),
@@ -1595,9 +1608,9 @@ pub(crate) fn parse_put_into_hand(
 
         let mut destination_tail: Vec<OwnedLexToken> = destination_tokens[1..].to_vec();
         let battlefield_attacking =
-            cca_tokens_contain_pattern(&destination_tail, CCA_ATTACKING_WORD_PATTERN, "attacking");
+            cca_tokens_contain_pattern(&destination_tail, CCA_ATTACKING_WORD_SHAPE, "attacking");
         let battlefield_tapped =
-            cca_tokens_contain_pattern(&destination_tail, CCA_TAPPED_WORD_PATTERN, "tapped");
+            cca_tokens_contain_pattern(&destination_tail, CCA_TAPPED_WORD_SHAPE, "tapped");
         let battlefield_face_down =
             cca_tokens_contain_phrase(&destination_tail, CCA_FACE_DOWN_PHRASE);
         if let Some(from_idx) = find_index(&destination_tail, |token| {
@@ -1741,7 +1754,7 @@ pub(crate) fn parse_put_into_hand(
                 if filter.owner.is_none() {
                     filter.owner = Some(PlayerFilter::IteratedPlayer);
                 }
-                if cca_tokens_contain_pattern(tokens, CCA_PERMANENT_WORD_PATTERN, "permanent") {
+                if cca_tokens_contain_pattern(tokens, CCA_PERMANENT_WORD_SHAPE, "permanent") {
                     filter.card_types = vec![
                         CardType::Artifact,
                         CardType::Creature,
@@ -1784,7 +1797,7 @@ pub(crate) fn parse_put_into_hand(
         }
         if cca_tokens_contain_pattern(
             destination_slice,
-            CCA_FROM_COMMAND_ZONE_PATTERN,
+            CCA_FROM_COMMAND_ZONE_SHAPE,
             "source_zone",
         ) {
             apply_source_zone_constraint(&mut target, Zone::Command);
@@ -1811,7 +1824,7 @@ pub(crate) fn parse_put_into_hand(
         });
     }
 
-    if cca_tokens_contain_pattern(tokens, CCA_STICKER_WORD_PATTERN, "sticker") {
+    if contains_word(tokens, CCA_STICKER_WORD) {
         return Err(CardTextError::ParseError(format!(
             "unsupported sticker clause (clause: '{}')",
             clause_words.join(" ")

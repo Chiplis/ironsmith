@@ -157,7 +157,7 @@ const ATTACHED_TO_ENCHANTED_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["to", "enchanted", "creature"]);
 
 fn attached_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn attached_word_is_any(word: &str, expected: &[&str]) -> bool {

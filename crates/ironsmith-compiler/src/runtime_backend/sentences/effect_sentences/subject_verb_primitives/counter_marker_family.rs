@@ -207,9 +207,9 @@ pub(crate) const PUT_COUNTER_SEQUENCE_PATTERN_ATOMS: &[LexPatternAtom<'static>] 
     LexPattern::any_sequence(PUT_COUNTER_SEQUENCE_SEQUENCES),
 ];
 const TAPPED_WORD: &str = "tapped";
-const ADDITIONAL_WORDS: &[&str] = &["additional"];
+const BATTLEFIELD_WORD: &str = "battlefield";
+const ADDITIONAL_WORD: &str = "additional";
 const BATTLEFIELD_PREFIX: &[&str] = &["battlefield"];
-const TAPPED_WORDS: &[&str] = &["tapped"];
 const COUNTER_MARKER_GAIN_ABILITY_WORDS: &[&str] = &["gain", "gains", "has", "have"];
 const YOUR_CHOICE_OF_PREFIX_PHRASE: &[&str] = &["your", "choice", "of"];
 const PRESERVE_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["its"], &["their"]];
@@ -235,21 +235,6 @@ const IT_OR_THEM_REFERENCE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexP
     "reference",
     LexCaptureKind::OneOfPhrase(IT_OR_THEM_PREFIXES),
 )]);
-const ENTERS_AS_CREATURE_PREDICATE_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::condition(
-        "predicate",
-        LexCaptureKind::OneOfPhrase(ENTERS_AS_CREATURE_PREDICATE_CLAUSES),
-    )]);
-const COUNTER_MARKER_BATTLEFIELD_DESTINATION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "zone",
-        LexCaptureKind::OneOf(BATTLEFIELD_PREFIX),
-    )]);
-const COUNTER_MARKER_TAPPED_DESTINATION_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "tapped",
-        LexCaptureKind::OneOf(TAPPED_WORDS),
-    )]);
 const COUNTER_MARKER_ONTO_BATTLEFIELD_MOVE_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("onto"),
     LexPattern::object("zone", LexCaptureKind::OneOf(BATTLEFIELD_PREFIX)),
@@ -258,11 +243,6 @@ const COUNTER_MARKER_GAIN_ABILITY_ACTION_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::action(
         "ability_action",
         LexCaptureKind::OneOf(COUNTER_MARKER_GAIN_ABILITY_WORDS),
-    )]);
-const COUNTER_MARKER_ADDITIONAL_MODIFIER_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "additional",
-        LexCaptureKind::OneOf(ADDITIONAL_WORDS),
     )]);
 const COUNTER_MARKER_YOUR_CHOICE_OF_PREFIX_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
@@ -317,35 +297,29 @@ fn counter_marker_control_tail_controller(words: &[&str]) -> Option<ReturnContro
 }
 
 fn counter_marker_it_or_them_reference_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause
-        .match_pattern(IT_OR_THEM_REFERENCE_PATTERN)
-        .and_then(|matched| matched.capture_word_range("reference"))
-        .is_some()
+    let on_target_words = clause.word_refs();
+    word_slice_eq_any(&on_target_words, IT_OR_THEM_PREFIXES)
 }
 
-fn counter_marker_enters_as_creature_predicate_matches(words: &[&str]) -> bool {
-    ENTERS_AS_CREATURE_PREDICATE_PATTERN
-        .match_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("predicate"))
-        .is_some()
+fn counter_marker_enters_as_creature_predicate_matches(predicate_words: &[&str]) -> bool {
+    word_slice_eq_any(&predicate_words, ENTERS_AS_CREATURE_PREDICATE_CLAUSES)
 }
 
-fn counter_marker_battlefield_destination_word_index(words: &[&str]) -> Option<usize> {
-    COUNTER_MARKER_BATTLEFIELD_DESTINATION_PATTERN
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("zone"))
-        .map(|range| range.start)
+fn counter_marker_battlefield_destination_word_index(base_destination_words: &[&str]) -> Option<usize> {
+    if !word_slice_contains_word(&base_destination_words, BATTLEFIELD_WORD) {
+        return None;
+    }
+    base_destination_words
+        .iter()
+        .position(|word| *word == BATTLEFIELD_WORD)
 }
 
-fn counter_marker_destination_is_tapped(words: &[&str]) -> bool {
-    COUNTER_MARKER_TAPPED_DESTINATION_PATTERN
-        .find_in_word_refs(words)
-        .and_then(|matched| matched.capture_word_range("tapped"))
-        .is_some()
+fn counter_marker_destination_is_tapped(base_destination_words: &[&str]) -> bool {
+    word_slice_contains_word(&base_destination_words, TAPPED_WORD)
 }
 
-fn counter_marker_battlefield_destination_starts(words: &[&str]) -> bool {
-    counter_marker_battlefield_destination_word_index(words) == Some(0)
+fn counter_marker_battlefield_destination_starts(base_destination_words: &[&str]) -> bool {
+    word_slice_starts_with(&base_destination_words, BATTLEFIELD_PREFIX)
 }
 
 fn counter_marker_move_mentions_onto_battlefield(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
@@ -420,12 +394,8 @@ fn counter_marker_mentions_gain_ability_action(clause: SubjectVerbPrimitiveClaus
         .is_some()
 }
 
-fn counter_marker_mentions_additional(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    let words = clause.word_refs();
-    COUNTER_MARKER_ADDITIONAL_MODIFIER_PATTERN
-        .find_in_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("additional"))
-        .is_some()
+fn counter_marker_mentions_additional(descriptor_clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    descriptor_clause.contains_word(ADDITIONAL_WORD)
 }
 
 fn counter_marker_matches_accepted_target<'p>(

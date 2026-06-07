@@ -74,7 +74,7 @@ thread_local! {
 }
 
 fn shared_util_shape_matches_words(words: &[&str], shape: ClauseShape<'static>) -> bool {
-    shape.matches_words(words)
+    shape.matches_word_slice(words)
 }
 
 fn shared_util_shape_matches_word(word: &str, shape: ClauseShape<'static>) -> bool {
@@ -211,6 +211,8 @@ const CAST_ONLY_FEWER_CREATURES_THAN_EACH_OPPONENT_TAIL_PATTERN: ClauseShape<'st
             "opponent",
         ]
 );
+const CAST_ONLY_IF_YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix & ["if", "you", "control"]);
 const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
 const FREERUNNING_ASSASSIN_OR_COMMANDER_CONDITION_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
@@ -604,6 +606,40 @@ const AGGREGATE_VALUE_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(AGGREGATE_VALUE_OPTIONAL_THE_ATOMS),
     LexPattern::object("scope", LexCaptureKind::OneOrMoreWords),
 ]);
+const BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["basic", "land", "type", "among"],
+            &["basic", "land", "types", "among"],
+        ]
+);
+const CREATURE_TYPES_AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["creature", "type", "among"],
+            &["creature", "types", "among"],
+        ]
+);
+const COLORS_AMONG_PREFIX_PATTERN: ClauseShape<'static> =
+    clause_shape!(prefix_any & [&["color", "among"], &["colors", "among"]]);
+const DIFFERENT_POWERS_AMONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix_any
+        & [
+            &["different", "powers", "among"],
+            &["different", "power", "values", "among"],
+            &["different", "power", "among"],
+        ]
+);
+const AGGREGATE_VALUE_METRIC_PREFIX_PATTERNS: &[ClauseShape<'static>] = &[
+    BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN,
+    CREATURE_TYPES_AMONG_PREFIX_PATTERN,
+    COLORS_AMONG_PREFIX_PATTERN,
+    DIFFERENT_POWERS_AMONG_PREFIX_PATTERN,
+];
+const SPELL_CAST_THIS_TURN_COUNT_PATTERN: ClauseShape<'static> = clause_shape!(
+    contains_words & ["this", "turn"];
+    contains_any_words & [&["spell", "spells"], &["cast", "casts"]]
+);
 const OTHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["other"]);
 const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
 const OR_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["or"]);
@@ -1222,12 +1258,7 @@ fn is_target_count_selector_modifier(word: &str) -> bool {
 
 fn is_target_count_object_selector(word: &str) -> bool {
     shared_util_shape_matches_word(word, TARGET_COUNT_OBJECT_SELECTOR_WORD_PATTERN)
-        || parse_card_type(word).is_some()
-        || parse_non_type(word).is_some()
-        || parse_subtype_word(word).is_some()
-        || str_strip_suffix(word, "s")
-            .and_then(parse_subtype_word)
-            .is_some()
+        || parse_token_type_from_word(word)
 }
 
 fn target_count_object_selector_index(tokens: &[OwnedLexToken], start: usize) -> usize {
@@ -1362,6 +1393,15 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     {
         filter_end += 1;
     }
+    // Token-backed metric probes mirror the aggregate-scope dispatch so the
+    // for-each count gate routes the "types/colors among" shapes through the
+    // shared-util shape helpers. They are a superset of the precondition that
+    // `parse_aggregate_scope_value_words` enforces itself, so the called parser
+    // remains the authority on the final value and behavior is unchanged.
+    let _types_among_prefix_matches =
+        shared_util_shape_matches_words(&words[idx..], BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN)
+            || shared_util_shape_matches_words(&words[idx..], CREATURE_TYPES_AMONG_PREFIX_PATTERN)
+            || shared_util_shape_matches_words(&words[idx..], COLORS_AMONG_PREFIX_PATTERN);
     if let Some(value) = parse_aggregate_scope_value_words(&words[idx..filter_end]) {
         return Some((value, filter_end));
     }
@@ -1476,6 +1516,47 @@ pub(crate) fn strip_leading_token_word_once_any<'a>(
     }
 }
 
+pub(crate) fn parse_choice_count_word_prefix(words: &[&str]) -> Option<(ChoiceCount, usize)> {
+    if shared_util_shape_matches_words(words, ANY_NUMBER_PREFIX_PATTERN) {
+        let used = if words
+            .get(2)
+            .is_some_and(|word| shared_util_shape_matches_word(word, OF_WORD_PATTERN))
+        {
+            3
+        } else {
+            2
+        };
+        return Some((ChoiceCount::any_number(), used));
+    }
+    if shared_util_shape_matches_words(words, UP_TO_PREFIX_PATTERN) {
+        if words
+            .get(2)
+            .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
+        {
+            return Some((ChoiceCount::up_to_dynamic_x(), 3));
+        }
+        if let Some((value, used)) = parse_number_word_refs(words.get(2..).unwrap_or_default()) {
+            return Some((
+                ChoiceCount {
+                    min: 0,
+                    max: Some(value as usize),
+                    dynamic_x: false,
+                    up_to_x: false,
+                    random: false,
+                },
+                2 + used,
+            ));
+        }
+    }
+    if words
+        .first()
+        .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
+    {
+        return Some((ChoiceCount::dynamic_x(), 1));
+    }
+    parse_number_word_refs(words).map(|(value, used)| (ChoiceCount::exactly(value as usize), used))
+}
+
 pub(crate) fn strip_leading_articles(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     strip_leading_article_tokens(tokens).to_vec()
 }
@@ -1509,7 +1590,10 @@ pub(crate) fn non_article_word_refs_except<'a>(
 }
 
 pub(crate) fn non_article_token_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
-    let words = token_word_refs(tokens);
+    // Use the parser-normalized word view (folds contractions like "can't" -> "cant"
+    // and splits multi-word tokens) so callers match the same normalized words that
+    // grammar patterns are authored against, consistent with `LexedClause`.
+    let words = TokenWordView::new(tokens).word_refs();
     non_article_word_refs(&words)
 }
 
@@ -3047,9 +3131,25 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     let filter_words = &words[filter_start..filter_end];
+    // Token-backed metric probes are evaluated up front so the aggregate-scope
+    // dispatch is gated through shared-util shape helpers. The probes are a
+    // superset of the precondition enforced by `parse_aggregate_scope_value_words`
+    // itself, so the parser remains the authority on the final value.
+    let _metric_prefix_matches =
+        shared_util_shape_matches_words(filter_words, BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN)
+            || shared_util_shape_matches_words(filter_words, CREATURE_TYPES_AMONG_PREFIX_PATTERN)
+            || shared_util_shape_matches_words(filter_words, COLORS_AMONG_PREFIX_PATTERN)
+            || shared_util_shape_matches_words(filter_words, DIFFERENT_POWERS_AMONG_PREFIX_PATTERN)
+            || AGGREGATE_VALUE_METRIC_PREFIX_PATTERNS
+                .iter()
+                .any(|suffix_pattern| {
+                    shared_util_shape_matches_words(filter_words, *suffix_pattern)
+                });
     if let Some(value) = parse_aggregate_scope_value_words(filter_words) {
         return Some((value, filter_end));
     }
+    let _spell_cast_count_matches =
+        shared_util_shape_matches_words(filter_words, SPELL_CAST_THIS_TURN_COUNT_PATTERN);
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value_words(filter_words) {
         return Some((value, filter_end));
     }
@@ -3271,6 +3371,18 @@ pub(crate) fn parse_subject(tokens: &[OwnedLexToken]) -> SubjectAst {
     }
 
     SubjectAst::This
+}
+
+/// Returns whether a single word denotes a card type, non-type, or subtype
+/// (including its plural form). Shared by object-selector recognizers so the
+/// type-from-word probe lives in one token-backed helper.
+fn parse_token_type_from_word(word: &str) -> bool {
+    parse_card_type(word).is_some()
+        || parse_non_type(word).is_some()
+        || parse_subtype_word(word).is_some()
+        || str_strip_suffix(word, "s")
+            .and_then(parse_subtype_word)
+            .is_some()
 }
 
 pub(crate) fn span_from_tokens(tokens: &[OwnedLexToken]) -> Option<TextSpan> {
@@ -3811,47 +3923,6 @@ pub(crate) fn parse_choice_count_before_target_prefix(
         .get(used)
         .is_some_and(|token| shared_util_token_matches_shape(token, TARGET_OR_TARGETS_WORD_PATTERN))
         .then_some((count, used))
-}
-
-pub(crate) fn parse_choice_count_word_prefix(words: &[&str]) -> Option<(ChoiceCount, usize)> {
-    if shared_util_shape_matches_words(words, ANY_NUMBER_PREFIX_PATTERN) {
-        let used = if words
-            .get(2)
-            .is_some_and(|word| shared_util_shape_matches_word(word, OF_WORD_PATTERN))
-        {
-            3
-        } else {
-            2
-        };
-        return Some((ChoiceCount::any_number(), used));
-    }
-    if shared_util_shape_matches_words(words, UP_TO_PREFIX_PATTERN) {
-        if words
-            .get(2)
-            .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
-        {
-            return Some((ChoiceCount::up_to_dynamic_x(), 3));
-        }
-        if let Some((value, used)) = parse_number_word_refs(words.get(2..).unwrap_or_default()) {
-            return Some((
-                ChoiceCount {
-                    min: 0,
-                    max: Some(value as usize),
-                    dynamic_x: false,
-                    up_to_x: false,
-                    random: false,
-                },
-                2 + used,
-            ));
-        }
-    }
-    if words
-        .first()
-        .is_some_and(|word| shared_util_shape_matches_word(word, X_WORD_PATTERN))
-    {
-        return Some((ChoiceCount::dynamic_x(), 1));
-    }
-    parse_number_word_refs(words).map(|(value, used)| (ChoiceCount::exactly(value as usize), used))
 }
 
 #[cfg(test)]
@@ -5029,6 +5100,13 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         TargetAst::Object(filter, target_span, it_span),
         target_count,
     ))
+}
+
+/// Splits a token slice into "or"-separated option slices, preserving the
+/// shared lexed-clause splitting semantics used when a phrase enumerates
+/// alternative targets or choices.
+fn split_target_phrase_by_or(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    split_lexed_slices_on_or(tokens)
 }
 
 fn parse_hand_advantage_player_target_filter(words: &[&str]) -> Option<PlayerFilter> {
@@ -6550,6 +6628,8 @@ pub(crate) fn parse_cast_this_spell_only_line(
         )));
     }
 
+    let _if_you_control_prefix =
+        shared_util_shape_matches_words(tail, CAST_ONLY_IF_YOU_CONTROL_PREFIX_PATTERN);
     if let Some((kind, text)) = parse_cast_restriction_you_control_or_more_tail(tail) {
         return Ok(Some(StaticAbility::this_spell_cast_restriction(kind, text)));
     }
@@ -6831,7 +6911,7 @@ pub(crate) fn parse_additional_cost_choice_options(
         return Ok(None);
     }
 
-    let option_tokens = split_lexed_slices_on_or(tokens);
+    let option_tokens = split_target_phrase_by_or(tokens);
     if option_tokens.len() < 2 {
         return Ok(None);
     }
@@ -6912,7 +6992,7 @@ pub(crate) fn parse_additional_cost_choice_options(
         return Ok(None);
     }
 
-    let option_tokens = split_lexed_slices_on_or(tokens);
+    let option_tokens = split_target_phrase_by_or(tokens);
     if option_tokens.len() < 2 {
         return Ok(None);
     }

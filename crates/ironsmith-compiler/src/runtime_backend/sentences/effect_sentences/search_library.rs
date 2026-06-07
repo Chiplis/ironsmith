@@ -1,10 +1,10 @@
 use super::super::grammar::primitives::{self as grammar, split_lexed_slices_on_or};
 use super::super::grammar::values::parse_value_comparison_tokens;
-use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, contains_token_word, find_token_word_sequence_span,
     lex_line, token_slice_starts_with_at, token_word_refs, trim_lexed_commas,
     word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
+    word_slice_find_any_phrase_start, word_slice_find_phrase_start, word_slice_find_word_where,
     word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -58,8 +58,6 @@ const SEARCH_SOURCE_AND_GRAVEYARD_PREFIXES: &[&[&str]] = &[
 const SEARCH_OWNER_OF_PREFIX: &[&str] = &["the", "owner", "of"];
 const SEARCH_SECOND_ZONE_SKIP_WORDS: &[&str] = &["all", "cards", "from"];
 const SEARCH_HAND_OR_GRAVEYARD_ZONE_WORDS: &[&str] = &["hand", "hands", "graveyard", "graveyards"];
-const SEARCH_HAND_OR_GRAVEYARD_ZONE_PHRASES: &[&[&str]] =
-    &[&["hand"], &["hands"], &["graveyard"], &["graveyards"]];
 const SEARCH_TARGET_OR_YOUR_OWNER_PHRASES: &[&[&str]] = &[
     &["target", "player"],
     &["target", "players"],
@@ -67,19 +65,6 @@ const SEARCH_TARGET_OR_YOUR_OWNER_PHRASES: &[&[&str]] = &[
     &["target", "opponents"],
     &["your"],
 ];
-const SEARCH_EXILE_ALL_CARDS_FROM_ZONE_PAIR_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(&["exile", "all", "cards", "from"]),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::UntilAnyPhrase(SEARCH_HAND_OR_GRAVEYARD_ZONE_PHRASES),
-    ),
-    LexPattern::object(
-        "first_zone",
-        LexCaptureKind::OneOf(SEARCH_HAND_OR_GRAVEYARD_ZONE_WORDS),
-    ),
-    LexPattern::word("and"),
-    LexPattern::tail("second_zone_tail", LexCaptureKind::Rest),
-]);
 const SEARCH_EXILE_WORDS: &[&str] = &["exile", "exiles"];
 const SEARCH_EXILED_THIS_WAY_PHRASE: &[&str] = &["exiled", "this", "way"];
 const SEARCH_EXILED_WITH_THIS_PHRASE: &[&str] = &["exiled", "with", "this"];
@@ -131,29 +116,6 @@ const SEARCH_CONTROL_ACTION_WORDS: &[&str] = &["control", "controls"];
 const SEARCH_CREATURE_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[&["they"], &["that", "player"]];
 const SEARCH_GRAVEYARD_OWNER_WORDS: &[&str] = &["their"];
 const SEARCH_GRAVEYARD_ZONE_WORDS: &[&str] = &["graveyard", "graveyards"];
-const SEARCH_TARGET_PLAYER_EXILES_CREATURE_AND_GRAVEYARD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[
-        LexPattern::subject(
-            "subject",
-            LexCaptureKind::OneOfPhrase(SEARCH_TARGET_PLAYER_OR_OPPONENT_PHRASES),
-        ),
-        LexPattern::action("action", LexCaptureKind::OneOf(SEARCH_EXILE_WORDS)),
-        LexPattern::object("creature", LexCaptureKind::UntilPhrase(&["and"])),
-        LexPattern::word("and"),
-        LexPattern::tail("graveyard", LexCaptureKind::Rest),
-    ]);
-const SEARCH_CREATURE_CONTROLLED_BY_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object("object", LexCaptureKind::OneOf(&["creature"])),
-    LexPattern::subject(
-        "controller",
-        LexCaptureKind::OneOfPhrase(SEARCH_CREATURE_CONTROL_SUBJECT_PHRASES),
-    ),
-    LexPattern::action("action", LexCaptureKind::OneOf(SEARCH_CONTROL_ACTION_WORDS)),
-]);
-const SEARCH_THEIR_GRAVEYARD_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::subject("owner", LexCaptureKind::OneOf(SEARCH_GRAVEYARD_OWNER_WORDS)),
-    LexPattern::object("zone", LexCaptureKind::OneOf(SEARCH_GRAVEYARD_ZONE_WORDS)),
-]);
 const SEARCH_ENCHANT_WORD: &str = "enchant";
 const SEARCH_EARTHBEND_WORD: &str = "earthbend";
 
@@ -893,19 +855,29 @@ fn parse_search_exile_all_cards_zone_pair(
     tokens: &[OwnedLexToken],
 ) -> Option<SearchZonePairClause> {
     let clause = LexedClause::new(tokens);
-    let matched = SEARCH_EXILE_ALL_CARDS_FROM_ZONE_PAIR_PATTERN.match_clause(clause)?;
-    let owner_clause = matched.capture_clause("owner", clause)?;
-    let owner_words = possessive_normalized_word_refs(&owner_clause.word_refs());
+    let clause_words = clause.word_refs();
+    if !word_slice_starts_with(&clause_words, &["exile", "all", "cards", "from"]) {
+        return None;
+    }
+    let body = &clause_words[4..];
+    let first_zone_idx = word_slice_find_word_where(&clause_words[4..], |word| {
+        SEARCH_HAND_OR_GRAVEYARD_ZONE_WORDS.contains(&word)
+    })?;
+    if first_zone_idx == 0 {
+        return None;
+    }
+    let owner_words = possessive_normalized_word_refs(&body[..first_zone_idx]);
     let owner = search_hand_graveyard_owner_from_words(&owner_words)?;
-    let first_zone_clause = matched.capture_clause("first_zone", clause)?;
-    let first_zone_word = first_zone_clause.first_word()?;
+    let first_zone_word = body[first_zone_idx];
     let first_zone = parse_zone_word(first_zone_word)?;
     if !matches!(first_zone, Zone::Hand | Zone::Graveyard) {
         return None;
     }
+    if body.get(first_zone_idx + 1) != Some(&"and") {
+        return None;
+    }
 
-    let second_zone_tail = matched.capture_clause("second_zone_tail", clause)?;
-    let second_zone_words = second_zone_tail.word_refs();
+    let second_zone_words = &body[first_zone_idx + 2..];
     let mut second_zone_idx = 0usize;
     while second_zone_words
         .get(second_zone_idx)
@@ -929,16 +901,16 @@ fn parse_search_exile_all_cards_zone_pair(
     })
 }
 
-fn search_hand_graveyard_owner_from_words(words: &[&str]) -> Option<PlayerFilter> {
-    if !word_slice_eq_any(words, SEARCH_TARGET_OR_YOUR_OWNER_PHRASES) {
+fn search_hand_graveyard_owner_from_words(owner_words: &[&str]) -> Option<PlayerFilter> {
+    if !word_slice_eq_any(&owner_words, SEARCH_TARGET_OR_YOUR_OWNER_PHRASES) {
         return None;
     }
-    if word_slice_starts_with(words, SEARCH_TARGET_PLAYER_PREFIX)
-        || word_slice_starts_with(words, SEARCH_TARGET_PLAYERS_PREFIX)
+    if word_slice_starts_with(owner_words, SEARCH_TARGET_PLAYER_PREFIX)
+        || word_slice_starts_with(owner_words, SEARCH_TARGET_PLAYERS_PREFIX)
     {
         Some(PlayerFilter::target_player())
-    } else if word_slice_starts_with(words, SEARCH_TARGET_OPPONENT_PREFIX)
-        || word_slice_starts_with(words, SEARCH_TARGET_OPPONENTS_PREFIX)
+    } else if word_slice_starts_with(owner_words, SEARCH_TARGET_OPPONENT_PREFIX)
+        || word_slice_starts_with(owner_words, SEARCH_TARGET_OPPONENTS_PREFIX)
     {
         Some(PlayerFilter::target_opponent())
     } else {
@@ -951,32 +923,39 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause_tokens = trim_commas(tokens);
     let clause = LexedClause::new(&clause_tokens);
-    let Some(matched) =
-        SEARCH_TARGET_PLAYER_EXILES_CREATURE_AND_GRAVEYARD_PATTERN.match_clause(clause)
+    let clause_words = clause.word_refs();
+    let Some((subject_prefix, subject_len)) =
+        word_slice_find_any_phrase_start(&clause_words, SEARCH_TARGET_PLAYER_OR_OPPONENT_PHRASES)
+            .filter(|&(_, idx)| idx == 0)
+            .map(|(phrase, _)| (phrase, phrase.len()))
     else {
         return Ok(None);
     };
-    let Some(subject_clause) = matched.capture_clause("subject", clause) else {
-        return Ok(None);
-    };
-    let Some((subject_player, subject_filter)) =
-        search_target_player_or_opponent_from_clause(subject_clause)
-    else {
-        return Ok(None);
-    };
-    let Some(creature_clause) = matched.capture_clause("creature", clause) else {
-        return Ok(None);
-    };
-    if !search_creature_controlled_by_player_clause_matches(creature_clause) {
+    let after_subject = &clause_words[subject_len..];
+    if !after_subject
+        .first()
+        .is_some_and(|word| SEARCH_EXILE_WORDS.contains(word))
+    {
         return Ok(None);
     }
-    let Some(graveyard_clause) = matched.capture_clause("graveyard", clause) else {
+    let after_action = &after_subject[1..];
+    let Some(and_idx) = word_slice_find_phrase_start(after_action, &["and"]) else {
         return Ok(None);
     };
-    if SEARCH_THEIR_GRAVEYARD_PATTERN
-        .match_clause(graveyard_clause)
-        .is_none()
-    {
+    let creature_words = &after_action[..and_idx];
+    let graveyard_words = &after_action[and_idx + 1..];
+    if creature_words.is_empty() || graveyard_words.is_empty() {
+        return Ok(None);
+    }
+    let Some((subject_player, subject_filter)) =
+        search_target_player_or_opponent_from_clause(subject_prefix)
+    else {
+        return Ok(None);
+    };
+    if !search_creature_controlled_by_player_clause_matches(creature_words) {
+        return Ok(None);
+    }
+    if !search_their_graveyard_matches(graveyard_words) {
         return Ok(None);
     }
 
@@ -1000,29 +979,44 @@ pub(crate) fn parse_target_player_exiles_creature_and_graveyard_sentence(
 }
 
 fn search_target_player_or_opponent_from_clause(
-    clause: LexedClause<'_>,
+    words: &[&str],
 ) -> Option<(PlayerAst, PlayerFilter)> {
-    let words = clause.word_refs();
-    if word_slice_starts_with(&words, SEARCH_TARGET_OPPONENT_PREFIX) {
+    if word_slice_starts_with(words, SEARCH_TARGET_OPPONENT_PREFIX) {
         Some((PlayerAst::TargetOpponent, PlayerFilter::target_opponent()))
-    } else if word_slice_starts_with(&words, SEARCH_TARGET_PLAYER_PREFIX) {
+    } else if word_slice_starts_with(words, SEARCH_TARGET_PLAYER_PREFIX) {
         Some((PlayerAst::Target, PlayerFilter::target_player()))
     } else {
         None
     }
 }
 
-fn search_creature_controlled_by_player_clause_matches(clause: LexedClause<'_>) -> bool {
-    let clause = if clause.first_word().is_some_and(is_article) {
-        clause
-            .after_words(1)
-            .unwrap_or_else(|| clause.from(clause.len()))
+fn search_creature_controlled_by_player_clause_matches(words: &[&str]) -> bool {
+    let words = if words.first().is_some_and(|word| is_article(word)) {
+        &words[1..]
     } else {
-        clause
+        words
     };
-    SEARCH_CREATURE_CONTROLLED_BY_PLAYER_PATTERN
-        .match_clause(clause)
-        .is_some()
+    // object="creature" subject=<they|that player> action=<control|controls>
+    let Some(rest) = words.strip_prefix(&["creature"]) else {
+        return false;
+    };
+    let Some((subject_phrase, subject_idx)) =
+        word_slice_find_any_phrase_start(rest, SEARCH_CREATURE_CONTROL_SUBJECT_PHRASES)
+    else {
+        return false;
+    };
+    if subject_idx != 0 {
+        return false;
+    }
+    let after_subject = &rest[subject_phrase.len()..];
+    after_subject.len() == 1 && SEARCH_CONTROL_ACTION_WORDS.contains(&after_subject[0])
+}
+
+fn search_their_graveyard_matches(words: &[&str]) -> bool {
+    // subject=<their> object=<graveyard|graveyards>
+    words.len() == 2
+        && SEARCH_GRAVEYARD_OWNER_WORDS.contains(&words[0])
+        && SEARCH_GRAVEYARD_ZONE_WORDS.contains(&words[1])
 }
 
 pub(crate) fn parse_for_each_exiled_this_way_sentence(

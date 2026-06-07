@@ -168,7 +168,7 @@ pub(super) fn parse_become_base_pt_tail<'a>(
         return Ok(None);
     };
     let tail = &become_words[with_idx + 1..];
-    if tail.len() < 5 || !word_slice_eq(&tail[..4], BASE_POWER_TOUGHNESS_WORDS) {
+    if tail.len() != 5 || !word_slice_eq(&tail[..4], BASE_POWER_TOUGHNESS_WORDS) {
         return Ok(None);
     }
     let Some((power, toughness, used)) = parse_pt_value_words(&tail[4..]) else {

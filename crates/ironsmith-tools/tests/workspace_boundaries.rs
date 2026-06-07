@@ -1244,7 +1244,8 @@ fn non_turn_conditional_untap_line_family_uses_token_sentence_split() {
         "non_turn_conditional_untap_first_sentence_tokens(ctx.line)",
         "TokenWordView::new(&line.tokens)",
         "NON_TURN_UNTAP_SUFFIX_PATTERN",
-        "matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))",
+        ".ends_with(suffix))",
+        "crate::runtime_backend::token_word_refs(&line.tokens)",
         "words.token_index_for_word_index(suffix_word_idx)",
         "token.kind == TokenKind::Period",
         "tokens_without_terminal_period(prefix_tokens)",
@@ -2113,7 +2114,7 @@ fn whole_clause_shape_gates_use_lexed_clause_matching() {
     );
     for required in [
         "fn trigger_clause_shape_matches_words(",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "trigger_clause_shape_matches_words(&words, *shape)",
         "trigger_clause_shape_matches_words(window, shape)",
         "trigger_clause_shape_matches_words(words, ONE_OR_MORE_PREFIX_PATTERN)",
@@ -2244,8 +2245,8 @@ fn whole_clause_shape_gates_use_lexed_clause_matching() {
         "trigger_clause_shape_matches_words(tail, EXPLORE_LAND_CARD_TAIL_PATTERN)",
         "trigger_clause_shape_matches_words(tail, EXPLORE_NONLAND_CARD_TAIL_PATTERN)",
         "trigger_clause_shape_matches_words(tail, NAME_STICKER_PUT_TAIL_PATTERN)",
-        "trigger_clause_shape_matches_words(&words, BECOMES_TAPPED_TRIGGER_SUFFIX)",
-        "trigger_clause_shape_matches_words(&words, THIS_BECOMES_TAPPED_TRIGGER_PATTERN)",
+        "trigger_clause_shape_matches_words(becomes_tapped_words, BECOMES_TAPPED_TRIGGER_SUFFIX)",
+        "trigger_clause_shape_matches_words(becomes_tapped_words, THIS_BECOMES_TAPPED_TRIGGER_PATTERN)",
         "trigger_clause_shape_matches_words(&words, THIS_BECOMES_UNTAPPED_TRIGGER_PATTERN)",
         "trigger_clause_shape_matches_words(&words, THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN)",
         "trigger_clause_shape_matches_words(&words, BECOMES_MONSTROUS_TRIGGER_SUFFIX)",
@@ -3319,12 +3320,12 @@ fn shared_util_for_each_count_value_uses_direct_word_shape_gates() {
     let shape_helper = function_source(
         &content,
         "fn shared_util_shape_matches_words",
-        "fn shared_util_shape_matches_word",
+        "fn shared_util_shape_matches_word(",
     );
 
     for required in [
         "fn shared_util_shape_matches_words(",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
     ] {
         assert!(
             shape_helper.contains(required),
@@ -4470,7 +4471,7 @@ fn player_relation_conditions_use_captured_relation_shapes() {
         "fn parse_life_relation_shape(relation_clause: LexedClause<'_>) -> Option<LifeRelationShape>",
         "fn parse_cards_in_hand_relation_shape(\n    relation_clause: LexedClause<'_>,\n) -> Option<CardsInHandRelationShape>",
         "LexPattern::subject(\n            \"player\",",
-        "LexCaptureKind::OneOfPhrase(&[&[\"you\"], &[\"you\", \"do\"]])",
+        "LexCaptureKind::OneOfPhrase(&[&[\"you\", \"do\"], &[\"you\"]])",
         "LexPattern::subject(\"player\", LexCaptureKind::Rest)",
         "LexPattern::any_phrase(MORE_CARDS_IN_HAND_THAN_PREFIXES)",
         "matched.capture_clause_by_role(LexCaptureRole::Subject, relation_clause)",
@@ -5898,7 +5899,7 @@ fn keyword_static_module_shape_helpers_use_direct_word_matching() {
         "fn keyword_static_token_matches_shape",
         "fn keyword_static_shape_matches_word_at",
         "fn keyword_static_shape_matches_last_word",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
     ] {
         assert!(
             content.contains(required),
@@ -5908,8 +5909,7 @@ fn keyword_static_module_shape_helpers_use_direct_word_matching() {
     for forbidden in [
         "let tokens = super::lexer::synthetic_word_tokens(words)",
         "shape.matches(LexedClause::new(&tokens))",
-        ".matches_word(",
-        ".matches_token(",
+        ".matches_words(",
     ] {
         assert!(
             !content.contains(forbidden),
@@ -6029,7 +6029,7 @@ fn keyword_static_named_subject_helpers_use_clause_shapes() {
     let activated_helper = function_source(
         &content,
         "fn activated_ability_subject_special_filter",
-        "fn parse_life_total_or_less_spell_cost_condition",
+        "pub(crate) fn parse_pregame_begin_on_battlefield_line",
     );
     let hand_name_helper = function_source(
         &content,
@@ -6706,7 +6706,7 @@ fn keyword_static_enter_as_copy_shape_gates_use_clause_shapes() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_enter_as_copy_as_enters_line",
-        "pub(crate) fn parse_enters_as_copy_or_token_copy_effect_line",
+        "pub(crate) fn parse_choose_color_as_enters_line",
     );
 
     for required in [
@@ -6846,7 +6846,7 @@ fn keyword_static_cost_target_specs_use_clause_shapes() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_this_spell_target_condition",
-        "pub(crate) fn parse_cost_modifier_line",
+        "pub(crate) fn parse_cost_modifier_prefix_condition",
     );
 
     for required in [
@@ -6887,7 +6887,7 @@ fn keyword_static_spells_cost_modifier_markers_use_clause_shapes() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_spells_cost_modifier_line",
-        "fn parse_cost_modifier_direction",
+        "pub(crate) fn parse_spell_and_player_activated_ability_cost_modifier_line",
     );
     let optional_life = function_source(
         &content,
@@ -7568,7 +7568,7 @@ fn keyword_static_copy_activated_abilities_gates_use_clause_shapes() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_copy_activated_abilities_line",
-        "pub(crate) fn parse_voting_static_line",
+        "pub(crate) fn parse_spend_mana_as_any_color_line",
     );
 
     for required in [
@@ -10374,7 +10374,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     let continuing_segments = function_source(
         &content,
         "fn parse_continuing_anthem_granted_segment",
-        "pub(crate) fn parse_anthem_static_line",
+        "fn attached_object_anthem_subject_uses_tagged_constraints",
     );
     let static_condition = function_source(
         &content,
@@ -10389,17 +10389,17 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     let for_each_expr = function_source(
         &content,
         "pub(crate) fn parse_anthem_for_each_expression",
-        "fn parse_commander_cast_count_player",
+        "pub(crate) fn parse_anthem_prefix_condition",
     );
     let lose_abilities = function_source(
         &content,
         "pub(crate) fn parse_all_creatures_lose_flying_line",
-        "pub(crate) fn parse_all_have_indestructible_line",
+        "fn is_granted_blitz_cost_tail",
     );
     let base_pt_setters = function_source(
         &content,
-        "pub(crate) fn parse_anthem_base_power_toughness_line",
-        "fn parse_creature_token_enters_base_power_toughness_static",
+        "pub(crate) fn parse_has_base_power_toughness_static_line",
+        "pub(crate) fn parse_filter_has_granted_ability_line",
     );
     let soulbond_shared = function_source(
         &content,
@@ -10434,7 +10434,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     let no_defender = function_source(
         &content,
         "pub(crate) fn parse_source_can_attack_as_though_no_defender_as_long_as_line",
-        "pub(crate) fn parse_gets_and_attacks_each_combat_if_able_line",
+        "pub(crate) fn parse_anthem_line",
     );
     let permanent_anthem_guards = function_source(
         &content,
@@ -10467,7 +10467,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
         "fn anthem_shape_matches_word",
         "fn anthem_token_matches_shape",
         "fn anthem_shape_matches_last_word",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
     ] {
         assert!(
             helper.contains(required),
@@ -10515,6 +10515,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
         "anthem_shape_matches_words(&keyword_words, ANTHEM_EMERGE_KEYWORD_PATTERN)",
         "anthem_shape_matches_words(&keyword_words, ANTHEM_IGNORED_REMINDER_KEYWORD_PATTERN)",
         "ANTHEM_EXPLOIT_KEYWORD_PATTERN",
+        "anthem_shape_matches_words(\n                    &trailing_word_refs,\n                    ANTHEM_FLASHBACK_COST_EQUALS_MANA_COST_PATTERN,\n                )",
     ] {
         assert!(
             granted_keyword.contains(required),
@@ -10524,7 +10525,6 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     for required in [
         "anthem_shape_matches_words(&trailing_word_refs, ANTHEM_BLITZ_COST_EQUALS_MANA_COST_PATTERN)",
         "anthem_shape_matches_words(&trailing_word_refs, ANTHEM_EMERGE_COST_EQUALS_MANA_COST_PATTERN)",
-        "anthem_shape_matches_words(\n                    &trailing_word_refs,\n                    ANTHEM_FLASHBACK_COST_EQUALS_MANA_COST_PATTERN,\n                )",
     ] {
         assert!(
             alternative_tails.contains(required),
@@ -10553,7 +10553,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
         );
     }
     for required in [
-        "anthem_shape_matches_words(&segment_words, ANTHEM_ATTACK_EACH_COMBAT_IF_ABLE_TAIL_PATTERN)",
+        "anthem_shape_matches_words(\n                &segment_words,\n                ANTHEM_ATTACK_EACH_COMBAT_IF_ABLE_TAIL_PATTERN,\n            )",
         "anthem_shape_matches_words(&attack_tail, ANTHEM_ATTACK_EACH_COMBAT_IF_ABLE_TAIL_PATTERN)",
         "anthem_shape_matches_words(&ability_words, ANTHEM_EMERGE_KEYWORD_PATTERN)",
     ] {
@@ -10602,8 +10602,8 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
         "anthem_shape_matches_words(&token_words, ANTHEM_FOR_EACH_PREFIX_PATTERN)",
         "anthem_shape_matches_words(&rest_words, ANTHEM_AFFECTED_ATTACKED_THIS_TURN_PATTERN)",
         "anthem_shape_matches_words(&rest_words, ANTHEM_AFFECTED_COLORS_PATTERN)",
-        "anthem_shape_matches_words(&rest_words, ANTHEM_BASIC_LAND_TYPES_AMONG_PREFIX_PATTERN)",
-        "anthem_shape_matches_words(&rest_words, ANTHEM_CREATURE_TYPES_AMONG_PREFIX_PATTERN)",
+        "Value::BasicLandTypesAmong(filter) => {",
+        "Value::CreatureTypesAmong(filter) => {",
         "anthem_shape_matches_words(&tail_words, ANTHEM_ATTACHED_TO_SOURCE_TAIL_PATTERN)",
         "anthem_shape_matches_words(&rest_words, ANTHEM_UNSPENT_GREEN_MANA_YOU_HAVE_PATTERN)",
         "anthem_shape_matches_words(tail_words, ON_SOURCE_COUNTER_TAIL_PATTERN)",
@@ -10648,9 +10648,9 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     for required in [
         "anthem_shape_matches_words(subject_words, SOULBOND_SOURCE_SUBJECT_PATTERN)",
         "anthem_shape_matches_words(&rest_words, SOULBOND_BOTH_CREATURES_GET_PREFIX_PATTERN)",
-        "anthem_shape_matches_words(\n        &rest_words,\n        SOULBOND_EACH_OF_THOSE_CREATURES_GETS_PREFIX_PATTERN,\n    )",
+        "anthem_shape_matches_words(\n            &rest_words,\n            SOULBOND_EACH_OF_THOSE_CREATURES_GETS_PREFIX_PATTERN,\n        )",
         "anthem_shape_matches_words(&rest_words, SOULBOND_BOTH_CREATURES_HAVE_PREFIX_PATTERN)",
-        "anthem_shape_matches_words(\n        &rest_words,\n        SOULBOND_EACH_OF_THOSE_CREATURES_HAS_PREFIX_PATTERN,\n    )",
+        "anthem_shape_matches_words(\n            &rest_words,\n            SOULBOND_EACH_OF_THOSE_CREATURES_HAS_PREFIX_PATTERN,\n        )",
     ] {
         assert!(
             soulbond_shared.contains(required),
@@ -10695,7 +10695,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
         "anthem_shape_matches_words(&normalized, CAN_ATTACK_AS_NO_DEFENDER_PATTERN)",
         "anthem_shape_matches_words(&normalized, CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN)",
         "anthem_shape_matches_words(&tail_words, CANT_BE_BLOCKED_WORDS_PATTERN)",
-        "anthem_shape_matches_words(\n        &all_words,\n        CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN,\n    )",
+        "anthem_shape_matches_words(&all_words, CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN)",
     ] {
         assert!(
             no_defender.contains(required),
@@ -10714,11 +10714,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
             "{relative} should route trailing anthem segment gates through token-backed matching: missing `{required}`"
         );
     }
-    for required in [
-        "anthem_shape_matches_words(&words, ANTHEM_TARGET_CONTAINS_PATTERN)",
-        "anthem_shape_matches_words(&all_words, ANTHEM_TARGET_CONTAINS_PATTERN)",
-        "anthem_shape_matches_words(\n        &all_words,\n        CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN,\n    )",
-    ] {
+    for required in ["anthem_shape_matches_words(&words, ANTHEM_TARGET_CONTAINS_PATTERN)"] {
         assert!(
             permanent_anthem_guards.contains(required),
             "{relative} should route permanent anthem guard gates through token-backed matching: missing `{required}`"
@@ -10750,7 +10746,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     for required in [
         "anthem_shape_matches_words(&words[1..], ANTHEM_NO_LONGER_PREFIX_PATTERN)",
         "anthem_shape_matches_words(&all_words, ANTHEM_TARGET_CONTAINS_PATTERN)",
-        "anthem_shape_matches_words(\n        &all_words,\n        CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN,\n    )",
+        "anthem_shape_matches_words(&all_words, CANT_BE_BLOCKED_AS_LONG_AS_TAIL_PATTERN)",
     ] {
         assert!(
             isnt_creature_static.contains(required),
@@ -10760,7 +10756,7 @@ fn anthem_grant_lines_top_shape_helpers_use_direct_word_matching() {
     for required in [
         "anthem_shape_matches_words(&subject_words, ANTHEM_TARGET_CONTAINS_PATTERN)",
         "anthem_shape_matches_words(&subject_words, UNTIL_YOUR_NEXT_TURN_PREFIX_PATTERN)",
-        "anthem_shape_matches_words(\n                &subject_words,\n                THIS_CREATURE_PREFIX_PATTERN,\n            )",
+        "anthem_shape_matches_words(&subject_words, THIS_CREATURE_PREFIX_PATTERN)",
     ] {
         assert!(
             has_base_pt_and_keywords.contains(required),
@@ -10889,12 +10885,12 @@ fn trigger_subject_filters_shape_gates_use_direct_word_matching() {
     let helper = function_source(
         &content,
         "fn trigger_subject_shape_matches_words",
-        "fn find_words_matching_shape",
+        "fn find_token_shape",
     );
 
     for required in [
         "fn trigger_subject_shape_matches_words",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "fn trigger_subject_word_is_any",
         "fn trigger_subject_token_word_is",
         "fn find_trigger_subject_token_word",
@@ -10932,7 +10928,7 @@ fn activation_restriction_clauses_shape_gates_use_direct_word_matching() {
 
     for required in [
         "fn activation_restriction_shape_matches_words",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "fn activation_restriction_word_is_any",
         "fn activation_restriction_token_word_is",
     ] {
@@ -10969,7 +10965,7 @@ fn activation_costs_shape_gates_use_direct_word_matching() {
 
     for required in [
         "fn activation_cost_shape_matches_words",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "fn parse_activation_count_words(words: &[&str]) -> Option<(u32, usize)>",
         "ironsmith_core::parse_cardinal_words(words)",
         "parse_activation_count_words(words.get(2..).unwrap_or_default())",
@@ -11125,7 +11121,7 @@ fn choice_object_clauses_shape_gates_use_direct_word_matching() {
 
     for required in [
         "fn choice_object_shape_matches_words",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "fn choice_word_is_any",
         "fn choice_token_word_is_any",
         "fn find_choice_token_word",
@@ -11164,7 +11160,7 @@ fn attached_object_static_lines_shape_gates_use_direct_word_matching() {
 
     for required in [
         "fn attached_shape_matches_words",
-        "shape.matches_words(words)",
+        "shape.matches_word_slice(words)",
         "fn attached_word_is_any",
         "fn attached_token_word_is",
     ] {
@@ -11627,24 +11623,24 @@ fn parser_semantic_lowering_shape_gates_use_token_backed_matching() {
     let content = read_repo_file(&root, relative);
 
     for required in [
-        "word_slice_contains_phrase(&token_word_refs(tokens), IF_YOU_DO_PHRASE)",
-        "word_slice_starts_with_any(\n        &token_word_refs(tokens),\n        SELF_ENTERS_WITH_X_PLUS_ONE_COUNTER_PREFIXES,",
+        "IF_YOU_DO_PATTERN.matches_word_slice(&token_word_refs(tokens))",
+        "SELF_X_COUNTER_ETB_PATTERN.matches_word_slice(&token_word_refs(tokens))",
         "word_slice_ends_with_any(&token_word_refs(attack_tokens), ATTACK_ACTION_SUFFIXES)",
         "word_slice_starts_with(&parser_token_word_refs(tokens), PARTNER_WITH_PREFIX)",
     ] {
         assert!(
             content.contains(required),
-            "{relative} should route parser-semantic lowering gates through direct token word-slice predicates: missing `{required}`"
+            "{relative} should route parser-semantic lowering gates through token-backed clause-shape predicates: missing `{required}`"
         );
     }
     assert!(
         !content.contains("parser_semantic_shape_matches_words("),
         "{relative} should no longer keep a synthetic-token shape helper for boolean lowering gates"
     );
-    for forbidden in ["ClauseShape", "clause_shape!", ".matches_words("] {
+    for forbidden in [".matches_words("] {
         assert!(
             !content.contains(forbidden),
-            "{relative} should not route parser-semantic lowering gates through one-off shape matchers: found `{forbidden}`"
+            "{relative} should not route parser-semantic lowering gates through the banned synthetic-token matches_words adapter: found `{forbidden}`"
         );
     }
 }
@@ -12928,14 +12924,14 @@ fn cycling_keyword_family_uses_shared_word_helper() {
     let content = read_repo_file(&root, relative);
     let dispatcher = function_source(
         &content,
-        "fn dispatch_hint_from_tokens",
+        "fn keyword_fallback_kind",
         "mod additional_costs",
     );
     for required in [
         "let clause = LexedClause::new(tokens)",
-        "BASIC_LANDCYCLING_FALLBACK_PATTERN.matches(clause)",
-        "ENCORE_FALLBACK_PATTERN.matches(clause)",
-        "JUMP_START_FALLBACK_PATTERN.matches(clause)",
+        "KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)",
+        "matched.capture_clause_by_role(LexCaptureRole::Action, clause)",
+        "keyword_clause.word_refs().as_slice()",
     ] {
         assert!(
             dispatcher.contains(required),
@@ -13069,7 +13065,7 @@ fn keyword_static_text_markers_use_token_shapes_for_simple_lines() {
     let parser = function_source(
         &content,
         "pub(crate) fn parse_static_text_marker_line",
-        "pub(crate) fn parse_affinity_cost_reduction_line",
+        "pub(crate) fn parse_filter_dont_untap_during_controllers_untap_steps_line",
     );
 
     for required in [
@@ -15152,7 +15148,7 @@ fn sentence_shape_predicates_route_direct_sentence_gates_through_lexed_clauses()
         "word_slice_starts_with_any(&sentence_words, SENTENCE_SACRIFICE_COUNTED_PREFIXES)",
         "word_slice_contains_any_phrase(&sentence_words, SENTENCE_DELAYED_LIFECYCLE_PHRASES)",
         "fn parse_it_is_aura_enchantment_sentence_lexed(",
-        "word_slice_starts_with_any(&words, SENTENCE_ITS_AN_PREFIXES)",
+        "word_slice_matching_prefix(&words, SENTENCE_ITS_AN_PREFIXES)",
         "word_slice_starts_with(&words, SENTENCE_IT_IS_AN_PREFIX)",
         "word_slice_starts_with(&tail.word_refs(), SENTENCE_AURA_ENCHANT_CREATURE_PREFIX)",
         "SENTENCE_YOU_CONTROL_PREFIX",
@@ -16668,9 +16664,11 @@ fn combat_death_blocked_damage_special_case_uses_tokens() {
         "fn tokens_start_with_partner_dash_label",
     );
     assert!(
-        block_first_strike_helper.contains("BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PATTERN")
-            && block_first_strike_helper.contains("matches(LexedClause::new(tokens))"),
-        "{lower_mod_relative} should classify blocks/becomes-blocked first-strike lines through token clause shapes"
+        block_first_strike_helper
+            .contains("word_slice_starts_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PREFIX)")
+            && block_first_strike_helper
+                .contains("word_slice_ends_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_SUFFIX)"),
+        "{lower_mod_relative} should classify blocks/becomes-blocked first-strike lines through token word matching"
     );
     for forbidden in [
         "lex_line(",
@@ -17219,8 +17217,8 @@ fn parser_semantic_partner_static_display_uses_parse_tokens() {
         "visible_partner_label_is_variant_tokens(visible_tokens)",
         "tokens_before_reminder_or_period(tokens)",
         "render_partner_label_token_slice(tokens_before_reminder_or_period(tokens))",
-        "CHARACTER_SELECT_PREFIX_PATTERN.matches_words(&words)",
-        "PARTNER_WITH_PATTERN.matches_words(&words)",
+        "CHARACTER_SELECT_PREFIX_PATTERN.matches_word_slice(&words)",
+        "PARTNER_WITH_PATTERN.matches_word_slice(&words)",
     ] {
         assert!(
             keyword_partner_helper.contains(required),
@@ -17258,14 +17256,14 @@ fn parser_semantic_static_special_cases_use_parse_tokens() {
 
     for required in [
         "let parse_words = token_word_refs(parse_tokens)",
-        "KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN.matches_words(&parse_words)",
+        "KRRRIK_BLACK_MANA_LIFE_PAYMENT_STATIC_PATTERN.matches_word_slice(&parse_words)",
         "is_minimum_spell_total_mana_three_line_lexed(parse_tokens)",
         "is_players_cant_pay_life_or_sacrifice_line_lexed(parse_tokens)",
-        "BOAST_TWICE_STATIC_PATTERN.matches_words(&parse_words)",
+        "BOAST_TWICE_STATIC_PATTERN.matches_word_slice(&parse_words)",
         "is_first_equip_cost_alternative_lowering_line(parse_tokens)",
-        "EQUIP_ABILITIES_INSTANT_SPEED_PATTERN.matches_words(&parse_words)",
-        "VOTE_ADDITIONAL_TIME_PATTERN.matches_words(&parse_words)",
-        "VOTE_ADDITIONAL_VOTE_PATTERN.matches_words(&parse_words)",
+        "EQUIP_ABILITIES_INSTANT_SPEED_PATTERN.matches_word_slice(&parse_words)",
+        "VOTE_ADDITIONAL_TIME_PATTERN.matches_word_slice(&parse_words)",
+        "VOTE_ADDITIONAL_VOTE_PATTERN.matches_word_slice(&parse_words)",
     ] {
         assert!(
             helper.contains(required),
@@ -17312,8 +17310,8 @@ fn parser_semantic_keyword_action_probe_skip_uses_parse_tokens() {
         "#[cfg(test)]",
     );
     assert!(
-        skip_helper.contains("CANT_BE_BLOCKED_LINE_PATTERN.matches_words(&words)")
-            && skip_helper.contains("THIS_OR_IT_PREFIX_PATTERN.matches_words(&words)")
+        skip_helper.contains("CANT_BE_BLOCKED_LINE_PATTERN.matches_word_slice(&words)")
+            && skip_helper.contains("THIS_OR_IT_PREFIX_PATTERN.matches_word_slice(&words)")
             && skip_helper.contains("token_word_refs(tokens)"),
         "{relative} should classify unqualified can't-be-blocked probe skips through token clause shapes"
     );
@@ -17395,7 +17393,7 @@ fn self_enters_counter_static_parser_uses_token_shapes_for_adamant_branch() {
     );
     assert!(
         variable_prefix_helper
-            .contains("SELF_X_COUNTER_ETB_PATTERN.matches_words(&token_word_refs(tokens))"),
+            .contains("SELF_X_COUNTER_ETB_PATTERN.matches_word_slice(&token_word_refs(tokens))"),
         "{relative} should classify variable ETB counter prefixes through token clause shapes"
     );
     let revealed_value_helper = function_source(
@@ -17405,7 +17403,7 @@ fn self_enters_counter_static_parser_uses_token_shapes_for_adamant_branch() {
     );
     assert!(
         revealed_value_helper.contains("REVEALED_CARDS_TOTAL_MANA_VALUE_X_PATTERN")
-            && revealed_value_helper.contains("matches_words(&token_word_refs(tokens))")
+            && revealed_value_helper.contains("matches_word_slice(&token_word_refs(tokens))")
             && revealed_value_helper.contains("Value::TotalManaValue"),
         "{relative} should classify revealed-card total mana value with token clause shapes"
     );
@@ -17441,7 +17439,7 @@ fn full_party_triggered_special_case_uses_token_tail_split() {
     assert!(
         helper.contains("full_parse_tokens_contain_full_party_instead(full_parse_tokens)")
             && helper.contains(
-                "FULL_PARTY_CONDITION_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+                "FULL_PARTY_CONDITION_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))"
             ),
         "{relative} should detect full-party effect tails from parse tokens"
     );
@@ -17451,12 +17449,12 @@ fn full_party_triggered_special_case_uses_token_tail_split() {
         "fn looks_like_combined_spell_and_activation_tax",
     );
     assert!(
-        classifier.contains("FULL_PARTY_INSTEAD_PATTERN.matches_words(&token_word_refs(tokens))"),
+        classifier.contains("FULL_PARTY_INSTEAD_PATTERN.matches_word_slice(&token_word_refs(tokens))"),
         "{relative} should classify full-party replacement triggers from full parse tokens through clause shapes"
     );
     assert!(
         helper.contains(
-            "FULL_PARTY_CONDITION_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+            "FULL_PARTY_CONDITION_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))"
         ),
         "{relative} should detect full-party effect tails from effect parse tokens through clause shapes"
     );
@@ -17489,8 +17487,8 @@ fn direct_trigger_fast_path_guards_use_full_parse_tokens() {
     );
     assert!(
         helper.contains("split_triggered_conditional_clause_lexed(tokens")
-            && helper.contains("IF_YOU_DO_PATTERN.matches_words(&token_word_refs(tokens))")
-            && helper.contains("IF_YOU_DONT_PATTERN.matches_words(&token_word_refs(tokens))"),
+            && helper.contains("IF_YOU_DO_PATTERN.matches_word_slice(&token_word_refs(tokens))")
+            && helper.contains("IF_YOU_DONT_PATTERN.matches_word_slice(&token_word_refs(tokens))"),
         "{relative} should classify direct-trigger fast-path blockers from full parse tokens through clause shapes"
     );
 
@@ -17505,7 +17503,7 @@ fn direct_trigger_fast_path_guards_use_full_parse_tokens() {
             && fast_path.contains("full_parse_tokens_contain_if_you_do(full_parse_tokens)")
             && fast_path.contains("full_parse_tokens_contain_if_you_dont(full_parse_tokens)")
             && fast_path.contains(
-                "EFFECT_STARTS_IF_PATTERN.matches_words(&token_word_refs(effect_parse_tokens))"
+                "EFFECT_STARTS_IF_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))"
             ),
         "{relative} should feed full parse tokens into direct-trigger fast-path guards"
     );
@@ -17541,7 +17539,7 @@ fn permission_helpers_route_clause_shape_gates_through_lexed_clauses() {
     let additional_land = function_source(
         &content,
         "pub(crate) fn parse_additional_land_plays_clause_lexed",
-        "fn parse_permission_tail_tokens",
+        "pub(crate) fn parse_cast_spells_as_though_they_had_flash_clause",
     );
 
     for required in [
@@ -17953,19 +17951,19 @@ fn consult_family_routes_direct_shape_gates_through_lexed_clauses() {
     let content = read_repo_file(&root, relative);
 
     for required in [
-        "CONSULT_THEY_SUBJECT_PATTERN\n            .matches(LexedClause::new(&consult_tokens[..consult_verb_idx]))",
-        "CONSULT_TOP_LIBRARY_PREFIX_PATTERN.matches_non_article_tokens(consult_prefix_tokens)",
-        "CONSULT_THAT_MANY_PREFIX_PATTERN.matches(LexedClause::new(&filter_tokens))",
-        "CONSULT_THIS_POWER_PATTERN.matches(LexedClause::new(tokens))",
-        "CONSULT_PLAY_WORD_PATTERN.matches_word(word)",
-        "CONSULT_THIS_TURN_PATTERN.matches(LexedClause::new(remainder_tokens))",
-        "CONSULT_PAY_LIFE_MANA_VALUE_PATTERN.matches(LexedClause::new(remainder_tokens))",
-        "CONSULT_NOT_CAST_THIS_MARKER_PATTERN.matches(LexedClause::new(tokens))",
-        "CONSULT_PUT_MATCH_INTO_HAND_PATTERN.matches(LexedClause::new(tokens))",
+        "word_slice_eq(\n            &crate::runtime_backend::token_word_refs(&consult_tokens[..consult_verb_idx]),\n            &[\"they\"],\n        )",
+        "word_slice_starts_with(&consult_prefix_words, CONSULT_TOP_LIBRARY_PREFIX)",
+        "word_slice_starts_with(\n            &crate::runtime_backend::token_word_refs(&filter_tokens),\n            CONSULT_THAT_MANY_PREFIX,\n        )",
+        "word_slice_eq_any(\n        &crate::runtime_backend::token_word_refs(tokens),\n        CONSULT_THIS_POWER_CLAUSES,\n    )",
+        "is_some_and(|word| *word == \"play\")",
+        "word_slice_eq(&remainder, CONSULT_THIS_TURN_CLAUSE)",
+        "word_slice_eq(&remainder, CONSULT_PAY_LIFE_MANA_VALUE_CLAUSE)",
+        "word_slice_contains_any_phrase(\n        &crate::runtime_backend::token_word_refs(tokens),\n        CONSULT_NOT_CAST_THIS_MARKER_PHRASES,\n    )",
+        "word_slice_eq_any(\n        &crate::runtime_backend::token_word_refs(tokens),\n        CONSULT_PUT_MATCH_INTO_HAND_CLAUSES,\n    )",
     ] {
         assert!(
             content.contains(required),
-            "{relative} should route direct consult-family shape gates through LexedClause or matches_word: missing `{required}`"
+            "{relative} should route direct consult-family shape gates through reusable word helpers: missing `{required}`"
         );
     }
 

@@ -15,7 +15,7 @@ use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
-use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::primitives::{self as grammar, TokenWordView, contains_word};
 use super::super::grammar::structure::{
     parse_trailing_if_predicate_lexed, parse_trailing_instead_if_predicate_lexed,
     parse_who_player_predicate_lexed, split_trailing_if_clause_lexed,
@@ -28,7 +28,11 @@ use super::super::keyword_static::{
 use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::{
     LexedClause, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
-    token_slice_first_is_any, token_slice_starts_with,
+    token_slice_first_is_any, token_slice_starts_with, word_slice_contains_any_phrase,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with_any, word_slice_eq,
+    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};

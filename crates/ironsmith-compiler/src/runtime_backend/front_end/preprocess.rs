@@ -187,12 +187,6 @@ fn strip_parenthetical_segments(line: &str) -> String {
     collapse_whitespace_runs(out.as_str())
 }
 
-fn line_words_start_with(line: &str, prefix: &[&str]) -> bool {
-    lex_line(line.trim_start(), 0)
-        .ok()
-        .is_some_and(|tokens| word_slice_starts_with(&parser_token_word_refs(&tokens), prefix))
-}
-
 fn split_parse_line_variants(line: &str) -> Vec<String> {
     let lower = line.to_ascii_lowercase();
     if line_words_start_with(line, ADDITIONAL_COST_TO_CAST_THIS_SPELL_PREFIX)
@@ -235,6 +229,12 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
     }
 
     vec![line.to_string()]
+}
+
+fn line_words_start_with(line: &str, prefix: &[&str]) -> bool {
+    lex_line(line.trim_start(), 0)
+        .ok()
+        .is_some_and(|tokens| word_slice_starts_with(&parser_token_word_refs(&tokens), prefix))
 }
 
 fn parse_metadata_line(line: &str) -> Result<Option<MetadataLine>, CardTextError> {

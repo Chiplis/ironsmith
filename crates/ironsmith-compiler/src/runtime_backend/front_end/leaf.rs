@@ -178,6 +178,7 @@ const LEAF_X_WORD: &str = "x";
 const LEAF_ARTICLE_WORDS: &[&str] = &["a", "an", "the"];
 const LEAF_A_OR_AN_WORDS: &[&str] = &["a", "an"];
 const LEAF_YOUR_HAND_WORDS: &[&str] = &["your", "hand"];
+const FROM_YOUR_HAND_SUFFIX: &[&str] = &["from", "your", "hand"];
 const LEAF_THIS_CARD_WORDS: &[&str] = &["this", "card"];
 const LEAF_OTHER_OR_ANOTHER_WORDS: &[&str] = &["another", "other"];
 const LEAF_CARD_NAMED_PREFIX: &[&str] = &["card", "named"];
@@ -1778,6 +1779,7 @@ fn parse_reveal_segment_tokens(
 
     if let Some(from_zone_tail) = parse_leaf_from_your_zone_tail(tokens, &words, tail)
         && matches!(from_zone_tail.zone, Zone::Hand)
+        && word_slice_ends_with(tail, FROM_YOUR_HAND_SUFFIX)
     {
         let subject = from_zone_tail.subject_words;
         let mut idx = 0usize;

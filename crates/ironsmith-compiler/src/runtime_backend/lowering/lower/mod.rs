@@ -104,7 +104,7 @@ use super::keyword_static::{
     parse_value_binding_clause,
 };
 use super::lexer::{
-    LexedClause, OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, lex_line,
+    OwnedLexToken, TokenKind, TokenWordView, contains_token_word_sequence, lex_line,
     render_token_slice, split_lexed_sentences, token_slice_ends_with, token_slice_starts_with,
     token_word_refs, trim_lexed_commas,
 };
@@ -445,10 +445,7 @@ fn tokens_start_with_trigger_intro_surface(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn tokens_mention_becomes_tapped_during_your_turn(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_phrase(
-        &token_word_refs(tokens),
-        BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE,
-    )
+    word_slice_contains_phrase(&token_word_refs(tokens), BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE)
 }
 
 fn do_this_frequency_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -471,10 +468,7 @@ fn tokens_start_with_level_up(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn tokens_match_each_player_and_their_creatures_damage(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_any_phrase(
-        &token_word_refs(tokens),
-        DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES,
-    )
+    word_slice_contains_any_phrase(&token_word_refs(tokens), DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES)
 }
 
 fn tokens_match_blocks_or_blocked_first_strike(tokens: &[OwnedLexToken]) -> bool {

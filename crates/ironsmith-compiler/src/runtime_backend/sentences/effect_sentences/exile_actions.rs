@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime_backend::lex_patterns::{LexCaptureKind, LexPattern};
 use crate::runtime_backend::lexer::{
     LexedClause, word_slice_contains_phrase, word_slice_eq, word_slice_starts_with,
+    word_slice_starts_with_any,
 };
 const EXILE_ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
 const EXILE_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
@@ -32,18 +33,14 @@ const EXILE_OWNER_ITS_CONTROLLER_PHRASES: &[&[&str]] =
     &[&["its", "controller"], &["its", "controllers"]];
 const EXILE_OWNER_ITS_OWNER_PHRASES: &[&[&str]] = &[&["its", "owner"], &["its", "owners"]];
 const EXILE_OWNER_HIS_OR_HER_PHRASES: &[&[&str]] = &[&["his", "or", "her"]];
-const EXILE_OWNER_EACH_OPPONENT_PHRASES: &[&[&str]] = &[
-    &["each", "opponent"],
-    &["each", "opponents"],
-    &["each", "opponent's"],
+const EXILE_EACH_OPPONENT_LIBRARY_PREFIXES: &[&[&str]] = &[
+    &["each", "opponent", "library"],
+    &["each", "opponents", "library"],
+    &["each", "opponent's", "library"],
+    &["each", "opponent", "libraries"],
+    &["each", "opponents", "libraries"],
+    &["each", "opponent's", "libraries"],
 ];
-const EXILE_EACH_OPPONENT_LIBRARY_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(EXILE_OWNER_EACH_OPPONENT_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(EXILE_LIBRARY_ZONE_WORDS)),
-]);
 const EXILE_THE_TOP_PREFIX: &[&str] = &["the", "top"];
 const EXILE_WITH_THAT_NAME_PHRASE: &[&str] = &["with", "that", "name"];
 
@@ -64,7 +61,7 @@ enum OwnerPrefixPlayer {
 }
 
 struct OwnerPrefixEntry {
-    owner_phrases: &'static [&'static [&'static str]],
+    phrases: &'static [&'static [&'static str]],
     player: OwnerPrefixPlayer,
 }
 
@@ -76,75 +73,77 @@ pub(crate) struct ParsedOwnerPrefix {
 
 const GRAVEYARD_OWNER_PREFIXES: &[OwnerPrefixEntry] = &[
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_YOU_PHRASES,
+        phrases: EXILE_OWNER_YOU_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::You),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_THEIR_PHRASES,
+        phrases: EXILE_OWNER_THEIR_PHRASES,
         player: OwnerPrefixPlayer::GraveyardTheir,
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_THAT_PLAYER_PHRASES,
+        phrases: EXILE_OWNER_THAT_PLAYER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::That),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_TARGET_PLAYER_PHRASES,
+        phrases: EXILE_OWNER_TARGET_PLAYER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::Target),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_TARGET_OPPONENT_PHRASES,
+        phrases: EXILE_OWNER_TARGET_OPPONENT_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::TargetOpponent),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_ITS_CONTROLLER_PHRASES,
+        phrases: EXILE_OWNER_ITS_CONTROLLER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::ItsController),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_ITS_OWNER_PHRASES,
+        phrases: EXILE_OWNER_ITS_OWNER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::ItsOwner),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_HIS_OR_HER_PHRASES,
+        phrases: EXILE_OWNER_HIS_OR_HER_PHRASES,
         player: OwnerPrefixPlayer::GraveyardTheir,
     },
 ];
 
 const LIBRARY_OWNER_PREFIXES: &[OwnerPrefixEntry] = &[
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_NONE_PHRASES,
-        player: OwnerPrefixPlayer::LibraryDefault,
-    },
-    OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_YOU_PHRASES,
+        phrases: EXILE_OWNER_YOU_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::You),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_THEIR_PHRASES,
+        phrases: EXILE_OWNER_THEIR_PHRASES,
         player: OwnerPrefixPlayer::LibraryTheirOrHisHer,
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_THAT_PLAYER_PHRASES,
+        phrases: EXILE_OWNER_THAT_PLAYER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::That),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_TARGET_PLAYER_PHRASES,
+        phrases: EXILE_OWNER_TARGET_PLAYER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::Target),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_TARGET_OPPONENT_PHRASES,
+        phrases: EXILE_OWNER_TARGET_OPPONENT_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::TargetOpponent),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_ITS_CONTROLLER_PHRASES,
+        phrases: EXILE_OWNER_ITS_CONTROLLER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::ItsController),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_ITS_OWNER_PHRASES,
+        phrases: EXILE_OWNER_ITS_OWNER_PHRASES,
         player: OwnerPrefixPlayer::Direct(PlayerAst::ItsOwner),
     },
     OwnerPrefixEntry {
-        owner_phrases: EXILE_OWNER_HIS_OR_HER_PHRASES,
+        phrases: EXILE_OWNER_HIS_OR_HER_PHRASES,
         player: OwnerPrefixPlayer::LibraryTheirOrHisHer,
+    },
+    // Fallback: no explicit owner phrase. Must be tried last so an explicit owner
+    // phrase wins; the empty-phrase entry always "matches" with zero consumed words.
+    OwnerPrefixEntry {
+        phrases: EXILE_OWNER_NONE_PHRASES,
+        player: OwnerPrefixPlayer::LibraryDefault,
     },
 ];
 
@@ -166,59 +165,50 @@ fn owner_prefix_player(spec: OwnerPrefixPlayer, default_player: PlayerAst) -> Pl
 fn parse_zone_owner_prefix_lexed(
     tokens: &[OwnedLexToken],
     entries: &[OwnerPrefixEntry],
-    zone_words: &'static [&'static str],
     default_player: PlayerAst,
 ) -> Option<ParsedOwnerPrefix> {
     let clause = LexedClause::new(tokens);
     entries.iter().find_map(|entry| {
-        let zone_atom = [LexPattern::object(
-            "zone",
-            LexCaptureKind::OneOf(zone_words),
+        let owner_atoms = [LexPattern::object(
+            "owner",
+            LexCaptureKind::OneOfPhrase(entry.phrases),
         )];
-        let owned_zone_atoms = [
-            LexPattern::subject("owner", LexCaptureKind::OneOfPhrase(entry.owner_phrases)),
-            LexPattern::object("zone", LexCaptureKind::OneOf(zone_words)),
-        ];
-        let atoms = if entry.owner_phrases.is_empty() {
-            zone_atom.as_slice()
+        let owner_range = if entry.phrases.is_empty() {
+            0..0
         } else {
-            owned_zone_atoms.as_slice()
+            let matched = LexPattern::new(&owner_atoms).match_prefix(clause)?;
+            matched.capture_word_range("owner")?
         };
-        let matched = LexPattern::new(atoms).match_prefix(clause)?;
-        let zone_range = matched.capture_word_range("zone")?;
         Some(ParsedOwnerPrefix {
             player: owner_prefix_player(entry.player, default_player),
-            consumed_words: zone_range.end,
+            consumed_words: owner_range.end,
         })
     })
 }
 
-fn parse_zone_owner_prefix_words(
-    words: &[&str],
+/// `parse_zone_owner_prefix_lexed` reports `consumed_words` as the owner-phrase word
+/// count only. The public zone-specific wrappers below restore the historical contract
+/// where `consumed_words` also covers the trailing zone word: they require the owner
+/// phrase to be immediately followed by exactly one matching zone word and bump the
+/// count by one, so every caller (here and in resource verbs) keeps its original
+/// "consumed up to and including the zone word" semantics.
+fn parse_zone_owner_prefix_through_zone(
+    tokens: &[OwnedLexToken],
     entries: &[OwnerPrefixEntry],
     zone_words: &[&str],
     default_player: PlayerAst,
-) -> Option<(PlayerAst, usize)> {
-    entries.iter().find_map(|entry| {
-        if entry.owner_phrases.is_empty() {
-            return words.first().and_then(|word| {
-                zone_words
-                    .contains(word)
-                    .then_some((owner_prefix_player(entry.player, default_player), 1))
-            });
-        }
-        entry.owner_phrases.iter().find_map(|owner_phrase| {
-            let zone_idx = owner_phrase.len();
-            words
-                .get(zone_idx)
-                .is_some_and(|word| words.starts_with(owner_phrase) && zone_words.contains(word))
-                .then(|| {
-                    (
-                        owner_prefix_player(entry.player, default_player),
-                        owner_phrase.len() + 1,
-                    )
-                })
-        })
+) -> Option<ParsedOwnerPrefix> {
+    let owner = parse_zone_owner_prefix_lexed(tokens, entries, default_player)?;
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !words
+        .get(owner.consumed_words)
+        .is_some_and(|word| zone_words.contains(word))
+    {
+        return None;
+    }
+    Some(ParsedOwnerPrefix {
+        player: owner.player,
+        consumed_words: owner.consumed_words + 1,
     })
 }
 
@@ -419,10 +409,7 @@ fn parse_attached_object_exile_bundle(
     {
         return Ok(None);
     }
-    if !word_slice_eq(
-        &crate::runtime_backend::token_word_refs(attachment_target_tokens),
-        &["it"],
-    ) {
+    if !word_slice_eq(&crate::runtime_backend::token_word_refs(attachment_target_tokens), &["it"]) {
         return Ok(None);
     }
 
@@ -577,19 +564,10 @@ pub(crate) fn split_exile_graveyard_replacement_suffix(
     }
 }
 
-pub(crate) fn parse_graveyard_owner_prefix(words: &[&str]) -> Option<(PlayerAst, usize)> {
-    parse_zone_owner_prefix_words(
-        words,
-        GRAVEYARD_OWNER_PREFIXES,
-        EXILE_GRAVEYARD_ZONE_WORDS,
-        PlayerAst::Implicit,
-    )
-}
-
 pub(crate) fn parse_graveyard_owner_prefix_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ParsedOwnerPrefix> {
-    parse_zone_owner_prefix_lexed(
+    parse_zone_owner_prefix_through_zone(
         tokens,
         GRAVEYARD_OWNER_PREFIXES,
         EXILE_GRAVEYARD_ZONE_WORDS,
@@ -601,7 +579,7 @@ fn parse_library_owner_prefix_lexed(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Option<ParsedOwnerPrefix> {
-    parse_zone_owner_prefix_lexed(
+    parse_zone_owner_prefix_through_zone(
         tokens,
         LIBRARY_OWNER_PREFIXES,
         EXILE_LIBRARY_ZONE_WORDS,
@@ -609,11 +587,6 @@ fn parse_library_owner_prefix_lexed(
     )
 }
 
-fn exile_owner_prefix_is_each_opponent_library(tokens: &[OwnedLexToken]) -> bool {
-    EXILE_EACH_OPPONENT_LIBRARY_PATTERN
-        .match_prefix(LexedClause::new(tokens))
-        .is_some()
-}
 
 pub(crate) fn parse_exile_top_library_clause(
     tokens: &[OwnedLexToken],
@@ -648,7 +621,10 @@ pub(crate) fn parse_exile_top_library_clause(
     }
 
     let owner_tokens = trim_commas(&after_cards[1..]);
-    if exile_owner_prefix_is_each_opponent_library(&owner_tokens) {
+    if word_slice_starts_with_any(
+        &crate::runtime_backend::token_word_refs(&owner_tokens),
+        EXILE_EACH_OPPONENT_LIBRARY_PREFIXES,
+    ) {
         return Some(EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::That,
@@ -734,7 +710,10 @@ fn parse_exile_bottom_library_clause(
         ]
     };
 
-    if exile_owner_prefix_is_each_opponent_library(&owner_tokens) {
+    if word_slice_starts_with_any(
+        &crate::runtime_backend::token_word_refs(&owner_tokens),
+        EXILE_EACH_OPPONENT_LIBRARY_PREFIXES,
+    ) {
         return Some(EffectAst::ForEachOpponent {
             effects: choose_and_exile(PlayerAst::That, tag),
         });
@@ -754,8 +733,9 @@ fn parse_exile_bottom_library_clause(
 pub(crate) fn parse_target_player_graveyard_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    let owner = parse_graveyard_owner_prefix_lexed(tokens)?;
-    if owner.consumed_words != LexedClause::new(tokens).word_refs().len() {
+    let tokens = trim_commas(tokens);
+    let owner = parse_graveyard_owner_prefix_lexed(&tokens)?;
+    if owner.consumed_words != LexedClause::new(&tokens).word_refs().len() {
         return None;
     }
 

@@ -54,10 +54,16 @@ type SharedSubjectBasePt = (Value, Value, usize, Until);
 
 fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut tokens = trim_edge_punctuation(tokens);
-    while tokens.first().is_some_and(|token| token.kind == TokenKind::Quote) {
+    while tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+    {
         tokens = trim_edge_punctuation(&tokens[1..]);
     }
-    while tokens.last().is_some_and(|token| token.kind == TokenKind::Quote) {
+    while tokens
+        .last()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+    {
         tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
     }
     tokens

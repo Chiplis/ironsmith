@@ -2,6 +2,7 @@ use super::*;
 use crate::runtime_backend::front_end::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom, LexPatternMatch,
 };
+use crate::runtime_backend::lexer::word_slice_contains_any_phrase;
 
 const REVEAL_HAND_SUFFIXES: &[&[&str]] = &[
     &["in", "your", "hand"],
@@ -30,36 +31,29 @@ const CHOICE_DAMAGE_CONDITION_BOUNDARY_WORDS: &[&str] =
 const OF_WORD: &str = "of";
 const TO_WORD: &str = "to";
 const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
-const HAND_OWNER_PHRASES: &[&[&str]] = &[
-    &["their"],
-    &["your"],
-    &["that", "player"],
-    &["target", "player"],
+const HAND_REFERENCE_PHRASES: &[&[&str]] = &[
+    &["their", "hand"],
+    &["their", "hands"],
+    &["your", "hand"],
+    &["your", "hands"],
+    &["that", "player", "hand"],
+    &["that", "player", "hands"],
+    &["target", "player", "hand"],
+    &["target", "player", "hands"],
 ];
-const HAND_LOCATION_WORDS: &[&str] = &["hand", "hands"];
-const HAND_REFERENCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::role_capture(
-        "owner",
-        LexCaptureRole::Subject,
-        LexCaptureKind::OneOfPhrase(HAND_OWNER_PHRASES),
-    ),
-    LexPattern::role_capture(
-        "location",
-        LexCaptureRole::Object,
-        LexCaptureKind::OneOf(HAND_LOCATION_WORDS),
-    ),
-]);
 const DAMAGE_WORD: &str = "damage";
 const DESTROY_WORD: &str = "destroy";
 const AT_RANDOM_PHRASE: &[&str] = &["at", "random"];
 const YOU_GAIN_X_LIFE_PHRASE: &[&str] = &["you", "gain", "x", "life"];
 const LOSE_X_LIFE_PHRASES: &[&[&str]] = &[&["lose", "x", "life"], &["loses", "x", "life"]];
-const CARD_WORDS: &[&str] = &["card"];
+const CARD_WORD: &str = "card";
 const TOKEN_WORDS: &[&str] = &["token"];
 const SACRIFICE_WORDS: &[&str] = &["sacrifice"];
 const COUNTER_WORDS: &[&str] = &["counter"];
 const CREATE_WORDS: &[&str] = &["create"];
 const ALTERNATE_DAMAGE_TARGET_PHRASES: &[&[&str]] = &[&["them"], &["that", "player"]];
+const THEM_OR_THAT_PLAYER_PHRASES: &[&[&str]] = ALTERNATE_DAMAGE_TARGET_PHRASES;
+const THAT_PLAYER_WORDS: &[&str] = &["that", "player"];
 const TARGET_WORD: &str = "target";
 const EXILE_WORD: &str = "exile";
 const COUNTER_WORD: &str = "counter";
@@ -69,22 +63,8 @@ const DAMAGE_SOURCE_SUBJECT_PHRASES: &[&[&str]] = &[
     &["this", "permanent"],
     &["this", "enchantment"],
 ];
-const THAT_PLAYER_TARGET_PHRASES: &[&[&str]] = &[&["that", "player"]];
 const HAS_OR_HAVE_PHRASES: &[&[&str]] = &[&["has"], &["have"]];
 const CONTROLLER_WORDS: &[&str] = &["controller", "controllers"];
-const ALTERNATE_DAMAGE_TARGET_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "target",
-        LexCaptureKind::OneOfPhrase(ALTERNATE_DAMAGE_TARGET_PHRASES),
-    )]);
-const DAMAGE_SOURCE_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::subject(
-    "source",
-    LexCaptureKind::OneOfPhrase(DAMAGE_SOURCE_SUBJECT_PHRASES),
-)]);
-const THAT_PLAYER_TARGET_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "target",
-    LexCaptureKind::OneOfPhrase(THAT_PLAYER_TARGET_PHRASES),
-)]);
 const CHOICE_DAMAGE_ALL_OR_EACH_HEAD_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "scope",
@@ -120,18 +100,6 @@ const LOSE_X_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::a
     "lose_life",
     LexCaptureKind::OneOfPhrase(LOSE_X_LIFE_PHRASES),
 )]);
-const YOU_GAIN_X_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
-    "gain_life",
-    LexCaptureKind::OneOfPhrase(&[YOU_GAIN_X_LIFE_PHRASE]),
-)]);
-const CARD_DESCRIPTOR_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "card",
-    LexCaptureKind::OneOf(CARD_WORDS),
-)]);
-const AT_RANDOM_DESCRIPTOR_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "random",
-    LexCaptureKind::OneOfPhrase(&[AT_RANDOM_PHRASE]),
-)]);
 const CREATE_ACTION_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
     "create",
     LexCaptureKind::OneOf(CREATE_WORDS),
@@ -151,10 +119,6 @@ const COUNTER_MARKER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern
 const UP_TO_ONE_TARGET_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "target",
     LexCaptureKind::OneOfPhrase(&[UP_TO_ONE_TARGET_WORDS]),
-)]);
-const CARD_OR_CARDS_NOUN_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "card",
-    LexCaptureKind::OneOf(CARD_OR_CARDS_WORDS),
 )]);
 const EACH_OPPONENT_SCOPE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::subject(
     "scope",
@@ -185,15 +149,16 @@ fn choice_damage_clause_matches_pattern(
 }
 
 fn choice_damage_alternate_target_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    choice_damage_clause_matches_pattern(clause, ALTERNATE_DAMAGE_TARGET_PATTERN, "target")
+    let alt_target_words = clause.word_refs();
+    word_slice_eq_any(&alt_target_words, THEM_OR_THAT_PLAYER_PHRASES)
 }
 
-fn choice_damage_source_subject_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    choice_damage_clause_matches_pattern(clause, DAMAGE_SOURCE_SUBJECT_PATTERN, "source")
+fn choice_damage_source_subject_matches(subject_clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    word_slice_eq_any(&subject_clause.word_refs(), DAMAGE_SOURCE_SUBJECT_PHRASES)
 }
 
-fn choice_damage_that_player_target_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    choice_damage_clause_matches_pattern(clause, THAT_PLAYER_TARGET_PATTERN, "target")
+fn choice_damage_that_player_target_matches(target_clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    word_slice_eq(&target_clause.word_refs(), THAT_PLAYER_WORDS)
 }
 
 fn choice_damage_find_pattern(
@@ -220,14 +185,17 @@ fn choice_damage_starts_with_pattern(
         .is_some_and(|range| range.start == 0)
 }
 
-fn choice_damage_drain_clause_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    choice_damage_find_pattern(clause, LOSE_X_LIFE_PATTERN, "lose_life")
-        && choice_damage_find_pattern(clause, YOU_GAIN_X_LIFE_PATTERN, "gain_life")
+fn choice_damage_drain_clause_matches(drain_clause: SubjectVerbPrimitiveClause<'_>) -> bool {
+    choice_damage_find_pattern(drain_clause, LOSE_X_LIFE_PATTERN, "lose_life")
+        && word_slice_contains_phrase(&drain_clause.word_refs(), YOU_GAIN_X_LIFE_PHRASE)
 }
 
-fn choice_damage_random_card_descriptor_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    choice_damage_find_pattern(clause, CARD_DESCRIPTOR_PATTERN, "card")
-        && choice_damage_find_pattern(clause, AT_RANDOM_DESCRIPTOR_PATTERN, "random")
+fn choice_damage_random_card_descriptor_matches(
+    random_descriptor_clause: SubjectVerbPrimitiveClause<'_>,
+) -> bool {
+    let descriptor_words = random_descriptor_clause.word_refs();
+    word_slice_contains_word(&descriptor_words, CARD_WORD)
+        && word_slice_contains_phrase(&random_descriptor_clause.word_refs(), AT_RANDOM_PHRASE)
 }
 
 fn choice_damage_create_token_sacrifice_counter_clause_matches(
@@ -246,15 +214,8 @@ fn choice_damage_up_to_one_target_window_matches(words: &[&str]) -> bool {
         .is_some()
 }
 
-fn choice_damage_card_noun_at(words: &[&str], idx: usize) -> bool {
-    words
-        .get(idx..idx + 1)
-        .and_then(|window| {
-            CARD_OR_CARDS_NOUN_PATTERN
-                .match_word_refs(window)
-                .and_then(|matched| matched.capture_word_range("card"))
-        })
-        .is_some()
+fn choice_damage_card_noun_at(descriptor_words: &[&str], idx: usize) -> bool {
+    word_slice_at_is_any(&descriptor_words, idx, CARD_OR_CARDS_WORDS)
 }
 
 fn choice_damage_starts_with_scope(
@@ -384,17 +345,13 @@ pub(crate) const DAMAGE_UNLESS_CONTROLLER_HAS_SOURCE_DEAL_DAMAGE_PATTERN_ATOMS:
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
+const ENCHANTED_ATTACKED_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["that", "creature", "attacked", "this", "turn"],
+    &["enchanted", "creature", "attacked", "this", "turn"],
+];
 const ENCHANTED_ATTACKED_UNLESS_SEQUENCES: &[&[LexPatternAtom<'static>]] = &[
-    &[LexPattern::phrase(&[
-        "that", "creature", "attacked", "this", "turn",
-    ])],
-    &[LexPattern::phrase(&[
-        "enchanted",
-        "creature",
-        "attacked",
-        "this",
-        "turn",
-    ])],
+    &[LexPattern::phrase(ENCHANTED_ATTACKED_THIS_TURN_PHRASES[0])],
+    &[LexPattern::phrase(ENCHANTED_ATTACKED_THIS_TURN_PHRASES[1])],
 ];
 pub(crate) const DAMAGE_TO_THAT_PLAYER_UNLESS_ENCHANTED_ATTACKED_PATTERN_ATOMS:
     &[LexPatternAtom<'static>] = &[
@@ -933,7 +890,8 @@ pub(crate) fn parse_sentence_target_player_reveals_random_card_from_hand_matched
 }
 
 fn is_hand_reference_clause(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
-    clause.match_pattern(HAND_REFERENCE_PATTERN).is_some()
+    let hand_words = clause.word_refs();
+    word_slice_eq_any(&hand_words, HAND_REFERENCE_PHRASES)
 }
 
 pub(crate) fn object_target_with_count(target: &TargetAst) -> Option<(ObjectFilter, ChoiceCount)> {
@@ -1124,6 +1082,9 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage_mat
 pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if !word_slice_contains_any_phrase(&clause.word_refs(), ENCHANTED_ATTACKED_THIS_TURN_PHRASES) {
+        return Ok(None);
+    }
     let pattern = LexPattern::new(DAMAGE_TO_THAT_PLAYER_UNLESS_ENCHANTED_ATTACKED_PATTERN_ATOMS);
     let Some(matched) = clause.match_pattern(pattern) else {
         return Ok(None);

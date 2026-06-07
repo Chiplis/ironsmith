@@ -28,11 +28,11 @@ use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause
 use crate::runtime_backend::token_primitives::{
     find_index, parse_leading_may_action_lexed, word_view_has_any_prefix,
 };
-use crate::runtime_backend::util::{parse_choice_count_token_prefix_consumed, trim_commas};
 use crate::runtime_backend::util::{
     helper_tag_for_tokens, is_article, non_article_token_word_refs, non_article_word_refs,
     parse_subject, strip_leading_token_word_once_any, word_refs_except,
 };
+use crate::runtime_backend::util::{parse_choice_count_token_prefix_consumed, trim_commas};
 use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::CardType;
 use crate::zone::Zone;
@@ -449,10 +449,7 @@ const COUNTED_EXILE_LOOKED_FACE_DOWN_PREFIXES: &[&[&str]] = &[
 ];
 
 fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty()
-        && words
-            .windows(phrase.len())
-            .any(|window| window == phrase)
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 fn parse_counted_looked_exile_face_down_rest_bottom(
@@ -501,7 +498,8 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
         if let Some((exile_count, bottom_order)) =
             parse_counted_looked_exile_face_down_rest_bottom(exile_clause.tokens())
         {
-            let Ok(look_effects) = effect_sentences::parse_effect_sentence_lexed(look_clause.tokens())
+            let Ok(look_effects) =
+                effect_sentences::parse_effect_sentence_lexed(look_clause.tokens())
             else {
                 return Ok(None);
             };
@@ -539,11 +537,7 @@ pub(crate) fn parse_look_at_top_then_exile_face_down_then_play_while_exiled(
             choice_filter.zone = Some(Zone::Library);
 
             return Ok(Some(vec![
-                EffectAst::subject_verb_look_at_top_cards(
-                    library_owner,
-                    count,
-                    looked_tag.clone(),
-                ),
+                EffectAst::subject_verb_look_at_top_cards(library_owner, count, looked_tag.clone()),
                 EffectAst::ChooseObjects {
                     filter: choice_filter,
                     count: exile_count,

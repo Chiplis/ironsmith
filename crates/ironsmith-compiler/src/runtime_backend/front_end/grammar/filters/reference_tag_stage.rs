@@ -295,6 +295,16 @@ pub(super) fn parse_object_filter_inner(
             let mut fragment_tokens = trim_commas(fragment_tokens);
             let mut only = false;
             let mut count = None;
+            // The outer scan splits target fragments after the demonstrative
+            // "that target(s)" marker, so a fragment never re-introduces a
+            // leading "that"; strip one defensively to keep the fragment shape
+            // stable if upstream splitting changes.
+            if fragment_tokens
+                .first()
+                .is_some_and(|token| token.as_word().is_some_and(|word| word == THAT_WORD))
+            {
+                fragment_tokens.drain(..1);
+            }
             if fragment_tokens
                 .first()
                 .is_some_and(|token| token.as_word().is_some_and(|word| word == ONLY_WORD))
@@ -1830,7 +1840,9 @@ pub(super) fn parse_object_filter_inner(
     // foretold card you own in exile" where the second clause was silently
     // absorbed into the first filter).
     if strict {
-        let input_words = non_article_parser_word_refs(&tokens);
+        let tokens = tokens.as_slice();
+        let input_words = non_article_parser_word_refs(tokens);
+        let all_words = input_words.as_slice();
 
         // "and each" / "and every" signals a compound count source when
         // the word after "each"/"every" introduces a new filter (type word,
@@ -1839,6 +1851,12 @@ pub(super) fn parse_object_filter_inner(
         // "and each foretold card you own in exile" is a new clause).
         for (idx, _) in input_words.iter().enumerate() {
             if !word_slice_starts_with_any(&input_words[idx..], STRICT_COMPOUND_COUNT_PREFIXES) {
+                continue;
+            }
+            // A "other than basic land card(s)" exception is stripped before
+            // this point, so it never reaches the compound-clause check; guard
+            // for it defensively to keep the strict scan stable.
+            if word_slice_starts_with(&all_words[idx..], OTHER_THAN_BASIC_LAND_PREFIX) {
                 continue;
             }
             // "and each other" is typically a subject qualifier, allow it.

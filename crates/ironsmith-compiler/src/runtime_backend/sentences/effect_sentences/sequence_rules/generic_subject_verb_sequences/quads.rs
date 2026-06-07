@@ -193,10 +193,7 @@ fn exiles_one_looked_card_face_down_and_bottoms_rest(tokens: &[OwnedLexToken]) -
 }
 
 fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty()
-        && words
-            .windows(phrase.len())
-            .any(|window| window == phrase)
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 fn parse_counted_looked_cards_exile_face_down(
@@ -556,44 +553,44 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    let (look_tokens, exile_count, bottom_order) =
-        if let Some(exile_word_idx) = first_clause.find_word("exile") {
-            let Some(exile_token_idx) = first_clause.token_index_for_word_index(exile_word_idx)
-            else {
-                return Ok(None);
-            };
-            let look_clause = first_clause.before(exile_token_idx).trimmed();
-            let exile_clause = first_clause.from(exile_token_idx).trimmed();
-            let Some((count, includes_remainder)) =
-                parse_counted_looked_cards_exile_face_down(exile_clause.tokens())
-            else {
-                return Ok(None);
-            };
-            let order = if includes_remainder {
-                puts_looked_remainder_on_bottom(exile_clause.tokens())
-            } else {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
-            };
-            let Some(order) = order else {
-                return Ok(None);
-            };
-            (look_clause.tokens(), count, order)
-        } else {
-            let Some((count, includes_remainder)) =
-                parse_counted_looked_cards_exile_face_down(sentences[sentence_idx + 1].lowered())
-            else {
-                return Ok(None);
-            };
-            let order = if includes_remainder {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 1].lowered())
-            } else {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
-            };
-            let Some(order) = order else {
-                return Ok(None);
-            };
-            (first_clause.tokens(), count, order)
+    let (look_tokens, exile_count, bottom_order) = if let Some(exile_word_idx) =
+        first_clause.find_word("exile")
+    {
+        let Some(exile_token_idx) = first_clause.token_index_for_word_index(exile_word_idx) else {
+            return Ok(None);
         };
+        let look_clause = first_clause.before(exile_token_idx).trimmed();
+        let exile_clause = first_clause.from(exile_token_idx).trimmed();
+        let Some((count, includes_remainder)) =
+            parse_counted_looked_cards_exile_face_down(exile_clause.tokens())
+        else {
+            return Ok(None);
+        };
+        let order = if includes_remainder {
+            puts_looked_remainder_on_bottom(exile_clause.tokens())
+        } else {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+        };
+        let Some(order) = order else {
+            return Ok(None);
+        };
+        (look_clause.tokens(), count, order)
+    } else {
+        let Some((count, includes_remainder)) =
+            parse_counted_looked_cards_exile_face_down(sentences[sentence_idx + 1].lowered())
+        else {
+            return Ok(None);
+        };
+        let order = if includes_remainder {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 1].lowered())
+        } else {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+        };
+        let Some(order) = order else {
+            return Ok(None);
+        };
+        (first_clause.tokens(), count, order)
+    };
 
     let Ok(look_effects) = effect_sentences::parse_effect_sentence_lexed(look_tokens) else {
         return Ok(None);
@@ -639,11 +636,7 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     choice_filter.zone = Some(Zone::Library);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(
-            library_owner,
-            count.clone(),
-            looked_tag.clone(),
-        ),
+        EffectAst::subject_verb_look_at_top_cards(library_owner, count.clone(), looked_tag.clone()),
         EffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,

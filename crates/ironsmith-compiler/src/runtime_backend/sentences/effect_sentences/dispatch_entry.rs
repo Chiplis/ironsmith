@@ -55,10 +55,9 @@ use super::sentence_helpers::*;
 use super::sequence_rules::{subject_verb_sequence_route, try_parse_subject_verb_sequence_rule};
 use super::zone_handlers::parse_exile_top_library_clause;
 use super::{
-    find_verb, parse_effect_sentence_lexed, parse_restriction_duration,
-    parse_search_library_disjunction_filter,
-    parse_token_copy_modifier_sentence, trim_edge_punctuation, SubjectVerbPrimitiveClause,
-    try_build_unless,
+    SubjectVerbPrimitiveClause, find_verb, parse_effect_sentence_lexed, parse_restriction_duration,
+    parse_search_library_disjunction_filter, parse_token_copy_modifier_sentence,
+    trim_edge_punctuation, try_build_unless,
 };
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -278,7 +277,9 @@ fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bo
     }) {
         return false;
     }
-    words.iter().any(|word| matches!(*word, "become" | "becomes"))
+    words
+        .iter()
+        .any(|word| matches!(*word, "become" | "becomes"))
 }
 
 const BE_REGENERATED_SUFFIX: &[&str] = &["be", "regenerated"];
@@ -1301,7 +1302,10 @@ fn parse_effect_sentences_from_sentence_inputs(
             let split_tokens = clause
                 .split_once_on_comma()
                 .map(|(unless_clause, effect_clause)| {
-                    (unless_clause.tokens().to_vec(), effect_clause.tokens().to_vec())
+                    (
+                        unless_clause.tokens().to_vec(),
+                        effect_clause.tokens().to_vec(),
+                    )
                 })
                 .or_else(|| split_leading_unless_payment_search_tokens(&leading_unless_tokens));
             if let Some((unless_tokens, effect_tokens)) = split_tokens {
