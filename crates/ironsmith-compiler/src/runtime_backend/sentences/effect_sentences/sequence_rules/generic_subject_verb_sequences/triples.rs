@@ -1212,15 +1212,17 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
 
 /// Composes the "for each card type, put a card of that type from among the
 /// revealed cards into your hand, rest on bottom" follow-up shape from reusable
-/// primitives, mirroring the runtime effects the retired
-/// `ChooseFromLookedCardsForEachCardType*IntoHandRestOnBottomOfLibrary` recipes
-/// lowered to (see `compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library`).
+/// primitives. This replaces the retired
+/// `ChooseFromLookedCardsForEachCardType*IntoHandRestOnBottomOfLibrary` recipe
+/// variants and lowers to the same runtime `Effect` tree they did.
 ///
-/// Per card type, a `ChooseObjects` (up to 1, of that type, from the prior
-/// looked cards not already chosen, sharing one `chosen_tag`) is emitted; when
-/// `spell_filter` is set, that choose is gated behind a value comparison that the
-/// player has cast at least one matching spell of that type this turn. The chosen
-/// cards then move to hand and the looked remainder goes to the bottom.
+/// Per card type, a `ChooseObjectsAcrossZones` (up to 1, of that type, from the
+/// prior looked cards not already chosen, sharing one `chosen_tag`) is emitted;
+/// when `spell_filter` is set, that choose is gated behind a value comparison
+/// that the player has cast at least one matching spell of that type this turn.
+/// The chosen cards then move to hand via `MoveTaggedGroupToZone` (which keeps
+/// the iterated reference internal to lowering, so no bare `it` surfaces) and
+/// the looked remainder goes to the bottom.
 ///
 /// `looked_tag` must reference the cards already looked at by a prior effect.
 fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
@@ -1279,16 +1281,9 @@ fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
         }
     }
 
-    effects.push(EffectAst::ForEachTagged {
+    effects.push(EffectAst::MoveTaggedGroupToZone {
         tag: chosen_tag.clone(),
-        effects: vec![EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(TagKey::from(IT_TAG), None),
-            Zone::Hand,
-            false,
-            ReturnControllerAst::Preserve,
-            false,
-            None,
-        )],
+        zone: Zone::Hand,
     });
     effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
@@ -2092,26 +2087,32 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
         return Ok(None);
     };
 
-    // NOTE: This shape is NOT composed into reusable primitives. Composing it as
-    // a per-card-type ChooseObjects sequence diverges in object-triggered abilities
-    // (e.g. Atraxa's "When this creature enters"): the decomposed for-each-move
-    // exposes a bare `it` reference that triggers a spurious triggering-object
-    // prelude (the monolithic recipe variant hid it), which the renderer's compact
-    // recognizer no longer matches. Retiring it cleanly would require relaxing the
-    // shared `effect_references_it_tag` ForEachTagged precision, which regresses
-    // unrelated magecraft/looked-card cards. So this keeps the recipe variant.
-    Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut effects = vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+    ];
+    effects.extend(
+        compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
             player,
-            count,
-            TagKey::from(crate::cards::builders::IT_TAG),
-        ),
-        EffectAst::subject_verb_reveal_tagged(TagKey::from(crate::cards::builders::IT_TAG)),
-        EffectAst::subject_verb_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-            player,
+            looked_tag,
+            chosen_tag,
+            &[
+                CardType::Artifact,
+                CardType::Battle,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Instant,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Sorcery,
+            ],
+            None,
             order,
         ),
-    ]))
+    );
+    Ok(Some(effects))
 }
 
 fn is_put_one_looked_card_hand_one_bottom_exile_one(tokens: &[OwnedLexToken]) -> bool {

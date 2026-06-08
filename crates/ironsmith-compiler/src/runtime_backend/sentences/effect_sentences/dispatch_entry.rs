@@ -2229,29 +2229,40 @@ mod tests {
         .expect("Atraxa reveal bundle helper should not error")
         .expect("Atraxa reveal bundle helper should parse");
 
+        // Now composed from reusable primitives: look + reveal-tagged + per-card-type
+        // choose-across-zones (ungated) + move-group-to-hand + remainder-to-bottom.
         assert!(matches!(
-            parsed.as_slice(),
-            [
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
-                        ..
-                    }
-                ),
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
-                        ..
-                    }
-                ),
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. },
-                        ..
-                    }
-                ),
-            ]
+            parsed.first(),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                    ..
+                }
+            ))
         ));
+        assert!(matches!(
+            parsed.get(1),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
+                    ..
+                }
+            ))
+        ));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::ChooseObjectsAcrossZones { .. }
+        )));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+                    ..
+                }
+            )
+        )));
     }
 
     #[test]
@@ -2859,7 +2870,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }

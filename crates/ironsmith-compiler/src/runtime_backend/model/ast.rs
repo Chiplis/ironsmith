@@ -1479,9 +1479,6 @@ pub(crate) enum SubjectVerbActionAst {
         reveal: bool,
         progress_tag: TagKey,
     },
-    ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-        order: LibraryBottomOrderAst,
-    },
     RetargetStackObject {
         target: TargetAst,
         mode: RetargetModeAst,
@@ -2954,10 +2951,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("reveal", reveal)
                 .field("progress_tag", progress_tag)
                 .finish(),
-            Self::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { order } => f
-                .debug_struct("ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary")
-                .field("order", order)
-                .finish(),
             Self::RetargetStackObject {
                 target,
                 mode,
@@ -3534,6 +3527,16 @@ pub(crate) enum EffectAst {
     ForEachTagged {
         tag: TagKey,
         effects: Vec<EffectAst>,
+    },
+    /// Moves every object tagged `tag` to `zone`, preserving each object's
+    /// controller. Lowers to `for_each_tagged(tag, [move(Iterated, zone)])`.
+    /// Unlike a hand-written `ForEachTagged` whose body references `it`, this
+    /// keeps the iterated reference internal to lowering, so the iteration does
+    /// not surface a bare `it` that would be mistaken for an outer (triggering)
+    /// object reference.
+    MoveTaggedGroupToZone {
+        tag: TagKey,
+        zone: Zone,
     },
     ForEachOpponentDoesNot {
         effects: Vec<EffectAst>,
@@ -5016,19 +5019,6 @@ impl EffectAst {
                 destination,
                 reveal,
                 progress_tag,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-                order,
             },
         )
     }

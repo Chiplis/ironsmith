@@ -436,10 +436,6 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
-                SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. } => {
-                    track_effect_player(subject_verb.subject.player, frame, true, true)?;
-                    frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
-                }
                 SubjectVerbActionAst::DealDamage { target, .. }
                 | SubjectVerbActionAst::DealDistributedDamage { target, .. }
                 | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
@@ -1192,6 +1188,10 @@ fn advance_reference_frame_for_effect(
                 Some(tag.as_str().to_string())
             };
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
+        }
+        EffectAst::MoveTaggedGroupToZone { .. } => {
+            // Moves an existing tagged group; introduces no new references and
+            // keeps the iterated object internal to lowering.
         }
         EffectAst::RepeatProcess { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
@@ -2155,7 +2155,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }
@@ -2874,9 +2873,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-                ..
-            } => 0,
             SubjectVerbActionAst::RetargetStackObject { target, mode, .. } => {
                 let mut replacements = bind_unresolved_it_in_target(target, seed_tag);
                 if let RetargetModeAst::OneToFixed { target } = mode {

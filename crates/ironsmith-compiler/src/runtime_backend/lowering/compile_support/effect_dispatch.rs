@@ -4134,23 +4134,6 @@ fn compile_subject_verb_effect(
                 subject.into_choices(),
             ))
         }
-        SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-            order,
-        } => effect_visibility_object_handlers::compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-            player,
-            order.clone(),
-            &[
-                CardType::Artifact,
-                CardType::Battle,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Instant,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Sorcery,
-            ],
-            ctx,
-        ),
         SubjectVerbActionAst::RetargetStackObject {
             target,
             mode,

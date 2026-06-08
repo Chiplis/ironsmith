@@ -157,6 +157,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachTargetPlayers { .. } => {}
         EffectAst::ForEachObject { .. } => {}
         EffectAst::ForEachTagged { .. } => {}
+        EffectAst::MoveTaggedGroupToZone { .. } => {}
         EffectAst::ForEachOpponentDoesNot { .. } => {}
         EffectAst::ForEachPlayerDoesNot { .. } => {}
         EffectAst::ForEachOpponentDid { .. } => {}

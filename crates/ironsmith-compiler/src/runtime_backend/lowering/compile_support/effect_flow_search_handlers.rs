@@ -420,6 +420,13 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::for_each_tagged(effective_tag, inner_effects);
             (vec![effect], inner_choices)
         }
+        EffectAst::MoveTaggedGroupToZone { tag, zone } => {
+            let effect = Effect::for_each_tagged(
+                tag.as_str().to_string(),
+                vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
+            );
+            (vec![effect], Vec::new())
+        }
         EffectAst::ForEachTaggedPlayer { tag, effects } => {
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(effects, ctx, None)?;

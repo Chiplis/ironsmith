@@ -441,7 +441,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }
