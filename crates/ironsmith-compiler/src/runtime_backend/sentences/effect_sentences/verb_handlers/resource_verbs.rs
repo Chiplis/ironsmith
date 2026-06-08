@@ -51,7 +51,6 @@ const RESOURCE_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const RESOURCE_AND_WORD: &str = "and";
 const RESOURCE_ANY_OR_ALL_WORDS: &[&str] = &["any", "all"];
 const RESOURCE_OF_WORD: &str = "of";
-const RESOURCE_FROM_WORD: &str = "from";
 const RESOURCE_AS_YOU_CHOOSE_WORDS: &[&str] = &["as", "you", "choose"];
 const RESOURCE_INTO_WORD: &str = "into";
 const NOTE_YOUR_LIFE_TOTAL_WORDS: &[&str] = &["your", "life", "total"];
@@ -77,20 +76,10 @@ const RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORDS: &[&str] = &[
 const RESOURCE_THIS_WAY_WORDS: &[&str] = &["this", "way"];
 const RESOURCE_ALL_ABILITIES_PHRASES: &[&[&str]] =
     &[&["all", "abilities"], &["all", "other", "abilities"]];
-const RESOURCE_TAKE_EXTRA_TURN_AFTER_THIS_ONE_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "extra_turn",
-        LexCaptureKind::OneOfPhrase(&[TAKE_EXTRA_TURN_AFTER_THIS_ONE_WORDS]),
-    )]);
 const RESOURCE_PROLIFERATE_TRAILING_OK_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "trailing",
         LexCaptureKind::OneOfPhrase(PROLIFERATE_TRAILING_OK_PHRASES),
-    )]);
-const RESOURCE_NTH_FROM_TOP_DESTINATION_TAIL_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "tail",
-        LexCaptureKind::OneOfPhrase(&[NTH_FROM_TOP_DESTINATION_TAIL_WORDS]),
     )]);
 const RESOURCE_BENEATH_TOP_AMOUNT_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::modifier(
@@ -103,16 +92,6 @@ const RESOURCE_THAT_LIBRARY_AMOUNT_TAIL_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
         "tail",
         LexCaptureKind::OneOfPhrase(&[THAT_LIBRARY_AMOUNT_TAIL_WORDS]),
-    )]);
-const RESOURCE_PLAY_THOSE_EXILED_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::action(
-        "permission",
-        LexCaptureKind::OneOfPhrase(&[RESOURCE_PLAY_THOSE_EXILED_WORDS]),
-    )]);
-const RESOURCE_NOTE_YOUR_LIFE_TOTAL_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "life_total",
-        LexCaptureKind::OneOfPhrase(&[NOTE_YOUR_LIFE_TOTAL_WORDS]),
     )]);
 const RESOURCE_ALL_ABILITIES_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "abilities",
@@ -146,23 +125,6 @@ const RESOURCE_REVEALED_OR_EXILED_SHAPE: LexPattern<'static> =
         "source",
         LexCaptureKind::OneOf(RESOURCE_REVEALED_OR_EXILED_WORDS),
     )]);
-const RESOURCE_CHOSEN_NAME_TAIL_SHAPE: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object("name", LexCaptureKind::OneOf(RESOURCE_NAME_OR_NAMES_WORDS)),
-    LexPattern::modifier(
-        "choice",
-        LexCaptureKind::OneOfPhrase(&[RESOURCE_CHOSEN_NAME_TAIL_PREFIX]),
-    ),
-    LexPattern::object(
-        "named_object",
-        LexCaptureKind::OneOf(RESOURCE_CHOSEN_NAME_OBJECT_NOUN_WORDS),
-    ),
-    LexPattern::tail("tail", LexCaptureKind::Rest),
-]);
-const RESOURCE_THIS_WAY_WORD_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "this_way",
-        LexCaptureKind::OneOf(RESOURCE_THIS_WAY_WORDS),
-    )]);
 
 const LOOK_YOUR_OWNER_PHRASES: &[&[&str]] = &[&["your"]];
 const LOOK_EACH_PLAYER_OWNER_PHRASES: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
@@ -175,8 +137,6 @@ const LOOK_TARGET_OPPONENT_OWNER_PHRASES: &[&[&str]] =
 const LOOK_OPPONENT_OWNER_PHRASES: &[&[&str]] = &[&["opponent"], &["opponents"]];
 const LOOK_ITS_OWNER_PHRASES: &[&[&str]] = &[&["its", "owner"], &["its", "owners"]];
 const LOOK_HIS_OR_HER_OWNER_PHRASES: &[&[&str]] = &[&["his", "or", "her"]];
-const LOOK_HAND_ZONE_WORDS: &[&str] = &["hand"];
-const LOOK_LIBRARY_ZONE_WORDS: &[&str] = &["library"];
 const LOOK_TOP_THAT_PLAYER_LIBRARY_PREFIXES: &[&[&str]] = &[
     &["the", "top", "card", "of", "that", "player", "library"],
     &["the", "top", "card", "of", "that", "players", "library"],
@@ -415,17 +375,6 @@ const SHUFFLE_TARGET_INTO_THEIR_LIBRARY_SHAPE: LexPattern<'static> = LexPattern:
     ),
     LexPattern::object("zone", LexCaptureKind::OneOf(SHUFFLE_LIBRARY_ZONE_WORDS)),
 ]);
-const SHUFFLE_SOURCE_OWNER_PHRASES: &[&[&str]] = &[
-    &["your"],
-    &["their"],
-    &["that", "player"],
-    &["that", "players"],
-    &["its", "owner"],
-    &["its", "owners"],
-    &["his", "or", "her"],
-    &[],
-];
-const SHUFFLE_GRAVEYARD_ZONE_WORDS: &[&str] = &["graveyard", "graveyards"];
 const SUPPORTED_SHUFFLE_SOURCE_TAIL_PHRASES: &[&[&str]] = &[
     &["from", "your", "graveyard"],
     &["from", "your", "graveyards"],

@@ -123,17 +123,7 @@ const THE_WORD: &str = "the";
 const HALF_WORD: &str = "half";
 const LIFE_WORD: &str = "life";
 const LOST_WORD: &str = "lost";
-const LIFE_WORDS: &[&str] = &[LIFE_WORD];
-const LOST_WORDS: &[&str] = &[LOST_WORD];
 const ROUNDED_DOWN_PHRASE: &[&str] = &["rounded", "down"];
-const FOR_EACH_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "loop",
-    LexCaptureKind::OneOfPhrase(&[FOR_EACH_PREFIX]),
-)]);
-const COUNTER_FOR_EACH_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "loop",
-    LexCaptureKind::OneOfPhrase(&[COUNTER_FOR_EACH_PREFIX]),
-)]);
 const REVEAL_HAND_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "zone",
     LexCaptureKind::OneOf(REVEAL_HAND_WORDS),
@@ -142,45 +132,9 @@ const REVEAL_CARDS_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPatt
     "card",
     LexCaptureKind::OneOf(REVEAL_CARDS_WORDS),
 )]);
-const PARTY_SIZE_EQUAL_TO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "party",
-    LexCaptureKind::OneOfPhrase(&[PARTY_SIZE_EQUAL_TO_PREFIX]),
-)]);
 const WHERE_X_IS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
     "where_x",
     LexCaptureKind::OneOfPhrase(&[WHERE_X_IS_PREFIX]),
-)]);
-const NUMBER_OF_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "count",
-    LexCaptureKind::OneOfPhrase(&[NUMBER_OF_PREFIX]),
-)]);
-const THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "reference",
-    LexCaptureKind::OneOfPhrase(&[THIS_WAY_PHRASE]),
-)]);
-const CHOSEN_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "memory",
-    LexCaptureKind::OneOf(&[CHOSEN_WORD]),
-)]);
-const THAT_MUCH_LIFE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "life",
-    LexCaptureKind::OneOfPhrase(&[THAT_MUCH_LIFE_WORDS]),
-)]);
-const LIFE_EQUAL_TO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::amount(
-    "life_equal_to",
-    LexCaptureKind::OneOfPhrase(&[LIFE_EQUAL_TO_PREFIX]),
-)]);
-const LIFE_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "life",
-    LexCaptureKind::OneOf(LIFE_WORDS),
-)]);
-const LOST_WORD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "lost",
-    LexCaptureKind::OneOf(LOST_WORDS),
-)]);
-const ROUNDED_DOWN_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "rounding",
-    LexCaptureKind::OneOfPhrase(&[ROUNDED_DOWN_PHRASE]),
 )]);
 const COUNTERS_ON_SOURCE_REFERENCE_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
@@ -258,16 +212,6 @@ fn counter_words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
         .is_some()
 }
 
-fn counter_words_prefix_pattern_matches(
-    words: &[&str],
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    pattern
-        .match_prefix_word_refs(words)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
 
 fn counter_words_exact_pattern_matches(
     words: &[&str],
@@ -307,10 +251,6 @@ const REVEAL_TAGGED_REFERENCE_PATTERN: LexPattern<'static> =
         "reference",
         LexCaptureKind::OneOfPhrase(REVEAL_TAGGED_REFERENCE_PHRASES),
     )]);
-const REVEAL_FROM_AMONG_TAGGED_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::phrase(REVEAL_FROM_AMONG_WORDS),
-    LexPattern::tail("among", LexCaptureKind::OneOrMoreWords),
-]);
 const REVEAL_OUTSIDE_GAME_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::phrase(REVEAL_OUTSIDE_GAME_PHRASE)]);
 const REVEAL_FIRST_CARD_YOU_DRAW_PATTERN: LexPattern<'static> =
@@ -328,13 +268,6 @@ const REVEAL_CONDITIONAL_IT_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::tail("condition", LexCaptureKind::UntilPhrase(IF_PHRASE)),
     LexPattern::word(IF_WORD),
 ]);
-const REVEAL_FULL_HAND_SOURCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(REVEAL_HAND_OWNER_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(REVEAL_HAND_ZONE_WORDS)),
-]);
 const REVEAL_HAND_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word(COUNTER_FROM_WORD),
     LexPattern::subject(
@@ -345,22 +278,8 @@ const REVEAL_HAND_SOURCE_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
 ]);
 const REVEAL_FROM_PREPOSITION_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::word(COUNTER_FROM_WORD)]);
-const REVEAL_EXPLICIT_TOP_CARD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "top_card",
-        LexCaptureKind::OneOfPhrase(EXPLICIT_TOP_CARD_PHRASES),
-    )]);
 const REVEAL_TOP_LIBRARY_SOURCE_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::modifier("top", LexCaptureKind::OneOfPhrase(TOP_THE_TOP_PREFIXES)),
-    LexPattern::object("card", LexCaptureKind::OneOf(REVEAL_CARD_WORDS)),
-    LexPattern::word("of"),
-    LexPattern::subject(
-        "owner",
-        LexCaptureKind::OneOfPhrase(TOP_LIBRARY_OWNER_PHRASES),
-    ),
-    LexPattern::object("zone", LexCaptureKind::OneOf(TOP_LIBRARY_ZONE_WORDS)),
-]);
-const REVEAL_LIBRARY_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::object("card", LexCaptureKind::OneOf(REVEAL_CARD_WORDS)),
     LexPattern::word("of"),
     LexPattern::subject(

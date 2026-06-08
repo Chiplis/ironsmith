@@ -362,30 +362,6 @@ impl ControlConditionAst {
     pub(crate) fn object_text(&self) -> String {
         self.object_words.join(" ")
     }
-
-    pub(crate) fn into_matching_filter_count_comparison(
-        self,
-        display: String,
-    ) -> crate::ConditionExpr {
-        crate::ConditionExpr::CountComparison {
-            count: AnthemCountExpression::MatchingFilter(self.filter),
-            comparison: self.comparison,
-            display: Some(display),
-        }
-    }
-}
-
-impl OwnershipConditionAst {
-    pub(crate) fn into_matching_filter_count_comparison(
-        self,
-        display: String,
-    ) -> crate::ConditionExpr {
-        crate::ConditionExpr::CountComparison {
-            count: AnthemCountExpression::MatchingFilter(self.filter),
-            comparison: self.comparison,
-            display: Some(display),
-        }
-    }
 }
 
 impl SubjectStatusConditionAst {

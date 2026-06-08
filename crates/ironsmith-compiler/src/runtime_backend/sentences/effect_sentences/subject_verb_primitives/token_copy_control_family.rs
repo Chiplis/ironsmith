@@ -5,9 +5,7 @@ use crate::runtime_backend::front_end::lex_patterns::{
 
 const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
 const RETURN_WORD: &str = "return";
-const CHOOSE_WORD: &str = "choose";
 const CREATE_WORD: &str = "create";
-const SACRIFICE_WORD: &str = "sacrifice";
 const RETURN_WORDS: &[&str] = &["return"];
 const CHOOSE_WORDS: &[&str] = &["choose"];
 const SACRIFICE_WORDS: &[&str] = &["sacrifice"];
@@ -255,7 +253,6 @@ const CHOOSE_CARD_NAME_TAIL_PREFIX_PATTERN: LexPattern<'static> =
         "choice",
         LexCaptureKind::OneOfPhrase(CHOOSE_CARD_NAME_TAIL_PREFIXES),
     )]);
-const EXILE_WORD: &str = "exile";
 const LOOK_WORDS: &[&str] = &["look"];
 const DRAW_WORDS: &[&str] = &["draw"];
 const TAP_OR_UNTAP_WORDS: &[&str] = &["tap", "untap"];

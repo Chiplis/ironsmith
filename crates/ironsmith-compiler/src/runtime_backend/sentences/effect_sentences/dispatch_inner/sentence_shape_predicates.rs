@@ -621,38 +621,9 @@ fn sentence_has_unsupported_negated_untap_clause(_: &[&str], tokens: &[OwnedLexT
     effect_grammar::has_unsupported_negated_untap_clause_sentence_lexed(tokens)
 }
 
-fn sentence_words_start_with(words: &[&str], phrase: &[&str]) -> bool {
-    words.len() >= phrase.len()
-        && words
-            .iter()
-            .zip(phrase.iter())
-            .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
-}
 
-fn sentence_words_starting_phrase<'a>(
-    words: &[&str],
-    phrases: &'a [&'a [&'a str]],
-) -> Option<&'a [&'a str]> {
-    phrases
-        .iter()
-        .copied()
-        .find(|phrase| sentence_words_start_with(words, phrase))
-}
 
-fn sentence_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    if phrase.is_empty() || phrase.len() > words.len() {
-        return false;
-    }
-    words
-        .windows(phrase.len())
-        .any(|window| sentence_words_start_with(window, phrase))
-}
 
-fn sentence_words_contain_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
-    phrases
-        .iter()
-        .any(|phrase| sentence_words_contain_phrase(words, phrase))
-}
 
 fn parse_it_is_aura_enchantment_sentence_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let clause = LexedClause::new(tokens);

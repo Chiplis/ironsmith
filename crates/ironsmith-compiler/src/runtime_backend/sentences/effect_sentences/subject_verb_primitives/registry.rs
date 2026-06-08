@@ -20,7 +20,6 @@ pub(super) const EACH_PLAYER_PREFIXES: &[&[&str]] = &[&["each", "player"]];
 pub(super) const CHOOSE_ALL_OR_PUT_ALL_PREFIXES: &[&[&str]] =
     &[&["choose", "all"], &["put", "all"]];
 pub(super) const CHOOSE_ALL_PREFIXES: &[&[&str]] = &[&["choose", "all"]];
-pub(super) const THAT_PREFIXES: &[&[&str]] = &[&["that"]];
 pub(super) const MECHANIC_MARKER_PREFIXES: &[&[&str]] = &[
     &["you", "choose", "one", "of", "them"],
     &[

@@ -1116,19 +1116,16 @@ fn document_line_family_shape_gates_use_direct_word_matching() {
     let content = read_repo_file(&root, relative);
     let helper = function_source(
         &content,
-        "fn line_family_words_match_pattern",
+        "fn line_family_words_start_with_pattern",
         "fn line_starts_with_words",
     );
 
     for required in [
-        "use super::super::lex_patterns::LexPattern",
-        "fn line_family_words_match_pattern",
         "fn line_family_words_start_with_pattern",
         "fn line_family_words_start_with_phrase",
         "fn line_family_words_contain_phrase",
         "fn line_family_words_contain_all_phrases",
         "fn line_family_words_end_with_any",
-        "pattern.match_word_refs(words).is_some()",
         "pattern.match_prefix_word_refs(words).is_some()",
         "words.starts_with(phrase)",
         "!phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)",
@@ -11239,9 +11236,7 @@ fn grammar_structure_shape_gates_use_token_backed_matching() {
         "fn structure_words_equal_any",
         "fn structure_words_start_with_any",
         "fn structure_words_end_with_any",
-        "fn structure_words_contain_phrase",
         "word_slice_eq(words, expected)",
-        "word_slice_contains_phrase(words, phrase)",
     ] {
         assert!(
             helper.contains(required),
@@ -18370,11 +18365,9 @@ fn control_copy_attach_verbs_route_shape_gates_through_word_helpers() {
     for required in [
         "fn cca_destination_player_from_tokens(",
         "const CCA_REST_TARGET_PHRASES: &[&[&str]]",
-        "const CCA_OWNER_CONTROL_TAIL_PREFIXES: &[&[&str]]",
         "fn cca_token_is(",
         "fn cca_tokens_contain_all(",
         "fn cca_tokens_contain_phrase(",
-        "fn cca_tokens_start_with_any(",
         "word_slice_contains_word(&words, CCA_YOUR_WORD)",
         "word_slice_starts_with_any(&words, CCA_THAT_PLAYER_PREFIXES)",
         "word_slice_eq(&clause_words, CCA_THE_GAME_WORDS)",

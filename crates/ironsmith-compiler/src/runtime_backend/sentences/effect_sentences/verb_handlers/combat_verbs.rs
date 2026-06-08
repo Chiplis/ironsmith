@@ -25,7 +25,6 @@ const COMBAT_EACH_OTHER_OPPONENT_TARGET_WORDS: &[&[&str]] = &[
     &["each", "other", "opponents"],
     &["all", "other", "opponents"],
 ];
-const COMBAT_EACH_OR_ALL_WORDS: &[&str] = &["each", "all"];
 const COMBAT_EACH_OR_ALL_HEAD_PREFIXES: &[&[&str]] = &[&["each"], &["all"]];
 const COMBAT_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
 const COMBAT_ITERATED_PLAYER_CONTROL_PHRASES: &[&[&str]] =

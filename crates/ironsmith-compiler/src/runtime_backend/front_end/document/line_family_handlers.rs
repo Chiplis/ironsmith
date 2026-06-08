@@ -174,10 +174,6 @@ const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
     "phase",
 ];
 
-fn line_family_words_match_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
-    use super::super::lex_patterns::LexPattern as _;
-    pattern.match_word_refs(words).is_some()
-}
 
 fn line_family_words_start_with_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
     pattern.match_prefix_word_refs(words).is_some()

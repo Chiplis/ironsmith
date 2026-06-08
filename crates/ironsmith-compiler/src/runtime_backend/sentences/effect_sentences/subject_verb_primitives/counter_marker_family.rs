@@ -225,7 +225,6 @@ const OWNER_CONTROL_SUBJECT_PHRASES: &[&[&str]] = &[
     &["her", "owners"],
     &["that", "player"],
 ];
-const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 const IT_OR_THEM_PREFIXES: &[&[&str]] = &[&["it"], &["them"]];
 const ENTERS_AS_CREATURE_PREDICATE_CLAUSES: &[&[&str]] = &[
     &["creature", "enters", "this", "way"],

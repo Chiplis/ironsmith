@@ -123,22 +123,9 @@ const LITERAL_TARGET_REFERENCE_PATTERN: LexPattern<'static> =
         "target",
         LexCaptureKind::OneOf(TARGET_WORDS),
     )]);
-const BROAD_TARGET_REFERENCE_HEAD_PATTERN: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "target",
-        LexCaptureKind::OneOf(TARGET_REFERENCE_HEAD_WORDS),
-    )]);
 const RETURN_SEGMENT_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "head",
     LexCaptureKind::OneOf(RETURN_SEGMENT_HEAD_WORDS),
-)]);
-const ZONE_SUFFIX_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "zone_suffix",
-    LexCaptureKind::OneOf(ZONE_SUFFIX_START_WORDS),
-)]);
-const ALL_OR_EACH_HEAD_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
-    "quantifier",
-    LexCaptureKind::OneOf(ALL_OR_EACH_WORDS),
 )]);
 const RETURN_SEGMENT_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "zone",

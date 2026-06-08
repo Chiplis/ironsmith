@@ -579,10 +579,6 @@ pub(crate) fn comma_or_separator<'a>(
     .parse_next(input)
 }
 
-/// Skip one token that is a comma, "and", or "or".
-pub(crate) fn list_separator<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    alt((comma().void(), kw("and").void(), kw("or").void())).parse_next(input)
-}
 
 /// Skip tokens that are noise words in mana clauses
 /// ("mana", "to", "your", "their", "its", "pool", articles).

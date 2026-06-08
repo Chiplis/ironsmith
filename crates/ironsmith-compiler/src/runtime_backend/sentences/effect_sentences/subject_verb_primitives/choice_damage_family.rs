@@ -137,16 +137,6 @@ fn choice_damage_clause_first_is(clause: SubjectVerbPrimitiveClause<'_>, expecte
     clause.first_word().is_some_and(|word| word == expected)
 }
 
-fn choice_damage_clause_matches_pattern(
-    clause: SubjectVerbPrimitiveClause<'_>,
-    pattern: LexPattern<'static>,
-    capture: &str,
-) -> bool {
-    clause
-        .match_pattern(pattern)
-        .and_then(|matched| matched.capture_word_range(capture))
-        .is_some()
-}
 
 fn choice_damage_alternate_target_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     let alt_target_words = clause.word_refs();

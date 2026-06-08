@@ -92,9 +92,6 @@ struct AdditionalLandPlayClause<'a> {
     count_tokens: &'a [OwnedLexToken],
 }
 
-fn clause_matches_phrase(clause: LexedClause<'_>, phrase: &[&str]) -> bool {
-    LexPattern::new(&[LexPattern::phrase(phrase)]).matches_clause(clause)
-}
 
 fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
     LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)

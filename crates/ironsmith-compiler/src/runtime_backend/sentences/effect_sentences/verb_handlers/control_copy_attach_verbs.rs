@@ -27,26 +27,12 @@ const CCA_LIBRARY_WORDS: &[&str] = &["library"];
 const CCA_ATTACKING_WORDS: &[&str] = &[CCA_ATTACKING_WORD];
 const CCA_TAPPED_WORDS: &[&str] = &[CCA_TAPPED_WORD];
 const CCA_PERMANENT_WORDS: &[&str] = &[CCA_PERMANENT_WORD];
-const CCA_STICKER_WORDS: &[&str] = &[CCA_STICKER_WORD];
 const CCA_DURATION_START_WORDS: &[&str] = &["during", "until"];
 const CCA_IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 const CCA_CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const CCA_HAND_OR_HANDS_WORDS: &[&str] = &["hand", "hands"];
 const CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS: &[&str] = &["graveyard", "graveyards"];
 const CCA_LIBRARY_OR_LIBRARIES_WORDS: &[&str] = &["library", "libraries"];
-const CCA_HAND_DESTINATION_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "zone",
-    LexCaptureKind::OneOf(CCA_HAND_OR_HANDS_WORDS),
-)]);
-const CCA_GRAVEYARD_DESTINATION_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::object(
-        "zone",
-        LexCaptureKind::OneOf(CCA_GRAVEYARD_OR_GRAVEYARDS_WORDS),
-    )]);
-const CCA_THE_GAME_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "game",
-    LexCaptureKind::OneOfPhrase(&[CCA_THE_GAME_WORDS]),
-)]);
 const CCA_LIBRARY_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "zone",
     LexCaptureKind::OneOf(CCA_LIBRARY_WORDS),
@@ -66,10 +52,6 @@ const CCA_TAPPED_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern:
 const CCA_PERMANENT_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
     "permanent",
     LexCaptureKind::OneOf(CCA_PERMANENT_WORDS),
-)]);
-const CCA_STICKER_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::object(
-    "sticker",
-    LexCaptureKind::OneOf(CCA_STICKER_WORDS),
 )]);
 const CCA_FROM_COMMAND_ZONE_SHAPE: LexPattern<'static> =
     LexPattern::new(&[LexPattern::modifier(
@@ -127,32 +109,12 @@ const CCA_SOURCE_REFERENCE_WORDS: &[&str] =
 const CCA_DURING_NEXT_TURN_WORDS: &[&str] = &["during", "next", "turn"];
 const CCA_UNTIL_END_NEXT_TURN_WORDS: &[&str] = &["until", "end", "next", "turn"];
 const CCA_UNTIL_END_TURN_WORDS: &[&str] = &["until", "end", "turn"];
-const CCA_YOU_PLAYER_REFERENCE_WORDS: &[&str] = &["you", "your"];
 const CCA_YOUR_WORD: &str = "your";
 const CCA_YOU_WORD: &str = "you";
 const CCA_THAT_PLAYER_PREFIXES: &[&[&str]] =
     &[&["their"], &["that", "player"], &["that", "players"]];
-const CCA_THAT_PLAYER_REFERENCE_PHRASES: &[&[&str]] =
-    &[&["their"], &["that", "player"], &["that", "players"]];
-const CCA_YOU_PLAYER_REFERENCE_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOf(CCA_YOU_PLAYER_REFERENCE_WORDS),
-    )]);
-const CCA_THAT_PLAYER_REFERENCE_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::subject(
-        "player",
-        LexCaptureKind::OneOfPhrase(CCA_THAT_PLAYER_REFERENCE_PHRASES),
-    )]);
 const CCA_FROM_AMONG_PREPOSITION_PHRASES: &[&[&str]] = &[&["from", "among"]];
 const CCA_HAND_LOCATION_PHRASES: &[&[&str]] = &[&["hand"], &["hands"]];
-const CCA_ANY_ORDER_PHRASES: &[&[&str]] = &[&["any", "order"]];
-const CCA_BACK_IN_ANY_ORDER_SHAPE: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object("object", LexCaptureKind::OneOf(CCA_IT_OR_THEM_WORDS)),
-    LexPattern::word("back"),
-    LexPattern::optional(&[LexPattern::word("in")]),
-    LexPattern::modifier("order", LexCaptureKind::OneOfPhrase(CCA_ANY_ORDER_PHRASES)),
-]);
 const CCA_FROM_AMONG_HAND_SHAPE: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action(
         "preposition",
@@ -293,14 +255,6 @@ const CCA_FROM_IT_PHRASE: &[&str] = &["from", "it"];
 const CCA_AMONG_THEM_WORDS: &[&str] = &["among", "them"];
 const CCA_BACK_ANY_ORDER_WORDS: &[&str] = &["back", "any", "order"];
 const CCA_REST_TOP_BOTTOM_LIBRARY_WORDS: &[&str] = &["rest", "bottom", "library"];
-const CCA_OWNER_CONTROL_TAIL_PREFIXES: &[&[&str]] = &[
-    &["its", "owners", "control"],
-    &["its", "owner", "control"],
-    &["their", "owners", "control"],
-    &["their", "owner", "control"],
-    &["that", "players", "control"],
-    &["that", "player", "control"],
-];
 
 fn cca_token_is(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -338,17 +292,6 @@ fn cca_tokens_contain_any_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) 
     cca_words_contain_any_phrase(&words, phrases)
 }
 
-fn cca_tokens_start_with_any(tokens: &[OwnedLexToken], prefixes: &[&[&str]]) -> bool {
-    let words = TokenWordView::new(tokens).word_refs();
-    let atoms = [LexPattern::object(
-        "prefix",
-        LexCaptureKind::OneOfPhrase(prefixes),
-    )];
-    LexPattern::new(&atoms)
-        .match_prefix_word_refs(&words)
-        .and_then(|matched| matched.capture_word_range("prefix"))
-        .is_some()
-}
 
 fn cca_words_contain_word(words: &[&str], expected: &str) -> bool {
     let expected_words = [expected];
