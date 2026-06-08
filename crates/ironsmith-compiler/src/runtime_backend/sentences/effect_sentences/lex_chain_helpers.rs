@@ -890,19 +890,16 @@ fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
         return false;
     }
 
-    let mut idx = 1usize;
-    if word_slice_at_is(words, idx, THE_WORD) {
-        idx += 1;
-    }
-    if !word_slice_at_is(words, idx, NEXT_WORD) {
+    let next_idx = 1 + usize::from(word_slice_at_is(words, 1, THE_WORD));
+    if !word_slice_at_is(words, next_idx, NEXT_WORD) {
         return false;
     }
-    idx += 1;
 
-    if words.get(idx).is_none() {
+    // "next" then exactly one wildcard word then "damage".
+    let idx = next_idx + 2;
+    if words.get(next_idx + 1).is_none() {
         return false;
     }
-    idx += 1;
 
     word_slice_at_is(words, idx, DAMAGE_WORD)
         && word_slice_starts_with(&words[idx + 1..], PREVENT_NEXT_DAMAGE_TAIL_PREFIX)

@@ -870,35 +870,25 @@ fn parse_dynamic_payment_clause_as_total_cost(
 fn parse_dynamic_energy_payment_clause_as_total_cost(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TotalCost>, CardTextError> {
-    let mut idx = 0usize;
-    if tokens
-        .get(idx)
+    let after_article = if tokens
+        .first()
         .and_then(OwnedLexToken::as_word)
         .is_some_and(is_article)
     {
-        idx += 1;
-    }
-    if !tokens
-        .get(idx)
-        .is_some_and(|token| token.as_word() == Some("amount"))
-    {
+        1usize
+    } else {
+        0usize
+    };
+    if !token_slice_starts_with_at(tokens, after_article, &["amount", "of"]) {
         return Ok(None);
     }
-    idx += 1;
+    let idx = after_article + 3;
     if !tokens
-        .get(idx)
-        .is_some_and(|token| token.as_word() == Some("of"))
-    {
-        return Ok(None);
-    }
-    idx += 1;
-    if !tokens
-        .get(idx)
+        .get(idx - 1)
         .is_some_and(|token| token.slice.as_str().eq_ignore_ascii_case("{E}"))
     {
         return Ok(None);
     }
-    idx += 1;
 
     let trailing = trim_edge_punctuation(&trim_commas(&tokens[idx..]));
     if trailing.len() < 3

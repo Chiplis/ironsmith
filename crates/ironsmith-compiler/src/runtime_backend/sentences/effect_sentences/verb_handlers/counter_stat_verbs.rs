@@ -855,17 +855,14 @@ pub(crate) fn parse_counter_unless_additional_generic_value(
         return Ok(None);
     }
 
-    let mut idx = 1usize;
-    if token_slice_at_is(tokens, idx, "an") {
-        idx += 1;
-    }
+    let after_an = 1 + usize::from(token_slice_at_is(tokens, 1, "an"));
     if !tokens
-        .get(idx)
+        .get(after_an)
         .is_some_and(|token| token.as_word() == Some(COUNTER_ADDITIONAL_WORD))
     {
         return Ok(None);
     }
-    idx += 1;
+    let idx = after_an + 1;
 
     let multiplier = if let Some(token) = tokens.get(idx) {
         if let Some(group) = mana_pips_from_token(token) {

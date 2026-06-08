@@ -2134,20 +2134,13 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
     let regenerate_target = parse_target_phrase(&first[target_start..]).ok()?;
 
     let second_words = crate::runtime_backend::token_word_refs(second);
-    let mut idx = if second_words.first().copied() == Some("you") {
-        1
-    } else {
-        0
-    };
-    if second_words.get(idx).copied() != Some("gain")
-        || second_words.get(idx + 1).copied() != Some("control")
-    {
+    let after_you = usize::from(second_words.first().copied() == Some("you"));
+    if !word_slice_starts_with(&second_words[after_you..], &["gain", "control"]) {
         return None;
     }
-    idx += 2;
-    if second_words.get(idx).copied() == Some("of") {
-        idx += 1;
-    }
+    let after_gain_control = after_you + 2;
+    let idx =
+        after_gain_control + usize::from(second_words.get(after_gain_control).copied() == Some("of"));
 
     let if_idx = (0..second_words.len()).find(|idx| {
         word_slice_starts_with_any(&second_words[*idx..], REGENERATES_THIS_WAY_PREFIXES)
