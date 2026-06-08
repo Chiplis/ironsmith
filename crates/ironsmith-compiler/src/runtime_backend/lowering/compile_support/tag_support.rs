@@ -159,6 +159,7 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
                 visit(object);
                 visit(target);
             }
+            SubjectVerbActionAst::Unattach { object } => visit(object),
             SubjectVerbActionAst::Fight {
                 creature1,
                 creature2,
@@ -844,6 +845,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
         | SubjectVerbActionAst::ExileAllAttachedTo { .. }
         | SubjectVerbActionAst::Attach { .. }
+        | SubjectVerbActionAst::Unattach { .. }
         | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
         | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
         | SubjectVerbActionAst::MayMoveToZone { .. }

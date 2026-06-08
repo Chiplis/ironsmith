@@ -2991,6 +2991,7 @@ pub(crate) enum Verb {
     Proliferate,
     Tap,
     Attach,
+    Unattach,
     Remove,
     Return,
     Exchange,

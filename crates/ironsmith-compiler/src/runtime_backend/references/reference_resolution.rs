@@ -719,6 +719,9 @@ fn advance_reference_frame_for_effect(
                     track_target_player(object, frame);
                     track_target_player(target, frame);
                 }
+                SubjectVerbActionAst::Unattach { object } => {
+                    track_target_player(object, frame);
+                }
                 SubjectVerbActionAst::ExileWhenSourceLeaves { target }
                 | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target } => {
                     track_target_player(target, frame);
@@ -2180,6 +2183,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
             | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
+            | SubjectVerbActionAst::Unattach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
@@ -2821,6 +2825,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Attach { object, target } => {
                 bind_unresolved_it_in_target(object, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::Unattach { object } => {
+                bind_unresolved_it_in_target(object, seed_tag)
             }
             SubjectVerbActionAst::Enchant {
                 filter: crate::object::AuraAttachmentFilter::Object(filter),

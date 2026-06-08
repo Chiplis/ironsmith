@@ -18,6 +18,7 @@ const ATTACHED_OBJECT_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(
             &["enchanted", "permanent"],
             &["enchanted", "land"],
             &["enchanted", "artifact"],
+            &["enchanted", "equipment"],
             &["equipped", "creature"],
             &["equipped", "permanent"],
         ]
@@ -30,6 +31,7 @@ const ATTACHED_OBJECT_TYPE_TRANSFORM_PREFIX_PATTERN: ClauseShape<'static> = clau
             &["enchanted", "creature"],
             &["enchanted", "permanent"],
             &["enchanted", "artifact"],
+            &["enchanted", "equipment"],
             &["enchanted", "land"],
             &["equipped", "creature"],
             &["equipped", "permanent"],

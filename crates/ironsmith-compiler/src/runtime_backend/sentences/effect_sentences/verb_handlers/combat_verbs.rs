@@ -401,6 +401,61 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     Ok(EffectAst::subject_verb_attach(object, target))
 }
 
+fn parse_attached_object_reference(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let (tag, noun_words) = match words.as_slice() {
+        ["enchanted", rest @ ..] => ("enchanted", rest),
+        ["equipped", rest @ ..] => ("equipped", rest),
+        _ => return None,
+    };
+    let noun_words = strip_leading_article_word_refs(noun_words);
+    let mut filter = match noun_words {
+        ["equipment"] | ["equipments"] => {
+            let mut filter = ObjectFilter::permanent();
+            filter.card_types.push(CardType::Artifact);
+            filter.subtypes.push(Subtype::Equipment);
+            filter
+        }
+        ["artifact"] | ["artifacts"] => {
+            let mut filter = ObjectFilter::permanent();
+            filter.card_types.push(CardType::Artifact);
+            filter
+        }
+        ["creature"] | ["creatures"] => ObjectFilter::creature(),
+        ["enchantment"] | ["enchantments"] => {
+            let mut filter = ObjectFilter::permanent();
+            filter.card_types.push(CardType::Enchantment);
+            filter
+        }
+        ["land"] | ["lands"] => ObjectFilter::land(),
+        ["permanent"] | ["permanents"] => ObjectFilter::permanent(),
+        _ => return None,
+    }
+    .match_tagged(TagKey::from(tag), TaggedOpbjectRelation::IsTaggedObject);
+    filter.zone = Some(Zone::Battlefield);
+    Some(TargetAst::Object(filter, span_from_tokens(tokens), None))
+}
+
+pub(crate) fn parse_unattach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "unattach clause missing object".to_string(),
+        ));
+    }
+
+    let object_tokens = trim_commas(tokens);
+    if object_tokens.is_empty() {
+        return Err(CardTextError::ParseError(
+            "unattach clause missing object".to_string(),
+        ));
+    }
+
+    let object = parse_attached_object_reference(&object_tokens)
+        .map(Ok)
+        .unwrap_or_else(|| parse_target_phrase(&object_tokens))?;
+    Ok(EffectAst::subject_verb_unattach(object))
+}
+
 pub(crate) fn parse_deal_damage(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     let tokens = if token_slice_first_is_any(tokens, &["deal", "deals"]) {
         &tokens[1..]
