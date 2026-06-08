@@ -1455,16 +1455,16 @@ pub(crate) fn is_mana_spend_bonus_sentence_lexed(tokens: &[OwnedLexToken]) -> bo
 }
 
 fn parse_simple_mana_spend_bonus_card_type(spec_words: &[&str]) -> Option<crate::types::CardType> {
-    let mut idx = 0usize;
-    if spec_words
-        .first()
-        .is_some_and(|word| ARTICLE_WORDS.contains(word))
-    {
-        idx += 1;
-    }
-    let card_type = parse_card_type(spec_words.get(idx).copied()?)?;
-    idx += 1;
-    (idx == spec_words.len()).then_some(card_type)
+    const SIMPLE_CARD_TYPE_OPTIONAL_ARTICLE: &[LexPatternAtom<'static>] =
+        &[LexPattern::any_word(ARTICLE_WORDS)];
+    const SIMPLE_CARD_TYPE_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::optional(SIMPLE_CARD_TYPE_OPTIONAL_ARTICLE),
+        LexPattern::capture("card_type", LexCaptureKind::WordCount(1)),
+    ]);
+
+    let matched = SIMPLE_CARD_TYPE_PATTERN.match_word_refs(spec_words)?;
+    let card_type_range = matched.capture_word_range("card_type")?;
+    parse_card_type(spec_words.get(card_type_range.start).copied()?)
 }
 
 fn parse_mana_spend_bonus_spell_filter(spec_tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {

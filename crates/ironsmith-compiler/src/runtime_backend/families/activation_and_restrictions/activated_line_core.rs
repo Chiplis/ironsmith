@@ -147,14 +147,10 @@ pub(crate) fn contains_granted_keyword_before_word(
 pub(crate) fn find_cycling_keyword_word_index(
     words: &ActivationRestrictionCompatWords,
 ) -> Option<usize> {
-    let mut idx = 0usize;
-    while idx < words.len() {
-        if words.get(idx).is_some_and(word_is_cycling_keyword_marker) {
-            return Some(idx);
-        }
-        idx += 1;
-    }
-    None
+    words
+        .word_refs()
+        .iter()
+        .position(|word| word_is_cycling_keyword_marker(word))
 }
 
 pub(crate) fn parse_hand_keyword_activated_body_lexed(

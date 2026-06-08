@@ -72,6 +72,26 @@ const AGGREGATE_SCOPE_VALUE_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(AGGREGATE_SCOPE_OPTIONAL_THE_ATOMS),
     LexPattern::object("scope", LexCaptureKind::OneOrMoreWords),
 ]);
+const NUMBER_OF_PHRASES: &[&[&str]] = &[NUMBER_OF_PHRASE];
+const EQUAL_TO_NUMBER_OF_OPTIONAL_THE_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::word("the")];
+const EQUAL_TO_NUMBER_OF_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::optional(EQUAL_TO_NUMBER_OF_OPTIONAL_THE_ATOMS),
+    LexPattern::amount("number_of", LexCaptureKind::OneOfPhrase(NUMBER_OF_PHRASES)),
+]);
+const EQUAL_TO_AGGREGATE_OPTIONAL_THE_ATOMS: &[LexPatternAtom<'static>] =
+    &[LexPattern::word("the")];
+const EQUAL_TO_AGGREGATE_VALUE_KIND_PHRASES: &[&[&str]] =
+    &[&["power"], &["toughness"], &["mana", "value"]];
+const EQUAL_TO_AGGREGATE_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::optional(EQUAL_TO_AGGREGATE_OPTIONAL_THE_ATOMS),
+    LexPattern::amount("aggregate", LexCaptureKind::OneOf(&["total", "greatest"])),
+    LexPattern::amount(
+        "value_kind",
+        LexCaptureKind::OneOfPhrase(EQUAL_TO_AGGREGATE_VALUE_KIND_PHRASES),
+    ),
+    LexPattern::modifier("connector", LexCaptureKind::OneOf(&["of", "among"])),
+]);
 const SPELL_CAST_THIS_TURN_SUFFIX_PHRASES: &[&[&str]] = &[
     &["theyve", "cast", "this", "turn"],
     &["they", "cast", "this", "turn"],
@@ -463,16 +483,10 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     let word_view = ValueHelperCompatWords::new(tokens);
     let words_all = word_view.to_word_refs();
     let equal_idx = value_helper_find_exact_phrase(&words_all, EQUAL_TO_PHRASE)?;
-    let mut number_word_idx = equal_idx + 2;
-    if words_all.get(number_word_idx).copied() == Some("the") {
-        number_word_idx += 1;
-    }
-    if !words_all
-        .get(number_word_idx..number_word_idx + 2)
-        .is_some_and(|words| words == NUMBER_OF_PHRASE)
-    {
-        return None;
-    }
+    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let suffix_refs = words_all.get(prefix_start..)?;
+    let matched = EQUAL_TO_NUMBER_OF_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let number_word_idx = prefix_start + matched.capture_word_range("number_of")?.start;
 
     let value_range = word_view.token_range_for_word_range(number_word_idx, word_view.len())?;
     let value_tokens = trim_edge_punctuation(&tokens[value_range]);
@@ -537,18 +551,9 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
         return None;
     }
 
-    let mut number_word_idx = 2usize;
-    if clause_words.get(number_word_idx).copied() == Some("the") {
-        number_word_idx += 1;
-    }
-    if !clause_words
-        .get(number_word_idx..number_word_idx + 2)
-        .is_some_and(|words| words == NUMBER_OF_PHRASE)
-    {
-        return None;
-    }
-
-    let filter_start_word_idx = number_word_idx + 2;
+    let suffix_refs = clause_words.get(EQUAL_TO_PHRASE.len()..)?;
+    let matched = EQUAL_TO_NUMBER_OF_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let filter_start_word_idx = EQUAL_TO_PHRASE.len() + matched.word_range.end;
     let operator_word_idx =
         word_view.find_any_word_from(&["plus", "minus"], filter_start_word_idx + 1)?;
     let operator = clause_words[operator_word_idx];
@@ -665,35 +670,21 @@ pub(crate) fn parse_equal_to_aggregate_filter_value(tokens: &[OwnedLexToken]) ->
     let clause_refs = clause_words.to_word_refs();
     let equal_idx = value_helper_find_exact_phrase(&clause_refs, EQUAL_TO_PHRASE)?;
 
-    let mut idx = equal_idx + 2;
-    if clause_words.at_is(idx, "the") {
-        idx += 1;
-    }
-
-    let aggregate = match clause_words.get(idx) {
-        Some("total") => "total",
-        Some("greatest") => "greatest",
+    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let suffix_refs = clause_refs.get(prefix_start..)?;
+    let matched = EQUAL_TO_AGGREGATE_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let aggregate = match suffix_refs.get(matched.capture_word_range("aggregate")?.start) {
+        Some(&"total") => "total",
+        Some(&"greatest") => "greatest",
         _ => return None,
     };
-    idx += 1;
-
-    let value_kind = if clause_words.at_is(idx, "power") {
-        idx += 1;
-        "power"
-    } else if clause_words.at_is(idx, "toughness") {
-        idx += 1;
-        "toughness"
-    } else if clause_words.starts_with_at(idx, &["mana", "value"]) {
-        idx += 2;
-        "mana_value"
-    } else {
-        return None;
+    let value_kind = match suffix_refs.get(matched.capture_word_range("value_kind")?) {
+        Some(["power"]) => "power",
+        Some(["toughness"]) => "toughness",
+        Some(["mana", "value"]) => "mana_value",
+        _ => return None,
     };
-
-    if !clause_words.at_is_any(idx, &["of", "among"]) {
-        return None;
-    }
-    idx += 1;
+    let idx = prefix_start + matched.word_range.end;
 
     if aggregate == "greatest" && is_mana_value_kind_word(value_kind) {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {
@@ -777,13 +768,10 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     let words_all = ValueHelperCompatWords::new(tokens);
     let words_refs = words_all.to_word_refs();
     let equal_idx = value_helper_find_exact_phrase(&words_refs, EQUAL_TO_PHRASE)?;
-    let mut number_word_idx = equal_idx + 2;
-    if words_all.at_is(number_word_idx, "the") {
-        number_word_idx += 1;
-    }
-    if !words_all.starts_with_at(number_word_idx, &["number", "of"]) {
-        return None;
-    }
+    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let suffix_refs = words_refs.get(prefix_start..)?;
+    let matched = EQUAL_TO_NUMBER_OF_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let number_word_idx = prefix_start + matched.capture_word_range("number_of")?.start;
 
     let value_range = words_all.token_range_for_word_range(number_word_idx, words_all.len())?;
     let value_tokens = trim_edge_punctuation_tokens(&tokens[value_range]);
@@ -828,18 +816,9 @@ pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value_lexed(
         return None;
     }
 
-    let mut number_word_idx = 2usize;
-    if clause_words.at_is(number_word_idx, "the") {
-        number_word_idx += 1;
-    }
-    if !clause_refs
-        .get(number_word_idx..number_word_idx + 2)
-        .is_some_and(|words| words == NUMBER_OF_PHRASE)
-    {
-        return None;
-    }
-
-    let filter_start_word_idx = number_word_idx + 2;
+    let suffix_refs = clause_refs.get(EQUAL_TO_PHRASE.len()..)?;
+    let matched = EQUAL_TO_NUMBER_OF_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let filter_start_word_idx = EQUAL_TO_PHRASE.len() + matched.word_range.end;
     let operator_word_idx =
         clause_words.find_any_word_from(&["plus", "minus"], filter_start_word_idx + 1)?;
     let operator = clause_words.get(operator_word_idx)?;
@@ -971,35 +950,21 @@ pub(crate) fn parse_equal_to_aggregate_filter_value_lexed(
     let clause_refs = clause_words.to_word_refs();
     let equal_idx = value_helper_find_exact_phrase(&clause_refs, EQUAL_TO_PHRASE)?;
 
-    let mut idx = equal_idx + 2;
-    if clause_words.at_is(idx, "the") {
-        idx += 1;
-    }
-
-    let aggregate = match clause_words.get(idx) {
-        Some("total") => "total",
-        Some("greatest") => "greatest",
+    let prefix_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let suffix_refs = clause_refs.get(prefix_start..)?;
+    let matched = EQUAL_TO_AGGREGATE_PREFIX_PATTERN.match_prefix_word_refs(suffix_refs)?;
+    let aggregate = match suffix_refs.get(matched.capture_word_range("aggregate")?.start) {
+        Some(&"total") => "total",
+        Some(&"greatest") => "greatest",
         _ => return None,
     };
-    idx += 1;
-
-    let value_kind = if clause_words.at_is(idx, "power") {
-        idx += 1;
-        "power"
-    } else if clause_words.at_is(idx, "toughness") {
-        idx += 1;
-        "toughness"
-    } else if clause_words.starts_with_at(idx, &["mana", "value"]) {
-        idx += 2;
-        "mana_value"
-    } else {
-        return None;
+    let value_kind = match suffix_refs.get(matched.capture_word_range("value_kind")?) {
+        Some(["power"]) => "power",
+        Some(["toughness"]) => "toughness",
+        Some(["mana", "value"]) => "mana_value",
+        _ => return None,
     };
-
-    if !clause_words.at_is_any(idx, &["of", "among"]) {
-        return None;
-    }
-    idx += 1;
+    let idx = prefix_start + matched.word_range.end;
 
     if aggregate == "greatest" && is_mana_value_kind_word(value_kind) {
         if let Some(value) = parse_where_x_greatest_commander_mana_value(tokens, idx) {

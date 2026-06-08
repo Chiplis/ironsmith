@@ -92,6 +92,7 @@ use super::lexer::{
     word_slice_find_phrase_start_or_zero, word_slice_find_word, word_slice_find_word_where,
     word_slice_first_is, word_slice_first_is_any, word_slice_last_is, word_slice_last_is_any,
     word_slice_starts_with_any, word_slice_starts_with_at, word_slice_strip_any_prefix,
+    word_slice_strip_first_word,
 };
 use super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::object_filters::{parse_object_filter, parse_object_filter_lexed};
@@ -190,6 +191,13 @@ fn keyword_static_shape_matches_last_word<'a>(words: &[&str], shape: ClauseShape
 }
 
 const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
+const LOSES_ALL_OTHER_CREATURE_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &["it", "loses", "all", "other", "creature", "types"],
+            &["this", "loses", "all", "other", "creature", "types"],
+        ]
+);
 const SOURCE_CAN_BLOCK_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["this", "creature", "can", "block"]);
 const BLOCK_ADDITIONAL_DURATION_TAIL_PATTERN: ClauseShape<'static> =
@@ -1976,13 +1984,6 @@ const IF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if"]);
 const TRIGGERS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["triggers"]);
 const CAUSES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["causes"]);
 const TWICE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["twice"]);
-const LOSES_ALL_OTHER_CREATURE_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it", "loses", "all", "other", "creature", "types"],
-            &["this", "loses", "all", "other", "creature", "types"],
-        ]
-);
 const WHILE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["while"]);
 const TO_TRIGGER_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["to", "trigger"]);
 const COLORS_OF_MANA_CAST_THIS_SPELL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
@@ -11043,62 +11044,60 @@ pub(crate) fn parse_draw_replacement_reveal_top_matching_to_hand_rest_bottom_lin
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let prefix = [
-        "if", "you", "would", "draw", "a", "card", "instead", "reveal", "the", "top",
-    ];
-    if !words.starts_with(&prefix) {
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&[
+            "if", "you", "would", "draw", "a", "card", "instead", "reveal", "the", "top",
+        ]),
+        LexPattern::amount(
+            "count",
+            LexCaptureKind::UntilAnyPhrase(&[&["card"], &["cards"]]),
+        ),
+        LexPattern::any_word(&["card", "cards"]),
+        LexPattern::phrase(&["of", "your", "library", "put", "all"]),
+        LexPattern::object("card_type", LexCaptureKind::WordCount(1)),
+        LexPattern::phrase(&[
+            "cards", "revealed", "this", "way", "into", "your", "hand", "and", "the", "rest", "on",
+            "the", "bottom", "of", "your", "library", "in",
+        ]),
+        LexPattern::modifier(
+            "order",
+            LexCaptureKind::OneOfPhrase(&[
+                &["any", "order"],
+                &["a", "random", "order"],
+                &["random", "order"],
+            ]),
+        ),
+    ]);
+
+    let Some(matched) = PATTERN.match_word_refs(&words) else {
+        return Ok(None);
+    };
+
+    let count_range = matched.capture_word_range("count").unwrap_or_default();
+    let count_words = words.get(count_range.clone()).unwrap_or_default();
+    let Some((count, used_count_words)) = ironsmith_core::parse_cardinal_words(count_words) else {
+        return Ok(None);
+    };
+    if count == 0 || used_count_words != count_words.len() {
         return Ok(None);
     }
 
-    let Some((count, used_count_words)) =
-        ironsmith_core::parse_cardinal_words(&words[prefix.len()..])
+    let card_type_range = matched.capture_word_range("card_type").unwrap_or_default();
+    let Some(card_type) = words
+        .get(card_type_range.start)
+        .and_then(|word| parse_card_type(word))
     else {
         return Ok(None);
     };
-    if count == 0 {
-        return Ok(None);
-    }
 
-    let mut idx = prefix.len() + used_count_words;
-    if !words
-        .get(idx)
-        .is_some_and(|word| keyword_static_shape_matches_word(word, CARD_OR_CARDS_WORD_PATTERN))
-        || words.get(idx + 1..idx + 6) != Some(&["of", "your", "library", "put", "all"][..])
-    {
-        return Ok(None);
-    }
-    idx += 6;
-
-    let Some(card_type) = words.get(idx).and_then(|word| parse_card_type(word)) else {
-        return Ok(None);
+    let order_range = matched.capture_word_range("order").unwrap_or_default();
+    let order = match words.get(order_range.clone()) {
+        Some(["any", "order"]) => ironsmith_core::LibraryBottomOrder::ChooserChooses,
+        Some(["a", "random", "order"] | ["random", "order"]) => {
+            ironsmith_core::LibraryBottomOrder::Random
+        }
+        _ => return Ok(None),
     };
-    idx += 1;
-
-    if words.get(idx..idx + 17)
-        != Some(
-            &[
-                "cards", "revealed", "this", "way", "into", "your", "hand", "and", "the", "rest",
-                "on", "the", "bottom", "of", "your", "library", "in",
-            ][..],
-        )
-    {
-        return Ok(None);
-    }
-    idx += 17;
-
-    let (order, used) = if words.get(idx..idx + 2) == Some(&["any", "order"][..]) {
-        (ironsmith_core::LibraryBottomOrder::ChooserChooses, 2)
-    } else if words.get(idx..idx + 3) == Some(&["a", "random", "order"][..]) {
-        (ironsmith_core::LibraryBottomOrder::Random, 3)
-    } else if words.get(idx..idx + 2) == Some(&["random", "order"][..]) {
-        (ironsmith_core::LibraryBottomOrder::Random, 2)
-    } else {
-        return Ok(None);
-    };
-    idx += used;
-    if idx != words.len() {
-        return Ok(None);
-    }
 
     let mut filter = ObjectFilter::default();
     filter.card_types.push(card_type);

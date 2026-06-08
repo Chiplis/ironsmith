@@ -452,15 +452,9 @@ pub(crate) fn parse_add_mana(
         )));
     }
 
-    let mut for_each_idx = None;
-    let mut token_idx = 0usize;
-    while token_idx + 1 < tokens.len() {
-        if activation_token_slice_prefix_at_matches_phrase(tokens, token_idx, FOR_EACH_PREFIX) {
-            for_each_idx = Some(token_idx);
-            break;
-        }
-        token_idx += 1;
-    }
+    let for_each_idx = (0..tokens.len().saturating_sub(1)).find(|&token_idx| {
+        activation_token_slice_prefix_at_matches_phrase(tokens, token_idx, FOR_EACH_PREFIX)
+    });
     let mana_scan_end = for_each_idx.unwrap_or(tokens.len());
 
     let mut mana = Vec::new();
@@ -757,16 +751,7 @@ pub(crate) fn parse_land_could_produce_filter(
             }
             could_idx
         } else {
-            let mut produced_idx = None;
-            let mut idx = 0usize;
-            while idx < words.len() {
-                if words[idx] == "produced" {
-                    produced_idx = Some(idx);
-                    break;
-                }
-                idx += 1;
-            }
-            let Some(produced_idx) = produced_idx else {
+            let Some(produced_idx) = words.iter().position(|word| *word == "produced") else {
                 return Ok(None);
             };
             if produced_idx + 1 != words.len() {

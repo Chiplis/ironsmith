@@ -374,12 +374,6 @@ fn etb_word_is(word: &str, expected: &str) -> bool {
     word == expected
 }
 
-fn etb_word_at_is_any(words: &[&str], idx: usize, expected: &[&str]) -> bool {
-    words
-        .get(idx)
-        .is_some_and(|word| etb_word_is_any(word, expected))
-}
-
 fn etb_last_word_is(words: &[&str], expected: &str) -> bool {
     words.last().is_some_and(|word| etb_word_is(word, expected))
 }
@@ -2786,30 +2780,21 @@ fn scale_where_x_number_value(value: Value, multiplier: i32) -> Value {
 }
 
 fn parse_number_of_counters_on_source_value(filter_words: &[&str]) -> Option<Value> {
-    let mut idx = 0usize;
-    if filter_words
-        .get(idx)
-        .is_some_and(|word| is_article(word) || etb_word_is(word, ETB_ONE_WORD))
-    {
-        idx += 1;
-    }
-    let counter_word = *filter_words.get(idx)?;
+    let after_quantifier = match filter_words.split_first() {
+        Some((first, rest)) if is_article(first) || etb_word_is(first, ETB_ONE_WORD) => rest,
+        _ => filter_words,
+    };
+    let (counter_word, after_counter_word) = after_quantifier.split_first()?;
     let counter_type = parse_counter_type_word(counter_word).or_else(|| {
         counter_word
             .chars()
             .all(|ch| ch.is_ascii_alphabetic())
             .then_some(CounterType::Named(intern_counter_name(counter_word)))
     })?;
-    idx += 1;
-    if !etb_word_at_is_any(&filter_words, idx, ETB_COUNTER_OR_COUNTERS_WORDS) {
-        return None;
-    }
-    idx += 1;
-    if filter_words.get(idx).copied() != Some("on") {
-        return None;
-    }
-    idx += 1;
-    let source_words = filter_words.get(idx..)?;
+    let after_counter =
+        word_slice_strip_any_prefix(after_counter_word, &[&["counter"], &["counters"]])
+            .map(|(_, rest)| rest)?;
+    let source_words = word_slice_strip_first_word(after_counter, "on")?;
     if is_source_reference_words(source_words) {
         return Some(Value::CountersOnSource(counter_type));
     }
