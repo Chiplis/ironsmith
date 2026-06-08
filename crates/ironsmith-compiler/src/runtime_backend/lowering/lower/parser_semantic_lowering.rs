@@ -2091,74 +2091,28 @@ pub(crate) fn lower_exert_attack_keyword_line(
 
 fn rewrite_copy_count_to_times_paid_label_rewrite(effects: &mut [EffectAst], label: &str) {
     for effect in effects {
-        match effect {
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::CopySpell { target, count, .. },
-                ..
-            }) => {
-                let crate::cards::builders::TargetAst::Source(_) = target else {
-                    continue;
-                };
-                let crate::effect::Value::Count(filter) = count else {
-                    continue;
-                };
-                if filter
-                    .tagged_constraints
-                    .iter()
-                    .any(|constraint| constraint.tag.as_str() == IT_TAG)
-                {
-                    *count = crate::effect::Value::TimesPaidLabel(label.to_string());
-                }
-            }
-            EffectAst::Conditional {
-                if_true, if_false, ..
-            } => {
-                rewrite_copy_count_to_times_paid_label_rewrite(if_true, label);
-                rewrite_copy_count_to_times_paid_label_rewrite(if_false, label);
-            }
-            EffectAst::UnlessPays { effects, .. }
-            | EffectAst::May { effects }
-            | EffectAst::MayByPlayer { effects, .. }
-            | EffectAst::ResolvedIfResult { effects, .. }
-            | EffectAst::ResolvedWhenResult { effects, .. }
-            | EffectAst::IfResult { effects, .. }
-            | EffectAst::WhenResult { effects, .. }
-            | EffectAst::ForEachOpponent { effects }
-            | EffectAst::ForEachPlayersFiltered { effects, .. }
-            | EffectAst::ForEachPlayer { effects }
-            | EffectAst::ForEachTargetPlayers { effects, .. }
-            | EffectAst::ForEachObject { effects, .. }
-            | EffectAst::ForEachTagged { effects, .. }
-            | EffectAst::ForEachOpponentDoesNot { effects, .. }
-            | EffectAst::ForEachPlayerDoesNot { effects, .. }
-            | EffectAst::ForEachOpponentDid { effects, .. }
-            | EffectAst::ForEachPlayerDid { effects, .. }
-            | EffectAst::ForEachTaggedPlayer { effects, .. }
-            | EffectAst::RepeatProcess { effects, .. }
-            | EffectAst::BidLife {
-                winner_effects: effects,
-                ..
-            }
-            | EffectAst::DelayedUntilNextEndStep { effects, .. }
-            | EffectAst::DelayedUntilNextUpkeep { effects, .. }
-            | EffectAst::DelayedUntilNextDrawStep { effects, .. }
-            | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
-            | EffectAst::DelayedUntilEndOfCombat { effects }
-            | EffectAst::DelayedTriggerThisTurn { effects, .. }
-            | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
-            | EffectAst::VoteOption { effects, .. } => {
-                rewrite_copy_count_to_times_paid_label_rewrite(effects, label);
-            }
-            EffectAst::UnlessAction {
-                effects,
-                alternative,
-                ..
-            } => {
-                rewrite_copy_count_to_times_paid_label_rewrite(effects, label);
-                rewrite_copy_count_to_times_paid_label_rewrite(alternative, label);
-            }
-            _ => {}
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CopySpell { target, count, .. },
+            ..
+        }) = effect
+            && let crate::cards::builders::TargetAst::Source(_) = target
+            && let crate::effect::Value::Count(filter) = count
+            && filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == IT_TAG)
+        {
+            *count = crate::effect::Value::TimesPaidLabel(label.to_string());
         }
+        // Recurse into every nested-effect scope through the shared traversal
+        // helper so new wrapper variants are covered automatically (the previous
+        // hand-rolled match silently skipped RepeatEffects/ManaRestricted and the
+        // newer ChooseOneOf/IfEffectDidNotHappen/TagAffected variants).
+        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| rewrite_copy_count_to_times_paid_label_rewrite(nested, label),
+        );
     }
 }
 

@@ -77,6 +77,23 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(effects);
             normalize_effects_vec(alternative);
         }
+        // NOTE: this walker stays hand-rolled (rather than routing through
+        // effect_ast_traversal's shared helper) because normalize_effects_vec
+        // resizes/replaces the Vec (retain + whole-Vec rewrites), which the
+        // slice-exposing helper cannot express. New wrapper variants must be
+        // added here and kept in sync with the traversal macro.
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                normalize_effects_vec(&mut mode.effects);
+            }
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            normalize_nested_effects(effect);
+            normalize_effects_vec(otherwise);
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            normalize_nested_effects(effect);
+        }
         _ => {}
     }
 }
