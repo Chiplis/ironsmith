@@ -987,6 +987,15 @@ pub(crate) enum SubjectVerbActionAst {
     RevealTagged {
         tag: TagKey,
     },
+    /// Put the chosen/iterated objects onto the battlefield under a resolved
+    /// controller. Inside a `ForEachTagged`, `TargetAst::Tagged(IT_TAG)` lowers
+    /// to `ChooseSpec::Iterated`; otherwise the tagged collection is used.
+    /// Lowers to `Effect::put_onto_battlefield`.
+    PutOntoBattlefield {
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+    },
     RevealCardsFromHand {
         count: ChoiceCount,
         count_value: Option<Value>,
@@ -1471,16 +1480,6 @@ pub(crate) enum SubjectVerbActionAst {
         progress_tag: TagKey,
     },
     ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-        order: LibraryBottomOrderAst,
-    },
-    ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-        battlefield_filter: ObjectFilter,
-        tapped: bool,
-    },
-    ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-        battlefield_filter: ObjectFilter,
-        hand_filter: ObjectFilter,
-        tapped: bool,
         order: LibraryBottomOrderAst,
     },
     RetargetStackObject {
@@ -2160,6 +2159,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("accumulated_tags", accumulated_tags)
                 .finish(),
             Self::RevealTagged { tag } => f.debug_tuple("RevealTagged").field(tag).finish(),
+            Self::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+            } => f
+                .debug_struct("PutOntoBattlefield")
+                .field("target", target)
+                .field("tapped", tapped)
+                .field("controller", controller)
+                .finish(),
             Self::RevealCardsFromHand {
                 count,
                 count_value,
@@ -2949,26 +2958,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary")
                 .field("order", order)
                 .finish(),
-            Self::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                tapped,
-            } => f
-                .debug_struct("ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary")
-                .field("battlefield_filter", battlefield_filter)
-                .field("tapped", tapped)
-                .finish(),
-            Self::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                tapped,
-                order,
-            } => f
-                .debug_struct("ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary")
-                .field("battlefield_filter", battlefield_filter)
-                .field("hand_filter", hand_filter)
-                .field("tapped", tapped)
-                .field("order", order)
-                .finish(),
             Self::RetargetStackObject {
                 target,
                 mode,
@@ -3464,6 +3453,21 @@ pub(crate) enum EffectAst {
     /// mode's effects resolve. Lowers to `Effect::choose_one`.
     ChooseOneOf {
         modes: Vec<ChooseOneModeAst>,
+    },
+    /// Lower `effect` (which must lower to a single runtime effect) under a
+    /// fresh internal effect id, then emit an `if_then(id, DidNotHappen,
+    /// otherwise)`. The effect id stays internal to lowering and is never
+    /// exposed in the AST. Lowers to `Effect::with_id` + `Effect::if_then`.
+    IfEffectDidNotHappen {
+        effect: Box<EffectAst>,
+        otherwise: Vec<EffectAst>,
+    },
+    /// Lower `effect` (which must lower to a single runtime effect) and apply
+    /// `tag_all(tag)` to it, tagging every object the effect affects. Lowers to
+    /// `Effect::tag_all`.
+    TagAffected {
+        effect: Box<EffectAst>,
+        tag: TagKey,
     },
     DirectionalAdjacentPlayerControl {
         filter: ObjectFilter,
@@ -5029,40 +5033,6 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_or_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        battlefield_filter: ObjectFilter,
-        tapped: bool,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                tapped,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        battlefield_filter: ObjectFilter,
-        hand_filter: ObjectFilter,
-        tapped: bool,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                tapped,
-                order,
-            },
-        )
-    }
-
     pub(crate) fn subject_verb_retarget_stack_object(
         chooser: PlayerAst,
         target: TargetAst,
@@ -5854,6 +5824,23 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RevealTagged { tag },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+            },
         )
     }
 

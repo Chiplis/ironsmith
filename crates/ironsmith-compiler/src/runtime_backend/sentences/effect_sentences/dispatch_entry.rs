@@ -2725,6 +2725,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::RevealTagged { .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
@@ -2859,8 +2860,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }

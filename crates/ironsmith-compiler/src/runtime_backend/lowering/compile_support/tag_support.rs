@@ -799,6 +799,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
         | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
         | SubjectVerbActionAst::MoveToZone { .. }
+        | SubjectVerbActionAst::PutOntoBattlefield { .. }
         | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
         | SubjectVerbActionAst::TargetOnly { .. }
         | SubjectVerbActionAst::TagMatchingObjects { .. }
@@ -838,8 +839,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Meld { .. }
         | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-        | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-        | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::RetargetStackObject { .. }
         | SubjectVerbActionAst::GrantAbilityToSource { .. }
         | SubjectVerbActionAst::ExchangeControl { .. }
@@ -1104,8 +1103,6 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, .. } => {
                 filter_references_tag(filter, IT_TAG)
             }
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => true,
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
                 ..

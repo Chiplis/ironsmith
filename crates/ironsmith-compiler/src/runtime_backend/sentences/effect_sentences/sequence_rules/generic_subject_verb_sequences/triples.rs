@@ -2341,18 +2341,22 @@ pub(crate) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_res
         return Ok(None);
     };
 
+    let looked_tag = helper_tag_for_tokens(
+        sentences[sentence_idx].lowered(),
+        if reveal_top { "revealed" } else { "looked" },
+    );
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
-        TagKey::from(crate::cards::builders::IT_TAG),
+        looked_tag.clone(),
     )];
     if reveal_top {
-        effects.push(EffectAst::subject_verb_reveal_tagged(TagKey::from(
-            crate::cards::builders::IT_TAG,
-        )));
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
-    effects.push(
-        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom_of_library(
+    effects.extend(
+        compose_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom(
+            sentences[sentence_idx + 1].lowered(),
+            looked_tag,
             chooser,
             battlefield_filter,
             hand_filter,
@@ -2361,6 +2365,97 @@ pub(crate) fn parse_top_cards_put_match_onto_battlefield_and_match_into_hand_res
         ),
     );
     Ok(Some(effects))
+}
+
+/// Composes the "put a matching card onto the battlefield AND a matching card
+/// into your hand, rest on bottom" follow-up shape from reusable primitives,
+/// mirroring the runtime effects the retired
+/// `ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary` recipe
+/// lowered to:
+/// - choose up to one matching looked card (`battlefield_tag`),
+/// - put it onto the battlefield, tagging the put cards with a shared
+///   `kept_tag` (`TagAffected`),
+/// - choose up to one other matching looked card not already chosen for the
+///   battlefield (`hand_tag`), move it to hand tagging it with the same
+///   `kept_tag`,
+/// - put the looked remainder (excluding `kept_tag`) on the bottom of the
+///   library.
+#[allow(clippy::too_many_arguments)]
+fn compose_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom(
+    choose_tokens: &[OwnedLexToken],
+    looked_tag: TagKey,
+    chooser: PlayerAst,
+    mut battlefield_filter: ObjectFilter,
+    mut hand_filter: ObjectFilter,
+    tapped: bool,
+    order: crate::cards::builders::LibraryBottomOrderAst,
+) -> Vec<EffectAst> {
+    let battlefield_tag = helper_tag_for_tokens(choose_tokens, "chosen");
+    let hand_tag = helper_tag_for_tokens(choose_tokens, "chosen_hand");
+    let kept_tag = helper_tag_for_tokens(choose_tokens, "kept");
+
+    battlefield_filter.zone = Some(Zone::Library);
+    battlefield_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    hand_filter.zone = Some(Zone::Library);
+    hand_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    hand_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: battlefield_tag.clone(),
+        relation: TaggedOpbjectRelation::IsNotTaggedObject,
+    });
+
+    vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter: battlefield_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: battlefield_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: None,
+        },
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_put_onto_battlefield(
+                chooser,
+                TargetAst::Tagged(battlefield_tag, None),
+                tapped,
+                ReturnControllerAst::Preserve,
+            )),
+            tag: kept_tag.clone(),
+        },
+        EffectAst::ChooseObjectsAcrossZones {
+            filter: hand_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: hand_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: None,
+        },
+        EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(hand_tag, None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )),
+            tag: kept_tag.clone(),
+        },
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(kept_tag),
+            order,
+            chooser,
+        ),
+    ]
 }
 
 pub(crate) fn parse_look_at_top_reveal_match_put_rest_bottom(

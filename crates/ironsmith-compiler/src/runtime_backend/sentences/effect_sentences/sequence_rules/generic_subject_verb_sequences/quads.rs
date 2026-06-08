@@ -36,6 +36,19 @@ fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
     Some(*player)
 }
 
+fn look_at_top_cards_player_count_reveal(
+    effect: &EffectAst,
+) -> Option<(PlayerAst, crate::effect::Value, bool)> {
+    let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
+        action: SubjectVerbActionAst::LookAtTopCards { count, reveal, .. },
+    }) = effect
+    else {
+        return None;
+    };
+    Some((*player, count.clone(), *reveal))
+}
+
 fn title_case_card_name(words: &[&str]) -> String {
     const LOWERCASE_WORDS: &[&str] = &[
         "a", "an", "the", "and", "or", "but", "nor", "for", "so", "yet", "of", "in", "on", "at",
@@ -392,14 +405,150 @@ pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
         return Ok(None);
     }
 
-    Ok(Some(vec![
-        first_effects[0].clone(),
-        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_or_into_hand_rest_on_bottom_of_library(
+    let Some((look_player, count, reveal)) =
+        look_at_top_cards_player_count_reveal(first_effect)
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(
+        compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
+            sentences[sentence_idx].lowered(),
+            sentences[sentence_idx + 1].lowered(),
+            look_player,
+            count,
+            reveal,
             chooser,
             battlefield_filter,
             tapped,
         ),
-    ]))
+    ))
+}
+
+/// Composes the "look at the top N, you may put a matching card onto the
+/// battlefield; if you don't, put a card into your hand; put the rest on the
+/// bottom" shape from reusable primitives, mirroring the runtime effects the
+/// retired `ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary`
+/// recipe lowered to:
+/// - look at the top N (minting an explicit `looked_tag`),
+/// - choose up to one matching looked card (`battlefield_tag`),
+/// - under an internal effect id, for each chosen card put it onto the
+///   battlefield; if that did not happen, choose exactly one looked card and
+///   move it to hand (`hand_tag`),
+/// - for each looked card not chosen for battlefield or hand, move it to the
+///   bottom of the library.
+#[allow(clippy::too_many_arguments)]
+fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
+    look_tokens: &[OwnedLexToken],
+    choose_tokens: &[OwnedLexToken],
+    look_player: PlayerAst,
+    count: crate::effect::Value,
+    reveal: bool,
+    chooser: PlayerAst,
+    mut battlefield_filter: ObjectFilter,
+    tapped: bool,
+) -> Vec<EffectAst> {
+    let looked_tag = helper_tag_for_tokens(look_tokens, if reveal { "revealed" } else { "looked" });
+    let battlefield_tag = helper_tag_for_tokens(choose_tokens, "chosen");
+    let hand_tag = helper_tag_for_tokens(choose_tokens, "chosen_hand");
+
+    battlefield_filter.zone = Some(Zone::Library);
+    battlefield_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+
+    let it = || TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+    let mut in_battlefield_choice_filter = ObjectFilter::default();
+    in_battlefield_choice_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+    let mut in_hand_choice_filter = ObjectFilter::default();
+    in_hand_choice_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+
+    let mut look = EffectAst::subject_verb_look_at_top_cards(look_player, count, looked_tag.clone());
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards { reveal: r, .. },
+        ..
+    }) = &mut look
+    {
+        *r = reveal;
+    }
+
+    vec![
+        look,
+        EffectAst::ChooseObjects {
+            filter: battlefield_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: battlefield_tag.clone(),
+        },
+        EffectAst::IfEffectDidNotHappen {
+            effect: Box::new(EffectAst::ForEachTagged {
+                tag: battlefield_tag.clone(),
+                effects: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    chooser,
+                    it(),
+                    tapped,
+                    ReturnControllerAst::Preserve,
+                )],
+            }),
+            otherwise: vec![
+                EffectAst::ChooseObjects {
+                    filter: hand_filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: chooser,
+                    tag: hand_tag.clone(),
+                },
+                EffectAst::ForEachTagged {
+                    tag: hand_tag.clone(),
+                    effects: vec![EffectAst::subject_verb_move_to_zone(
+                        it(),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                },
+            ],
+        },
+        EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
+                    battlefield_tag,
+                    in_battlefield_choice_filter,
+                ),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::Conditional {
+                    predicate: PredicateAst::TaggedMatches(hand_tag, in_hand_choice_filter),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        it(),
+                        Zone::Library,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                }],
+            }],
+        },
+    ]
 }
 
 pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle(

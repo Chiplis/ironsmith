@@ -436,9 +436,7 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
-                SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => {
+                SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. } => {
                     track_effect_player(subject_verb.subject.player, frame, true, true)?;
                     frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
                 }
@@ -1217,6 +1215,13 @@ fn advance_reference_frame_for_effect(
                 advance_reference_frames(&mode.effects, id_gen, &mut mode_frame)?;
             }
             *frame = saved;
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            advance_reference_frame_for_effect(effect, id_gen, frame)?;
+            advance_reference_frames(otherwise, id_gen, frame)?;
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            advance_reference_frame_for_effect(effect, id_gen, frame)?;
         }
         EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
@@ -2151,8 +2156,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }
@@ -2181,6 +2184,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
@@ -2873,18 +2877,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
                 ..
             } => 0,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                ..
-            } => bind_unresolved_it_in_filter(battlefield_filter, seed_tag),
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                ..
-            } => {
-                bind_unresolved_it_in_filter(battlefield_filter, seed_tag)
-                    + bind_unresolved_it_in_filter(hand_filter, seed_tag)
-            }
             SubjectVerbActionAst::RetargetStackObject { target, mode, .. } => {
                 let mut replacements = bind_unresolved_it_in_target(target, seed_tag);
                 if let RetargetModeAst::OneToFixed { target } = mode {
@@ -3069,6 +3061,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     replacements += bind_unresolved_it_in_target(attach, seed_tag);
                 }
                 replacements
+            }
+            SubjectVerbActionAst::PutOntoBattlefield { target, .. } => {
+                bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)
