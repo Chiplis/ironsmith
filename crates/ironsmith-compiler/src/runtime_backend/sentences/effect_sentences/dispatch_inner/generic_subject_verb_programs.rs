@@ -1140,17 +1140,28 @@ pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subje
     let graveyard_owner_clause = matched.capture_clause("graveyard_owner", tail_clause)?;
     put_counted_top_cards_owner(graveyard_owner_clause, player)?;
 
-    let looked_tag = TagKey::from(IT_TAG);
+    let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        &prefix_tokens,
+        "revealed",
+    );
+    let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        &tail_tokens,
+        "chosen",
+    );
     let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
         player,
         count,
         looked_tag.clone(),
     )];
     if reveal_top {
-        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag));
+        effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
-    effects
-        .push(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(chooser, put_count));
+    effects.extend(EffectAst::compose_put_some_into_hand_rest_into_graveyard(
+        chooser,
+        crate::effect::ChoiceCount::exactly(put_count as usize),
+        looked_tag,
+        chosen_tag,
+    ));
     Some(effects)
 }
 
@@ -2284,10 +2295,9 @@ mod generic_subject_verb_program_tests {
         let debug = format!("{effects:#?}");
 
         assert!(debug.contains("LookAtTopCards"), "{debug}");
-        assert!(
-            debug.contains("PutSomeIntoHandRestIntoGraveyard"),
-            "{debug}"
-        );
+        assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+        assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+        assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
         assert!(debug.contains("player: That"), "{debug}");
         assert!(!debug.contains("Unsupported"), "{debug}");
     }

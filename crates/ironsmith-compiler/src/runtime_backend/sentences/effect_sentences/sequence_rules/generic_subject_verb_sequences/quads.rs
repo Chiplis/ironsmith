@@ -354,21 +354,42 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
         return Ok(None);
     }
 
+    let kicked_looked_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 2].lowered(),
+            "looked",
+        );
+    let base_looked_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 1].lowered(),
+            "looked",
+        );
+    let kicked_chosen_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 2].lowered(),
+            "chosen",
+        );
+    let base_chosen_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 1].lowered(),
+            "chosen",
+        );
     Ok(Some(vec![
         first_effects[0].clone(),
         EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::ThisSpellWasKicked,
-            if_true: vec![
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-                    player,
-                    kicked_count,
-                ),
-            ],
-            if_false: vec![
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-                    player, base_count,
-                ),
-            ],
+            if_true: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
+                player,
+                crate::effect::ChoiceCount::exactly(kicked_count as usize),
+                kicked_looked_tag,
+                kicked_chosen_tag,
+            ),
+            if_false: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
+                player,
+                crate::effect::ChoiceCount::exactly(base_count as usize),
+                base_looked_tag,
+                base_chosen_tag,
+            ),
         },
     ]))
 }

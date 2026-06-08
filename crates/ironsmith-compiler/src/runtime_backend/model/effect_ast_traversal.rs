@@ -135,6 +135,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
+        EffectAst::ChooseTaggedObjectsInZone { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
         EffectAst::ChooseOneOf { .. } => {}
         EffectAst::IfEffectDidNotHappen { .. } => {}
@@ -158,6 +159,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachObject { .. } => {}
         EffectAst::ForEachTagged { .. } => {}
         EffectAst::MoveTaggedGroupToZone { .. } => {}
+        EffectAst::SnapshotLastObjectTag { .. } => {}
         EffectAst::ForEachOpponentDoesNot { .. } => {}
         EffectAst::ForEachPlayerDoesNot { .. } => {}
         EffectAst::ForEachOpponentDid { .. } => {}

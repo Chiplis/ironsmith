@@ -404,7 +404,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], inner_choices)
         }
         EffectAst::ForEachTagged { tag, effects } => {
-            let effective_tag = if tag.as_str() == IT_TAG {
+            let effective_tag = if let Some(concrete) = ctx
+                .snapshot_tag_aliases
+                .iter()
+                .find(|(alias, _)| alias == tag.as_str())
+                .map(|(_, concrete)| concrete.clone())
+            {
+                concrete
+            } else if tag.as_str() == IT_TAG {
                 ctx.last_object_tag
                     .clone()
                     .unwrap_or_else(|| IT_TAG.to_string())
@@ -421,11 +428,30 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             (vec![effect], inner_choices)
         }
         EffectAst::MoveTaggedGroupToZone { tag, zone } => {
+            let effective_tag = ctx
+                .snapshot_tag_aliases
+                .iter()
+                .find(|(alias, _)| alias == tag.as_str())
+                .map(|(_, concrete)| concrete.clone())
+                .unwrap_or_else(|| tag.as_str().to_string());
             let effect = Effect::for_each_tagged(
-                tag.as_str().to_string(),
+                effective_tag,
                 vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
             );
             (vec![effect], Vec::new())
+        }
+        EffectAst::SnapshotLastObjectTag { into } => {
+            // Lowering-time alias: bind `into` to the concrete tag currently in
+            // `last_object_tag` so later composed effects can reference the
+            // earlier looked-at pool even after an intervening `ChooseObjects`
+            // clobbers `last_object_tag`. Emits no runtime effect.
+            if let Some(concrete) = ctx.last_object_tag.clone() {
+                ctx.snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != into.as_str());
+                ctx.snapshot_tag_aliases
+                    .push((into.as_str().to_string(), concrete));
+            }
+            (Vec::new(), Vec::new())
         }
         EffectAst::ForEachTaggedPlayer { tag, effects } => {
             let (inner_effects, inner_choices) =

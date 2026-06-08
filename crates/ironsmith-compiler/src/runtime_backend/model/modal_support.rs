@@ -308,8 +308,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
@@ -461,6 +459,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
             | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
             | SubjectVerbActionAst::CastTagged { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }

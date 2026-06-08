@@ -1607,12 +1607,6 @@ fn compile_subject_verb_effect(
                 choices,
             ))
         }
-        SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count } => {
-            compile_put_some_into_hand_rest_to_zone(role, player, *count, Zone::Graveyard, ctx)
-        }
-        SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { count } => {
-            compile_put_some_into_hand_rest_to_zone(role, player, *count, Zone::Library, ctx)
-        }
         SubjectVerbActionAst::AdditionalLandPlays { count, duration } => {
             let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
@@ -2273,6 +2267,34 @@ fn compile_subject_verb_effect(
             let effect =
                 Effect::with_id(id.0, Effect::new(copy_effect)).tag(COPIED_STACK_OBJECT_TAG);
             Ok((vec![effect], choices))
+        }
+        SubjectVerbActionAst::PutTaggedRemainderInZone {
+            tag,
+            keep_tagged,
+            zone,
+        } => {
+            use crate::effect::Condition;
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            let resolved_keep = resolve_it_tag_key(keep_tagged, &current_reference_env(ctx))?;
+            let mut membership_filter = ObjectFilter::default();
+            membership_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from("__it__"),
+                    relation: TaggedOpbjectRelation::SameStableId,
+                });
+            let in_keep = Condition::TaggedObjectMatches(resolved_keep, membership_filter);
+            let move_rest = Effect::for_each_tagged(
+                resolved_tag,
+                vec![Effect::conditional(
+                    in_keep,
+                    Vec::new(),
+                    vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
+                )],
+            );
+            Ok((vec![move_rest], Vec::new()))
         }
         SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
             tag,
@@ -5782,76 +5804,6 @@ fn compile_subject_verb_effect(
             Ok((effects, subject.into_choices()))
         }
     }
-}
-
-fn compile_put_some_into_hand_rest_to_zone(
-    role: SubjectRole,
-    player: PlayerAst,
-    count: ChoiceCount,
-    rest_zone: Zone,
-    ctx: &mut EffectLoweringContext,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    use crate::effect::Condition;
-    use crate::effects::consult_helpers::LibraryBottomOrder;
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-    let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-        CardTextError::ParseError("unable to resolve 'them' without prior reference".to_string())
-    })?;
-    let subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
-    let chooser = subject.as_chooser();
-    let player_filter = subject.clone_player_filter();
-    let choices = subject.into_choices();
-
-    let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
-    choose_filter.zone = Some(Zone::Library);
-    let chosen_tag = ctx.next_tag("chosen");
-    let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-    let choose = Effect::new(
-        crate::effects::ChooseObjectsEffect::new(
-            choose_filter,
-            count,
-            chooser,
-            chosen_tag_key.clone(),
-        )
-        .in_zone(Zone::Library),
-    );
-    let move_chosen = Effect::for_each_tagged(
-        chosen_tag,
-        vec![Effect::move_to_zone(
-            ChooseSpec::Iterated,
-            Zone::Hand,
-            false,
-        )],
-    );
-
-    let mut membership_filter = ObjectFilter::default();
-    membership_filter
-        .tagged_constraints
-        .push(TaggedObjectConstraint {
-            tag: TagKey::from("__it__"),
-            relation: TaggedOpbjectRelation::SameStableId,
-        });
-    let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key.clone(), membership_filter);
-    let move_rest = if rest_zone == Zone::Library {
-        Effect::put_tagged_remainder_on_library_bottom(
-            TagKey::from(looked_tag.as_str()),
-            Some(chosen_tag_key),
-            LibraryBottomOrder::Random,
-            player_filter,
-        )
-    } else {
-        Effect::for_each_tagged(
-            looked_tag,
-            vec![Effect::conditional(
-                in_chosen,
-                Vec::new(),
-                vec![Effect::move_to_zone(ChooseSpec::Iterated, rest_zone, false)],
-            )],
-        )
-    };
-
-    Ok((vec![choose, move_chosen, move_rest], choices))
 }
 
 fn subject_verb_role(role: SubjectVerbRoleAst) -> SubjectRole {

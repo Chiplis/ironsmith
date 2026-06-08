@@ -977,6 +977,12 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         }
+        | EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            tag,
+            player,
+            ..
+        }
         | EffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             tag,
@@ -1192,6 +1198,19 @@ fn advance_reference_frame_for_effect(
         EffectAst::MoveTaggedGroupToZone { .. } => {
             // Moves an existing tagged group; introduces no new references and
             // keeps the iterated object internal to lowering.
+        }
+        EffectAst::SnapshotLastObjectTag { into } => {
+            // Bind the current looked-at pool to `into` so later composed
+            // effects can reference it even after a `ChooseObjects` clobbers
+            // `last_object_tag`. Emits no runtime effect.
+            if let Some(concrete) = frame.last_object_tag.clone() {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != into.as_str());
+                frame
+                    .snapshot_tag_aliases
+                    .push((into.as_str().to_string(), concrete));
+            }
         }
         EffectAst::RepeatProcess { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
@@ -1898,6 +1917,7 @@ fn advance_reference_env_for_effect(
                     &true_sequence.final_env.last_object_tag,
                     &false_sequence.final_env.last_object_tag,
                 ),
+                snapshot_tag_aliases: env.snapshot_tag_aliases.clone(),
                 last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
                     && false_sequence.final_env.last_it_choice_is_set,
                 last_player_filter: RefState::join(
@@ -2022,8 +2042,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
@@ -2174,6 +2192,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
             | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
             | SubjectVerbActionAst::CastTagged { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
@@ -2768,9 +2787,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::PutIntoHand { object } => {
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)
             }
-            SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::PutRestOnBottomOfLibrary
+            SubjectVerbActionAst::PutRestOnBottomOfLibrary
             | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => 0,
             SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
@@ -3006,6 +3023,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     replacements += bind_unresolved_it_in_tag(keep_tagged, seed_tag);
                 }
                 replacements
+            }
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag, keep_tagged, ..
+            } => {
+                bind_unresolved_it_in_tag(tag, seed_tag)
+                    + bind_unresolved_it_in_tag(keep_tagged, seed_tag)
             }
             SubjectVerbActionAst::CastTagged { tag, .. } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)

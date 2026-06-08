@@ -790,6 +790,7 @@ mod tests {
         CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     };
     use crate::ids::CardId;
+    use crate::zone::Zone;
 
     use super::super::super::lexer::lex_line;
     use super::{
@@ -904,15 +905,29 @@ mod tests {
                     action: SubjectVerbActionAst::LookAtTopCards { .. },
                     ..
                 }),
+                EffectAst::SnapshotLastObjectTag { .. },
+                EffectAst::ChooseTaggedObjectsInZone {
+                    player,
+                    count,
+                    zone: Zone::Library,
+                    ..
+                },
+                EffectAst::MoveTaggedGroupToZone {
+                    zone: Zone::Hand, ..
+                },
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject,
-                    action: SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count },
+                    action:
+                        SubjectVerbActionAst::PutTaggedRemainderInZone {
+                            zone: Zone::Graveyard,
+                            ..
+                        },
+                    ..
                 }),
             ] => {
-                assert_eq!(subject.player, PlayerAst::You);
+                assert_eq!(*player, PlayerAst::You);
                 assert_eq!(*count, crate::effect::ChoiceCount::exactly(1));
             }
-            other => panic!("expected looked-cards split effects, got {other:?}"),
+            other => panic!("expected composed looked-cards split effects, got {other:?}"),
         }
     }
 

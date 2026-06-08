@@ -17,6 +17,7 @@ pub(crate) struct ReferenceFrame {
     pub(crate) last_effect_id: Option<EffectId>,
     pub(crate) last_library_search_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
+    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -34,6 +35,7 @@ impl ReferenceFrame {
             last_effect_id: frame.last_effect_id,
             last_library_search_effect_id: frame.last_library_search_effect_id,
             last_object_tag: frame.last_object_tag.clone(),
+            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: frame.last_player_filter.clone(),
             source_object_antecedent: frame.source_object_antecedent,
@@ -51,6 +53,7 @@ impl ReferenceFrame {
             last_effect_id: self.last_effect_id,
             last_library_search_effect_id: self.last_library_search_effect_id,
             last_object_tag: self.last_object_tag.clone(),
+            snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_revealed_tag: None,
             last_exiled_collection_tag: None,
@@ -139,6 +142,11 @@ impl ReferenceImports {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ReferenceEnv {
     pub(crate) last_object_tag: RefState<TagKey>,
+    /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a stable
+    /// parse-time placeholder tag to the concrete tag captured from
+    /// `last_object_tag` at snapshot time. Survives later `last_object_tag`
+    /// clobbers so composed effects can still reference an earlier looked pool.
+    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_it_choice_is_set: bool,
     pub(crate) last_player_filter: RefState<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
@@ -153,6 +161,7 @@ impl Default for ReferenceEnv {
     fn default() -> Self {
         Self {
             last_object_tag: RefState::Unknown,
+            snapshot_tag_aliases: Vec::new(),
             last_it_choice_is_set: false,
             last_player_filter: RefState::Unknown,
             source_object_antecedent: false,
@@ -175,6 +184,7 @@ impl ReferenceEnv {
     ) -> Self {
         Self {
             last_object_tag: RefState::from_option(imports.last_object_tag.clone()),
+            snapshot_tag_aliases: Vec::new(),
             last_it_choice_is_set: imports.last_it_choice_is_set,
             last_player_filter: RefState::from_option(imports.last_player_filter.clone()),
             source_object_antecedent: imports.source_object_antecedent,
@@ -195,6 +205,7 @@ impl ReferenceEnv {
             last_object_tag: RefState::from_option(
                 frame.last_object_tag.as_ref().map(TagKey::from),
             ),
+            snapshot_tag_aliases: frame.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: frame.last_it_choice_is_set,
             last_player_filter: RefState::from_option(frame.last_player_filter.clone()),
             source_object_antecedent: frame.source_object_antecedent,
@@ -225,6 +236,7 @@ impl ReferenceEnv {
                 .clone()
                 .into_option()
                 .map(|tag| tag.as_str().to_string()),
+            snapshot_tag_aliases: self.snapshot_tag_aliases.clone(),
             last_it_choice_is_set: self.last_it_choice_is_set,
             last_player_filter: self.last_player_filter.clone().into_option(),
             source_object_antecedent: self.source_object_antecedent,

@@ -1155,7 +1155,20 @@ pub(crate) fn parse_put_into_hand(
         .find_in_word_refs(&from_among_words)
         .is_some()
     {
-        return Ok(EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(player, 1));
+        let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens, "looked",
+        );
+        let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            tokens, "chosen",
+        );
+        return Ok(EffectAst::Sequence {
+            effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
+                player,
+                crate::effect::ChoiceCount::exactly(1),
+                looked_tag,
+                chosen_tag,
+            ),
+        });
     }
 
     let put_all_exiled_words = TokenWordView::new(tokens).word_refs();
@@ -1191,13 +1204,23 @@ pub(crate) fn parse_put_into_hand(
             && let Some(choice_count) = put_shape.count
         {
             let dest_player = cca_destination_player_from_tokens(tokens, player);
+            let looked_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "looked",
+                );
+            let chosen_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "chosen",
+                );
 
-            return Ok(
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(
+            return Ok(EffectAst::Sequence {
+                effects: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
                     dest_player,
                     choice_count,
+                    looked_tag,
+                    chosen_tag,
                 ),
-            );
+            });
         }
 
         // "Put N of them into your hand and the rest into your graveyard."
@@ -1206,13 +1229,23 @@ pub(crate) fn parse_put_into_hand(
         {
             // The chooser is typically the player whose hand is referenced.
             let dest_player = cca_destination_player_from_tokens(tokens, player);
+            let looked_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "looked",
+                );
+            let chosen_tag =
+                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                    tokens, "chosen",
+                );
 
-            return Ok(
-                EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard_with_count(
+            return Ok(EffectAst::Sequence {
+                effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                     dest_player,
                     choice_count,
+                    looked_tag,
+                    chosen_tag,
                 ),
-            );
+            });
         }
 
         let effect = EffectAst::subject_verb_put_into_hand(
@@ -1518,13 +1551,23 @@ pub(crate) fn parse_put_into_hand(
                         == Some(CcaRestDestination::Graveyard)
                 {
                     let dest_player = cca_destination_player_from_tokens(tokens, player);
+                    let looked_tag =
+                        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                            tokens, "looked",
+                        );
+                    let chosen_tag =
+                        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                            tokens, "chosen",
+                        );
 
-                    return Ok(
-                        EffectAst::subject_verb_put_some_into_hand_rest_into_graveyard(
+                    return Ok(EffectAst::Sequence {
+                        effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                             dest_player,
-                            count,
+                            crate::effect::ChoiceCount::exactly(count as usize),
+                            looked_tag,
+                            chosen_tag,
                         ),
-                    );
+                    });
                 }
 
                 if matches!(

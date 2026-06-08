@@ -2740,8 +2740,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }
@@ -2889,6 +2887,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
             | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
             | SubjectVerbActionAst::CastTagged { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }

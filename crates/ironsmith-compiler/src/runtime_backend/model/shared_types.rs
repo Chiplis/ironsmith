@@ -43,6 +43,12 @@ pub(crate) struct LoweringFrame {
     pub(crate) last_library_search_effect_id: Option<EffectId>,
     pub(crate) last_object_tag: Option<String>,
     pub(crate) last_it_choice_is_set: bool,
+    /// Parse-time tag aliases bound by `SnapshotLastObjectTag`, mapping a
+    /// stable parse-time placeholder tag to the concrete runtime tag that was
+    /// in `last_object_tag` at snapshot time. Consulted during tag/filter
+    /// resolution so composed effects can reference an earlier looked-at pool
+    /// even after a later `ChooseObjects` clobbers `last_object_tag`.
+    pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_revealed_tag: Option<String>,
     pub(crate) last_exiled_collection_tag: Option<String>,
     pub(crate) last_player_filter: Option<PlayerFilter>,
@@ -164,6 +170,7 @@ impl EffectLoweringContext {
         self.last_effect_id = frame.last_effect_id;
         self.last_library_search_effect_id = frame.last_library_search_effect_id;
         self.last_object_tag = frame.last_object_tag;
+        self.snapshot_tag_aliases = frame.snapshot_tag_aliases;
         self.last_it_choice_is_set = frame.last_it_choice_is_set;
         self.last_exiled_collection_tag = frame.last_exiled_collection_tag;
         self.last_player_filter = frame.last_player_filter;

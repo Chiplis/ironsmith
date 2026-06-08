@@ -11924,8 +11924,10 @@ fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bundle() {
     );
     assert_eq!(matched.consumed_sentences, 4);
     assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
     assert!(
-        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary"),
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
 }
@@ -12138,8 +12140,13 @@ fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_into_hand_res
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(
-        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary") && debug.contains("up_to"),
-        "expected up-to counted looked-card move with remainder to bottom, got {debug}"
+        debug.contains("ChooseTaggedObjectsInZone") && debug.contains("up_to"),
+        "expected up-to counted looked-card choose, got {debug}"
+    );
+    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "expected remainder to bottom, got {debug}"
     );
 }
 

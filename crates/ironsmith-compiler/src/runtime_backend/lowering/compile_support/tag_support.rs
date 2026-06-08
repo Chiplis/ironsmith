@@ -655,8 +655,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RevealCardsFromHand { .. }
         | SubjectVerbActionAst::LookAtObjects { .. }
         | SubjectVerbActionAst::LookAtTarget { .. }
-        | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-        | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::EmitKeywordAction { .. }
         | SubjectVerbActionAst::Amass { .. }
         | SubjectVerbActionAst::Bolster { .. }
@@ -789,6 +787,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PutOrRemoveCounters { .. }
         | SubjectVerbActionAst::CopySpellForEachTarget { .. }
         | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+        | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
         | SubjectVerbActionAst::CastTagged { .. }
         | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
         | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }

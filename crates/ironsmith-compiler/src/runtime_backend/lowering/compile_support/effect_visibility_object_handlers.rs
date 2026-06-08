@@ -150,6 +150,34 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count,
+            player,
+            tag,
+            zone,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let followup_player = subject.clone_player_filter();
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            resolved_filter.zone = Some(*zone);
+            let (effects, choices) = compile_choose_objects_with_subject(
+                subject,
+                resolved_filter,
+                *count,
+                None,
+                tag.clone(),
+                *zone,
+            );
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            }
+            ctx.last_player_filter = Some(followup_player);
+            (effects, choices)
+        }
         EffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             count,
