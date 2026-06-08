@@ -195,6 +195,22 @@ fn compile_effect_inner(
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
+    if let EffectAst::ChooseOneOf { modes } = effect {
+        use crate::effect::EffectMode;
+        let mut lowered_modes = Vec::with_capacity(modes.len());
+        let mut choices = Vec::new();
+        for mode in modes {
+            let (mode_effects, mode_choices) = compile_effects(&mode.effects, ctx)?;
+            for choice in mode_choices {
+                push_choice(&mut choices, choice);
+            }
+            lowered_modes.push(EffectMode {
+                description: mode.description.clone(),
+                effects: mode_effects,
+            });
+        }
+        return Ok((vec![Effect::choose_one(lowered_modes)], choices));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,
@@ -4057,81 +4073,6 @@ fn compile_subject_verb_effect(
                 subject.into_choices(),
             ))
         }
-        SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count } => {
-            use crate::effect::{Condition, EffectMode, Value};
-
-            let subject = LoweredSubject::resolve_library_owner(player, ctx, true, true, false)?;
-            let player_filter = subject.clone_player_filter();
-            let choices = subject.into_choices();
-            let mut modes = Vec::new();
-            let card_type_modes = [
-                ("Artifact", CardType::Artifact),
-                ("Battle", CardType::Battle),
-                ("Creature", CardType::Creature),
-                ("Enchantment", CardType::Enchantment),
-                ("Instant", CardType::Instant),
-                ("Kindred", CardType::Kindred),
-                ("Land", CardType::Land),
-                ("Planeswalker", CardType::Planeswalker),
-                ("Sorcery", CardType::Sorcery),
-            ];
-
-            for (label, card_type) in card_type_modes {
-                let looked_tag = ctx.next_tag("revealed");
-                let mut card_type_filter = ObjectFilter::default();
-                card_type_filter.card_types.push(card_type);
-
-                let reveal = Effect::look_at_top_cards(
-                    player_filter.clone(),
-                    Value::Fixed(*count as i32),
-                    TagKey::from(looked_tag.as_str()),
-                );
-                let reveal_tagged =
-                    Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
-                let move_by_type = Effect::for_each_tagged(
-                    looked_tag,
-                    vec![Effect::conditional(
-                        Condition::TaggedObjectMatches(TagKey::from("__it__"), card_type_filter),
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Hand,
-                            false,
-                        )],
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Library,
-                            false,
-                        )],
-                    )],
-                );
-
-                modes.push(EffectMode {
-                    description: label.to_string(),
-                    effects: vec![reveal, reveal_tagged, move_by_type],
-                });
-            }
-
-            Ok((vec![Effect::choose_one(modes)], choices))
-        }
-        SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-            spell_filter,
-            order,
-        } => effect_visibility_object_handlers::compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-            player,
-            order.clone(),
-            &[
-                CardType::Artifact,
-                CardType::Battle,
-                CardType::Enchantment,
-                CardType::Instant,
-                CardType::Kindred,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Sorcery,
-            ],
-            Some(spell_filter),
-            ctx,
-        ),
         SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
             order,
         } => effect_visibility_object_handlers::compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
@@ -4147,7 +4088,6 @@ fn compile_subject_verb_effect(
                 CardType::Planeswalker,
                 CardType::Sorcery,
             ],
-            None,
             ctx,
         ),
         SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {

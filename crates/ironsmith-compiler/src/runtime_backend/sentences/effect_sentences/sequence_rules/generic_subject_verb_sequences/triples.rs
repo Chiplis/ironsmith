@@ -1210,6 +1210,98 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     effects
 }
 
+/// Composes the "for each card type, put a card of that type from among the
+/// revealed cards into your hand, rest on bottom" follow-up shape from reusable
+/// primitives, mirroring the runtime effects the retired
+/// `ChooseFromLookedCardsForEachCardType*IntoHandRestOnBottomOfLibrary` recipes
+/// lowered to (see `compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library`).
+///
+/// Per card type, a `ChooseObjects` (up to 1, of that type, from the prior
+/// looked cards not already chosen, sharing one `chosen_tag`) is emitted; when
+/// `spell_filter` is set, that choose is gated behind a value comparison that the
+/// player has cast at least one matching spell of that type this turn. The chosen
+/// cards then move to hand and the looked remainder goes to the bottom.
+///
+/// `looked_tag` must reference the cards already looked at by a prior effect.
+fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
+    player: PlayerAst,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+    card_types: &[CardType],
+    spell_filter: Option<&ObjectFilter>,
+    order: crate::cards::builders::LibraryBottomOrderAst,
+) -> Vec<EffectAst> {
+    let chooser_player_filter = PlayerFilter::You;
+    let mut effects = Vec::new();
+    for card_type in card_types {
+        let mut choose_filter = ObjectFilter::default();
+        choose_filter.zone = Some(Zone::Library);
+        choose_filter.card_types.push(*card_type);
+        choose_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        choose_filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: chosen_tag.clone(),
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+
+        let choose = EffectAst::ChooseObjectsAcrossZones {
+            filter: choose_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player,
+            tag: chosen_tag.clone(),
+            zones: vec![Zone::Library],
+            search_mode: None,
+        };
+
+        if let Some(spell_filter) = spell_filter {
+            let mut typed_spell_filter = (*spell_filter).clone();
+            if !typed_spell_filter.card_types.contains(card_type) {
+                typed_spell_filter.card_types.push(*card_type);
+            }
+            effects.push(EffectAst::Conditional {
+                predicate: PredicateAst::ValueComparison {
+                    left: Value::SpellsCastThisTurnMatching {
+                        player: chooser_player_filter.clone(),
+                        filter: typed_spell_filter,
+                        exclude_source: false,
+                    },
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(1),
+                },
+                if_true: vec![choose],
+                if_false: Vec::new(),
+            });
+        } else {
+            effects.push(choose);
+        }
+    }
+
+    effects.push(EffectAst::ForEachTagged {
+        tag: chosen_tag.clone(),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
+    effects.push(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            looked_tag,
+            Some(chosen_tag),
+            order,
+            player,
+        ),
+    );
+
+    effects
+}
+
 fn parse_any_number_from_looked_cards_action(
     tokens: &[OwnedLexToken],
 ) -> Option<(ObjectFilter, Zone, bool)> {
@@ -1926,15 +2018,30 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
         return Ok(None);
     };
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, TagKey::from(crate::cards::builders::IT_TAG)),
-        EffectAst::subject_verb_reveal_tagged(TagKey::from(crate::cards::builders::IT_TAG)),
-        EffectAst::subject_verb_choose_from_looked_cards_for_each_card_type_among_spells_cast_this_turn_into_hand_rest_on_bottom_of_library(
-            player,
-            spell_filter,
-            order,
-        ),
-    ]))
+    let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    let mut effects = vec![
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+    ];
+    effects.extend(compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
+        player,
+        looked_tag,
+        chosen_tag,
+        &[
+            CardType::Artifact,
+            CardType::Battle,
+            CardType::Enchantment,
+            CardType::Instant,
+            CardType::Kindred,
+            CardType::Land,
+            CardType::Planeswalker,
+            CardType::Sorcery,
+        ],
+        Some(&spell_filter),
+        order,
+    ));
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bottom(
@@ -1985,6 +2092,14 @@ pub(crate) fn parse_top_cards_for_each_card_type_put_matching_into_hand_rest_bot
         return Ok(None);
     };
 
+    // NOTE: This shape is NOT composed into reusable primitives. Composing it as
+    // a per-card-type ChooseObjects sequence diverges in object-triggered abilities
+    // (e.g. Atraxa's "When this creature enters"): the decomposed for-each-move
+    // exposes a bare `it` reference that triggers a spurious triggering-object
+    // prelude (the monolithic recipe variant hid it), which the renderer's compact
+    // recognizer no longer matches. Retiring it cleanly would require relaxing the
+    // shared `effect_references_it_tag` ForEachTagged precision, which regresses
+    // unrelated magecraft/looked-card cards. So this keeps the recipe variant.
     Ok(Some(vec![
         EffectAst::subject_verb_look_at_top_cards(
             player,

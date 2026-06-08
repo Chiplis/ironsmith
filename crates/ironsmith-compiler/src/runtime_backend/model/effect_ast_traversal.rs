@@ -136,6 +136,7 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
+        EffectAst::ChooseOneOf { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::RepeatThisProcess => {}
@@ -187,6 +188,11 @@ pub(crate) fn for_each_nested_effects(
             visit(if_true);
             visit(if_false);
         }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mode.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -220,6 +226,11 @@ pub(crate) fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mut mode.effects);
+            }
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -252,6 +263,11 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         } => {
             visit(if_true)?;
             visit(if_false)?;
+        }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mut mode.effects)?;
+            }
         }
         nested_effects_variants!(effects) => {
             visit(effects)?;

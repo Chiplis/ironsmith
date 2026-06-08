@@ -837,8 +837,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::Cant { .. }
         | SubjectVerbActionAst::Meld { .. }
         | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-        | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-        | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
         | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }

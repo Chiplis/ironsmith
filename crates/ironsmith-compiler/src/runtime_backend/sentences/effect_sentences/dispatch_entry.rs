@@ -2179,29 +2179,35 @@ mod tests {
             .expect("Hurkyl reveal bundle helper should not error")
             .expect("Hurkyl reveal bundle helper should parse");
 
+        // Now composed from reusable primitives: look + reveal-tagged + per-card-type
+        // conditional choose (gated on a matching spell cast this turn) +
+        // move-group-to-hand + remainder-to-bottom.
         assert!(matches!(
-            parsed.as_slice(),
-            [
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
-                        ..
-                    }
-                ),
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::RevealTagged { .. },
-                        ..
-                    }
-                ),
-                crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. },
-                        ..
-                    }
-                ),
-            ]
+            parsed.first(),
+            Some(crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::LookAtTopCards { .. },
+                    ..
+                }
+            ))
         ));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::Conditional {
+                predicate: crate::cards::builders::PredicateAst::ValueComparison { .. },
+                ..
+            }
+        )));
+        assert!(parsed.iter().any(|effect| matches!(
+            effect,
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        crate::cards::builders::SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. },
+                    ..
+                }
+            )
+        )));
     }
 
     #[test]
@@ -2852,8 +2858,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }

@@ -436,8 +436,7 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
-                SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
+                SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
                 | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => {
                     track_effect_player(subject_verb.subject.player, frame, true, true)?;
@@ -1207,6 +1206,17 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
+        }
+        EffectAst::ChooseOneOf { modes } => {
+            // Modes are mutually-exclusive branches: resolve references within
+            // each in an isolated frame so one mode's bindings don't leak into
+            // the next or into following effects.
+            let saved = frame.clone();
+            for mode in modes {
+                let mut mode_frame = saved.clone();
+                advance_reference_frames(&mode.effects, id_gen, &mut mode_frame)?;
+            }
+            *frame = saved;
         }
         EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
@@ -2140,8 +2150,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
@@ -2862,10 +2870,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                ..
-            } => bind_unresolved_it_in_filter(spell_filter, seed_tag),
             SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
                 ..
             } => 0,
@@ -2898,7 +2902,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::Meld { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeZones { .. } => 0,
             SubjectVerbActionAst::ExchangeControlHeterogeneous {

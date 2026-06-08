@@ -17,10 +17,8 @@ pub(super) fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest
     player: PlayerAst,
     order: crate::cards::builders::LibraryBottomOrderAst,
     card_type_modes: &[CardType],
-    spell_filter: Option<&ObjectFilter>,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    use crate::effect::{Condition, Value, ValueComparisonOperator};
     use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 
     let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
@@ -54,7 +52,7 @@ pub(super) fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest
                 relation: TaggedOpbjectRelation::IsNotTaggedObject,
             });
 
-        let choose = Effect::new(
+        compiled.push(Effect::new(
             crate::effects::ChooseObjectsEffect::new(
                 choose_filter,
                 ChoiceCount::up_to(1),
@@ -62,30 +60,7 @@ pub(super) fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest
                 chosen_tag_key.clone(),
             )
             .in_zone(Zone::Library),
-        );
-
-        if let Some(spell_filter) = spell_filter {
-            let mut typed_spell_filter = (*spell_filter).clone();
-            if !typed_spell_filter.card_types.contains(card_type) {
-                typed_spell_filter.card_types.push(*card_type);
-            }
-
-            compiled.push(Effect::conditional(
-                Condition::ValueComparison {
-                    left: Value::SpellsCastThisTurnMatching {
-                        player: chooser.clone(),
-                        filter: typed_spell_filter,
-                        exclude_source: false,
-                    },
-                    operator: ValueComparisonOperator::GreaterThanOrEqual,
-                    right: Value::Fixed(1),
-                },
-                vec![choose],
-                Vec::new(),
-            ));
-        } else {
-            compiled.push(choose);
-        }
+        ));
     }
 
     compiled.push(Effect::for_each_tagged(

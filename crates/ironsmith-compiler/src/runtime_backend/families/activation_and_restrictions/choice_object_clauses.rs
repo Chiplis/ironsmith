@@ -1099,12 +1099,84 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
         return Ok(None);
     }
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_reveal_top_choose_card_type_put_to_hand_rest_bottom(
-            PlayerAst::You,
-            count,
-        ),
-    ]))
+    Ok(Some(vec![compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(first, count)]))
+}
+
+/// Composes the "choose a card type, reveal the top N, put all of that type into
+/// your hand and the rest on the bottom" effect as a player modal
+/// (`EffectAst::ChooseOneOf`) over the nine card types, mirroring the runtime
+/// `Effect::choose_one` the retired `RevealTopChooseCardTypePutToHandRestBottom`
+/// recipe lowered to. Each mode looks at the top N cards, reveals them, and for
+/// each looked card moves it to hand if it matches the mode's card type, else to
+/// the bottom of the library.
+fn compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(
+    first: &[OwnedLexToken],
+    count: u32,
+) -> EffectAst {
+    let card_type_modes = [
+        ("Artifact", CardType::Artifact),
+        ("Battle", CardType::Battle),
+        ("Creature", CardType::Creature),
+        ("Enchantment", CardType::Enchantment),
+        ("Instant", CardType::Instant),
+        ("Kindred", CardType::Kindred),
+        ("Land", CardType::Land),
+        ("Planeswalker", CardType::Planeswalker),
+        ("Sorcery", CardType::Sorcery),
+    ];
+
+    let modes = card_type_modes
+        .into_iter()
+        .map(|(label, card_type)| {
+            let looked_tag = crate::runtime_backend::util::helper_tag_for_tokens(
+                first,
+                &format!("revealed_{label}"),
+            );
+            let mut card_type_filter = ObjectFilter::default();
+            card_type_filter.card_types.push(card_type);
+
+            let effects = vec![
+                EffectAst::subject_verb_look_at_top_cards(
+                    PlayerAst::You,
+                    Value::Fixed(count as i32),
+                    looked_tag.clone(),
+                ),
+                EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+                EffectAst::ForEachTagged {
+                    tag: looked_tag,
+                    effects: vec![EffectAst::Conditional {
+                        predicate: PredicateAst::TaggedMatches(
+                            TagKey::from(IT_TAG),
+                            card_type_filter,
+                        ),
+                        if_true: vec![EffectAst::subject_verb_move_to_zone(
+                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            Zone::Hand,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )],
+                        if_false: vec![EffectAst::subject_verb_move_to_zone(
+                            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                            Zone::Library,
+                            false,
+                            ReturnControllerAst::Preserve,
+                            false,
+                            None,
+                        )],
+                    }],
+                },
+            ];
+
+            crate::cards::builders::ChooseOneModeAst {
+                description: label.to_string(),
+                effects,
+            }
+        })
+        .collect();
+
+    EffectAst::ChooseOneOf { modes }
 }
 
 pub(crate) fn parse_choose_creature_type_phrase_words(

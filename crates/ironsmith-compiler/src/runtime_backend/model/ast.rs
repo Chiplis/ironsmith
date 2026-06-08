@@ -1470,13 +1470,6 @@ pub(crate) enum SubjectVerbActionAst {
         reveal: bool,
         progress_tag: TagKey,
     },
-    RevealTopChooseCardTypePutToHandRestBottom {
-        count: u32,
-    },
-    ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-        spell_filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    },
     ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
         order: LibraryBottomOrderAst,
     },
@@ -2952,18 +2945,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("reveal", reveal)
                 .field("progress_tag", progress_tag)
                 .finish(),
-            Self::RevealTopChooseCardTypePutToHandRestBottom { count } => f
-                .debug_tuple("RevealTopChooseCardTypePutToHandRestBottom")
-                .field(count)
-                .finish(),
-            Self::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                order,
-            } => f
-                .debug_struct("ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary")
-                .field("spell_filter", spell_filter)
-                .field("order", order)
-                .finish(),
             Self::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { order } => f
                 .debug_struct("ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary")
                 .field("order", order)
@@ -3389,6 +3370,14 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
     }
 }
 
+/// One mode of an `EffectAst::ChooseOneOf` modal choice: a label shown to the
+/// player and the effects that resolve when that mode is chosen.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ChooseOneModeAst {
+    pub description: String,
+    pub effects: Vec<EffectAst>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
@@ -3470,6 +3459,11 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
+    },
+    /// A player-facing modal choice: the player picks one mode, and only that
+    /// mode's effects resolve. Lowers to `Effect::choose_one`.
+    ChooseOneOf {
+        modes: Vec<ChooseOneModeAst>,
     },
     DirectionalAdjacentPlayerControl {
         filter: ObjectFilter,
@@ -5018,32 +5012,6 @@ impl EffectAst {
                 destination,
                 reveal,
                 progress_tag,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_reveal_top_choose_card_type_put_to_hand_rest_bottom(
-        player: PlayerAst,
-        count: u32,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_for_each_card_type_among_spells_cast_this_turn_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        spell_filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                order,
             },
         )
     }
