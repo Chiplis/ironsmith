@@ -19455,3 +19455,188 @@ fn chain_carry_routes_direct_shape_gates_through_lexed_clauses() {
         "{relative} should not route chain-carry shape gates through raw word refs"
     );
 }
+
+/// Parse the production source into `(fn_name, window)` pairs, where `window`
+/// is the source starting at the `fn NAME` declaration and extending for up to
+/// `WINDOW_LINES` lines. This mirrors the line-window detector that originally
+/// found the ~50 imperative cursor-walk matchers.
+fn function_windows(source: &str) -> Vec<(String, String)> {
+    const WINDOW_LINES: usize = 60;
+    let lines: Vec<&str> = source.lines().collect();
+    let mut windows = Vec::new();
+    for (start, line) in lines.iter().enumerate() {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("fn ") else {
+            continue;
+        };
+        // Extract the bare function name (up to `(`, `<`, or whitespace).
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let end = (start + WINDOW_LINES).min(lines.len());
+        let window = lines[start..end].join("\n");
+        windows.push((name, window));
+    }
+    windows
+}
+
+const CURSOR_WORD_VARS: [&str; 7] = [
+    "words",
+    "word_refs",
+    "clause_words",
+    "tail_words",
+    "sentence_words",
+    "content_words",
+    "second_words",
+];
+
+const CURSOR_INDEX_VARS: [&str; 3] = ["idx", "cursor", "word_idx"];
+
+/// Detect the cursor-walk-loop signature inside a single function window.
+///
+/// A window is flagged only if it contains ALL THREE of:
+///   (a) a mutable cursor binding (`let mut idx`/`let mut cursor`/`let mut word_idx`),
+///   (b) that cursor being advanced (`idx +=` / `cursor +=` / `word_idx +=`), and
+///   (c) word-slice indexing into a known word var by that cursor, i.e.
+///       `<word_var> ... .get(<cursor>)` on a single line, or `<word_var>[<cursor>]`.
+fn window_is_cursor_walk(window: &str) -> bool {
+    let has_binding = CURSOR_INDEX_VARS
+        .iter()
+        .any(|v| window.contains(&format!("let mut {v}")));
+    let has_advance = CURSOR_INDEX_VARS
+        .iter()
+        .any(|v| window.contains(&format!("{v} +=")));
+    if !(has_binding && has_advance) {
+        return false;
+    }
+
+    // (c) word-slice indexing into a word var by a cursor var.
+    for line in window.lines() {
+        for word_var in CURSOR_WORD_VARS {
+            // Find a position where the word var appears as a whole token.
+            let mut search = line;
+            while let Some(pos) = search.find(word_var) {
+                let after = &search[pos + word_var.len()..];
+                let before_ok = pos == 0
+                    || !search.as_bytes()[pos - 1].is_ascii_alphanumeric()
+                        && search.as_bytes()[pos - 1] != b'_';
+                let after_ok = after
+                    .chars()
+                    .next()
+                    .map(|c| !(c.is_alphanumeric() || c == '_'))
+                    .unwrap_or(true);
+                if before_ok && after_ok {
+                    // `<word_var>[<cursor>]` directly after the token (optionally `&`).
+                    let direct = after.trim_start_matches('&');
+                    for cur in CURSOR_INDEX_VARS {
+                        if direct.starts_with(&format!("[{cur}]")) {
+                            return true;
+                        }
+                    }
+                    // `<word_var> ... .get(<cursor>)` later on the same line.
+                    for cur in CURSOR_INDEX_VARS {
+                        if after.contains(&format!(".get({cur})")) {
+                            return true;
+                        }
+                    }
+                }
+                search = &search[pos + word_var.len()..];
+            }
+        }
+    }
+    false
+}
+
+/// Known-debt ratchet allowlist for imperative word-index cursor-walk matchers
+/// in `runtime_backend`.
+///
+/// A refactor (`git show 7ec4331bf bcff8d1e6`) converted the bulk of imperative
+/// word-index cursor-walk matchers to declarative forms (LexPattern /
+/// word_slice / `.position()`). The functions listed below are the genuinely
+/// irreducible remainder: semantic scans that validate each word via parse
+/// fns, perform unbounded accumulation or token rewrites, plus a few
+/// lint-pinned word_slice gates.
+///
+/// This is a RATCHET, not an aspiration: the set may only shrink.
+///   * Adding a NEW cursor-walk-loop matcher is forbidden. Convert it to a
+///     declarative form (LexPattern / word_slice / `.position()`) instead.
+///   * If you legitimately added an irreducible semantic scan, add its
+///     `relative_path::fn_name` here WITH A COMMENT explaining why it cannot be
+///     made declarative.
+///   * If you removed/converted one, delete its entry here.
+fn cursor_walk_allowlist() -> BTreeSet<String> {
+    [
+        // LexPattern matcher internals: these ARE the declarative replacement
+        // primitive (the word/atom matcher everything else is converted to),
+        // so they cannot themselves be expressed as a higher-level pattern.
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/lex_patterns.rs::match_atoms",
+        "crates/ironsmith-compiler/src/runtime_backend/front_end/lex_patterns.rs::match_words",
+        // Semantic spell-restriction scans: validate each word via parse fns
+        // while accumulating a subject filter.
+        "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::damage_cause_life_loss_restriction_from_tail",
+        "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::parse_spell_restriction_subject_filter",
+        "crates/ironsmith-compiler/src/runtime_backend/families/activation_and_restrictions/activation_restriction_clauses.rs::parse_spell_subject_cant_be_cast_filter",
+        // "as ~ enters, choose" subject scan: walks the choice clause word by
+        // word, validating each token.
+        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs::parse_as_enters_choice_subject_clause",
+        "crates/ironsmith-compiler/src/runtime_backend/families/keyword_static/mod.rs::parse_as_enters_choice_subject_tokens",
+        // looked-cards family: prefix stripping / token rewrites and unbounded
+        // semantic scans over the looked-card clause.
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::looked_clause_first_is",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::looked_words_start_into_hand",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::parse_prior_effect_number_value",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::strip_up_to_one_looked_card_choice_prefix",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::token_is_word",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/looked_cards_family.rs::token_words_non_article_eq_any",
+        // control/copy/attach verb handlers: token rewrites and zone-constraint
+        // scans that consume a variable-length tail.
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/verb_handlers/control_copy_attach_verbs.rs::apply",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/verb_handlers/control_copy_attach_verbs.rs::apply_source_zone_constraint",
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/verb_handlers/control_copy_attach_verbs.rs::is_top_or_bottom_choice_destination",
+        // prior-effect count binding: unbounded semantic scan over the clause.
+        "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/verb_handlers/counter_stat_verbs.rs::parse_prior_effect_count_binding_clause",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+#[test]
+fn runtime_backend_word_cursor_walks_are_allowlisted() {
+    let root = workspace_root();
+    let mut files = Vec::new();
+    collect_rust_files(
+        &root.join("crates/ironsmith-compiler/src/runtime_backend"),
+        &mut files,
+    );
+    files.sort();
+
+    let mut offenders = BTreeSet::new();
+    for path in files {
+        let relative = repo_relative(&root, &path);
+        let content = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+        let source = production_source(&content);
+        for (name, window) in function_windows(source) {
+            if window_is_cursor_walk(&window) {
+                offenders.insert(format!("{relative}::{name}"));
+            }
+        }
+    }
+
+    let allowlist = cursor_walk_allowlist();
+    assert_eq!(
+        offenders, allowlist,
+        "runtime_backend cursor-walk-loop matchers changed.\n\
+         New imperative cursor-walk-loop matchers are FORBIDDEN: convert them to a \
+         declarative form (LexPattern / word_slice / `.position()`).\n\
+         If you legitimately added an irreducible semantic scan, add its \
+         `relative_path::fn_name` to `cursor_walk_allowlist()` WITH A COMMENT \
+         explaining why.\n\
+         If you removed/converted one, delete its entry from `cursor_walk_allowlist()`."
+    );
+}
