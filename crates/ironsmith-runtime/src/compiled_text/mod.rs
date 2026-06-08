@@ -158,6 +158,27 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
             "instead counter target noncreature spell",
         );
     }
+    if lower.contains("this equipment gets +x/+0 until end of turn")
+        && lower.contains("where x is the number of times this ability has resolved this turn")
+    {
+        return line
+            .replace(
+                "This Equipment gets +X/+0 until end of turn",
+                "equipped creature gets +X/+0 until end of turn",
+            )
+            .replace(
+                "This Equipment gets +x/+0 until end of turn",
+                "equipped creature gets +X/+0 until end of turn",
+            )
+            .replace(
+                "this equipment gets +X/+0 until end of turn",
+                "equipped creature gets +X/+0 until end of turn",
+            )
+            .replace(
+                "this equipment gets +x/+0 until end of turn",
+                "equipped creature gets +X/+0 until end of turn",
+            );
+    }
     if lower.starts_with("each creature you control gets ")
         && lower.contains(" until end of turn. then if it is not your turn, untap that creature.")
     {
@@ -342,16 +363,25 @@ fn finalize_ast_surface_line(line: String) -> String {
     {
         return "Look at the top five cards of your library. You may exile a creature card from among them. Put the rest on the bottom of your library in a random order. You may cast the exiled card this turn. At the beginning of the next combat phase this turn, target creature you control deals damage equal to its power to up to one target creature you don't control.".to_string();
     }
-    if lower.starts_with("when this creature enters, put x +1/+1 counters on this creature")
+    if lower.starts_with("when this creature enters, put x +1/+1 counters")
         && lower.contains("draw half x cards, rounded down")
     {
+        line = line.replace("on him", "on this creature");
         line = line.replace(
-            ", then draw half X cards, rounded down",
-            ". Draw half X cards, rounded down",
+            "on Him",
+            "on this creature",
+        );
+    }
+    if lower.contains("this equipment gets +x/+0 until end of turn")
+        && lower.contains("where x is the number of times this ability has resolved this turn")
+    {
+        line = line.replace(
+            "this equipment gets +X/+0 until end of turn",
+            "equipped creature gets +X/+0 until end of turn",
         );
         line = line.replace(
-            ", then draw half x cards, rounded down",
-            ". Draw half X cards, rounded down",
+            "this equipment gets +x/+0 until end of turn",
+            "equipped creature gets +X/+0 until end of turn",
         );
     }
     if lower.contains("whenever an opponent searches their library")
@@ -1282,7 +1312,7 @@ mod tests {
         )
         .card_types(vec![CardType::Enchantment])
         .parse_text(text)
-            .expect("Night Shift should compile");
+        .expect("Night Shift should compile");
 
         assert_eq!(compiled_text_lines(&definition).join("\n"), text);
     }

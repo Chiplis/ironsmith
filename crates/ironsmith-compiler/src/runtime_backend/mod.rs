@@ -181,7 +181,6 @@ pub(crate) use search_library_support::{
     SearchLibraryManaConstraint, extract_search_library_mana_constraint,
     split_search_different_name_reference_filter, split_search_same_name_reference_filter,
 };
-use sentences::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 pub(crate) use shared_types::{
     CompileContext, EffectLoweringContext, IdGenContext, LineInfo, LoweringFrame, MetadataLine,
     NormalizedLine,
@@ -203,22 +202,16 @@ const FIRST_TIME_EACH_OR_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["for", "the", "first", "time", "each", "turn"],
     &["for", "the", "first", "time", "this", "turn"],
 ];
-const FIRST_TIME_EACH_OR_THIS_TURN_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[FIRST_TIME_EACH_OR_THIS_TURN_PHRASES]);
-const BECOMES_CREWED_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["becomes", "crewed"]]);
-const KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [
-            &["counter", "target", "spell"],
-            &["mana", "value"],
-            &["2", "or", "less"],
-            &["if", "this", "spell", "was", "kicked"],
-            &["counter", "that", "spell"],
-            &["4", "or", "less"],
-            &["instead"],
-        ]
-);
+const BECOMES_CREWED_PHRASE: &[&str] = &["becomes", "crewed"];
+const KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PHRASES: &[&[&str]] = &[
+    &["counter", "target", "spell"],
+    &["mana", "value"],
+    &["2", "or", "less"],
+    &["if", "this", "spell", "was", "kicked"],
+    &["counter", "that", "spell"],
+    &["4", "or", "less"],
+    &["instead"],
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct TriggerFrequencyTextAst {
@@ -291,15 +284,17 @@ fn trigger_frequency_text_ast(text: &str) -> TriggerFrequencyTextAst {
     let tokens = lex_text_tokens(text);
     let words = lexer::parser_token_word_refs(&tokens);
     TriggerFrequencyTextAst {
-        first_time_each_or_this_turn: FIRST_TIME_EACH_OR_THIS_TURN_PATTERN.matches_words(&words),
-        becomes_crewed: BECOMES_CREWED_PATTERN.matches_words(&words),
+        first_time_each_or_this_turn: lexer::word_slice_contains_any_phrase(
+            &words,
+            FIRST_TIME_EACH_OR_THIS_TURN_PHRASES,
+        ),
+        becomes_crewed: lexer::word_slice_contains_phrase(&words, BECOMES_CREWED_PHRASE),
         do_this_limit_each_turn: parse_do_this_only_each_turn_limit(&tokens),
     }
 }
 
 fn parse_do_this_only_each_turn_limit(tokens: &[OwnedLexToken]) -> Option<u32> {
-    let words = lexer::parser_token_word_refs(tokens);
-    let normalized_tokens = lexer::synthetic_word_tokens(&words);
+    let normalized_tokens = tokens.to_vec();
     let clause = LexedClause::new(&normalized_tokens);
     let atoms = [
         LexPattern::phrase(&["do", "this", "only"]),
@@ -335,7 +330,10 @@ fn normalize_kicked_counter_spell_mana_value_replacement(
 ) {
     let tokens = lex_text_tokens(text);
     let words = lexer::parser_token_word_refs(&tokens);
-    if !KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PATTERN.matches_words(&words) {
+    if !KICKED_COUNTER_SPELL_MANA_VALUE_REPLACEMENT_PHRASES
+        .iter()
+        .all(|phrase| lexer::word_slice_contains_phrase(&words, phrase))
+    {
         return;
     }
 

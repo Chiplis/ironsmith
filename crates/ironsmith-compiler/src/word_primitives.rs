@@ -143,6 +143,18 @@ pub(crate) fn matching_phrase<'p>(
         .find(|phrase| equals(words, phrase))
 }
 
+/// Returns the first phrase in `expected` that `words` starts with, so callers
+/// can consume the matched prefix length. Prefix counterpart of `matching_phrase`.
+pub(crate) fn matching_prefix<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<&'p [&'p str]> {
+    expected
+        .iter()
+        .copied()
+        .find(|phrase| starts_with(words, phrase))
+}
+
 pub(crate) fn matching_value<T: Clone>(words: &[&str], expected: &[(&[&str], T)]) -> Option<T> {
     crate::slice_primitives::matching_value(words, expected)
 }

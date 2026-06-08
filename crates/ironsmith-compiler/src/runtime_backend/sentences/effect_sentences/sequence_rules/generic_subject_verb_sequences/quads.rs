@@ -12,8 +12,10 @@ use crate::effect::ChoiceCount;
 use crate::filter::TaggedObjectConstraint;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::effect_sentences::SentenceInput;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
-use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::runtime_backend::front_end::lexer::{
+    LexedClause, OwnedLexToken, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_eq, word_slice_eq_any, word_slice_starts_with, word_slice_starts_with_any,
+};
 use crate::runtime_backend::object_filters::parse_object_filter_lexed;
 use crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause;
 use crate::runtime_backend::util::{
@@ -32,6 +34,19 @@ fn look_at_top_cards_player(effect: &EffectAst) -> Option<PlayerAst> {
         return None;
     };
     Some(*player)
+}
+
+fn look_at_top_cards_player_count_reveal(
+    effect: &EffectAst,
+) -> Option<(PlayerAst, crate::effect::Value, bool)> {
+    let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+        subject: crate::cards::builders::SubjectVerbSubjectAst { player, .. },
+        action: SubjectVerbActionAst::LookAtTopCards { count, reveal, .. },
+    }) = effect
+    else {
+        return None;
+    };
+    Some((*player, count.clone(), *reveal))
 }
 
 fn title_case_card_name(words: &[&str]) -> String {
@@ -85,99 +100,71 @@ fn search_reveal_tag(effects: &[EffectAst]) -> Option<TagKey> {
         .then_some(searched_tag)
 }
 
-const NAMED_REVEALED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix &["if", "you", "reveal"];
-    contains_phrases &[&["this", "way"]]
-);
-
-const PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["put", "it", "onto", "the", "battlefield"],
-            &["put", "that", "card", "onto", "the", "battlefield"],
-        ]]
-);
-
-const OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["put", "that", "card", "into", "your", "hand"],
-            &["put", "it", "into", "your", "hand"],
-        ]
-);
-
-const OTHERWISE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["otherwise"]);
-
-const THEN_SHUFFLE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["then", "shuffle"], &["shuffle"]]);
-
-const MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "may", "reveal"]);
-
-const BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["if", "this", "spell", "was", "bargained"];
-    contains_phrases & [&["put", "the", "revealed", "cards", "onto", "the", "battlefield"]]
-);
-
-const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "otherwise",
-            "put",
-            "the",
-            "revealed",
-            "cards",
-            "into",
-            "your",
-            "hand",
-        ]
-);
-
-const EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["exile", "one", "of", "them", "face", "down"];
-    contains_phrases & [&["put", "rest"], &["bottom", "of", "your", "library"]]
-);
-
-const EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["of", "them", "face", "down"],
-            &["of", "those", "cards", "face", "down"],
-            &["them", "face", "down"],
-            &["those", "cards", "face", "down"],
-        ]
-);
-
-const CAST_EXILED_CARD_FREE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost"
-        ]
-);
-
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-
-const EXILED_CARD_HAND_FOLLOWUP_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "if", "you", "don't", "put", "that", "card", "into", "your", "hand"
-            ],
-            &[
-                "if", "you", "dont", "put", "that", "card", "into", "your", "hand"
-            ],
-            &[
-                "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand"
-            ],
-        ]
-);
+const NAMED_REVEALED_PREFIX: &[&str] = &["if", "you", "reveal"];
+const THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const PUT_LOOKED_CARD_ONTO_BATTLEFIELD_PHRASES: &[&[&str]] = &[
+    &["put", "it", "onto", "the", "battlefield"],
+    &["put", "that", "card", "onto", "the", "battlefield"],
+];
+const PUT_LOOKED_CARD_INTO_HAND_PREFIXES: &[&[&str]] = &[
+    &["put", "that", "card", "into", "your", "hand"],
+    &["put", "it", "into", "your", "hand"],
+];
+const THEN_SHUFFLE_CLAUSES: &[&[&str]] = &[&["then", "shuffle"], &["shuffle"]];
+const MAY_REVEAL_FROM_LOOKED_CARDS_PREFIX: &[&str] = &["you", "may", "reveal"];
+const BARGAINED_PREFIX: &[&str] = &["if", "this", "spell", "was", "bargained"];
+const PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PHRASE: &[&str] = &[
+    "put",
+    "the",
+    "revealed",
+    "cards",
+    "onto",
+    "the",
+    "battlefield",
+];
+const OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PREFIX: &[&str] = &[
+    "otherwise",
+    "put",
+    "the",
+    "revealed",
+    "cards",
+    "into",
+    "your",
+    "hand",
+];
+const EXILE_ONE_LOOKED_CARD_FACE_DOWN_PREFIX: &[&str] =
+    &["exile", "one", "of", "them", "face", "down"];
+const PUT_REST_PHRASE: &[&str] = &["put", "rest"];
+const BOTTOM_OF_YOUR_LIBRARY_PHRASE: &[&str] = &["bottom", "of", "your", "library"];
+const CAST_EXILED_CARD_FREE_PREFIX: &[&str] = &[
+    "you", "may", "cast", "exiled", "card", "without", "paying", "its", "mana", "cost",
+];
+const EXILED_CARD_HAND_FOLLOWUP_CLAUSES: &[&[&str]] = &[
+    &[
+        "if", "you", "don't", "put", "that", "card", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "do", "not", "put", "that", "card", "into", "your", "hand",
+    ],
+];
+const EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PREFIXES: &[&[&str]] = &[
+    &["of", "them", "face", "down"],
+    &["of", "those", "cards", "face", "down"],
+    &["them", "face", "down"],
+    &["those", "cards", "face", "down"],
+];
 
 fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let clause = LexedClause::new(tokens);
-    if !NAMED_REVEALED_THIS_WAY_PATTERN.matches(clause) {
+    let words = clause.word_refs();
+    if !word_slice_starts_with(&words, NAMED_REVEALED_PREFIX)
+        || !word_slice_contains_phrase(&words, THIS_WAY_PHRASE)
+    {
         return None;
     }
-    let words = clause.word_refs();
     let named_idx = clause.find_word("named")?;
     let this_way_idx = clause.find_phrase_start(&["this", "way"])?;
     if named_idx + 1 >= this_way_idx {
@@ -189,8 +176,8 @@ fn named_revealed_card_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
 }
 
 fn puts_it_onto_battlefield(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    PUTS_LOOKED_CARD_ONTO_BATTLEFIELD_PATTERN.matches(clause)
+    let words = LexedClause::new(tokens).word_refs();
+    word_slice_contains_any_phrase(&words, PUT_LOOKED_CARD_ONTO_BATTLEFIELD_PHRASES)
 }
 
 fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
@@ -198,29 +185,28 @@ fn otherwise_puts_that_card_into_hand(tokens: &[OwnedLexToken]) -> bool {
     if clause
         .word_refs()
         .first()
-        .is_some_and(|word| OTHERWISE_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| *word == "otherwise")
     {
         clause = clause.from(1).trimmed();
     }
-    OTHERWISE_PUTS_LOOKED_CARD_INTO_HAND_PATTERN.matches(clause)
+    word_slice_starts_with_any(&clause.word_refs(), PUT_LOOKED_CARD_INTO_HAND_PREFIXES)
 }
 
 fn then_shuffle(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens).trimmed();
-    THEN_SHUFFLE_PATTERN.matches(clause)
+    let words = LexedClause::new(tokens).trimmed().word_refs();
+    word_slice_eq_any(&words, THEN_SHUFFLE_CLAUSES)
 }
 
 fn exiles_one_looked_card_face_down_and_bottoms_rest(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
     let words = non_article_token_word_refs(&trimmed);
-    EXILE_ONE_LOOKED_CARD_FACE_DOWN_REST_BOTTOM_PATTERN.matches_words(&words)
+    word_slice_starts_with(&words, EXILE_ONE_LOOKED_CARD_FACE_DOWN_PREFIX)
+        && word_slice_contains_phrase(&words, PUT_REST_PHRASE)
+        && word_slice_contains_phrase(&words, BOTTOM_OF_YOUR_LIBRARY_PHRASE)
 }
 
 fn words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty()
-        && words
-            .windows(phrase.len())
-            .any(|window| window == phrase)
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 fn parse_counted_looked_cards_exile_face_down(
@@ -237,7 +223,7 @@ fn parse_counted_looked_cards_exile_face_down(
     let (count, used) = parse_choice_count_token_prefix_consumed(&count_tokens)?;
     let tail_tokens = trim_commas(&count_tokens[used..]);
     let tail_words = non_article_token_word_refs(&tail_tokens);
-    if !EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PATTERN.matches_words(&tail_words) {
+    if !word_slice_starts_with_any(&tail_words, EXILE_COUNTED_LOOKED_CARDS_FACE_DOWN_PREFIXES) {
         return None;
     }
     let includes_remainder = words_contain_phrase(&tail_words, &["put", "rest"])
@@ -262,15 +248,19 @@ fn parse_exiled_card_cast_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let trimmed = trim_commas(tokens);
-    let words = non_article_token_word_refs(&trimmed);
-    let Some(if_word_idx) = IF_WORD_PATTERN.find_word(&words) else {
+    let clause = LexedClause::new(&trimmed);
+    let Some(if_word_idx) = clause.find_word("if") else {
         return Ok(None);
     };
-    if !CAST_EXILED_CARD_FREE_PREFIX_PATTERN.matches_words(&words[..if_word_idx]) {
+    if !clause.before_word(if_word_idx).is_some_and(|prefix| {
+        word_slice_eq(
+            &non_article_token_word_refs(prefix.tokens()),
+            CAST_EXILED_CARD_FREE_PREFIX,
+        )
+    }) {
         return Ok(None);
     }
 
-    let clause = LexedClause::new(&trimmed);
     let Some(condition_token_idx) = clause.token_index_for_word_index(if_word_idx + 1) else {
         return Ok(None);
     };
@@ -295,15 +285,17 @@ fn parse_exiled_card_cast_filter(
 
 fn puts_exiled_card_into_hand_if_not_cast(tokens: &[OwnedLexToken]) -> bool {
     let trimmed = trim_commas(tokens);
-    let words = LexedClause::new(&trimmed).word_refs();
-    EXILED_CARD_HAND_FOLLOWUP_PATTERN.matches_words(&words)
+    word_slice_eq_any(
+        &LexedClause::new(&trimmed).word_refs(),
+        EXILED_CARD_HAND_FOLLOWUP_CLAUSES,
+    )
 }
 
 fn parse_may_reveal_up_to_from_looked_cards(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(ObjectFilter, ChoiceCount)>, CardTextError> {
     let clause = LexedClause::new(tokens).trimmed();
-    if !MAY_REVEAL_FROM_LOOKED_CARDS_PATTERN.matches(clause) {
+    if !word_slice_starts_with(&clause.word_refs(), MAY_REVEAL_FROM_LOOKED_CARDS_PREFIX) {
         return Ok(None);
     }
 
@@ -362,21 +354,42 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
         return Ok(None);
     }
 
+    let kicked_looked_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 2].lowered(),
+            "looked",
+        );
+    let base_looked_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 1].lowered(),
+            "looked",
+        );
+    let kicked_chosen_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 2].lowered(),
+            "chosen",
+        );
+    let base_chosen_tag =
+        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+            sentences[sentence_idx + 1].lowered(),
+            "chosen",
+        );
     Ok(Some(vec![
         first_effects[0].clone(),
         EffectAst::Conditional {
             predicate: crate::cards::builders::PredicateAst::ThisSpellWasKicked,
-            if_true: vec![
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-                    player,
-                    kicked_count,
-                ),
-            ],
-            if_false: vec![
-                EffectAst::subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-                    player, base_count,
-                ),
-            ],
+            if_true: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
+                player,
+                crate::effect::ChoiceCount::exactly(kicked_count as usize),
+                kicked_looked_tag,
+                kicked_chosen_tag,
+            ),
+            if_false: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
+                player,
+                crate::effect::ChoiceCount::exactly(base_count as usize),
+                base_looked_tag,
+                base_chosen_tag,
+            ),
         },
     ]))
 }
@@ -413,14 +426,150 @@ pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
         return Ok(None);
     }
 
-    Ok(Some(vec![
-        first_effects[0].clone(),
-        EffectAst::subject_verb_choose_from_looked_cards_onto_battlefield_or_into_hand_rest_on_bottom_of_library(
+    let Some((look_player, count, reveal)) =
+        look_at_top_cards_player_count_reveal(first_effect)
+    else {
+        return Ok(None);
+    };
+
+    Ok(Some(
+        compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
+            sentences[sentence_idx].lowered(),
+            sentences[sentence_idx + 1].lowered(),
+            look_player,
+            count,
+            reveal,
             chooser,
             battlefield_filter,
             tapped,
         ),
-    ]))
+    ))
+}
+
+/// Composes the "look at the top N, you may put a matching card onto the
+/// battlefield; if you don't, put a card into your hand; put the rest on the
+/// bottom" shape from reusable primitives, mirroring the runtime effects the
+/// retired `ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary`
+/// recipe lowered to:
+/// - look at the top N (minting an explicit `looked_tag`),
+/// - choose up to one matching looked card (`battlefield_tag`),
+/// - under an internal effect id, for each chosen card put it onto the
+///   battlefield; if that did not happen, choose exactly one looked card and
+///   move it to hand (`hand_tag`),
+/// - for each looked card not chosen for battlefield or hand, move it to the
+///   bottom of the library.
+#[allow(clippy::too_many_arguments)]
+fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
+    look_tokens: &[OwnedLexToken],
+    choose_tokens: &[OwnedLexToken],
+    look_player: PlayerAst,
+    count: crate::effect::Value,
+    reveal: bool,
+    chooser: PlayerAst,
+    mut battlefield_filter: ObjectFilter,
+    tapped: bool,
+) -> Vec<EffectAst> {
+    let looked_tag = helper_tag_for_tokens(look_tokens, if reveal { "revealed" } else { "looked" });
+    let battlefield_tag = helper_tag_for_tokens(choose_tokens, "chosen");
+    let hand_tag = helper_tag_for_tokens(choose_tokens, "chosen_hand");
+
+    battlefield_filter.zone = Some(Zone::Library);
+    battlefield_filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
+    hand_filter.zone = Some(Zone::Library);
+
+    let it = || TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+    let mut in_battlefield_choice_filter = ObjectFilter::default();
+    in_battlefield_choice_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+    let mut in_hand_choice_filter = ObjectFilter::default();
+    in_hand_choice_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: TagKey::from(crate::cards::builders::IT_TAG),
+            relation: TaggedOpbjectRelation::SameStableId,
+        });
+
+    let mut look = EffectAst::subject_verb_look_at_top_cards(look_player, count, looked_tag.clone());
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards { reveal: r, .. },
+        ..
+    }) = &mut look
+    {
+        *r = reveal;
+    }
+
+    vec![
+        look,
+        EffectAst::ChooseObjects {
+            filter: battlefield_filter,
+            count: ChoiceCount::up_to(1),
+            count_value: None,
+            player: chooser,
+            tag: battlefield_tag.clone(),
+        },
+        EffectAst::IfEffectDidNotHappen {
+            effect: Box::new(EffectAst::ForEachTagged {
+                tag: battlefield_tag.clone(),
+                effects: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    chooser,
+                    it(),
+                    tapped,
+                    ReturnControllerAst::Preserve,
+                )],
+            }),
+            otherwise: vec![
+                EffectAst::ChooseObjects {
+                    filter: hand_filter,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: chooser,
+                    tag: hand_tag.clone(),
+                },
+                EffectAst::ForEachTagged {
+                    tag: hand_tag.clone(),
+                    effects: vec![EffectAst::subject_verb_move_to_zone(
+                        it(),
+                        Zone::Hand,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                },
+            ],
+        },
+        EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(
+                    battlefield_tag,
+                    in_battlefield_choice_filter,
+                ),
+                if_true: Vec::new(),
+                if_false: vec![EffectAst::Conditional {
+                    predicate: PredicateAst::TaggedMatches(hand_tag, in_hand_choice_filter),
+                    if_true: Vec::new(),
+                    if_false: vec![EffectAst::subject_verb_move_to_zone(
+                        it(),
+                        Zone::Library,
+                        false,
+                        ReturnControllerAst::Preserve,
+                        false,
+                        None,
+                    )],
+                }],
+            }],
+        },
+    ]
 }
 
 pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_then_shuffle(
@@ -443,8 +592,11 @@ pub(crate) fn parse_look_at_top_may_reveal_match_bargain_battlefield_else_hand_t
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered());
     let fourth_clause = LexedClause::new(sentences[sentence_idx + 3].lowered());
-    if !BARGAINED_PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PATTERN.matches(third_clause)
-        || !OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PATTERN.matches(fourth_clause)
+    let third_words = third_clause.word_refs();
+    let fourth_words = fourth_clause.word_refs();
+    if !word_slice_starts_with(&third_words, BARGAINED_PREFIX)
+        || !word_slice_contains_phrase(&third_words, PUT_REVEALED_CARDS_ONTO_BATTLEFIELD_PHRASE)
+        || !word_slice_starts_with(&fourth_words, OTHERWISE_PUT_REVEALED_CARDS_INTO_HAND_PREFIX)
         || !then_shuffle(sentences[sentence_idx + 4].lowered())
     {
         return Ok(None);
@@ -571,44 +723,44 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    let (look_tokens, exile_count, bottom_order) =
-        if let Some(exile_word_idx) = first_clause.find_word("exile") {
-            let Some(exile_token_idx) = first_clause.token_index_for_word_index(exile_word_idx)
-            else {
-                return Ok(None);
-            };
-            let look_clause = first_clause.before(exile_token_idx).trimmed();
-            let exile_clause = first_clause.from(exile_token_idx).trimmed();
-            let Some((count, includes_remainder)) =
-                parse_counted_looked_cards_exile_face_down(exile_clause.tokens())
-            else {
-                return Ok(None);
-            };
-            let order = if includes_remainder {
-                puts_looked_remainder_on_bottom(exile_clause.tokens())
-            } else {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
-            };
-            let Some(order) = order else {
-                return Ok(None);
-            };
-            (look_clause.tokens(), count, order)
-        } else {
-            let Some((count, includes_remainder)) =
-                parse_counted_looked_cards_exile_face_down(sentences[sentence_idx + 1].lowered())
-            else {
-                return Ok(None);
-            };
-            let order = if includes_remainder {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 1].lowered())
-            } else {
-                puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
-            };
-            let Some(order) = order else {
-                return Ok(None);
-            };
-            (first_clause.tokens(), count, order)
+    let (look_tokens, exile_count, bottom_order) = if let Some(exile_word_idx) =
+        first_clause.find_word("exile")
+    {
+        let Some(exile_token_idx) = first_clause.token_index_for_word_index(exile_word_idx) else {
+            return Ok(None);
         };
+        let look_clause = first_clause.before(exile_token_idx).trimmed();
+        let exile_clause = first_clause.from(exile_token_idx).trimmed();
+        let Some((count, includes_remainder)) =
+            parse_counted_looked_cards_exile_face_down(exile_clause.tokens())
+        else {
+            return Ok(None);
+        };
+        let order = if includes_remainder {
+            puts_looked_remainder_on_bottom(exile_clause.tokens())
+        } else {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+        };
+        let Some(order) = order else {
+            return Ok(None);
+        };
+        (look_clause.tokens(), count, order)
+    } else {
+        let Some((count, includes_remainder)) =
+            parse_counted_looked_cards_exile_face_down(sentences[sentence_idx + 1].lowered())
+        else {
+            return Ok(None);
+        };
+        let order = if includes_remainder {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 1].lowered())
+        } else {
+            puts_looked_remainder_on_bottom(sentences[sentence_idx + 2].lowered())
+        };
+        let Some(order) = order else {
+            return Ok(None);
+        };
+        (first_clause.tokens(), count, order)
+    };
 
     let Ok(look_effects) = effect_sentences::parse_effect_sentence_lexed(look_tokens) else {
         return Ok(None);
@@ -654,11 +806,7 @@ pub(crate) fn parse_look_at_top_exile_counted_rest_bottom_play_while_exiled(
     choice_filter.zone = Some(Zone::Library);
 
     Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(
-            library_owner,
-            count.clone(),
-            looked_tag.clone(),
-        ),
+        EffectAst::subject_verb_look_at_top_cards(library_owner, count.clone(), looked_tag.clone()),
         EffectAst::ChooseObjects {
             filter: choice_filter,
             count: exile_count,

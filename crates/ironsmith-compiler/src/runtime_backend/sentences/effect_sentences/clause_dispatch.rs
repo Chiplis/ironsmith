@@ -11,8 +11,7 @@ use super::super::activation_and_restrictions::{
     parse_choose_creature_type_phrase_words, parse_choose_player_phrase_words,
     parse_may_cast_it_sentence, parse_single_word_keyword_action,
     parse_target_player_choose_objects_clause, parse_you_choose_objects_clause_with_count_value,
-    parse_you_choose_player_clause,
-    starts_with_target_indicator,
+    parse_you_choose_player_clause, starts_with_target_indicator,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::split_trailing_if_clause_lexed;
@@ -22,7 +21,10 @@ use super::super::keyword_static::{
 };
 use super::super::lexer::{
     LexedClause, OwnedLexToken, contains_token_word, token_slice_first_is,
-    token_slice_first_is_any, word_slice_eq, word_slice_eq_any, word_slice_first_is_any,
+    token_slice_first_is_any, word_slice_contains_all_words, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is_any,
+    word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
@@ -34,7 +36,7 @@ use super::super::util::{
     word_refs_except,
 };
 use super::chain_carry::{parse_leading_player_may, remove_first_word, remove_through_first_word};
-use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
+use super::clause_pattern_helpers::extract_subject_player;
 use super::clause_primitives::run_clause_primitives;
 use super::dispatch_inner::{
     parse_additional_phase_sentence, parse_prevent_damage_sentence, parse_take_extra_turn_sentence,
@@ -121,194 +123,147 @@ fn parse_mana_replacement_clause_words(words: &[&str]) -> Option<EffectAst> {
     ))
 }
 
-const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
-const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "only",
-                "the",
-                "chosen",
-                "creatures",
-                "can",
-                "attack",
-                "during",
-                "that",
-                "combat",
-                "phase",
-            ],
-            &[
-                "only",
-                "chosen",
-                "creatures",
-                "can",
-                "attack",
-                "during",
-                "that",
-                "combat",
-                "phase",
-            ],
-        ]
-);
-const ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "only",
-                "the",
-                "chosen",
-                "creatures",
-                "can",
-                "block",
-                "during",
-                "that",
-                "combat",
-                "phase",
-            ],
-            &[
-                "only",
-                "chosen",
-                "creatures",
-                "can",
-                "block",
-                "during",
-                "that",
-                "combat",
-                "phase",
-            ],
-        ]
-);
+const PREVENT_WORD: &str = "prevent";
+const ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PHRASES: &[&[&str]] = &[
+    &[
+        "only",
+        "the",
+        "chosen",
+        "creatures",
+        "can",
+        "attack",
+        "during",
+        "that",
+        "combat",
+        "phase",
+    ],
+    &[
+        "only",
+        "chosen",
+        "creatures",
+        "can",
+        "attack",
+        "during",
+        "that",
+        "combat",
+        "phase",
+    ],
+];
+const ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PHRASES: &[&[&str]] = &[
+    &[
+        "only",
+        "the",
+        "chosen",
+        "creatures",
+        "can",
+        "block",
+        "during",
+        "that",
+        "combat",
+        "phase",
+    ],
+    &[
+        "only",
+        "chosen",
+        "creatures",
+        "can",
+        "block",
+        "during",
+        "that",
+        "combat",
+        "phase",
+    ],
+];
 const CONTROL_PLAYER_SUBJECT_PATTERNS: &[&[&str]] = &[
     &["you"],
     &["that", "player"],
     &["target", "player"],
     &["each", "opponent"],
 ];
-const YOU_MAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "may"]);
-const CAST_ANY_NUMBER_OF_SPELLS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["cast", "any", "number", "of", "spells"]);
-const WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["without", "paying", "their", "mana", "costs"]);
-const FROM_AMONG_NONLAND_EXILED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [&[
-            "from", "among", "the", "nonland", "cards", "exiled", "this", "way"
-        ]]
-);
-const WITH_MANA_VALUE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["with", "mana", "value"]);
-const X_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
-const X_OR_LESS_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x", "or", "less"]);
-const ALL_ABILITIES_AND_GAIN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["all", "abilities", "and"]; contains_any_words & [&["gain", "gains"]]);
-const HEXPROOF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["hexproof"]);
-const FLYING_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["flying"]);
-const HASTE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["haste"]);
-const RING_TEMPTS_YOU_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["the", "ring", "tempts", "you"]);
-const TAKE_INITIATIVE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "take", "the", "initiative"]);
-const FOR_EACH_OF_THOSE_CARDS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each", "of", "those", "cards"]);
-const PAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["pay"]);
+const YOU_MAY_PREFIX: &[&str] = &["you", "may"];
+const CAST_ANY_NUMBER_OF_SPELLS_PREFIX: &[&str] = &["cast", "any", "number", "of", "spells"];
+const WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX: &[&str] =
+    &["without", "paying", "their", "mana", "costs"];
+const FROM_AMONG_NONLAND_EXILED_THIS_WAY_PHRASE: &[&str] = &[
+    "from", "among", "the", "nonland", "cards", "exiled", "this", "way",
+];
+const WITH_MANA_VALUE_PREFIX: &[&str] = &["with", "mana", "value"];
+const X_WORD: &str = "x";
+const X_OR_LESS_WORDS: &[&str] = &["x", "or", "less"];
+const ALL_ABILITIES_AND_PREFIX: &[&str] = &["all", "abilities", "and"];
+const GAIN_OR_GAINS_WORDS: &[&str] = &["gain", "gains"];
+const RING_TEMPTS_YOU_WORDS: &[&str] = &["the", "ring", "tempts", "you"];
+const TAKE_INITIATIVE_WORDS: &[&str] = &["you", "take", "the", "initiative"];
+const FOR_EACH_OF_THOSE_CARDS_PREFIX: &[&str] = &["for", "each", "of", "those", "cards"];
+const PAY_WORD: &str = "pay";
 const OR_PUT_WORDS: &[&str] = &["or", "put"];
-const OR_PUT_PATTERN: ClauseShape<'static> = clause_shape!(exact & OR_PUT_WORDS);
-const TOP_LIBRARY_CARD_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["the", "card", "on", "top", "of", "your", "library"]);
+const TOP_LIBRARY_CARD_TAIL_WORDS: &[&str] = &["the", "card", "on", "top", "of", "your", "library"];
 const THEN_RETURN_WORDS: &[&str] = &["then", "return"];
-const THEN_RETURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & THEN_RETURN_WORDS);
-const UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
-const ITS_CONTROLLER_HAS_YOU_DRAW_CARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["its", "controller", "has", "you", "draw", "a", "card"]);
-const CHOOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["choose"]);
-const PRONOUN_TAGGED_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["they"], &["them"]]);
-const DEMONSTRATIVE_SUBJECT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["that"], &["those"]]);
-const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
-const YOU_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you"]);
-const TAGGED_OBJECT_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["it"],
-            &["they"],
-            &["them"],
-            &["that"],
-            &["that", "card"],
-            &["that", "creature"],
-            &["that", "permanent"],
-            &["that", "object"],
-            &["those"],
-            &["those", "cards"],
-            &["those", "creatures"],
-            &["those", "permanents"],
-            &["those", "objects"],
-        ]
-);
-const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const HAVE_OR_HAS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["have"], &["has"]]);
-const THIS_SOURCE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
-const EQUIPPED_OBJECT_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["equipped", "creature"], &["equipped", "permanent"]]);
-const ENCHANTED_OBJECT_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enchanted", "creature"], &["enchanted", "permanent"]]);
-const FOR_EACH_OPPONENT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each", "opponent"]);
-const CHOOSE_ODD_OR_EVEN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["choose", "odd", "or", "even"]);
-const CHOOSE_LEFT_OR_RIGHT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["choose", "left", "or", "right"]);
-const CHOOSE_OR_CHOOSES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["choose"], &["chooses"]]);
-const CHOOSE_TARGET_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["choose"], &["chooses"]]; contains_words & ["target"]);
-const CHOOSE_TARGET_PLAYER_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any & [&["choose"], &["chooses"]];
-    contains_words & ["target"];
-    contains_any_words & [&["player", "players"]]
-);
-const ASSIGNS_NO_COMBAT_DAMAGE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["assigns", "no", "combat", "damage"]]);
-const ASSIGN_OR_ASSIGNS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["assign"], &["assigns"]]);
-const THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "turn"]);
-const THIS_COMBAT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["this", "combat"]);
+const UNLESS_WORD: &str = "unless";
+const ITS_CONTROLLER_HAS_YOU_DRAW_CARD_WORDS: &[&str] =
+    &["its", "controller", "has", "you", "draw", "a", "card"];
+const CHOOSE_WORD: &str = "choose";
+const PRONOUN_TAGGED_SUBJECT_PHRASES: &[&[&str]] = &[&["it"], &["they"], &["them"]];
+const DEMONSTRATIVE_SUBJECT_WORDS: &[&str] = &["that", "those"];
+const TARGET_WORD: &str = "target";
+const YOU_WORD: &str = "you";
+const TAGGED_OBJECT_REFERENCE_PHRASES: &[&[&str]] = &[
+    &["it"],
+    &["they"],
+    &["them"],
+    &["that"],
+    &["that", "card"],
+    &["that", "creature"],
+    &["that", "permanent"],
+    &["that", "object"],
+    &["those"],
+    &["those", "cards"],
+    &["those", "creatures"],
+    &["those", "permanents"],
+    &["those", "objects"],
+];
+const OF_WORD: &str = "of";
+const HAVE_OR_HAS_WORDS: &[&str] = &["have", "has"];
+const THIS_SOURCE_WORDS: &[&str] = &["this"];
+const EQUIPPED_OBJECT_SUBJECT_PHRASES: &[&[&str]] =
+    &[&["equipped", "creature"], &["equipped", "permanent"]];
+const ENCHANTED_OBJECT_SUBJECT_PHRASES: &[&[&str]] =
+    &[&["enchanted", "creature"], &["enchanted", "permanent"]];
+const FOR_EACH_OPPONENT_PREFIX: &[&str] = &["for", "each", "opponent"];
+const CHOOSE_ODD_OR_EVEN_WORDS: &[&str] = &["choose", "odd", "or", "even"];
+const CHOOSE_LEFT_OR_RIGHT_WORDS: &[&str] = &["choose", "left", "or", "right"];
+const CHOOSE_OR_CHOOSES_WORDS: &[&str] = &["choose", "chooses"];
+const PLAYER_OR_PLAYERS_WORDS: &[&str] = &["player", "players"];
+const ASSIGNS_NO_COMBAT_DAMAGE_PHRASE: &[&str] = &["assigns", "no", "combat", "damage"];
+const ASSIGN_OR_ASSIGNS_WORDS: &[&str] = &["assign", "assigns"];
+const THIS_TURN_PREFIX: &[&str] = &["this", "turn"];
+const THIS_COMBAT_PREFIX: &[&str] = &["this", "combat"];
 const ATTACHED_SUBJECT_DURATION_PREFIXES: &[&[&str]] = &[
     &["until", "end", "of", "turn"],
     &["until", "your", "next", "turn"],
     &["until", "end", "of", "combat"],
 ];
-const IT_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["it"]);
-const IT_OR_THEM_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["them"]]);
-const THIS_OR_THIS_CREATURE_SUBJECT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["this"], &["this", "creature"]]);
-const CAST_TARGET_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["cast", "target"]);
+const IT_SUBJECT_WORDS: &[&str] = &["it"];
+const IT_OR_THEM_SUBJECT_WORDS: &[&str] = &["it", "them"];
+const THIS_OR_THIS_CREATURE_SUBJECT_PHRASES: &[&[&str]] = &[&["this"], &["this", "creature"]];
+const CAST_TARGET_PREFIX: &[&str] = &["cast", "target"];
 const WITHOUT_PAYING_ITS_MANA_COST_WORDS: &[&str] = &["without", "paying", "its", "mana", "cost"];
-const WITHOUT_PAYING_ITS_MANA_COST_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & WITHOUT_PAYING_ITS_MANA_COST_WORDS);
-const COPY_CARD_EXILED_WITH_THIS_ARTIFACT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["copy", "a", "card", "exiled", "with", "this", "artifact"]);
-const PLANESWALK_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["planeswalk"]);
-const CHAOS_ENSUES_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["chaos", "ensues"]);
-const PROTECTION_CHOICE_COLOR_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["protection", "choice"]; contains_any_words & [&["color", "colorless"]]);
-const COLORLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["colorless"]);
-const IN_ADDITION_TO_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["in", "addition", "to"]]);
-const IF_YOU_DO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["if", "you", "do"]);
-const HEXPROOF_TARGETING_OVERRIDE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases & [
-        &["can", "be", "the", "targets"],
-        &["as", "though", "they", "didnt", "have", "hexproof"],
-    ];
-    contains_words & ["hexproof"]
-);
-const CREATURES_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["creatures"]);
-const CAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["can"]);
-const IS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["is"]);
-const GOADED_OR_GOAD_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["goaded"], &["goad"]]);
+const COPY_CARD_EXILED_WITH_THIS_ARTIFACT_WORDS: &[&str] =
+    &["copy", "a", "card", "exiled", "with", "this", "artifact"];
+const PLANESWALK_WORDS: &[&str] = &["planeswalk"];
+const CHAOS_ENSUES_WORDS: &[&str] = &["chaos", "ensues"];
+const PROTECTION_CHOICE_WORDS: &[&str] = &["protection", "choice"];
+const PROTECTION_CHOICE_COLOR_WORDS: &[&str] = &["color", "colorless"];
+const COLORLESS_WORD: &str = "colorless";
+const IN_ADDITION_TO_PHRASE: &[&str] = &["in", "addition", "to"];
+const IF_YOU_DO_PREFIX: &[&str] = &["if", "you", "do"];
+const HEXPROOF_TARGETING_CAN_BE_TARGETS_PHRASE: &[&str] = &["can", "be", "the", "targets"];
+const HEXPROOF_TARGETING_AS_THOUGH_PHRASE: &[&str] =
+    &["as", "though", "they", "didnt", "have", "hexproof"];
+const CREATURES_WORD: &str = "creatures";
+const CAN_WORD: &str = "can";
+const IS_WORD: &str = "is";
+const GOADED_OR_GOAD_WORDS: &[&str] = &["goaded", "goad"];
 const TARGET_PLAYER_CONTROLS_WORDS: &[&str] = &["target", "player", "controls"];
 const TARGET_PLAYERS_CONTROL_WORDS: &[&str] = &["target", "players", "control"];
 const TARGET_OPPONENT_CONTROLS_WORDS: &[&str] = &["target", "opponent", "controls"];
@@ -323,22 +278,9 @@ const FROM_AMONG_THEM_OR_THOSE_CARDS_PATTERNS: &[&[&str]] = &[
     &["from", "among", "them"],
     &["from", "among", "those", "cards"],
 ];
-const TARGET_ONLY_RESTRICTION_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_words
-        & [&[
-            "blocked", "except", "unless", "attack", "attacks", "block", "blocks",
-        ]]
-);
-
-fn dispatch_find_phrase_shape(
-    words: &[&str],
-    phrase_len: usize,
-    shape: ClauseShape<'static>,
-) -> Option<usize> {
-    words
-        .windows(phrase_len)
-        .position(|window| shape.matches_words(window))
-}
+const TARGET_ONLY_RESTRICTION_WORDS: &[&str] = &[
+    "blocked", "except", "unless", "attack", "attacks", "block", "blocks",
+];
 
 fn dispatch_find_any_phrase_start<'a>(
     words: &[&str],
@@ -383,12 +325,13 @@ struct PlayerAmountClause<'a> {
 }
 
 fn rest_starts_all_abilities_shared_gain(tokens: &[OwnedLexToken]) -> bool {
-    let clause = LexedClause::new(tokens);
-    ALL_ABILITIES_AND_GAIN_PREFIX_PATTERN.matches(clause)
+    let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
+    word_slice_starts_with(&words, ALL_ABILITIES_AND_PREFIX)
+        && word_slice_contains_any_word(&words, GAIN_OR_GAINS_WORDS)
 }
 
 fn is_tagged_object_reference(words: &[&str]) -> bool {
-    TAGGED_OBJECT_REFERENCE_PATTERN.matches_words(words)
+    word_slice_eq_any(words, TAGGED_OBJECT_REFERENCE_PHRASES)
 }
 
 fn parse_copular_base_pt_animation_clause(
@@ -408,7 +351,7 @@ fn parse_copular_base_pt_animation_clause(
         || !rest_words
             .iter()
             .any(|word| matches!(*word, "creature" | "creatures"))
-        || !IN_ADDITION_TO_PATTERN.matches_words(rest_words)
+        || !word_slice_contains_phrase(rest_words, IN_ADDITION_TO_PHRASE)
     {
         return Ok(None);
     }
@@ -612,7 +555,7 @@ fn is_pronoun_top_or_bottom_library_choice_put_tail(tokens: &[OwnedLexToken]) ->
     let clause = LexedClause::new(tokens);
     if !clause
         .first_word()
-        .is_some_and(|word| IT_OR_THEM_SUBJECT_PATTERN.matches_word(word))
+        .is_some_and(|word| IT_OR_THEM_SUBJECT_WORDS.contains(&word))
     {
         return false;
     }
@@ -706,13 +649,11 @@ fn parse_play_exiled_cards_for_as_long_as_exiled_clause(
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-            "exiled",
+            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
         ]
         || words
             == [
-                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-                "exiled",
+                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -731,18 +672,18 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells",
-            "this", "way",
+            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells", "this",
+            "way",
         ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
-                "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them", "this",
+                "way",
             ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
-                "spell", "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+                "this", "way",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -759,8 +700,7 @@ fn parse_mana_any_type_cast_tagged_this_way_clause(tokens: &[OwnedLexToken]) -> 
 fn parse_for_each_prevent_damage_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    let Some(prevent_idx) =
-        find_token_index(tokens, |token| PREVENT_WORD_PATTERN.matches_token(token))
+    let Some(prevent_idx) = find_token_index(tokens, |token| token.as_word() == Some(PREVENT_WORD))
     else {
         return Ok(None);
     };
@@ -849,14 +789,14 @@ fn parse_for_each_counter_group_removed_this_way_clause(
 fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
-    let words = if YOU_MAY_PREFIX_PATTERN.matches_words(&clause_words) {
+    let words = if word_slice_starts_with(&clause_words, YOU_MAY_PREFIX) {
         &clause_words[2..]
     } else {
         clause_words.as_slice()
     };
 
-    if !CAST_ANY_NUMBER_OF_SPELLS_PREFIX_PATTERN.matches_words(words)
-        || !WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN.matches_words(words)
+    if !word_slice_starts_with(words, CAST_ANY_NUMBER_OF_SPELLS_PREFIX)
+        || !word_slice_ends_with(words, WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX)
     {
         return None;
     }
@@ -869,42 +809,31 @@ fn parse_cast_any_number_from_among_tagged_clause(tokens: &[OwnedLexToken]) -> O
         crate::target::TaggedOpbjectRelation::IsTaggedObject,
     );
 
-    if let Some(mana_idx) = words.iter().enumerate().find_map(|(idx, _)| {
-        WITH_MANA_VALUE_PREFIX_PATTERN
-            .matches_words(&words[idx..])
-            .then_some(idx)
-    }) {
+    if let Some(mana_idx) = word_slice_find_phrase_start(words, WITH_MANA_VALUE_PREFIX) {
         let value_word_idx = mana_idx + 3;
         let Some(value_words) = words.get(value_word_idx..from_idx) else {
             return None;
         };
-        filter.mana_value = Some(
-            if value_words
-                .first()
-                .is_some_and(|word| X_WORD_PATTERN.matches_word(word))
-            {
-                if !X_OR_LESS_PATTERN.matches_words(value_words) {
-                    return None;
-                }
-                crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::X))
-            } else {
-                let quantity_tokens =
-                    crate::runtime_backend::lexer::synthetic_word_tokens(value_words);
-                let (value, used) =
-                    crate::runtime_backend::util::parse_less_than_or_equal_quantity_prefix(
-                        &quantity_tokens,
-                        false,
-                        false,
-                        "mana value bound",
-                    )
-                    .ok()
-                    .flatten()?;
-                if used != value_words.len() {
-                    return None;
-                }
-                crate::filter::Comparison::LessThanOrEqual(value as i32)
-            },
-        );
+        filter.mana_value = Some(if value_words.first().is_some_and(|word| *word == X_WORD) {
+            if !word_slice_eq(value_words, X_OR_LESS_WORDS) {
+                return None;
+            }
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(Value::X))
+        } else {
+            let (value, used) =
+                crate::runtime_backend::util::parse_less_than_or_equal_quantity_prefix_words(
+                    value_words,
+                    false,
+                    false,
+                    "mana value bound",
+                )
+                .ok()
+                .flatten()?;
+            if used != value_words.len() {
+                return None;
+            }
+            crate::filter::Comparison::LessThanOrEqual(value as i32)
+        });
     } else if from_idx != 5 {
         return None;
     }
@@ -930,13 +859,13 @@ fn parse_cast_single_spell_from_among_hand_cards_clause(
     let clause_word_view = ClauseDispatchCompatWords::new(tokens);
     let clause_words = clause_word_view.to_word_refs();
     let mut words = clause_words.as_slice();
-    if IF_YOU_DO_PREFIX_PATTERN.matches_words(words) {
+    if word_slice_starts_with(words, IF_YOU_DO_PREFIX) {
         words = &words[3..];
         if word_slice_first_is_any(words, &["then", "and"]) {
             words = &words[1..];
         }
     }
-    let words = if YOU_MAY_PREFIX_PATTERN.matches_words(words) {
+    let words = if word_slice_starts_with(words, YOU_MAY_PREFIX) {
         &words[2..]
     } else {
         words
@@ -1081,9 +1010,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if CAST_ANY_NUMBER_OF_SPELLS_PREFIX_PATTERN.matches_words(&clause_words)
-        && FROM_AMONG_NONLAND_EXILED_THIS_WAY_PATTERN.matches_words(&clause_words)
-        && WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX_PATTERN.matches_words(&clause_words)
+    if word_slice_starts_with(&clause_words, CAST_ANY_NUMBER_OF_SPELLS_PREFIX)
+        && word_slice_contains_phrase(&clause_words, FROM_AMONG_NONLAND_EXILED_THIS_WAY_PHRASE)
+        && word_slice_ends_with(&clause_words, WITHOUT_PAYING_THEIR_MANA_COSTS_SUFFIX)
     {
         let cast_filter = ObjectFilter::nonland()
             .in_zone(crate::zone::Zone::Exile)
@@ -1106,19 +1035,20 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if ALL_ABILITIES_AND_GAIN_PREFIX_PATTERN.matches_words(&clause_words)
+    if word_slice_starts_with(&clause_words, ALL_ABILITIES_AND_PREFIX)
+        && word_slice_contains_any_word(&clause_words, GAIN_OR_GAINS_WORDS)
         && let Some(gain_idx) =
             crate::runtime_backend::lexer::find_token_any_word(tokens, &["gain", "gains"])
     {
         let ability_words = &clause_words[gain_idx + 1..];
         let mut abilities = Vec::new();
-        if HEXPROOF_WORD_PATTERN.matches_words(ability_words) {
+        if word_slice_contains_all_words(ability_words, &["hexproof"]) {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Hexproof));
         }
-        if FLYING_WORD_PATTERN.matches_words(ability_words) {
+        if word_slice_contains_all_words(ability_words, &["flying"]) {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Flying));
         }
-        if HASTE_WORD_PATTERN.matches_words(ability_words) {
+        if word_slice_contains_all_words(ability_words, &["haste"]) {
             abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
         }
         if !abilities.is_empty() {
@@ -1132,12 +1062,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             ));
         }
     }
-    if RING_TEMPTS_YOU_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, RING_TEMPTS_YOU_WORDS) {
         return Ok(EffectAst::subject_verb_ring_tempts_you(
             crate::cards::builders::PlayerAst::You,
         ));
     }
-    if TAKE_INITIATIVE_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, TAKE_INITIATIVE_WORDS) {
         return Ok(EffectAst::subject_verb_take_initiative(
             crate::cards::builders::PlayerAst::You,
         ));
@@ -1165,14 +1095,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         )));
     }
 
-    if FOR_EACH_OF_THOSE_CARDS_PREFIX_PATTERN.matches_words(&clause_words)
-        && let Some(pay_idx) = PAY_WORD_PATTERN.find_word(&clause_words)
-        && let Some(or_put_idx) =
-            dispatch_find_phrase_shape(&clause_words, OR_PUT_WORDS.len(), OR_PUT_PATTERN)
+    if word_slice_starts_with(&clause_words, FOR_EACH_OF_THOSE_CARDS_PREFIX)
+        && let Some(pay_idx) = word_slice_find_word(&clause_words, PAY_WORD)
+        && let Some(or_put_idx) = word_slice_find_phrase_start(&clause_words, OR_PUT_WORDS)
         && or_put_idx > pay_idx
         && clause_words
             .get(or_put_idx + 2..)
-            .is_some_and(|tail| TOP_LIBRARY_CARD_TAIL_PATTERN.matches_words(tail))
+            .is_some_and(|tail| word_slice_eq(tail, TOP_LIBRARY_CARD_TAIL_WORDS))
     {
         let pay_token_idx = token_index_for_word_index(tokens, pay_idx).unwrap_or(tokens.len());
         let Some((life_amount, _used)) = parse_number(&tokens[pay_token_idx + 1..]) else {
@@ -1211,17 +1140,17 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if FOR_EACH_OPPONENT_PREFIX_PATTERN.matches_words(&clause_words)
+    if word_slice_starts_with(&clause_words, FOR_EACH_OPPONENT_PREFIX)
         && let Some(then_return_idx) =
-            dispatch_find_phrase_shape(&clause_words, THEN_RETURN_WORDS.len(), THEN_RETURN_PATTERN)
-        && let Some(unless_idx) = UNLESS_WORD_PATTERN.find_word(&clause_words)
+            word_slice_find_phrase_start(&clause_words, THEN_RETURN_WORDS)
+        && let Some(unless_idx) = word_slice_find_word(&clause_words, UNLESS_WORD)
         && unless_idx > then_return_idx
         && clause_words
             .get(unless_idx + 1..unless_idx + 8)
-            .is_some_and(|tail| ITS_CONTROLLER_HAS_YOU_DRAW_CARD_PATTERN.matches_words(tail))
+            .is_some_and(|tail| word_slice_eq(tail, ITS_CONTROLLER_HAS_YOU_DRAW_CARD_WORDS))
     {
         let choose_start = 3usize;
-        if CHOOSE_WORD_PATTERN.matches_word_at(&clause_words, choose_start) {
+        if clause_words.get(choose_start).copied() == Some(CHOOSE_WORD) {
             let target_token_start =
                 token_index_for_word_index(tokens, choose_start + 1).unwrap_or(tokens.len());
             let target_token_end =
@@ -1290,7 +1219,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    let choice_words = if YOU_WORD_PATTERN.matches_word_at(&clause_words, 0) {
+    let choice_words = if clause_words.first().copied() == Some(YOU_WORD) {
         &clause_words[1..]
     } else {
         &clause_words[..]
@@ -1305,7 +1234,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if CHOOSE_ODD_OR_EVEN_PATTERN.matches_words(choice_words) {
+    if word_slice_eq(choice_words, CHOOSE_ODD_OR_EVEN_WORDS) {
         return Ok(EffectAst::subject_verb_choose_named_option(
             crate::cards::builders::PlayerAst::Implicit,
             vec!["odd".to_string(), "even".to_string()],
@@ -1343,7 +1272,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if CHOOSE_TARGET_PLAYER_PATTERN.matches_words(&clause_words)
+    if word_slice_first_is_any(&clause_words, CHOOSE_OR_CHOOSES_WORDS)
+        && word_slice_contains_all_words(&clause_words, &["target"])
+        && word_slice_contains_any_word(&clause_words, PLAYER_OR_PLAYERS_WORDS)
         && let Ok(target) = parse_target_phrase(&tokens[1..])
     {
         let is_player_target = match &target {
@@ -1356,7 +1287,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
-    if CHOOSE_TARGET_PATTERN.matches_words(&clause_words) {
+    if word_slice_first_is_any(&clause_words, CHOOSE_OR_CHOOSES_WORDS)
+        && word_slice_contains_all_words(&clause_words, &["target"])
+    {
         let target_tokens = trim_commas(&tokens[1..]);
         if !target_tokens.is_empty()
             && starts_with_target_indicator(&target_tokens)
@@ -1367,7 +1300,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         }
     }
 
-    if CHOOSE_LEFT_OR_RIGHT_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, CHOOSE_LEFT_OR_RIGHT_WORDS) {
         return Ok(EffectAst::subject_verb_choose_named_option(
             PlayerAst::You,
             vec!["left".to_string(), "right".to_string()],
@@ -1410,9 +1343,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         });
     }
 
-    if ASSIGNS_NO_COMBAT_DAMAGE_PATTERN.matches_words(&clause_words) {
+    if word_slice_contains_phrase(&clause_words, ASSIGNS_NO_COMBAT_DAMAGE_PHRASE) {
         let assigns_idx = find_token_index(tokens, |token| {
-            ASSIGN_OR_ASSIGNS_WORD_PATTERN.matches_token(token)
+            token
+                .as_word()
+                .is_some_and(|word| ASSIGN_OR_ASSIGNS_WORDS.contains(&word))
         })
         .unwrap_or(0);
         let subject_tokens = trim_commas(&tokens[..assigns_idx]);
@@ -1426,9 +1361,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             )));
         }
         let mut idx = 3usize;
-        if THIS_TURN_PREFIX_PATTERN.matches_words(&tail_words[idx..]) {
+        if word_slice_starts_with(&tail_words[idx..], THIS_TURN_PREFIX) {
             idx += 2;
-        } else if THIS_COMBAT_PREFIX_PATTERN.matches_words(&tail_words[idx..]) {
+        } else if word_slice_starts_with(&tail_words[idx..], THIS_COMBAT_PREFIX) {
             idx += 2;
         }
         if idx != tail_words.len() {
@@ -1440,10 +1375,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
         let subject_word_view = ClauseDispatchCompatWords::new(&subject_tokens);
         let subject_words = subject_word_view.to_word_refs();
-        let source = if IT_SUBJECT_PATTERN.matches_words(&subject_words) {
+        let source = if word_slice_eq(&subject_words, IT_SUBJECT_WORDS) {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(&subject_tokens))
         } else if subject_words.is_empty()
-            || THIS_OR_THIS_CREATURE_SUBJECT_PATTERN.matches_words(&subject_words)
+            || word_slice_eq_any(&subject_words, THIS_OR_THIS_CREATURE_SUBJECT_PHRASES)
         {
             TargetAst::Source(None)
         } else {
@@ -1473,7 +1408,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if starts_with_target_indicator(tokens) && find_verb(tokens).is_none() {
         let looks_like_restriction_clause = find_negation_span(tokens).is_some()
-            || TARGET_ONLY_RESTRICTION_WORD_PATTERN.matches_words(&clause_words);
+            || word_slice_contains_any_word(&clause_words, TARGET_ONLY_RESTRICTION_WORDS);
         if looks_like_restriction_clause {
             return Err(CardTextError::ParseError(format!(
                 "unsupported target-only restriction clause (clause: '{}') [rule=target-only-restriction]",
@@ -1486,9 +1421,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(choose_word_idx) = clause_words
         .iter()
-        .position(|word| CHOOSE_OR_CHOOSES_WORD_PATTERN.matches_word(word))
+        .position(|word| CHOOSE_OR_CHOOSES_WORDS.contains(word))
         && choose_word_idx > 0
-        && TARGET_WORD_PATTERN.matches_word_at(&clause_words, choose_word_idx + 1)
+        && clause_words.get(choose_word_idx + 1).copied() == Some("target")
         && let Some(target_token_idx) = tokens
             .iter()
             .enumerate()
@@ -1536,12 +1471,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(EffectAst::subject_verb_clear_suspected(None));
     }
 
-    if CAST_TARGET_PREFIX_PATTERN.matches_words(&clause_words)
-        && let Some(without_word_idx) = dispatch_find_phrase_shape(
-            &clause_words,
-            WITHOUT_PAYING_ITS_MANA_COST_WORDS.len(),
-            WITHOUT_PAYING_ITS_MANA_COST_PATTERN,
-        )
+    if word_slice_starts_with(&clause_words, CAST_TARGET_PREFIX)
+        && let Some(without_word_idx) =
+            word_slice_find_phrase_start(&clause_words, WITHOUT_PAYING_ITS_MANA_COST_WORDS)
         && let Some(target_token_end) = token_index_for_word_index(tokens, without_word_idx)
     {
         let _ = parse_target_phrase(&tokens[1..target_token_end])?;
@@ -1571,7 +1503,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if COPY_CARD_EXILED_WITH_THIS_ARTIFACT_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, COPY_CARD_EXILED_WITH_THIS_ARTIFACT_WORDS) {
         let filter = ObjectFilter::default().in_zone(Zone::Exile).match_tagged(
             TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             crate::target::TaggedOpbjectRelation::IsTaggedObject,
@@ -1612,23 +1544,24 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if PLANESWALK_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, PLANESWALK_WORDS) {
         return Ok(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::Planeswalk,
             1,
         ));
     }
 
-    if CHAOS_ENSUES_PATTERN.matches_words(&clause_words) {
+    if word_slice_eq(&clause_words, CHAOS_ENSUES_WORDS) {
         return Ok(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::ChaosEnsues,
             1,
         ));
     }
 
-    if ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PATTERN
-        .matches_words(&clause_words)
-    {
+    if word_slice_eq_any(
+        &clause_words,
+        ONLY_CHOSEN_CREATURES_CAN_ATTACK_DURING_THAT_COMBAT_PHASE_PHRASES,
+    ) {
         return Ok(EffectAst::subject_verb_cant(
             crate::effect::Restriction::attack(
                 ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
@@ -1638,8 +1571,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PATTERN.matches_words(&clause_words)
-    {
+    if word_slice_eq_any(
+        &clause_words,
+        ONLY_CHOSEN_CREATURES_CAN_BLOCK_DURING_THAT_COMBAT_PHASE_PHRASES,
+    ) {
         return Ok(EffectAst::subject_verb_cant(
             crate::effect::Restriction::block(
                 ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
@@ -1781,10 +1716,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     parse_get_modifier_values_with_tail(modifier_tail, power, toughness)?;
 
                 let mut normalized_subject_words = word_refs_except(&subject_words, &["each"]);
-                if OF_WORD_PATTERN.matches_word_at(&normalized_subject_words, 0) {
+                if normalized_subject_words.first().copied() == Some(OF_WORD) {
                     normalized_subject_words.remove(0);
                 }
-                if PRONOUN_TAGGED_SUBJECT_PATTERN.matches_words(&normalized_subject_words) {
+                if word_slice_eq_any(&normalized_subject_words, PRONOUN_TAGGED_SUBJECT_PHRASES) {
                     return Ok(EffectAst::subject_verb_pump(
                         power.clone(),
                         toughness.clone(),
@@ -1796,7 +1731,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
                 let is_demonstrative_subject = normalized_subject_words
                     .first()
-                    .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORD_PATTERN.matches_word(word));
+                    .is_some_and(|word| DEMONSTRATIVE_SUBJECT_WORDS.contains(word));
                 if is_demonstrative_subject {
                     let target = parse_target_phrase(subject_tokens)?;
                     return Ok(EffectAst::subject_verb_pump(
@@ -1812,7 +1747,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     dispatch_find_any_phrase_start(&subject_words, TARGET_CONTROLLER_PATTERNS);
                 if let Some((_, target_word_idx)) = target_controller_phrase
                     && let Some(target_token_idx) = find_token_index(subject_tokens, |token| {
-                        TARGET_WORD_PATTERN.matches_token(token)
+                        token.as_word() == Some(TARGET_WORD)
                     })
                     && let Ok(mut filter) = parse_object_filter(
                         &trim_commas(&subject_tokens[..target_token_idx]),
@@ -1836,14 +1771,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                     ));
                 }
 
-                if subject_words
-                    .iter()
-                    .any(|word| TARGET_WORD_PATTERN.matches_word(word))
-                {
-                    let target_tokens = if subject_tokens
-                        .first()
-                        .is_some_and(|token| HAVE_OR_HAS_WORD_PATTERN.matches_token(token))
-                    {
+                if subject_words.iter().any(|word| *word == TARGET_WORD) {
+                    let target_tokens = if subject_tokens.first().is_some_and(|token| {
+                        token
+                            .as_word()
+                            .is_some_and(|word| HAVE_OR_HAS_WORDS.contains(&word))
+                    }) {
                         &subject_tokens[1..]
                     } else {
                         subject_tokens
@@ -1861,7 +1794,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 let attached_subject_words =
                     dispatch_strip_prefix_value(&subject_words, ATTACHED_SUBJECT_DURATION_PREFIXES)
                         .unwrap_or(&subject_words);
-                if EQUIPPED_OBJECT_SUBJECT_PATTERN.matches_words(attached_subject_words) {
+                if word_slice_eq_any(attached_subject_words, EQUIPPED_OBJECT_SUBJECT_PHRASES) {
                     return Ok(EffectAst::subject_verb_pump(
                         power.clone(),
                         toughness.clone(),
@@ -1873,7 +1806,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                         condition,
                     ));
                 }
-                if ENCHANTED_OBJECT_SUBJECT_PATTERN.matches_words(attached_subject_words) {
+                if word_slice_eq_any(attached_subject_words, ENCHANTED_OBJECT_SUBJECT_PHRASES) {
                     return Ok(EffectAst::subject_verb_pump(
                         power.clone(),
                         toughness.clone(),
@@ -1889,11 +1822,11 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
                 let has_counter_state_pronoun = has_counter_state_pronoun(&subject_words);
                 let has_disallowed_pronoun_reference = subject_words
                     .iter()
-                    .any(|word| PRONOUN_TAGGED_SUBJECT_PATTERN.matches_words(&[*word]))
+                    .any(|word| word_slice_eq_any(&[*word], PRONOUN_TAGGED_SUBJECT_PHRASES))
                     && !has_counter_state_pronoun;
                 if !subject_words
                     .iter()
-                    .any(|word| THIS_SOURCE_PATTERN.matches_word(word))
+                    .any(|word| *word == THIS_SOURCE_WORDS[0])
                     && !has_disallowed_pronoun_reference
                     && !has_demonstrative_object_reference(&subject_words)
                     && let Ok(filter) = parse_object_filter(subject_tokens, false)
@@ -1937,13 +1870,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     if matches!(verb, Verb::Gain) && !subject_tokens.is_empty() {
         let rest_word_view = ClauseDispatchCompatWords::new(&tokens[verb_idx + 1..]);
         let rest_words = rest_word_view.to_word_refs();
-        if PROTECTION_CHOICE_COLOR_PATTERN.matches_words(&rest_words) {
+        if word_slice_contains_all_words(&rest_words, PROTECTION_CHOICE_WORDS)
+            && word_slice_contains_any_word(&rest_words, PROTECTION_CHOICE_COLOR_WORDS)
+        {
             let target = parse_target_phrase(subject_tokens)?;
             return Ok(EffectAst::subject_verb_grant_protection_choice(
                 target,
-                rest_words
-                    .iter()
-                    .any(|word| COLORLESS_WORD_PATTERN.matches_word(word)),
+                rest_words.iter().any(|word| *word == COLORLESS_WORD),
             ));
         }
     }
@@ -1983,7 +1916,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && !actions.is_empty()
             && subject_words
                 .first()
-                .is_some_and(|word| TARGET_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| *word == TARGET_WORD)
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
@@ -1994,9 +1927,9 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
     if matches!(verb, Verb::Lose) && rest_starts_all_abilities_shared_gain(&tokens[verb_idx + 1..])
     {
-        let target = if THIS_SOURCE_PATTERN.matches_words(&subject_words) {
+        let target = if word_slice_eq(&subject_words, THIS_SOURCE_WORDS) {
             TargetAst::Source(span_from_tokens(subject_tokens))
-        } else if PRONOUN_TAGGED_SUBJECT_PATTERN.matches_words(&subject_words) {
+        } else if word_slice_eq_any(&subject_words, PRONOUN_TAGGED_SUBJECT_PHRASES) {
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(subject_tokens))
         } else {
             parse_target_phrase(subject_tokens)?
@@ -2042,7 +1975,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             && trailing_tokens.is_empty()
             && let Some(actions) = parsed_actions
             && !actions.is_empty()
-            && TARGET_WORD_PATTERN.matches_word_at(&subject_words, 0)
+            && subject_words.first().copied() == Some(TARGET_WORD)
         {
             let target = parse_target_phrase(subject_tokens)?;
             let abilities = actions.into_iter().map(GrantedAbilityAst::from).collect();
@@ -2090,10 +2023,13 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
 fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let words = ClauseDispatchCompatWords::new(tokens).to_word_refs();
-    let Some(is_word_idx) = IS_WORD_PATTERN.find_word(&words) else {
+    let Some(is_word_idx) = word_slice_find_word(&words, IS_WORD) else {
         return Ok(None);
     };
-    if !GOADED_OR_GOAD_WORD_PATTERN.matches_word_at(&words, is_word_idx + 1) {
+    if !words
+        .get(is_word_idx + 1)
+        .is_some_and(|word| GOADED_OR_GOAD_WORDS.contains(word))
+    {
         return Ok(None);
     }
 
@@ -2144,15 +2080,17 @@ fn parse_hexproof_targeting_override_clause(
     let (duration, clause_tokens) =
         parse_restriction_duration(tokens)?.unwrap_or((Until::Forever, tokens.to_vec()));
     let clause_words = ClauseDispatchCompatWords::new(&clause_tokens).to_word_refs();
-    if !HEXPROOF_TARGETING_OVERRIDE_PATTERN.matches_words(&clause_words) {
+    if !word_slice_contains_phrase(&clause_words, HEXPROOF_TARGETING_CAN_BE_TARGETS_PHRASE)
+        || !word_slice_contains_phrase(&clause_words, HEXPROOF_TARGETING_AS_THOUGH_PHRASE)
+        || !word_slice_contains_all_words(&clause_words, &["hexproof"])
+    {
         return Ok(None);
     }
 
-    let Some(creatures_idx) = CREATURES_WORD_PATTERN.find_word(&clause_words) else {
+    let Some(creatures_idx) = word_slice_find_word(&clause_words, CREATURES_WORD) else {
         return Ok(None);
     };
-    let Some(can_idx) = CAN_WORD_PATTERN
-        .find_word(&clause_words[creatures_idx..])
+    let Some(can_idx) = word_slice_find_word(&clause_words[creatures_idx..], CAN_WORD)
         .map(|idx| creatures_idx + idx)
     else {
         return Ok(None);

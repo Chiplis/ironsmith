@@ -522,6 +522,13 @@ pub(crate) fn word_slice_matching_phrase<'p>(
     crate::word_primitives::matching_phrase(words, expected)
 }
 
+pub(crate) fn word_slice_matching_prefix<'p>(
+    words: &[&str],
+    expected: &'p [&'p [&'p str]],
+) -> Option<&'p [&'p str]> {
+    crate::word_primitives::matching_prefix(words, expected)
+}
+
 pub(crate) fn word_slice_matching_value<T: Clone>(
     words: &[&str],
     expected: &[(&[&str], T)],

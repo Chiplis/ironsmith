@@ -1,4 +1,4 @@
-use crate::cards::builders::EffectAst;
+use crate::cards::builders::{EffectAst, IT_TAG, SubjectVerbActionAst, TargetAst};
 
 pub(crate) fn normalize_effects_ast(effects: &[EffectAst]) -> Vec<EffectAst> {
     let mut normalized = effects.to_vec();
@@ -76,6 +76,23 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         } => {
             normalize_effects_vec(effects);
             normalize_effects_vec(alternative);
+        }
+        // NOTE: this walker stays hand-rolled (rather than routing through
+        // effect_ast_traversal's shared helper) because normalize_effects_vec
+        // resizes/replaces the Vec (retain + whole-Vec rewrites), which the
+        // slice-exposing helper cannot express. New wrapper variants must be
+        // added here and kept in sync with the traversal macro.
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                normalize_effects_vec(&mut mode.effects);
+            }
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            normalize_nested_effects(effect);
+            normalize_effects_vec(otherwise);
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            normalize_nested_effects(effect);
         }
         _ => {}
     }
@@ -178,13 +195,7 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
         let mut remove_all_abilities = false;
         let mut consumed = 2;
         if let Some(EffectAst::SubjectVerb(remove_subject_verb)) = effects.get(index + 2)
-            && let SubjectVerbActionAst::RemoveAbilitiesAll {
-                abilities,
-                duration,
-                ..
-            } = &remove_subject_verb.action
-            && abilities.is_empty()
-            && matches!(duration, crate::effect::Until::Forever)
+            && is_return_as_aura_remove_all_marker(&remove_subject_verb.action)
         {
             remove_all_abilities = true;
             consumed = 3;
@@ -206,6 +217,26 @@ fn rewrite_return_as_aura(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     }
 
     changed.then_some(rewritten)
+}
+
+fn is_return_as_aura_remove_all_marker(action: &SubjectVerbActionAst) -> bool {
+    match action {
+        SubjectVerbActionAst::RemoveAbilitiesAll {
+            abilities,
+            duration,
+            ..
+        } => abilities.is_empty() && matches!(duration, crate::effect::Until::Forever),
+        SubjectVerbActionAst::RemoveAbilitiesFromTarget {
+            target,
+            abilities,
+            duration,
+        } => {
+            abilities.is_empty()
+                && matches!(duration, crate::effect::Until::Forever)
+                && matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG)
+        }
+        _ => false,
+    }
 }
 
 fn is_noop_effect(effect: &EffectAst) -> bool {

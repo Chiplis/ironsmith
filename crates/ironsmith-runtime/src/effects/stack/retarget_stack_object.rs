@@ -490,9 +490,9 @@ mod tests {
         game.object_mut(spell_id)
             .expect("spell object exists")
             .spell_effect = Some(ResolutionProgram::from_effects(vec![Effect::deal_damage(
-                1,
-                ChooseSpec::target_player(),
-            )]));
+            1,
+            ChooseSpec::target_player(),
+        )]));
         game.push_to_stack(
             StackEntry::new(spell_id, alice).with_targets(vec![Target::Player(alice)]),
         );

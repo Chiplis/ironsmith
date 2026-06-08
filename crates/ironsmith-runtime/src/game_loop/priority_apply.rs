@@ -1060,9 +1060,7 @@ pub fn apply_priority_response_with_dm(
                         let mut ctx = ExecutionContext::new(*source, player, &mut *decision_maker)
                             .with_provenance(mana_ability_provenance)
                             .with_mana_usage_restrictions(mana_usage_restrictions.clone())
-                            .with_mana_source_chosen_creature_type(
-                                mana_source_chosen_creature_type,
-                            )
+                            .with_mana_source_chosen_creature_type(mana_source_chosen_creature_type)
                             .with_mana_production_provenance(mana_production_provenance);
                         if let Some(snapshot) = source_snapshot.clone() {
                             ctx = ctx.with_source_snapshot(snapshot);

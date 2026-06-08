@@ -8,19 +8,16 @@ use winnow::token::{any, literal, take_till};
 
 use crate::cards::builders::{CardTextError, TextSpan};
 use crate::mana::ManaSymbol;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
 pub(crate) use super::super::lexer::TokenWordView;
 use super::super::lexer::{LexStream, LexToken, TokenKind};
 
-const POWER_AXIS_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["power"], &["total", "power"], &["base", "power"]]);
-const TOUGHNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["toughness"]);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const COMPARISON_OR_TAIL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["less"], &["greater"], &["more"], &["fewer"]]);
-const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
-const EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
+const POWER_AXIS_SUFFIXES: &[&[&str]] = &[&["power"], &["total", "power"], &["base", "power"]];
+const TOUGHNESS_WORD: &str = "toughness";
+const OR_WORD: &str = "or";
+const COMPARISON_OR_TAIL_WORDS: &[&str] = &["less", "greater", "more", "fewer"];
+const THAN_WORD: &str = "than";
+const EQUAL_WORD: &str = "equal";
 
 pub(crate) struct MaybeTrace<P, D> {
     parser: P,
@@ -582,10 +579,6 @@ pub(crate) fn comma_or_separator<'a>(
     .parse_next(input)
 }
 
-/// Skip one token that is a comma, "and", or "or".
-pub(crate) fn list_separator<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {
-    alt((comma().void(), kw("and").void(), kw("or").void())).parse_next(input)
-}
 
 /// Skip tokens that are noise words in mana clauses
 /// ("mana", "to", "your", "their", "its", "pool", articles).
@@ -812,10 +805,10 @@ fn should_keep_and_for_power_toughness_axis<'a>(
 ) -> bool {
     let current_words = TokenWordView::new(current).word_refs();
     let remaining_words = TokenWordView::new(remaining).word_refs();
-    POWER_AXIS_SUFFIX_PATTERN.matches_words(&current_words)
-        && remaining_words
-            .first()
-            .is_some_and(|word| TOUGHNESS_WORD_PATTERN.matches_word(word))
+    POWER_AXIS_SUFFIXES
+        .iter()
+        .any(|suffix| current_words.ends_with(suffix))
+        && remaining_words.first().copied() == Some(TOUGHNESS_WORD)
 }
 
 pub(crate) fn split_lexed_slices_on_and<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
@@ -852,12 +845,11 @@ pub(crate) fn split_lexed_slices_on_comma<'a>(tokens: &'a [LexToken]) -> Vec<&'a
 }
 
 fn is_comparison_or_delimiter(previous_word: Option<&str>, next_word: Option<&str>) -> bool {
-    if next_word.is_some_and(|word| COMPARISON_OR_TAIL_WORD_PATTERN.matches_word(word)) {
+    if next_word.is_some_and(|word| COMPARISON_OR_TAIL_WORDS.contains(&word)) {
         return true;
     }
 
-    previous_word.is_some_and(|word| THAN_WORD_PATTERN.matches_word(word))
-        && next_word.is_some_and(|word| EQUAL_WORD_PATTERN.matches_word(word))
+    previous_word == Some(THAN_WORD) && next_word == Some(EQUAL_WORD)
 }
 
 pub(crate) fn split_lexed_slices_on_or<'a>(tokens: &'a [LexToken]) -> Vec<&'a [LexToken]> {
@@ -885,7 +877,7 @@ fn parse_segment_until_or_separator<'a>(
                 return Ok(());
             }
 
-            if OR_WORD_PATTERN.matches_lex_token(token) {
+            if token.is_word(OR_WORD) {
                 let next_word = input.get(1).and_then(LexToken::as_word);
                 if !is_comparison_or_delimiter(previous_word, next_word) {
                     return Ok(());
@@ -906,7 +898,7 @@ fn parse_segment_until_or_separator<'a>(
     if let Some(token) = input.peek_token() {
         if token.is_comma() {
             comma().parse_next(input)?;
-        } else if OR_WORD_PATTERN.matches_lex_token(token) {
+        } else if token.is_word(OR_WORD) {
             let previous_word = segment.iter().rev().find_map(|token| token.as_word());
             let next_word = input.get(1).and_then(LexToken::as_word);
             if !is_comparison_or_delimiter(previous_word, next_word) {

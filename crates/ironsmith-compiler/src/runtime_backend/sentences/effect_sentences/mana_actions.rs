@@ -1,93 +1,62 @@
 use super::*;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
+use crate::runtime_backend::lexer::{
+    word_slice_contains_all_words, word_slice_contains_any_phrase, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_ends_with_any, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_starts_with,
+};
 
-const CARD_OR_CARDS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
-const ADD_MANA_IMPRINTED_COLORS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["exiled", "colors"]);
-const ADD_MANA_COMMANDER_IDENTITY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_words &[&["commander", "commanders"]];
-    contains_words &["color", "identity"]
-);
-const MANA_OF_CHOSEN_COLOR_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["mana", "of", "the"], &["mana", "of"]]);
-const ADD_MANA_THAT_COLOR_AMOUNT_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["an", "amount", "of", "mana", "of", "that", "color"]);
-const ADD_MANA_ONE_THAT_COLOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["one", "mana", "of", "that", "color"]);
-const ANY_ONE_COLOR_OR_TYPE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["any", "one", "color"], &["any", "one", "type"]]]);
-const ANY_COLOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["any", "color"], &["one", "color"]]]);
-const DIFFERENT_COLORS_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["different", "colors"]]);
-const ANY_TYPE_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["any", "type"], &["one", "type"]]]);
-const COLOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["color"]);
-const TYPE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["type"]);
-const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const AMONG_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["among"]);
-const ADD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["add"]);
-const WHERE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["where"]);
-const FOR_EACH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["for", "each"]);
-const FOR_EACH_REMOVED_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["for", "each"]; suffix & ["removed", "this", "way"]);
-const CHOSEN_COLOR_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["chosen", "color"]);
-const CHOSEN_COLOR_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["or", "one", "mana", "of", "the", "chosen", "color"]);
-const FOR_EACH_COLOR_AMONG_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["for", "each", "color", "among"]);
-const ADD_ONE_MANA_OF_THAT_COLOR_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["add", "one", "mana", "of", "that", "color"]);
-const ANY_COMBINATION_OF_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["any", "combination", "of"]);
-const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
-const STRIKE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["strike"]);
-const ANOTHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["another"]);
+const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
+const ADD_MANA_IMPRINTED_COLOR_WORDS: &[&str] = &["exiled", "colors"];
+const ADD_MANA_COMMANDER_WORDS: &[&str] = &["commander", "commanders"];
+const ADD_MANA_COMMANDER_IDENTITY_WORDS: &[&str] = &["color", "identity"];
+const MANA_OF_CHOSEN_COLOR_SUFFIXES: &[&[&str]] = &[&["mana", "of", "the"], &["mana", "of"]];
+const ADD_MANA_THAT_COLOR_AMOUNT_PREFIX: &[&str] =
+    &["an", "amount", "of", "mana", "of", "that", "color"];
+const ADD_MANA_ONE_THAT_COLOR_PREFIX: &[&str] = &["one", "mana", "of", "that", "color"];
+const ANY_ONE_COLOR_OR_TYPE_PHRASES: &[&[&str]] =
+    &[&["any", "one", "color"], &["any", "one", "type"]];
+const ANY_COLOR_PHRASES: &[&[&str]] = &[&["any", "color"], &["one", "color"]];
+const DIFFERENT_COLORS_PHRASE: &[&str] = &["different", "colors"];
+const ANY_TYPE_PHRASES: &[&[&str]] = &[&["any", "type"], &["one", "type"]];
+const COLOR_WORD: &str = "color";
+const TYPE_WORD: &str = "type";
+const INSTEAD_WORD: &str = "instead";
+const IF_WORD: &str = "if";
+const AMONG_WORD: &str = "among";
+const ADD_WORD: &str = "add";
+const WHERE_WORD: &str = "where";
+const FOR_EACH_PHRASE: &[&str] = &["for", "each"];
+const FOR_EACH_REMOVED_THIS_WAY_PREFIX: &[&str] = &["for", "each"];
+const FOR_EACH_REMOVED_THIS_WAY_SUFFIX: &[&str] = &["removed", "this", "way"];
+const CHOSEN_COLOR_PHRASE: &[&str] = &["chosen", "color"];
+const CHOSEN_COLOR_TAIL_PREFIX: &[&str] = &["or", "one", "mana", "of", "the", "chosen", "color"];
+const FOR_EACH_COLOR_AMONG_PHRASE: &[&str] = &["for", "each", "color", "among"];
+const ADD_ONE_MANA_OF_THAT_COLOR_PHRASE: &[&str] = &["add", "one", "mana", "of", "that", "color"];
+const ANY_COMBINATION_OF_PHRASE: &[&str] = &["any", "combination", "of"];
+const TO_WORD: &str = "to";
+const STRIKE_WORD: &str = "strike";
+const ANOTHER_WORD: &str = "another";
 const STRIKE_COUNTER_PREFIXES: &[(&str, CounterType)] = &[
     ("double", CounterType::DoubleStrike),
     ("first", CounterType::FirstStrike),
 ];
-const CHOSEN_BY_PLAYER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["they", "choose"],
-            &["that", "player", "chooses"],
-            &["they", "choose", "to", "their", "mana", "pool"],
-            &["that", "player", "chooses", "to", "their", "mana", "pool"],
-        ]
-);
-const MANA_POOL_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["to"],
-            &["your"],
-            &["their"],
-            &["its"],
-            &["that"],
-            &["player"],
-            &["players"],
-            &["mana"],
-            &["pool"],
-        ]
-);
-const MANA_OPTION_SEPARATOR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["and"],
-            &["or"],
-            &["and/or"],
-            &["mana"],
-            &["to"],
-            &["your"],
-            &["their"],
-            &["its"],
-            &["pool"],
-        ]
-);
-const COLOR_OR_COLORS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["color"], &["colors"]]);
+const CHOSEN_BY_PLAYER_TAILS: &[&[&str]] = &[
+    &["they", "choose"],
+    &["that", "player", "chooses"],
+    &["they", "choose", "to", "their", "mana", "pool"],
+    &["that", "player", "chooses", "to", "their", "mana", "pool"],
+];
+const MANA_POOL_TAIL_WORDS: &[&str] = &[
+    "to", "your", "their", "its", "that", "player", "players", "mana", "pool",
+];
+const MANA_OPTION_SEPARATOR_WORDS: &[&str] = &[
+    "and", "or", "and/or", "mana", "to", "your", "their", "its", "pool",
+];
+const COLOR_OR_COLORS_WORDS: &[&str] = &["color", "colors"];
+
+fn mana_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word().is_some() && token.parser_text() == expected
+}
 
 pub(crate) fn parse_add_mana(
     tokens: &[OwnedLexToken],
@@ -101,9 +70,7 @@ pub(crate) fn parse_add_mana(
                                 tail_tokens: &[OwnedLexToken]|
      -> Result<Option<EffectAst>, CardTextError> {
         let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
-        if !INSTEAD_WORD_PATTERN.matches_word_at(&tail_words, 0)
-            || !IF_WORD_PATTERN.matches_word_at(&tail_words, 1)
-        {
+        if tail_words.get(0) != Some(&INSTEAD_WORD) || tail_words.get(1) != Some(&IF_WORD) {
             return Ok(None);
         }
         let predicate =
@@ -122,18 +89,21 @@ pub(crate) fn parse_add_mana(
 
     let has_card_word = clause_words
         .iter()
-        .any(|word| CARD_OR_CARDS_WORD_PATTERN.matches_word(word));
+        .any(|word| CARD_OR_CARDS_WORDS.contains(word));
     if let Some(colors_among) = parse_add_mana_colors_among_filter(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_colors_among(
             player,
             colors_among,
         ));
     }
-    if has_card_word && ADD_MANA_IMPRINTED_COLORS_PATTERN.matches_words(&clause_words) {
+    if has_card_word && word_slice_contains_all_words(&clause_words, ADD_MANA_IMPRINTED_COLOR_WORDS)
+    {
         return Ok(EffectAst::subject_verb_add_mana_imprinted_colors());
     }
 
-    if ADD_MANA_COMMANDER_IDENTITY_PATTERN.matches_words(&clause_words) {
+    if word_slice_contains_any_word(&clause_words, ADD_MANA_COMMANDER_WORDS)
+        && word_slice_contains_all_words(&clause_words, ADD_MANA_COMMANDER_IDENTITY_WORDS)
+    {
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
@@ -142,7 +112,7 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    if DIFFERENT_COLORS_PATTERN.matches_words(&clause_words) {
+    if word_slice_contains_phrase(&clause_words, DIFFERENT_COLORS_PHRASE) {
         let amount = parse_value(tokens)
             .map(|(value, _)| value)
             .unwrap_or(Value::Fixed(1));
@@ -175,17 +145,20 @@ pub(crate) fn parse_add_mana(
         .iter()
         .any(|token| mana_pips_from_token(token).is_some());
     if !has_explicit_symbol
-        && let Some(chosen_idx) = CHOSEN_COLOR_PATTERN.find_exact_window(&clause_words, 2)
+        && let Some(chosen_idx) = word_slice_find_phrase_start(&clause_words, CHOSEN_COLOR_PHRASE)
     {
-        let prefix = &clause_words[..chosen_idx];
+        let prefix_clause = clause_word_storage
+            .token_index_after_words(chosen_idx)
+            .map(|idx| crate::runtime_backend::token_word_refs(&tokens[..idx]))
+            .unwrap_or_default();
         let references_mana_of_chosen_color =
-            MANA_OF_CHOSEN_COLOR_PREFIX_PATTERN.matches_words(prefix);
+            word_slice_ends_with_any(&prefix_clause, MANA_OF_CHOSEN_COLOR_SUFFIXES);
         if references_mana_of_chosen_color {
             let tail_words = &clause_words[chosen_idx + 2..];
             let has_only_pool_tail = tail_words.is_empty()
                 || tail_words
                     .iter()
-                    .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word));
+                    .all(|word| MANA_POOL_TAIL_WORDS.contains(word));
             if has_only_pool_tail {
                 let amount = parse_value(tokens)
                     .map(|(value, _)| value)
@@ -196,7 +169,7 @@ pub(crate) fn parse_add_mana(
             }
         }
     }
-    if ADD_MANA_ONE_THAT_COLOR_PATTERN.matches_words(&clause_words) {
+    if word_slice_starts_with(&clause_words, ADD_MANA_ONE_THAT_COLOR_PREFIX) {
         let tail_tokens =
             grammar::words_match_prefix(tokens, &["one", "mana", "of", "that", "color"])
                 .unwrap_or(&[]);
@@ -218,7 +191,7 @@ pub(crate) fn parse_add_mana(
             clause_words.join(" ")
         )));
     }
-    if ADD_MANA_THAT_COLOR_AMOUNT_PATTERN.matches_words(&clause_words) {
+    if word_slice_starts_with(&clause_words, ADD_MANA_THAT_COLOR_AMOUNT_PREFIX) {
         let amount = parse_devotion_value_from_add_clause(tokens)?
             .or_else(|| parse_add_mana_equal_amount_value(tokens))
             .unwrap_or(Value::Fixed(1));
@@ -227,9 +200,9 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let any_one = ANY_ONE_COLOR_OR_TYPE_PATTERN.matches_words(&clause_words);
-    let any_color = ANY_COLOR_PATTERN.matches_words(&clause_words);
-    let any_type = ANY_TYPE_PATTERN.matches_words(&clause_words);
+    let any_one = word_slice_contains_any_phrase(&clause_words, ANY_ONE_COLOR_OR_TYPE_PHRASES);
+    let any_color = word_slice_contains_any_phrase(&clause_words, ANY_COLOR_PHRASES);
+    let any_type = word_slice_contains_any_phrase(&clause_words, ANY_TYPE_PHRASES);
     if any_color || any_type {
         let mut amount = parse_value(tokens)
             .map(|(value, _)| value)
@@ -237,8 +210,7 @@ pub(crate) fn parse_add_mana(
         let allow_colorless = any_type;
         let phrase_end = crate::slice_primitives::find_index(tokens, |token| {
             token.as_word().is_some_and(|word| {
-                (COLOR_WORD_PATTERN.matches_word(word) && any_color)
-                    || (TYPE_WORD_PATTERN.matches_word(word) && any_type)
+                (word == COLOR_WORD && any_color) || (word == TYPE_WORD && any_type)
             })
         })
         .map(|idx| idx + 1)
@@ -293,8 +265,10 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
-        let chosen_by_player_tail = CHOSEN_BY_PLAYER_TAIL_PATTERN.matches_words(&tail_words);
+        let chosen_by_player_tail = word_slice_eq_any(
+            &crate::runtime_backend::token_word_refs(tail_tokens),
+            CHOSEN_BY_PLAYER_TAILS,
+        );
         if chosen_by_player_tail {
             if any_type {
                 return Err(CardTextError::ParseError(format!(
@@ -311,7 +285,9 @@ pub(crate) fn parse_add_mana(
                 player, amount, None,
             ));
         }
-        if FOR_EACH_REMOVED_THIS_WAY_PATTERN.matches_words(&tail_words)
+        let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
+        if word_slice_starts_with(&tail_words, FOR_EACH_REMOVED_THIS_WAY_PREFIX)
+            && word_slice_ends_with_any(&tail_words, &[FOR_EACH_REMOVED_THIS_WAY_SUFFIX])
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
             amount = dynamic_amount;
@@ -331,10 +307,7 @@ pub(crate) fn parse_add_mana(
             ));
         }
 
-        if tail_words
-            .first()
-            .is_some_and(|word| AMONG_WORD_PATTERN.matches_word(word))
-        {
+        if tail_words.first().is_some_and(|word| *word == AMONG_WORD) {
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -367,7 +340,10 @@ pub(crate) fn parse_add_mana(
     }
 
     let for_each_idx = find_window_by(tokens, 2, |window: &[OwnedLexToken]| {
-        FOR_EACH_WORD_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(window))
+        word_slice_eq(
+            &crate::runtime_backend::token_word_refs(window),
+            FOR_EACH_PHRASE,
+        )
     });
     let mana_scan_end = for_each_idx.unwrap_or(tokens.len());
 
@@ -380,7 +356,7 @@ pub(crate) fn parse_add_mana(
             continue;
         }
         if let Some(word) = token.as_word() {
-            if MANA_POOL_TAIL_WORD_PATTERN.matches_word(word) {
+            if MANA_POOL_TAIL_WORDS.contains(&word) {
                 continue;
             }
         }
@@ -420,13 +396,15 @@ pub(crate) fn parse_add_mana(
                 player, mana, amount,
             ));
         }
-        let trailing_words = if let Some(last_idx) = last_mana_idx {
-            crate::runtime_backend::token_word_refs(&tokens[last_idx + 1..])
+        let trailing_tokens = if let Some(last_idx) = last_mana_idx {
+            &tokens[last_idx + 1..]
         } else {
-            Vec::new()
+            &[]
         };
+        let trailing_words = crate::runtime_backend::token_word_refs(trailing_tokens);
         if !trailing_words.is_empty() {
-            let chosen_color_tail = CHOSEN_COLOR_TAIL_PATTERN.matches_words(&trailing_words);
+            let chosen_color_tail =
+                word_slice_starts_with(&trailing_words, CHOSEN_COLOR_TAIL_PREFIX);
             let pool_tail = if chosen_color_tail {
                 trailing_words[7..].to_vec()
             } else {
@@ -436,7 +414,7 @@ pub(crate) fn parse_add_mana(
                 && (pool_tail.is_empty()
                     || pool_tail
                         .iter()
-                        .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word)));
+                        .all(|word| MANA_POOL_TAIL_WORDS.contains(word)));
             if chosen_color_tail && has_only_pool_tail {
                 if mana.len() != 1 {
                     return Err(CardTextError::ParseError(format!(
@@ -461,8 +439,8 @@ pub(crate) fn parse_add_mana(
         let has_only_pool_tail = !trailing_words.is_empty()
             && trailing_words
                 .iter()
-                .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word));
-        let has_only_instead_tail = INSTEAD_WORD_PATTERN.matches_words(&trailing_words);
+                .all(|word| MANA_POOL_TAIL_WORDS.contains(word));
+        let has_only_instead_tail = word_slice_eq(&trailing_words, &[INSTEAD_WORD]);
         if !trailing_words.is_empty() && !has_only_pool_tail && !has_only_instead_tail {
             if let Some(last_idx) = last_mana_idx
                 && let Some(conditional) = wrap_instead_if_tail(
@@ -491,21 +469,16 @@ fn parse_add_mana_colors_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if FOR_EACH_COLOR_AMONG_PATTERN
-        .find_exact_window(&words, 4)
-        .is_none()
-        || ADD_ONE_MANA_OF_THAT_COLOR_PATTERN
-            .find_exact_window(&words, 6)
-            .is_none()
+    if word_slice_find_phrase_start(&words, FOR_EACH_COLOR_AMONG_PHRASE).is_none()
+        || word_slice_find_phrase_start(&words, ADD_ONE_MANA_OF_THAT_COLOR_PHRASE).is_none()
     {
         return Ok(None);
     }
 
-    let Some(among_idx) = find_index(tokens, |token| AMONG_WORD_PATTERN.matches_token(token))
-    else {
+    let Some(among_idx) = find_index(tokens, |token| mana_token_is_word(token, AMONG_WORD)) else {
         return Ok(None);
     };
-    let Some(add_idx) = find_index(tokens, |token| ADD_WORD_PATTERN.matches_token(token)) else {
+    let Some(add_idx) = find_index(tokens, |token| mana_token_is_word(token, ADD_WORD)) else {
         return Ok(None);
     };
     if add_idx <= among_idx + 1 {
@@ -603,21 +576,22 @@ pub(crate) fn parse_any_combination_mana_colors(
 ) -> Result<Option<Vec<crate::color::Color>>, CardTextError> {
     let clause_word_storage = ZoneHandlerNormalizedWords::new(tokens);
     let clause_words = clause_word_storage.to_word_refs();
-    let Some(combination_idx) = ANY_COMBINATION_OF_PATTERN.find_exact_window(&clause_words, 3)
+    let Some(combination_idx) =
+        word_slice_find_phrase_start(&clause_words, ANY_COMBINATION_OF_PHRASE)
     else {
         return Ok(None);
     };
 
     let color_words = clause_words[combination_idx + 3..]
         .iter()
-        .take_while(|w| !WHERE_WORD_PATTERN.matches_word(w));
+        .take_while(|w| **w != WHERE_WORD);
 
     let mut colors = Vec::new();
     for word in color_words {
-        if MANA_OPTION_SEPARATOR_WORD_PATTERN.matches_word(word) {
+        if MANA_OPTION_SEPARATOR_WORDS.contains(word) {
             continue;
         }
-        if COLOR_OR_COLORS_WORD_PATTERN.matches_word(word) {
+        if COLOR_OR_COLORS_WORDS.contains(word) {
             for color in crate::color::Color::ALL {
                 if !slice_contains(&colors, &color) {
                     colors.push(color);
@@ -657,15 +631,13 @@ pub(crate) fn parse_any_combination_mana_colors(
 pub(crate) fn is_mana_pool_tail_tokens(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
     if words.is_empty()
-        || !TO_WORD_PATTERN.matches_word(words[0])
+        || words[0] != TO_WORD
         || !grammar::contains_word(tokens, "mana")
         || !grammar::contains_word(tokens, "pool")
     {
         return false;
     }
-    words
-        .iter()
-        .all(|word| MANA_POOL_TAIL_WORD_PATTERN.matches_word(word))
+    words.iter().all(|word| MANA_POOL_TAIL_WORDS.contains(word))
 }
 
 pub(crate) fn parse_counter_type_from_descriptor_tokens(
@@ -676,12 +648,10 @@ pub(crate) fn parse_counter_type_from_descriptor_tokens(
     if let Some(counter_type) = parse_counter_type_word(last) {
         return Some(counter_type);
     }
-    if STRIKE_WORD_PATTERN.matches_word(last) && words.len() >= 2 {
+    if last == STRIKE_WORD && words.len() >= 2 {
         return strike_counter_type_from_prefix(words[words.len() - 2]);
     }
-    if ANOTHER_WORD_PATTERN.matches_word(last)
-        || ironsmith_core::parse_cardinal_word(last).is_some()
-    {
+    if last == ANOTHER_WORD || ironsmith_core::parse_cardinal_word(last).is_some() {
         return None;
     }
     if last.chars().all(|c| c.is_ascii_alphabetic()) {

@@ -12,8 +12,8 @@ use crate::Effect;
 use crate::ability::{AbilityKind, TriggeredAbility};
 use crate::continuous::ContinuousEffect;
 use crate::effect::Value;
-use crate::filter::{Comparison, ObjectFilter};
 use crate::filter::ObjectRef;
+use crate::filter::{Comparison, ObjectFilter};
 use crate::game_state::{GameState, Phase, Step};
 use crate::ids::{ObjectId, PlayerId, StableId};
 use crate::resolution::ResolutionProgram;
@@ -117,7 +117,13 @@ fn resolve_dynamic_soulshift_lki_value(
         Value::Fixed(value) => Some(*value),
         Value::Add(left, right) => Some(
             resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, left)?
-                + resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, right)?,
+                + resolve_dynamic_soulshift_lki_value(
+                    game,
+                    trigger_event,
+                    controller,
+                    source,
+                    right,
+                )?,
         ),
         Value::Scaled(value, multiplier) => {
             resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, value)
@@ -128,9 +134,14 @@ fn resolve_dynamic_soulshift_lki_value(
                 .map(|value| value.div_euclid(*divisor))
         }
         Value::Min(left, right) => Some(
-            resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, left)?.min(
-                resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, right)?,
-            ),
+            resolve_dynamic_soulshift_lki_value(game, trigger_event, controller, source, left)?
+                .min(resolve_dynamic_soulshift_lki_value(
+                    game,
+                    trigger_event,
+                    controller,
+                    source,
+                    right,
+                )?),
         ),
         Value::Count(filter) => Some(count_filter_from_trigger_lki(
             game,
@@ -196,7 +207,9 @@ fn freeze_soulshift_choose_spec(spec: &ChooseSpec, x_value: u32) -> ChooseSpec {
 }
 
 fn freeze_soulshift_effect(effect: Effect, x_value: u32) -> Effect {
-    if let Some(return_effect) = effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>() {
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+    {
         let mut return_effect = return_effect.clone();
         return_effect.target = freeze_soulshift_choose_spec(&return_effect.target, x_value);
         return Effect::new(return_effect);
@@ -221,7 +234,10 @@ fn queued_triggered_ability(
             .collect();
         (effects, choices)
     } else {
-        (trigger_ability.effects.clone(), trigger_ability.choices.clone())
+        (
+            trigger_ability.effects.clone(),
+            trigger_ability.choices.clone(),
+        )
     };
 
     TriggeredAbility {

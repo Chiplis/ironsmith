@@ -1,86 +1,80 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
-use crate::runtime_backend::lexer::{token_slice_at_is, token_slice_first_is};
+use crate::runtime_backend::lexer::{
+    token_slice_at_is, token_slice_first_is, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
+    word_slice_starts_with, word_slice_starts_with_any,
+};
 use crate::runtime_backend::util::{
     parse_choice_count_before_target_prefix, parse_subtype_flexible,
 };
 
-const RETURN_CONTROL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["control"]);
-const RETURN_TAPPED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["tapped"]);
-const RETURN_TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
-const RETURN_UNDER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["under"]);
-const RETURN_THIS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this"]);
-const RETURN_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const RETURN_A_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["a"]);
-const RETURN_AN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["an"]);
-const RETURN_AT_RANDOM_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["at", "random"]);
-const RETURN_AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
-const RETURN_EXCEPT_FOR_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["except", "for"]);
-const RETURN_EXILED_CARD_REFERENCE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "exiled", "card"],
-            &["the", "exiled", "cards"],
-            &["exiled", "card"],
-            &["exiled", "cards"],
-        ]
-);
-const RETURN_HAND_DESTINATION_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["hand", "hands"]]);
-const RETURN_HAND_OR_BATTLEFIELD_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["hand"], &["hands"], &["battlefield"]]);
-const RETURN_BATTLEFIELD_DESTINATION_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["battlefield"]);
-const RETURN_GRAVEYARD_DESTINATION_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["graveyard", "graveyards"]]);
-const RETURN_TAPPED_DESTINATION_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["tapped"]);
-const RETURN_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["under", "your", "control"]]);
-const RETURN_OWNER_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["control"]; contains_any_words & [&["owner", "owners", "owner's", "owners'"]]);
-const RETURN_END_OF_COMBAT_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
-const RETURN_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const RETURN_AND_OR_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["and"], &["or"]]);
-const RETURN_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
-const RETURN_ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["all"], &["each"]]);
-const RETURN_FROM_YOUR_GRAVEYARD_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["from", "your", "graveyard"]);
-const RETURN_THAT_MANY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "many"]);
-const EXCHANGE_LIFE_TOTALS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["life", "totals"]);
-const EXCHANGE_YOUR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["your"]);
-const EXCHANGE_TARGET_PLAYER_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["target", "player"], &["target", "players"]]);
-const EXCHANGE_TARGET_OPPONENT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["target", "opponent"], &["target", "opponents"]]);
-const EXCHANGE_OPPONENT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["an", "opponent"], &["opponent"], &["opponents"]]);
-const EXCHANGE_AN_OPPONENT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["an", "opponent"]);
-const EXCHANGE_WITH_OR_AND_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["with"], &["and"]]);
-const EXCHANGE_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const EXCHANGE_THAT_SHARE_REL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["that", "share"], &["that", "shares"]]);
-const EXCHANGE_PERMANENT_TYPE_SHARE_HEAD_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["permanent", "type"],
-            &["one", "of", "those", "permanent", "types"],
-        ]
-);
-const EXCHANGE_CARD_TYPE_SHARE_HEAD_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["card", "type"], &["one", "of", "those", "types"]]);
+const RETURN_CONTROL_WORD: &str = "control";
+const RETURN_TAPPED_WORD: &str = "tapped";
+const RETURN_TO_WORD: &str = "to";
+const RETURN_UNDER_WORD: &str = "under";
+const RETURN_THIS_WORD: &str = "this";
+const RETURN_OF_WORD: &str = "of";
+const RETURN_A_WORD: &str = "a";
+const RETURN_AT_RANDOM_PREFIX: &[&str] = &["at", "random"];
+const RETURN_AT_WORD: &str = "at";
+const RETURN_EXCEPT_FOR_PREFIX: &[&str] = &["except", "for"];
+const RETURN_EXILED_CARD_REFERENCES: &[&[&str]] = &[
+    &["the", "exiled", "card"],
+    &["the", "exiled", "cards"],
+    &["exiled", "card"],
+    &["exiled", "cards"],
+];
+const RETURN_HAND_WORDS: &[&str] = &["hand", "hands"];
+const RETURN_HAND_OR_BATTLEFIELD_WORDS: &[&str] = &["hand", "hands", "battlefield"];
+const RETURN_GRAVEYARD_WORDS: &[&str] = &["graveyard", "graveyards"];
+const RETURN_UNDER_YOUR_CONTROL_PHRASE: &[&str] = &["under", "your", "control"];
+const RETURN_OWNER_WORDS: &[&str] = &["owner", "owners", "owner's", "owners'"];
+const RETURN_END_OF_COMBAT_PHRASE: &[&str] = &["end", "of", "combat"];
+const RETURN_AND_WORD: &str = "and";
+const RETURN_AND_OR_WORDS: &[&str] = &["and", "or"];
+const RETURN_TARGET_WORD: &str = "target";
+const RETURN_ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
+const RETURN_FROM_YOUR_GRAVEYARD_TAIL: &[&str] = &["from", "your", "graveyard"];
+const RETURN_THAT_MANY_PREFIX: &[&str] = &["that", "many"];
+const RETURN_CHOSEN_CREATURE_TYPE_INCLUDED_TAILS: &[&[&str]] = &[
+    &["of", "the", "chosen", "type"],
+    &["that", "are", "of", "the", "chosen", "type"],
+];
+const RETURN_CHOSEN_CREATURE_TYPE_EXCLUDED_TAILS: &[&[&str]] = &[
+    &["that", "arent", "of", "the", "chosen", "type"],
+    &["that", "aren't", "of", "the", "chosen", "type"],
+    &["that", "are", "not", "of", "the", "chosen", "type"],
+];
+const RETURN_CHOSEN_CREATURE_TYPE_TAILS: &[&[&str]] = &[
+    &["of", "the", "chosen", "type"],
+    &["that", "are", "of", "the", "chosen", "type"],
+    &["that", "arent", "of", "the", "chosen", "type"],
+    &["that", "aren't", "of", "the", "chosen", "type"],
+    &["that", "are", "not", "of", "the", "chosen", "type"],
+];
+const EXCHANGE_LIFE_TOTALS_WORDS: &[&str] = &["life", "totals"];
+const EXCHANGE_VERB_WORDS: &[&str] = &["exchange", "exchanges"];
+const EXCHANGE_YOUR_PREFIX: &[&str] = &["your"];
+const EXCHANGE_TARGET_PLAYER_PREFIXES: &[&[&str]] =
+    &[&["target", "player"], &["target", "players"]];
+const EXCHANGE_TARGET_OPPONENT_PREFIXES: &[&[&str]] =
+    &[&["target", "opponent"], &["target", "opponents"]];
+const EXCHANGE_OPPONENT_PREFIXES: &[&[&str]] =
+    &[&["an", "opponent"], &["opponent"], &["opponents"]];
+const EXCHANGE_AN_OPPONENT_PREFIX: &[&str] = &["an", "opponent"];
+const EXCHANGE_WITH_OR_AND_WORDS: &[&str] = &["with", "and"];
+const EXCHANGE_AND_WORD: &str = "and";
+const EXCHANGE_THAT_SHARE_RELS: &[&[&str]] = &[&["that", "share"], &["that", "shares"]];
+const EXCHANGE_PERMANENT_TYPE_SHARE_HEAD_PREFIXES: &[&[&str]] = &[
+    &["permanent", "type"],
+    &["one", "of", "those", "permanent", "types"],
+];
+const EXCHANGE_CARD_TYPE_SHARE_HEAD_PREFIXES: &[&[&str]] =
+    &[&["card", "type"], &["one", "of", "those", "types"]];
 
-fn return_find_phrase_start(words: &[&str], shape: ClauseShape<'static>) -> Option<usize> {
-    (0..words.len()).find(|idx| shape.matches_words(&words[*idx..]))
+fn return_find_prefix_start(words: &[&str], prefix: &[&str]) -> Option<usize> {
+    (0..words.len()).find(|idx| word_slice_starts_with(&words[*idx..], prefix))
 }
 
 fn return_words_match_value<T: Copy>(words: &[&str], choices: &[(&[&str], T)]) -> Option<T> {
@@ -96,6 +90,28 @@ fn return_words_match_phrase<'a>(
     choices
         .iter()
         .find_map(|phrase| (*phrase == words).then_some(*phrase))
+}
+
+fn split_chosen_creature_type_tail(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool, bool) {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(tail) = RETURN_CHOSEN_CREATURE_TYPE_TAILS
+        .iter()
+        .find(|tail| word_slice_ends_with(&words, tail))
+    else {
+        return (tokens.to_vec(), false, false);
+    };
+    let excluded = word_slice_eq_any(tail, RETURN_CHOSEN_CREATURE_TYPE_EXCLUDED_TAILS);
+    let included = word_slice_eq_any(tail, RETURN_CHOSEN_CREATURE_TYPE_INCLUDED_TAILS);
+    if !included && !excluded {
+        return (tokens.to_vec(), false, false);
+    }
+    let filter_word_len = words.len() - tail.len();
+    let filter_tokens = match token_index_for_word_index(tokens, filter_word_len) {
+        Some(idx) => &tokens[..idx],
+        None => tokens,
+    };
+
+    (trim_commas(filter_tokens).to_vec(), included, excluded)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -189,15 +205,15 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let tokens = if token_slice_first_is(tokens, "to") {
         let clause_words = crate::runtime_backend::token_word_refs(tokens);
         let hand_or_battlefield_idx = find_index(&clause_words, |word| {
-            RETURN_HAND_OR_BATTLEFIELD_WORD_PATTERN.matches_word(word)
+            RETURN_HAND_OR_BATTLEFIELD_WORDS.contains(word)
         });
         if let Some(hand_or_battlefield_idx) = hand_or_battlefield_idx {
             let mut split_word_idx = hand_or_battlefield_idx + 1;
 
-            if RETURN_UNDER_WORD_PATTERN.matches_word_at(&clause_words, split_word_idx) {
+            if clause_words.get(split_word_idx) == Some(&RETURN_UNDER_WORD) {
                 if let Some(control_rel_idx) =
                     find_index(&clause_words[split_word_idx + 1..], |word| {
-                        RETURN_CONTROL_WORD_PATTERN.matches_word(word)
+                        *word == RETURN_CONTROL_WORD
                     })
                 {
                     split_word_idx = split_word_idx + 1 + control_rel_idx + 1;
@@ -206,7 +222,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
             while clause_words
                 .get(split_word_idx)
-                .is_some_and(|word| RETURN_TAPPED_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| *word == RETURN_TAPPED_WORD)
             {
                 split_word_idx += 1;
             }
@@ -244,7 +260,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let mut idx = tokens.len();
     while idx > 0 {
         idx -= 1;
-        if !RETURN_TO_WORD_PATTERN.matches_token(&tokens[idx]) {
+        if !tokens[idx]
+            .as_word()
+            .is_some_and(|word| word == RETURN_TO_WORD)
+        {
             continue;
         }
         let tail_tokens = &tokens[idx + 1..];
@@ -269,9 +288,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let mut random = false;
     let mut random_idx = 0usize;
     while random_idx + 1 < target_tokens_vec.len() {
-        if RETURN_AT_RANDOM_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-            &target_tokens_vec[random_idx..],
-        )) {
+        if word_slice_starts_with(
+            &crate::runtime_backend::token_word_refs(&target_tokens_vec[random_idx..]),
+            RETURN_AT_RANDOM_PREFIX,
+        ) {
             random = true;
             target_tokens_vec.drain(random_idx..random_idx + 2);
             break;
@@ -284,7 +304,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let mut delayed_timing = None;
     let mut destination_word_cutoff = destination_words_full.len();
     for word_idx in 0..destination_words_full.len() {
-        if !RETURN_AT_WORD_PATTERN.matches_word(destination_words_full[word_idx]) {
+        if destination_words_full[word_idx] != RETURN_AT_WORD {
             continue;
         }
         if let Some(timing) = parse_delayed_return_timing_words(&destination_words_full[word_idx..])
@@ -306,8 +326,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let mut destination_words = crate::runtime_backend::token_word_refs(destination_tokens);
     let mut destination_excluded_subtypes: Vec<Subtype> = Vec::new();
-    if let Some(except_idx) =
-        return_find_phrase_start(&destination_words, RETURN_EXCEPT_FOR_PREFIX_PATTERN)
+    if let Some(except_idx) = return_find_prefix_start(&destination_words, RETURN_EXCEPT_FOR_PREFIX)
     {
         let exception_words = &destination_words[except_idx + 2..];
         if exception_words.is_empty() {
@@ -317,7 +336,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             )));
         }
         for word in exception_words {
-            if RETURN_AND_OR_WORD_PATTERN.matches_word(word) {
+            if RETURN_AND_OR_WORDS.contains(word) {
                 continue;
             }
             let Some(subtype) = parse_subtype_flexible(word) else {
@@ -339,24 +358,28 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
         destination_words.truncate(except_idx);
     }
-    let is_hand = RETURN_HAND_DESTINATION_PATTERN.matches_words(&destination_words);
-    let is_battlefield = RETURN_BATTLEFIELD_DESTINATION_PATTERN.matches_words(&destination_words);
-    let is_graveyard = RETURN_GRAVEYARD_DESTINATION_PATTERN.matches_words(&destination_words);
-    let tapped = RETURN_TAPPED_DESTINATION_PATTERN.matches_words(&destination_words);
+    let is_hand = word_slice_contains_any_word(&destination_words, RETURN_HAND_WORDS);
+    let is_battlefield = destination_words.contains(&"battlefield");
+    let is_graveyard = word_slice_contains_any_word(&destination_words, RETURN_GRAVEYARD_WORDS);
+    let tapped = destination_words.contains(&RETURN_TAPPED_WORD);
     let transformed = grammar::contains_word(destination_tokens_full, "transformed");
     let converted = grammar::contains_word(destination_tokens_full, "converted");
-    let return_controller = if RETURN_UNDER_YOUR_CONTROL_PATTERN.matches_words(&destination_words) {
-        ReturnControllerAst::You
-    } else if RETURN_OWNER_CONTROL_PATTERN.matches_words(&destination_words) {
-        ReturnControllerAst::Owner
-    } else {
-        ReturnControllerAst::Preserve
-    };
+    let return_controller =
+        if word_slice_contains_phrase(&destination_words, RETURN_UNDER_YOUR_CONTROL_PHRASE) {
+            ReturnControllerAst::You
+        } else if destination_words.contains(&RETURN_CONTROL_WORD)
+            && word_slice_contains_any_word(&destination_words, RETURN_OWNER_WORDS)
+        {
+            ReturnControllerAst::Owner
+        } else {
+            ReturnControllerAst::Preserve
+        };
     let has_delayed_timing_words = grammar::contains_word(destination_tokens_full, "beginning")
         || grammar::contains_word(destination_tokens_full, "upkeep")
-        || RETURN_END_OF_COMBAT_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(
-            destination_tokens_full,
-        ))
+        || word_slice_contains_phrase(
+            &crate::runtime_backend::token_word_refs(destination_tokens_full),
+            RETURN_END_OF_COMBAT_PHRASE,
+        )
         || grammar::contains_word(destination_tokens_full, "end")
             && (grammar::contains_word(destination_tokens_full, "next")
                 || grammar::contains_word(destination_tokens_full, "step"));
@@ -376,7 +399,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let target_words = crate::runtime_backend::token_word_refs(target_tokens);
     if is_hand
         && let Some(and_idx) = find_index(target_tokens, |token| {
-            RETURN_AND_WORD_PATTERN.matches_token(token)
+            token.as_word().is_some_and(|word| word == RETURN_AND_WORD)
         })
         && and_idx > 0
     {
@@ -386,7 +409,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         let right_words = crate::runtime_backend::token_word_refs(&right_tokens);
 
         let source_filter_for_words = |words: &[&str]| -> Option<ObjectFilter> {
-            if !RETURN_THIS_WORD_PATTERN.matches_first_word(words) {
+            if words.first() != Some(&RETURN_THIS_WORD) {
                 return None;
             }
             let mut filter = ObjectFilter::source();
@@ -398,8 +421,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             Some(filter)
         };
         let exiled_filter_for_words = |words: &[&str]| -> Option<ObjectFilter> {
-            RETURN_EXILED_CARD_REFERENCE_PATTERN
-                .matches_words(words)
+            word_slice_eq_any(words, RETURN_EXILED_CARD_REFERENCES)
                 .then(|| ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile))
         };
 
@@ -418,14 +440,16 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         }
     }
     if let Some(and_idx) = find_index(target_tokens, |token| {
-        RETURN_AND_WORD_PATTERN.matches_token(token)
+        token.as_word().is_some_and(|word| word == RETURN_AND_WORD)
     }) && and_idx > 0
     {
         let tail_slice = &target_tokens[and_idx + 1..];
-        let starts_multi_target = tail_slice
-            .first()
-            .is_some_and(|token| RETURN_TARGET_WORD_PATTERN.matches_token(token))
-            || parse_choice_count_before_target_prefix(tail_slice).is_some();
+        let starts_multi_target = tail_slice.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| word == RETURN_TARGET_WORD)
+        }) || parse_choice_count_before_target_prefix(tail_slice)
+            .is_some();
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target return clause (clause: '{}')",
@@ -461,7 +485,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     }
     if target_words
         .first()
-        .is_some_and(|word| RETURN_ALL_OR_EACH_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| RETURN_ALL_OR_EACH_WORDS.contains(word))
     {
         let has_unsupported_return_all_qualifier = grammar::contains_word(target_tokens, "dealt")
             || grammar::contains_word(target_tokens, "without")
@@ -536,45 +560,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         } else {
             (return_filter_tokens.to_vec(), None)
         };
-        let return_filter_words = crate::runtime_backend::token_word_refs(&return_filter_tokens);
-        let chosen_type_suffix_patterns: [(&[&str], bool, bool); 5] = [
-            (
-                &["that", "arent", "of", "the", "chosen", "type"],
-                false,
-                true,
-            ),
-            (
-                &["that", "aren't", "of", "the", "chosen", "type"],
-                false,
-                true,
-            ),
-            (
-                &["that", "are", "not", "of", "the", "chosen", "type"],
-                false,
-                true,
-            ),
-            (&["of", "the", "chosen", "type"], true, false),
-            (&["that", "are", "of", "the", "chosen", "type"], true, false),
-        ];
         let (base_filter_tokens, chosen_creature_type, excluded_chosen_creature_type) =
-            if let Some((suffix, chosen_type, excluded_chosen_type)) =
-                chosen_type_suffix_patterns.iter().find(|(suffix, _, _)| {
-                    return_filter_words.len() >= suffix.len()
-                        && &return_filter_words[return_filter_words.len() - suffix.len()..]
-                            == *suffix
-                })
-            {
-                let cutoff = return_filter_words.len() - suffix.len();
-                let token_cutoff = token_index_for_word_index(&return_filter_tokens, cutoff)
-                    .unwrap_or(return_filter_tokens.len());
-                (
-                    trim_commas(&return_filter_tokens[..token_cutoff]).to_vec(),
-                    *chosen_type,
-                    *excluded_chosen_type,
-                )
-            } else {
-                (return_filter_tokens, false, false)
-            };
+            split_chosen_creature_type_tail(&return_filter_tokens);
         let mut filter = parse_object_filter(&base_filter_tokens, false)?;
         filter.chosen_creature_type |= chosen_creature_type;
         filter.excluded_chosen_creature_type |= excluded_chosen_creature_type;
@@ -620,9 +607,10 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let source_from_graveyard_target = if is_battlefield
         && target_words.len() > 3
-        && RETURN_FROM_YOUR_GRAVEYARD_TAIL_PATTERN
-            .matches_words(&target_words[target_words.len() - 3..])
-    {
+        && word_slice_eq(
+            &target_words[target_words.len() - 3..],
+            RETURN_FROM_YOUR_GRAVEYARD_TAIL,
+        ) {
         let prefix_word_len = target_words.len() - 3;
         let prefix_token_len = token_index_for_word_index(target_tokens, prefix_word_len)
             .unwrap_or(target_tokens.len());
@@ -637,9 +625,9 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     let mut count_value = None;
     let (target_tokens, dynamic_count) =
-        if RETURN_THAT_MANY_PREFIX_PATTERN.matches_words(&target_words) {
+        if word_slice_starts_with(&target_words, RETURN_THAT_MANY_PREFIX) {
             let mut object_start = 2usize;
-            if RETURN_OF_WORD_PATTERN.matches_word_at(&target_words, object_start) {
+            if target_words.get(object_start) == Some(&RETURN_OF_WORD) {
                 object_start += 1;
             }
             let Some(token_start) = token_index_for_word_index(target_tokens, object_start) else {
@@ -710,7 +698,7 @@ pub(crate) fn parse_exchange(
     ) -> Result<(&'a [OwnedLexToken], Option<SharedTypeConstraintAst>), CardTextError> {
         let tail_words = crate::runtime_backend::token_word_refs(clause_tokens);
         let Some(rel_word_idx) = find_window_by(&tail_words, 2, |window| {
-            EXCHANGE_THAT_SHARE_REL_PATTERN.matches_words(window)
+            word_slice_eq_any(window, EXCHANGE_THAT_SHARE_RELS)
         }) else {
             return Ok((clause_tokens, None));
         };
@@ -725,15 +713,18 @@ pub(crate) fn parse_exchange(
             } else {
                 &share_words[..]
             };
-        let share_head = if RETURN_A_WORD_PATTERN.matches_first_word(share_head) {
+        let share_head = if share_head.first() == Some(&RETURN_A_WORD) {
             &share_head[1..]
         } else {
             share_head
         };
 
-        let shared_type = if EXCHANGE_PERMANENT_TYPE_SHARE_HEAD_PATTERN.matches_words(share_head) {
+        let shared_type = if word_slice_starts_with_any(
+            share_head,
+            EXCHANGE_PERMANENT_TYPE_SHARE_HEAD_PREFIXES,
+        ) {
             SharedTypeConstraintAst::PermanentType
-        } else if EXCHANGE_CARD_TYPE_SHARE_HEAD_PATTERN.matches_words(share_head) {
+        } else if word_slice_starts_with_any(share_head, EXCHANGE_CARD_TYPE_SHARE_HEAD_PREFIXES) {
             SharedTypeConstraintAst::CardType
         } else {
             return Err(CardTextError::ParseError(format!(
@@ -854,9 +845,18 @@ pub(crate) fn parse_exchange(
         Some(ExchangeValueAst::Stat { target, kind })
     }
 
+    let tokens = if tokens
+        .first()
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| EXCHANGE_VERB_WORDS.contains(&word))
+    {
+        &tokens[1..]
+    } else {
+        tokens
+    };
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     if grammar::words_match_any_prefix(tokens, LIFE_TOTALS_PREFIXES).is_some() {
-        if EXCHANGE_LIFE_TOTALS_PATTERN.matches_words(&clause_words) {
+        if word_slice_eq(&clause_words, EXCHANGE_LIFE_TOTALS_WORDS) {
             return match subject {
                 Some(SubjectAst::Player(PlayerAst::Target)) => {
                     Ok(EffectAst::subject_verb_exchange_life_totals(
@@ -939,16 +939,16 @@ pub(crate) fn parse_exchange(
 
         return Ok(EffectAst::subject_verb_exchange_text_boxes(target));
     }
-    let zone_exchange = if EXCHANGE_YOUR_PREFIX_PATTERN.matches_words(&clause_words) {
+    let zone_exchange = if word_slice_starts_with(&clause_words, EXCHANGE_YOUR_PREFIX) {
         Some((PlayerAst::You, 1))
-    } else if EXCHANGE_TARGET_PLAYER_PREFIX_PATTERN.matches_words(&clause_words) {
+    } else if word_slice_starts_with_any(&clause_words, EXCHANGE_TARGET_PLAYER_PREFIXES) {
         Some((PlayerAst::Target, 2))
-    } else if EXCHANGE_TARGET_OPPONENT_PREFIX_PATTERN.matches_words(&clause_words) {
+    } else if word_slice_starts_with_any(&clause_words, EXCHANGE_TARGET_OPPONENT_PREFIXES) {
         Some((PlayerAst::TargetOpponent, 2))
-    } else if EXCHANGE_OPPONENT_PREFIX_PATTERN.matches_words(&clause_words) {
+    } else if word_slice_starts_with_any(&clause_words, EXCHANGE_OPPONENT_PREFIXES) {
         Some((
             PlayerAst::Opponent,
-            if EXCHANGE_AN_OPPONENT_PREFIX_PATTERN.matches_words(&clause_words) {
+            if word_slice_starts_with(&clause_words, EXCHANGE_AN_OPPONENT_PREFIX) {
                 2
             } else {
                 1
@@ -961,7 +961,7 @@ pub(crate) fn parse_exchange(
         && let Some(zone1) = clause_words
             .get(consumed)
             .and_then(|word| parse_zone_word(*word))
-        && EXCHANGE_AND_WORD_PATTERN.matches_word_at(&clause_words, consumed + 1)
+        && clause_words.get(consumed + 1) == Some(&EXCHANGE_AND_WORD)
         && let Some(zone2) = clause_words
             .get(consumed + 2)
             .and_then(|word| parse_zone_word(*word))
@@ -982,7 +982,9 @@ pub(crate) fn parse_exchange(
                 };
 
             let split_idx = find_index(&remainder, |token: &OwnedLexToken| {
-                EXCHANGE_WITH_OR_AND_WORD_PATTERN.matches_token(token)
+                token
+                    .as_word()
+                    .is_some_and(|word| EXCHANGE_WITH_OR_AND_WORDS.contains(&word))
             })
             .ok_or_else(|| {
                 CardTextError::ParseError(format!(

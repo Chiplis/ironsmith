@@ -163,7 +163,9 @@ pub mod matchers {
             }
 
             if let Some(object) = ctx.game.object(mana_event.source) {
-                return self.source_filter.matches(object, &ctx.filter_ctx, ctx.game);
+                return self
+                    .source_filter
+                    .matches(object, &ctx.filter_ctx, ctx.game);
             }
             if let Some(snapshot) = mana_event.snapshot.as_ref() {
                 return self
@@ -178,10 +180,7 @@ pub mod matchers {
         }
 
         fn display(&self) -> String {
-            format!(
-                "If {} would produce mana",
-                self.source_filter.description()
-            )
+            format!("If {} would produce mana", self.source_filter.description())
         }
     }
 }
