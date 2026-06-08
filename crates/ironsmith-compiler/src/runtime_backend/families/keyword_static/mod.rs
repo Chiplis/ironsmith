@@ -11259,7 +11259,6 @@ pub(crate) fn parse_keyword_action_replacement_line(
         EXPLORE_REPLACEMENT_SUBJECT_PATTERN.matches(clause)
     }
 
-    let clause = LexedClause::new(tokens);
     let proliferate_display = render_token_slice(tokens);
     if YOU_PROLIFERATE_TWICE_INSTEAD_PATTERN.matches_non_article_tokens(tokens) {
         return Ok(Some(StaticAbility::keyword_action_replacement(

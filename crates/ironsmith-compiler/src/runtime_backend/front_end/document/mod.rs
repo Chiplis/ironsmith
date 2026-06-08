@@ -1093,7 +1093,6 @@ fn preflight_invalid_payment_keyword_lines(text: &str) -> Option<CardTextError> 
         };
 
         for segment in grammar::split_lexed_slices_on_commas_or_semicolons(&tokens) {
-            let segment_words = TokenWordView::new(segment).word_refs();
             let segment_clause = LexedClause::new(segment);
             let (keyword, cost_start, is_echo) =
                 if CUMULATIVE_UPKEEP_PREFIX_PATTERN.matches_prefix(segment_clause) {

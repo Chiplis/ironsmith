@@ -571,7 +571,6 @@ fn parse_add_mana_colors_among_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
     let clause = LexedClause::new(tokens);
-    let words = token_word_refs(tokens);
     if activation_find_phrase_start(clause, FOR_EACH_COLOR_AMONG_PHRASE).is_none()
         || activation_find_phrase_start(clause, ADD_ONE_MANA_OF_THAT_COLOR_PHRASE).is_none()
     {
