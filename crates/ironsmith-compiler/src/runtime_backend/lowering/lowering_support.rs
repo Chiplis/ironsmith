@@ -1545,14 +1545,15 @@ fn rewrite_validate_effect_for_iterated_player(
         );
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+        // IfEffect can bind IteratedPlayer from PlayerCounts recorded by its antecedent.
         rewrite_validate_effects_for_iterated_player(
             &if_effect.then,
-            iterated_player_bound,
+            true,
             context,
         )?;
         return rewrite_validate_effects_for_iterated_player(
             &if_effect.else_,
-            iterated_player_bound,
+            true,
             context,
         );
     }

@@ -285,6 +285,195 @@ fn describe_search_basic_land_battlefield_tapped_shuffle(effects: &[Effect]) -> 
     )
 }
 
+fn unwrap_tags_for_from_the_ashes_shape(effect: &Effect) -> &Effect {
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_tags_for_from_the_ashes_shape(&tag_all.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_tags_for_from_the_ashes_shape(&tagged.effect);
+    }
+    effect
+}
+
+fn is_destroy_all_nonbasic_lands_effect(effect: &Effect) -> bool {
+    let Some(destroy) = unwrap_tags_for_from_the_ashes_shape(effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()
+    else {
+        return false;
+    };
+    let ChooseSpec::All(filter) = &destroy.spec else {
+        return false;
+    };
+    filter.card_types.as_slice() == [CardType::Land]
+        && filter.excluded_supertypes.contains(&Supertype::Basic)
+}
+
+fn describe_destroyed_land_controller_basic_search_then_player_shuffle(
+    destroy_effect: &Effect,
+    search_effect: &Effect,
+    shuffle_effect: &Effect,
+) -> Option<String> {
+    if !is_destroy_all_nonbasic_lands_effect(destroy_effect) {
+        return None;
+    }
+
+    let search_with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let destroyed_loop = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [may_effect] = destroyed_loop.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [search_sequence_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let search_sequence = search_sequence_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, put_effect] = search_sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let put_each = put_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [put_effect] = put_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [shuffle_then] = shuffle.then.as_slice() else {
+        return None;
+    };
+    let shuffle_library = shuffle_then.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if may.decider != Some(PlayerFilter::IteratedPlayer)
+        || !choose.is_search
+        || choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose.filter.card_types.as_slice() != [CardType::Land]
+        || !choose.filter.supertypes.contains(&Supertype::Basic)
+        || !choose.count.is_single()
+        || put_each.tag != choose.tag
+        || !matches!(put.target, ChooseSpec::Iterated)
+        || put.tapped
+        || put.controller != PlayerFilter::IteratedPlayer
+        || shuffle.condition != search_with_id.id
+        || shuffle.predicate != EffectPredicate::Happened
+        || !shuffle.else_.is_empty()
+        || shuffle_library.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+
+    Some("Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string())
+}
+
+fn describe_destroyed_land_basic_search_then_player_shuffle(
+    search_effect: &Effect,
+    shuffle_effect: &Effect,
+) -> Option<String> {
+    let search_with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let search_effects = if let Some(destroyed_loop) = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+    {
+        destroyed_loop.effects.as_slice()
+    } else if let Some(destroyed_loop) = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::ForEachObject>()
+    {
+        destroyed_loop.effects.as_slice()
+    } else {
+        return None;
+    };
+
+    if describe_optional_basic_land_search_effects(search_effects).is_none() {
+        return None;
+    }
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let [shuffle_then] = shuffle.then.as_slice() else {
+        return None;
+    };
+    let shuffle_library = shuffle_then.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    if shuffle.condition != search_with_id.id
+        || shuffle.predicate != EffectPredicate::Happened
+        || !shuffle.else_.is_empty()
+        || shuffle_library.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+
+    Some("For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string())
+}
+
+fn describe_for_each_tagged_optional_basic_land_search(
+    for_each: &crate::effects::ForEachTaggedEffect,
+) -> Option<String> {
+    describe_optional_basic_land_search_effects(for_each.effects.as_slice())
+}
+
+fn describe_optional_basic_land_search_effects(effects: &[Effect]) -> Option<String> {
+    let search_effects = if let [may_effect] = effects
+        && let Some(may) = may_effect.downcast_ref::<crate::effects::MayEffect>()
+    {
+        may.effects.as_slice()
+    } else {
+        effects
+    };
+    let search_effects = if let [sequence_effect] = search_effects
+        && let Some(sequence) = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        search_effects
+    };
+    let (choose_effect, put_effect) = if let [may_effect, put_effect] = search_effects
+        && let Some(may) = may_effect.downcast_ref::<crate::effects::MayEffect>()
+    {
+        let may_effects = if let [sequence_effect] = may.effects.as_slice()
+            && let Some(sequence) = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()
+        {
+            sequence.effects.as_slice()
+        } else {
+            may.effects.as_slice()
+        };
+        let [choose_effect] = may_effects else {
+            return None;
+        };
+        (choose_effect, put_effect)
+    } else {
+        let [choose_effect, put_effect] = search_effects else {
+            return None;
+        };
+        (choose_effect, put_effect)
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let put_each = put_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [put_effect] = put_each.effects.as_slice() else {
+        return None;
+    };
+    let put = put_effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()?;
+    let puts_searched_object = matches!(put.target, ChooseSpec::Iterated)
+        || matches!(&put.target, ChooseSpec::Tagged(tag) if tag == &choose.tag);
+
+    if !choose.is_search
+        || choose.zone != Some(Zone::Library)
+        || choose.filter.zone != Some(Zone::Library)
+        || choose.filter.card_types.as_slice() != [CardType::Land]
+        || !choose.filter.supertypes.contains(&Supertype::Basic)
+        || !choose.count.is_single()
+        || put_each.tag != choose.tag
+        || !puts_searched_object
+        || put.tapped
+    {
+        return None;
+    }
+
+    Some("For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield".to_string())
+}
+
 fn describe_council_dilemma_named_vote_sequence(effects: &[Effect]) -> Option<String> {
     let [vote_effect, repeat_effects @ ..] = effects else {
         return None;
@@ -773,6 +962,11 @@ fn normalize_compile_effect_list_surface(line: &str) -> String {
         == "each opponent chooses a creature card, then put it onto the battlefield under your control"
     {
         return "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control".to_string();
+    }
+    if lower
+        == "destroy all nonbasic lands. for each land destroyed this way, its controller may search its controller's library for a basic land card. for each tagged 'searched' object, put them onto the battlefield. if you do, shuffle that player's library"
+    {
+        return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
     }
     line.to_string()
 }
@@ -5715,6 +5909,21 @@ fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<Stri
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let [destroy_effect, search_effect, shuffle_effect] = effects
+        && let Some(compact) = describe_destroyed_land_controller_basic_search_then_player_shuffle(
+            destroy_effect,
+            search_effect,
+            shuffle_effect,
+        )
+    {
+        return compact;
+    }
+    if let [search_effect, shuffle_effect] = effects
+        && let Some(compact) =
+            describe_destroyed_land_basic_search_then_player_shuffle(search_effect, shuffle_effect)
+    {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
@@ -14817,6 +15026,27 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         if idx + 1 < filtered.len()
             && let Some(compact) =
                 describe_compact_tagged_apply_continuous_pair(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_destroyed_land_controller_basic_search_then_player_shuffle(
+                filtered[idx],
+                filtered[idx + 1],
+                filtered[idx + 2],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) = describe_destroyed_land_basic_search_then_player_shuffle(
+                filtered[idx],
+                filtered[idx + 1],
+            )
         {
             parts.push(compact);
             idx += 2;
@@ -32324,6 +32554,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         if let Some(compact) = describe_source_and_blocked_creatures_top_library_shuffle(for_each) {
             return compact;
         }
+        if let Some(compact) = describe_optional_basic_land_search_effects(&for_each.effects) {
+            return compact;
+        }
         if for_each.effects.len() == 1
             && let Some(put) =
                 for_each.effects[0].downcast_ref::<crate::effects::PutCountersEffect>()
@@ -32340,7 +32573,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             );
         }
         if let Some(subject) = describe_for_each_tagged_this_way_subject(&for_each.filter) {
-            return format!("{subject}, {}", describe_effect_list(&for_each.effects));
+            let effect_text = describe_effect_list(&for_each.effects);
+            if subject == "For each land destroyed this way"
+                && effect_text.contains("basic land card")
+                && effect_text.contains("For each tagged 'searched' object")
+                && effect_text.contains("put them onto the battlefield")
+            {
+                return "For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield".to_string();
+            }
+            return format!("{subject}, {effect_text}");
         }
         if for_each.effects.len() == 1
             && let Some(gain_control) =
@@ -32403,6 +32644,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_each_tagged) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+        if for_each_tagged.tag.as_str().starts_with("searched")
+            && for_each_tagged.effects.len() == 1
+            && let Some(put) = for_each_tagged.effects[0]
+                .downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+            && matches!(&put.target, ChooseSpec::Tagged(tag) if tag == &for_each_tagged.tag)
+            && !put.tapped
+        {
+            return "put it onto the battlefield".to_string();
+        }
+        if let Some(compact) = describe_for_each_tagged_optional_basic_land_search(for_each_tagged) {
+            return compact;
+        }
         if let Some(compact) = describe_for_each_tagged_shuffle_into_owner_library(for_each_tagged)
         {
             return compact;

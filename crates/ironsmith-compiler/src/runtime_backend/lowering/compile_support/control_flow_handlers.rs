@@ -577,19 +577,6 @@ pub(crate) fn compile_if_do_with_player_did(
         return Ok(Some((effects, choices)));
     }
 
-    let (condition, first_effects) = match first {
-        EffectAst::IfResult {
-            predicate: IfResultPredicate::Did,
-            effects,
-        } => (None, effects),
-        EffectAst::ResolvedIfResult {
-            condition,
-            predicate: IfResultPredicate::Did,
-            effects,
-        } => (Some(*condition), effects),
-        _ => return Ok(None),
-    };
-
     if let Some(predicate) = predicate {
         let (mut first_compiled, mut choices) = compile_effect(first, ctx)?;
         let followup = EffectAst::ForEachPlayer {
@@ -606,6 +593,40 @@ pub(crate) fn compile_if_do_with_player_did(
         }
         return Ok(Some((first_compiled, choices)));
     }
+
+    if !matches!(first, EffectAst::IfResult { .. } | EffectAst::ResolvedIfResult { .. }) {
+        let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
+        let id = if let Some(last) = first_effects.pop() {
+            let id = ctx.next_effect_id();
+            first_effects.push(Effect::with_id(id.0, last));
+            id
+        } else {
+            return Err(CardTextError::ParseError(
+                "missing antecedent effect for player who did follow-up".to_string(),
+            ));
+        };
+
+        let (inner_effects, inner_choices) =
+            compile_effects_in_iterated_player_context(second_effects, ctx, None)?;
+        for choice in inner_choices {
+            push_choice(&mut choices, choice);
+        }
+        first_effects.push(Effect::if_then(id, EffectPredicate::Happened, inner_effects));
+        return Ok(Some((first_effects, choices)));
+    }
+
+    let (condition, first_effects) = match first {
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::Did,
+            effects,
+        } => (None, effects),
+        EffectAst::ResolvedIfResult {
+            condition,
+            predicate: IfResultPredicate::Did,
+            effects,
+        } => (Some(*condition), effects),
+        _ => return Ok(None),
+    };
 
     let Some(EffectAst::ForEachPlayer {
         effects: player_effects,
