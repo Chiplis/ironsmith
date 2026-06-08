@@ -9,10 +9,11 @@ use super::super::grammar::primitives::{
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexedClause, OwnedLexToken, token_slice_starts_with, word_slice_at_is, word_slice_at_is_any,
-    word_slice_contains_word, word_slice_ends_with, word_slice_ends_with_any, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_find_word, word_slice_first_is,
-    word_slice_first_is_any, word_slice_last_is, word_slice_matching_value, word_slice_starts_with,
-    word_slice_starts_with_any, word_slice_starts_with_at,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with,
+    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start,
+    word_slice_find_word, word_slice_first_is, word_slice_first_is_any, word_slice_last_is,
+    word_slice_matching_value, word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_starts_with_at,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::rule_engine::{

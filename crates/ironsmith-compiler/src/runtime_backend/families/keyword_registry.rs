@@ -9,7 +9,6 @@ use super::activation_and_restrictions::{
 };
 use super::clause_support::parse_effect_sentences_lexed;
 use super::cst::{KeywordLineCst, KeywordLineKindCst};
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::abilities::{
     additional_cost_tail_tokens_lexed, is_additional_cost_choice_line_lexed,
     is_standard_gift_keyword_tokens_lexed,
@@ -20,9 +19,10 @@ use super::keyword_families::{
     KeywordDispatchHint, KeywordLineRule, keyword_line_rules, parse_keyword_dispatch_hint,
 };
 use super::keyword_static::parse_if_this_spell_costs_less_to_cast_line_lexed;
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::lexer::{
-    OwnedLexToken, TokenKind, lex_line, parser_token_word_refs, render_token_slice,
-    token_slice_at_is, token_slice_first_is, token_slice_starts_with_any, trim_lexed_commas,
+    LexedClause, OwnedLexToken, TokenKind, lex_line, render_token_slice, token_slice_at_is,
+    token_slice_first_is, token_slice_starts_with_any, trim_lexed_commas,
 };
 use super::lower::{
     lower_exert_attack_keyword_line, lower_gift_keyword_line, lower_keyword_special_cases,
@@ -47,41 +47,130 @@ use super::util::{
     parse_you_may_rather_than_spell_cost_line_lexed, preserve_keyword_prefix_for_parse,
 };
 
-const SURGE_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["surge"]);
-const FREERUNNING_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["freerunning"]);
-const SNEAK_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["sneak"]);
-const EXPLOIT_KEYWORD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["exploit"]);
-const SNEAK_SPELL_FORM_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [
-            &["you", "may", "cast", "this", "spell", "for"],
-            &[
-                "return",
-                "an",
-                "unblocked",
-                "attacker",
-                "you",
-                "control",
-                "to",
-                "hand",
-                "during",
-                "the",
-                "declare",
-                "blockers",
-                "step",
-            ],
-        ]
-);
-const SNEAK_PERMANENT_FORM_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["enters", "tapped", "and", "attacking"]]);
-const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [
-            &["from", "your", "graveyard"],
-            &["using", "its", "blitz", "ability"],
-        ]
-);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeywordPrefixShape {
+    Surge,
+    Freerunning,
+    Sneak,
+    Exploit,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeywordSpecialFormShape {
+    SpellSneak,
+    PermanentSneak,
+    BlitzFromGraveyard,
+    ExertAttack,
+}
+
+const KEYWORD_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "keyword",
+    LexCaptureKind::OneOf(&["surge", "freerunning", "sneak", "exploit"]),
+)]);
+const SNEAK_SPELL_FORM_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["you", "may", "cast", "this", "spell", "for"]),
+    LexPattern::tail(
+        "cost",
+        LexCaptureKind::UntilPhrase(&[
+            "return",
+            "an",
+            "unblocked",
+            "attacker",
+            "you",
+            "control",
+            "to",
+            "hand",
+            "during",
+            "the",
+            "declare",
+            "blockers",
+            "step",
+        ]),
+    ),
+    LexPattern::phrase(&[
+        "return",
+        "an",
+        "unblocked",
+        "attacker",
+        "you",
+        "control",
+        "to",
+        "hand",
+        "during",
+        "the",
+        "declare",
+        "blockers",
+        "step",
+    ]),
+]);
+const SNEAK_PERMANENT_FORM_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&[
+        "enters",
+        "tapped",
+        "and",
+        "attacking",
+    ])]);
+const BLITZ_FROM_GRAVEYARD_MARKER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["from", "your", "graveyard"]),
+    LexPattern::tail(
+        "between",
+        LexCaptureKind::UntilPhrase(&["using", "its", "blitz", "ability"]),
+    ),
+    LexPattern::phrase(&["using", "its", "blitz", "ability"]),
+]);
+const EXERT_ATTACK_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "exert",
+    LexCaptureKind::OneOfPhrase(&[
+        &["you", "may", "exert"],
+        &[
+            "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you", "may",
+            "exert",
+        ],
+        &[
+            "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you", "may",
+            "exert",
+        ],
+    ]),
+)]);
+
+fn keyword_prefix_shape(tokens: &[OwnedLexToken]) -> Option<KeywordPrefixShape> {
+    let clause = LexedClause::new(tokens);
+    let matched = KEYWORD_PREFIX_PATTERN.match_prefix(clause)?;
+    let keyword = matched
+        .capture_clause_by_role(LexCaptureRole::Action, clause)?
+        .word_refs()
+        .join(" ");
+    match keyword.as_str() {
+        "surge" => Some(KeywordPrefixShape::Surge),
+        "freerunning" => Some(KeywordPrefixShape::Freerunning),
+        "sneak" => Some(KeywordPrefixShape::Sneak),
+        "exploit" => Some(KeywordPrefixShape::Exploit),
+        _ => None,
+    }
+}
+
+fn keyword_special_form_shape(tokens: &[OwnedLexToken]) -> Option<KeywordSpecialFormShape> {
+    let clause = LexedClause::new(tokens);
+    if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN
+        .find_in_clause(clause)
+        .is_some()
+    {
+        return Some(KeywordSpecialFormShape::BlitzFromGraveyard);
+    }
+    if EXERT_ATTACK_PREFIX_PATTERN.match_prefix(clause).is_some() {
+        return Some(KeywordSpecialFormShape::ExertAttack);
+    }
+    if SNEAK_PERMANENT_FORM_PATTERN
+        .find_in_clause(clause)
+        .is_some()
+    {
+        return Some(KeywordSpecialFormShape::PermanentSneak);
+    }
+    if SNEAK_SPELL_FORM_PATTERN.find_in_clause(clause).is_some() {
+        return Some(KeywordSpecialFormShape::SpellSneak);
+    }
+    None
+}
 
 pub(crate) fn parse_keyword_line_cst(
     line: &PreprocessedLine,
@@ -246,7 +335,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if SURGE_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+    if keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Surge) {
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
@@ -276,7 +365,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if FREERUNNING_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+    if keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Freerunning) {
         let raw_tokens = lex_line(line.text.as_str(), line.info.line_index)?;
         let cost_tokens = raw_tokens.get(1..).unwrap_or_default();
         let (cost, _) = leading_mana_cost_from_tokens(cost_tokens).ok_or_else(|| {
@@ -295,7 +384,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+    if keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Sneak) {
         if !is_supported_spell_sneak_line(&line.full_parse_tokens) {
             return Err(CardTextError::ParseError(format!(
                 "sneak keyword form is not yet supported: '{}'",
@@ -319,7 +408,7 @@ pub(super) fn lower_alternative_cast(
         ));
     }
 
-    if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+    if keyword_special_form_shape(tokens) == Some(KeywordSpecialFormShape::BlitzFromGraveyard) {
         return Ok(LineAst::Abilities(vec![
             crate::cards::builders::KeywordAction::BlitzFromGraveyard,
         ]));
@@ -356,9 +445,7 @@ pub(super) fn lower_alternative_cast(
 }
 
 fn is_supported_spell_sneak_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = parser_token_word_refs(tokens);
-    SNEAK_SPELL_FORM_PATTERN.matches_words(&words)
-        && !SNEAK_PERMANENT_FORM_PATTERN.matches_words(&words)
+    keyword_special_form_shape(tokens) == Some(KeywordSpecialFormShape::SpellSneak)
 }
 
 pub(super) fn lower_bestow(
@@ -742,7 +829,7 @@ pub(super) fn matches_alternative_cast(
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
     let _ = line;
-    if BLITZ_FROM_GRAVEYARD_MARKER_PATTERN.matches_words(&parser_token_word_refs(tokens)) {
+    if keyword_special_form_shape(tokens) == Some(KeywordSpecialFormShape::BlitzFromGraveyard) {
         return Ok(true);
     }
 
@@ -983,26 +1070,11 @@ pub(super) fn matches_exploit(
     _line: &PreprocessedLine,
     tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError> {
-    Ok(EXPLOIT_KEYWORD_PREFIX_PATTERN.matches_words(&parser_token_word_refs(tokens)))
+    Ok(keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Exploit))
 }
 
 fn is_exert_attack_keyword_line(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    const EXERT_ATTACK_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-        prefix_any
-            & [
-                &["you", "may", "exert"],
-                &[
-                    "if", "this", "creature", "hasnt", "been", "exerted", "this", "turn", "you",
-                    "may", "exert",
-                ],
-                &[
-                    "if", "this", "creature", "hasn't", "been", "exerted", "this", "turn", "you",
-                    "may", "exert",
-                ],
-            ]
-    );
-    EXERT_ATTACK_PREFIX_PATTERN.matches_words(&words)
+    keyword_special_form_shape(tokens) == Some(KeywordSpecialFormShape::ExertAttack)
 }
 
 fn additional_cost_tail_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -1021,9 +1093,8 @@ fn parse_additional_cost_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardText
 
 fn parse_alternative_cast_kind(tokens: &[OwnedLexToken]) -> Result<bool, CardTextError> {
     let rendered = render_token_slice(tokens).trim().to_ascii_lowercase();
-    let words = parser_token_word_refs(tokens);
     Ok(token_slice_first_is(tokens, "encore")
-        || SNEAK_KEYWORD_PREFIX_PATTERN.matches_words(&words)
+        || keyword_prefix_shape(tokens) == Some(KeywordPrefixShape::Sneak)
         || parse_self_free_cast_alternative_cost_line_lexed(tokens).is_some()
         || parse_you_may_rather_than_spell_cost_line_lexed(tokens, rendered.as_str())?.is_some()
         || parse_flash_with_additional_cost_line_lexed(tokens).is_some()

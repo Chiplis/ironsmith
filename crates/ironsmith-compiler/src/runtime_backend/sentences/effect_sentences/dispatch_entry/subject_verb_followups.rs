@@ -1,28 +1,27 @@
 use crate::cards::builders::SubjectVerbSubjectAst;
 use crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed;
+use crate::runtime_backend::lexer::{
+    token_word_refs, word_slice_contains_any_word, word_slice_contains_phrase, word_slice_eq,
+    word_slice_eq_any, word_slice_starts_with,
+};
 
 use super::*;
 
-const OF_THOSE_TOKENS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["of", "those", "tokens"]);
-const CREATE_THOSE_TOKENS_TRAILING_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["instead"],
-            &["onto", "the", "battlefield"],
-            &["onto", "the", "battlefield", "instead"],
-        ]
-);
-const TOKEN_REMINDER_LIFECYCLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["exile"], &["sacrifice"]]);
-const UNTIL_END_OF_TURN_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["until", "end", "of", "turn"]]);
-const WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
-        ]
-);
+const OF_THOSE_TOKENS_PREFIX: &[&str] = &["of", "those", "tokens"];
+const CREATE_THOSE_TOKENS_TRAILING_WORDS: &[&[&str]] = &[
+    &["instead"],
+    &["onto", "the", "battlefield"],
+    &["onto", "the", "battlefield", "instead"],
+];
+const TOKEN_REMINDER_LIFECYCLE_WORDS: &[&str] = &["exile", "sacrifice"];
+const UNTIL_END_OF_TURN_PHRASE: &[&str] = &["until", "end", "of", "turn"];
+const WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX: &[&str] = &[
+    "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
+];
+const SKIP_TURN_WHILE_THIS_ARTIFACT_TAPPED_WORDS: &[&str] = &[
+    "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is", "tapped",
+    "you", "may", "skip", "that", "turn", "instead",
+];
 
 pub(super) enum PreParseFollowupResult {
     Handled {
@@ -425,10 +424,10 @@ fn pre_rule_skip_tapped_source_turn_replacement(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !LexedClause::new(sentence_tokens).matches_words(&[
-        "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is", "tapped",
-        "you", "may", "skip", "that", "turn", "instead",
-    ]) {
+    if !word_slice_eq(
+        &token_word_refs(sentence_tokens),
+        SKIP_TURN_WHILE_THIS_ARTIFACT_TAPPED_WORDS,
+    ) {
         return Ok(None);
     }
     Ok(Some(PreParseFollowupResult::Plan(SentenceParsePlan {
@@ -588,10 +587,10 @@ pub(super) fn previous_sentence_is_temporary_land_animation(
         .checked_sub(1)
         .and_then(|idx| sentences.get(idx))
         .is_some_and(|previous_sentence| {
-            let previous_clause = LexedClause::new(previous_sentence.lowered());
-            previous_clause.contains_any_word(&["become", "becomes"])
-                && previous_clause.contains_any_word(&["creature", "creatures"])
-                && UNTIL_END_OF_TURN_MARKER_PATTERN.matches(previous_clause)
+            let previous_words = token_word_refs(previous_sentence.lowered());
+            word_slice_contains_any_word(&previous_words, &["become", "becomes"])
+                && word_slice_contains_any_word(&previous_words, &["creature", "creatures"])
+                && word_slice_contains_phrase(&previous_words, UNTIL_END_OF_TURN_PHRASE)
         })
 }
 
@@ -758,7 +757,7 @@ fn pre_rule_token_followups(
         let reminder_words = LexedClause::new(sentence_tokens).word_refs();
         let delayed_pronoun_lifecycle = reminder_words
             .first()
-            .is_some_and(|word| TOKEN_REMINDER_LIFECYCLE_WORD_PATTERN.matches_word(word))
+            .is_some_and(|word| TOKEN_REMINDER_LIFECYCLE_WORDS.contains(word))
             && (grammar::contains_word(sentence_tokens, "it")
                 || grammar::contains_word(sentence_tokens, "them"));
         let pronoun_followup_clause =
@@ -821,13 +820,14 @@ fn parse_create_more_of_prior_tokens(
     let (name, player) = last_created_token_info(prior_effects)?;
     let after_create = &sentence_tokens[create_idx + 1..];
     let (count, used) = parse_number(after_create)?;
-    let tail_words = LexedClause::new(&after_create[used..]).word_refs();
-    if tail_words.len() < 3 || !OF_THOSE_TOKENS_PREFIX_PATTERN.matches_words(&tail_words) {
+    let tail_clause = LexedClause::new(&after_create[used..]);
+    let tail_words = tail_clause.word_refs();
+    if !word_slice_starts_with(&tail_words, OF_THOSE_TOKENS_PREFIX) {
         return None;
     }
-    let trailing_words = &tail_words[3..];
+    let trailing_words = &tail_words[OF_THOSE_TOKENS_PREFIX.len()..];
     let trailing_is_supported = trailing_words.is_empty()
-        || CREATE_THOSE_TOKENS_TRAILING_PATTERN.matches_words(trailing_words);
+        || word_slice_eq_any(trailing_words, CREATE_THOSE_TOKENS_TRAILING_WORDS);
     if !trailing_is_supported {
         return None;
     }
@@ -931,9 +931,10 @@ fn pre_rule_when_milled_this_way_followup(
     _sentence_idx: usize,
     sentence_tokens: &[OwnedLexToken],
 ) -> Result<Option<PreParseFollowupResult>, CardTextError> {
-    if !WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX_PATTERN
-        .matches(LexedClause::new(sentence_tokens))
-    {
+    if !word_slice_starts_with(
+        &token_word_refs(sentence_tokens),
+        WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX,
+    ) {
         return Ok(None);
     }
     let Some((_before, after)) =

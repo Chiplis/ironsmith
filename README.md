@@ -1,4 +1,4 @@
-Magic: The Gathering engine supporting automatic oracle text parsing and custom card compilation via natural language with ZKP-backed 4-way multiplayer.
+Magic: The Gathering engine supporting automatic oracle text parsing and custom card compilation via natural language and 4-way multiplayer backed by Zero Knowledge proofs.
 
 ~26k cards supported, with more to come soon!
 

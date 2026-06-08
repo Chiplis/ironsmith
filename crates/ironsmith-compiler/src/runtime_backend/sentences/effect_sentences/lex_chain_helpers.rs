@@ -4,13 +4,16 @@ use super::super::clause_support::parse_ability_line_lexed;
 use super::super::grammar::primitives as grammar;
 use super::super::lexer::{
     OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is_any, token_slice_first_is,
-    token_word_refs, trim_lexed_commas,
+    token_word_refs, trim_lexed_commas, word_slice_at_is, word_slice_contains_any_phrase,
+    word_slice_contains_phrase, word_slice_contains_word, word_slice_ends_with,
+    word_slice_ends_with_any, word_slice_eq_any, word_slice_first_is, word_slice_first_is_any,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::util::{parse_zone_word, trim_commas};
 use super::chain_carry::{Verb, find_verb};
 use super::clause_pattern_helpers::{
-    ClauseShape, clause_shape, parse_can_attack_as_though_no_defender_clause,
-    parse_prevent_all_damage_clause, parse_prevent_next_damage_clause,
+    parse_can_attack_as_though_no_defender_clause, parse_prevent_all_damage_clause,
+    parse_prevent_next_damage_clause,
 };
 use super::clause_primitives::{
     parse_attack_or_block_this_turn_if_able_clause, parse_attack_this_turn_if_able_clause,
@@ -27,286 +30,250 @@ const EACH_PLAYER_OR_OPPONENT_PREFIXES: &[&[&str]] = &[
     &["for", "each", "opponent"],
     &["for", "each", "opponents"],
 ];
-const CAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["can"]);
-const EXCHANGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["exchange"]);
-const PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
-const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const NEXT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["next"]);
-const DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
-const ATTACK_OR_ATTACKS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["attack"], &["attacks"]]);
-const BLOCK_OR_BLOCKS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["block"], &["blocks"]]);
-const TOUGHNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["toughness"]);
-const UNTIL_OR_DURING_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["until"], &["during"]]);
-const UNLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["unless"]);
-const TARGET_CARD_TYPE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["artifact"],
-            &["battle"],
-            &["creature"],
-            &["enchantment"],
-            &["instant"],
-            &["land"],
-            &["planeswalker"],
-            &["sorcery"],
-        ]
-);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const ARTICLE_OR_QUANTIFIER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"], &["the"], &["all"], &["each"]]);
-const SHARED_SUBJECT_MODIFIER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["get"], &["gets"], &["become"], &["becomes"]]);
-const GAIN_HAVE_LOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["gain"],
-            &["gains"],
-            &["has"],
-            &["have"],
-            &["lose"],
-            &["loses"],
-        ]
-);
+const CAN_WORD: &str = "can";
+const EXCHANGE_WORD: &str = "exchange";
+const PREVENT_WORD: &str = "prevent";
+const THE_WORD: &str = "the";
+const NEXT_WORD: &str = "next";
+const DAMAGE_WORD: &str = "damage";
+const TOUGHNESS_WORD: &str = "toughness";
+const UNTIL_WORD: &str = "until";
+const UNLESS_WORD: &str = "unless";
+const OF_WORD: &str = "of";
+const OR_WORD: &str = "or";
+const AND_WORD: &str = "and";
+const THEN_WORD: &str = "then";
+const TARGET_WORD: &str = "target";
+
+const ATTACK_OR_ATTACKS_WORDS: &[&str] = &["attack", "attacks"];
+const BLOCK_OR_BLOCKS_WORDS: &[&str] = &["block", "blocks"];
+const UNTIL_OR_DURING_WORDS: &[&str] = &["until", "during"];
+const TARGET_CARD_TYPE_WORDS: &[&str] = &[
+    "artifact",
+    "battle",
+    "creature",
+    "enchantment",
+    "instant",
+    "land",
+    "planeswalker",
+    "sorcery",
+];
+const ARTICLE_OR_QUANTIFIER_WORDS: &[&str] = &["a", "an", "the", "all", "each"];
+const SHARED_SUBJECT_MODIFIER_WORDS: &[&str] = &["get", "gets", "become", "becomes"];
+const GAIN_HAVE_LOSE_WORDS: &[&str] = &["gain", "gains", "has", "have", "lose", "loses"];
 struct VerbShapeEntry {
-    pattern: ClauseShape<'static>,
+    words: &'static [&'static str],
     verb: Verb,
 }
 
-const END_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact_any & [&["end"], &["ends"]]);
-const UNTIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["until"]);
-const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const TURN_OR_COMBAT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["turn"], &["combat"]]);
-const COUNTER_NOUN_CONTEXT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["on"], &["from"], &["among"]]);
-const BACKREF_COUNTER_TARGET_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_phrases & [&[&["on", "it"], &["on", "them"]]]);
-const AT_THE_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["at", "the"]]);
+const END_WORDS: &[&str] = &["end", "ends"];
+const TURN_OR_COMBAT_WORDS: &[&str] = &["turn", "combat"];
+const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
+const COUNTER_NOUN_CONTEXT_WORDS: &[&str] = &["on", "from", "among"];
+const BACKREF_COUNTER_TARGET_PHRASES: &[&[&str]] = &[&["on", "it"], &["on", "them"]];
+const AT_THE_PHRASE: &[&str] = &["at", "the"];
 const VERB_SHAPES: &[VerbShapeEntry] = &[
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["adds"], &["add"]]),
+        words: &["adds", "add"],
         verb: Verb::Add,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["moves"], &["move"]]),
+        words: &["moves", "move"],
         verb: Verb::Move,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["deals"], &["deal"]]),
+        words: &["deals", "deal"],
         verb: Verb::Deal,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["draws"], &["draw"]]),
+        words: &["draws", "draw"],
         verb: Verb::Draw,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["counters"], &["counter"]]),
+        words: &["counters", "counter"],
         verb: Verb::Counter,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["destroys"], &["destroy"]]),
+        words: &["destroys", "destroy"],
         verb: Verb::Destroy,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["exiles"], &["exile"]]),
+        words: &["exiles", "exile"],
         verb: Verb::Exile,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["reveals"], &["reveal"]]),
+        words: &["reveals", "reveal"],
         verb: Verb::Reveal,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["looks"], &["look"]]),
+        words: &["looks", "look"],
         verb: Verb::Look,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["loses"], &["lose"]]),
+        words: &["loses", "lose"],
         verb: Verb::Lose,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["gains"], &["gain"]]),
+        words: &["gains", "gain"],
         verb: Verb::Gain,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["puts"], &["put"]]),
+        words: &["puts", "put"],
         verb: Verb::Put,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["sacrifices"], &["sacrifice"]]),
+        words: &["sacrifices", "sacrifice"],
         verb: Verb::Sacrifice,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["creates"], &["create"]]),
+        words: &["creates", "create"],
         verb: Verb::Create,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["investigates"], &["investigate"]]),
+        words: &["investigates", "investigate"],
         verb: Verb::Investigate,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["proliferates"], &["proliferate"]]),
+        words: &["proliferates", "proliferate"],
         verb: Verb::Proliferate,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["taps"], &["tap"]]),
+        words: &["taps", "tap"],
         verb: Verb::Tap,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["attaches"], &["attach"]]),
+        words: &["attaches", "attach"],
         verb: Verb::Attach,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["unattaches"], &["unattach"]]),
-        verb: Verb::Unattach,
-    },
-    VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["untaps"], &["untap"]]),
+        words: &["untaps", "untap"],
         verb: Verb::Untap,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["scries"], &["scry"]]),
+        words: &["scries", "scry"],
         verb: Verb::Scry,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["discards"], &["discard"]]),
+        words: &["discards", "discard"],
         verb: Verb::Discard,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["transforms"], &["transform"]]),
+        words: &["transforms", "transform"],
         verb: Verb::Transform,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["converts"], &["convert"]]),
+        words: &["converts", "convert"],
         verb: Verb::Convert,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["flips"], &["flip"]]),
+        words: &["flips", "flip"],
         verb: Verb::Flip,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["rolls"], &["roll"]]),
+        words: &["rolls", "roll"],
         verb: Verb::Roll,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["regenerates"], &["regenerate"]]),
+        words: &["regenerates", "regenerate"],
         verb: Verb::Regenerate,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["mills"], &["mill"]]),
+        words: &["mills", "mill"],
         verb: Verb::Mill,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["gets"], &["get"]]),
+        words: &["gets", "get"],
         verb: Verb::Get,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["removes"], &["remove"]]),
+        words: &["removes", "remove"],
         verb: Verb::Remove,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["returns"], &["return"]]),
+        words: &["returns", "return"],
         verb: Verb::Return,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["exchanges"], &["exchange"]]),
+        words: &["exchanges", "exchange"],
         verb: Verb::Exchange,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["becomes"], &["become"]]),
+        words: &["becomes", "become"],
         verb: Verb::Become,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["switches"], &["switch"]]),
+        words: &["switches", "switch"],
         verb: Verb::Switch,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["skips"], &["skip"]]),
+        words: &["skips", "skip"],
         verb: Verb::Skip,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["surveils"], &["surveil"]]),
+        words: &["surveils", "surveil"],
         verb: Verb::Surveil,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["incubates"], &["incubate"]]),
+        words: &["incubates", "incubate"],
         verb: Verb::Incubate,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["shuffles"], &["shuffle"]]),
+        words: &["shuffles", "shuffle"],
         verb: Verb::Shuffle,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["reorders"], &["reorder"]]),
+        words: &["reorders", "reorder"],
         verb: Verb::Reorder,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["pays"], &["pay"]]),
+        words: &["pays", "pay"],
         verb: Verb::Pay,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["takes"], &["take"]]),
+        words: &["takes", "take"],
         verb: Verb::Take,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["detains"], &["detain"]]),
+        words: &["detains", "detain"],
         verb: Verb::Detain,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["goads"], &["goad"]]),
+        words: &["goads", "goad"],
         verb: Verb::Goad,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["suspects"], &["suspect"]]),
+        words: &["suspects", "suspect"],
         verb: Verb::Suspect,
     },
     VerbShapeEntry {
-        pattern: clause_shape!(exact_any & [&["ends"], &["end"]]),
+        words: &["ends", "end"],
         verb: Verb::End,
     },
 ];
-const PREVENT_NEXT_DAMAGE_CORE_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["prevent"];
-    suffix & ["this", "turn"];
-    contains_words & ["next", "damage"]
-);
-const ATTACK_OR_BLOCK_IF_ABLE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["attack", "or", "block", "this", "turn", "if", "able"],
-            &["attacks", "or", "blocks", "this", "turn", "if", "able"],
-            &["attacks", "or", "block", "this", "turn", "if", "able"],
-            &["attack", "or", "blocks", "this", "turn", "if", "able"],
-        ]
-);
-
-fn token_word_matches_shape(token: Option<&OwnedLexToken>, shape: &ClauseShape<'static>) -> bool {
-    token.is_some_and(|token| shape.matches_token(token))
-}
+const PREVENT_NEXT_DAMAGE_CORE_PREFIX: &[&str] = &["prevent"];
+const PREVENT_NEXT_DAMAGE_CORE_SUFFIX: &[&str] = &["this", "turn"];
+const PREVENT_NEXT_DAMAGE_CORE_REQUIRED: &[&str] = &["next", "damage"];
+const ATTACK_OR_BLOCK_IF_ABLE_TAIL_PHRASES: &[&[&str]] = &[
+    &["attack", "or", "block", "this", "turn", "if", "able"],
+    &["attacks", "or", "blocks", "this", "turn", "if", "able"],
+    &["attacks", "or", "block", "this", "turn", "if", "able"],
+    &["attack", "or", "blocks", "this", "turn", "if", "able"],
+];
 
 fn verb_from_word(word: &str) -> Option<Verb> {
     VERB_SHAPES
         .iter()
-        .find(|entry| entry.pattern.matches_word(word))
+        .find(|entry| entry.words.contains(&word))
         .map(|entry| entry.verb)
 }
-const ATTACK_IF_ABLE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["attack", "this", "turn", "if", "able"],
-            &["attacks", "this", "turn", "if", "able"],
-        ]
-);
-const BLOCK_IF_ABLE_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["block", "this", "turn", "if", "able"],
-            &["blocks", "this", "turn", "if", "able"],
-        ]
-);
+const ATTACK_IF_ABLE_TAIL_PHRASES: &[&[&str]] = &[
+    &["attack", "this", "turn", "if", "able"],
+    &["attacks", "this", "turn", "if", "able"],
+];
+const BLOCK_IF_ABLE_TAIL_PHRASES: &[&[&str]] = &[
+    &["block", "this", "turn", "if", "able"],
+    &["blocks", "this", "turn", "if", "able"],
+];
 
 const INLINE_TOKEN_RULES_TAIL_PREFIXES: &[&[&str]] = &[
     &["when"],
@@ -393,90 +360,78 @@ const PUT_BACK_PREFIXES: &[&[&str]] = &[
     &["puts", "it", "back"],
     &["puts", "them", "back"],
 ];
-const INLINE_TOKEN_RULES_CONTEXT_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["when", "this", "token"],
-            &["whenever", "this", "token"],
-            &["at", "the", "beginning", "of"],
-        ]]
-);
-const EXCEPT_COPY_TOKEN_CONTEXT_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["except", "copy", "token"]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
-const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["counter"], &["counters"]]);
-const CURRENT_CARD_TYPE_LIST_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["or", "and/or"]]);
-const PREVENT_NEXT_DAMAGE_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "would", "be", "dealt", "to"]);
-const THIS_TURN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "turn"]);
-const PREVENT_ALL_DAMAGE_DURATION_FIRST_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
-        ]
-);
-const PREVENT_ALL_DAMAGE_TARGET_FIRST_PATTERN: ClauseShape<'static> = clause_shape!(prefix & [
+const INLINE_TOKEN_RULES_CONTEXT_PHRASES: &[&[&str]] = &[
+    &["when", "this", "token"],
+    &["whenever", "this", "token"],
+    &["at", "the", "beginning", "of"],
+];
+const EXCEPT_COPY_TOKEN_CONTEXT_WORDS: &[&str] = &["except", "copy", "token"];
+const CURRENT_CARD_TYPE_LIST_MARKER_WORDS: &[&str] = &["or", "and/or"];
+const PREVENT_NEXT_DAMAGE_TAIL_PREFIX: &[&str] = &["that", "would", "be", "dealt", "to"];
+const THIS_TURN_SUFFIX: &[&str] = &["this", "turn"];
+const PREVENT_ALL_DAMAGE_DURATION_FIRST_PREFIX: &[&str] = &[
+    "prevent", "all", "damage", "that", "would", "be", "dealt", "this", "turn", "to",
+];
+const PREVENT_ALL_DAMAGE_TARGET_FIRST_PREFIX: &[&str] = &[
     "prevent", "all", "damage", "that", "would", "be", "dealt", "to",
-]; suffix & ["this", "turn"]);
-const CAN_ATTACK_AS_THOUGH_NO_DEFENDER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["can", "attack"];
-    suffix & ["defender"];
-    contains_phrases & [&["as", "though"]];
-    contains_words & ["turn", "have"]
-);
-const IF_ABLE_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["if", "able"]);
-const PHASE_WORD_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    suffix_any
-        & [
-            &["phase", "out"],
-            &["phases", "out"],
-            &["phase", "in"],
-            &["phases", "in"],
-        ]
-);
-const CHOOSE_TARGET_PRELUDE_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["choose"], &["chooses"]]; contains_words & ["target"]);
-const POWER_TOUGHNESS_AXIS_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["power"], &["total", "power"], &["base", "power"]]);
-const BECOME_WITH_QUOTED_ABILITY_CONTEXT_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["becomes", "with"]);
-const REPEAT_THIS_PROCESS_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["repeat", "this", "process"],
-            &["and", "repeat", "this", "process"]
-        ]
-);
-const BACK_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["that", "it", "them", "its"]]);
-const PUT_OR_DOUBLE_COUNTER_FOLLOWUP_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["put"], &["double"]]; contains_any_words & [&["counter", "counters"]]);
-const NONVERB_EFFECT_HEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["double"],
-            &["distribute"],
-            &["support"],
-            &["bolster"],
-            &["adapt"],
-            &["open"],
-            &["manifest"],
-            &["connive"],
-            &["earthbend"],
-        ]
-);
-const ATTACH_OR_ATTACHES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["attach"], &["attaches"]]);
-const DEAL_DAMAGE_EQUAL_TOTAL_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(contains_any_words & [&["deal", "deals"]]; contains_words & ["damage", "equal", "total", "mana", "value"]);
-const DEAL_DAMAGE_FOLLOWUP_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["deal", "deals"]]; contains_words & ["damage"]);
-const RETURN_WITH_COUNTER_FOLLOWUP_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["return"]; contains_any_words & [&["counter", "counters"]]);
+];
+const CAN_ATTACK_AS_THOUGH_NO_DEFENDER_PREFIX: &[&str] = &["can", "attack"];
+const CAN_ATTACK_AS_THOUGH_NO_DEFENDER_SUFFIX: &[&str] = &["defender"];
+const AS_THOUGH_PHRASE: &[&str] = &["as", "though"];
+const CAN_ATTACK_AS_THOUGH_NO_DEFENDER_REQUIRED: &[&str] = &["turn", "have"];
+const IF_ABLE_SUFFIX: &[&str] = &["if", "able"];
+const PHASE_WORD_TAIL_SUFFIXES: &[&[&str]] = &[
+    &["phase", "out"],
+    &["phases", "out"],
+    &["phase", "in"],
+    &["phases", "in"],
+];
+const CHOOSE_TARGET_PRELUDE_PREFIXES: &[&[&str]] = &[&["choose"], &["chooses"]];
+const POWER_TOUGHNESS_AXIS_SUFFIXES: &[&[&str]] =
+    &[&["power"], &["total", "power"], &["base", "power"]];
+const BECOME_WITH_QUOTED_ABILITY_CONTEXT_WORDS: &[&str] = &["becomes", "with"];
+const REPEAT_THIS_PROCESS_PHRASES: &[&[&str]] = &[
+    &["repeat", "this", "process"],
+    &["and", "repeat", "this", "process"],
+];
+const BACK_REFERENCE_WORDS: &[&str] = &["that", "it", "them", "its"];
+const PUT_OR_DOUBLE_COUNTER_FOLLOWUP_PREFIXES: &[&[&str]] = &[&["put"], &["double"]];
+const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
+    "double",
+    "distribute",
+    "support",
+    "bolster",
+    "adapt",
+    "open",
+    "manifest",
+    "connive",
+    "earthbend",
+];
+const ATTACH_OR_ATTACHES_WORDS: &[&str] = &["attach", "attaches"];
+const DEAL_OR_DEALS_WORDS: &[&str] = &["deal", "deals"];
+const DEAL_DAMAGE_EQUAL_TOTAL_MANA_VALUE_REQUIRED: &[&str] =
+    &["damage", "equal", "total", "mana", "value"];
+const DEAL_DAMAGE_FOLLOWUP_REQUIRED: &[&str] = &["damage"];
+const RETURN_WITH_COUNTER_FOLLOWUP_PREFIX: &[&str] = &["return"];
 
-fn find_word_matching_shape(words: &[&str], shape: &ClauseShape<'static>) -> Option<usize> {
-    words.iter().position(|word| shape.matches_word(word))
+fn token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word().is_some_and(|word| word == expected)
+}
+
+fn words_contain_all(words: &[&str], required: &[&str]) -> bool {
+    required
+        .iter()
+        .all(|word| word_slice_contains_word(words, word))
+}
+
+fn words_contain_any(words: &[&str], choices: &[&str]) -> bool {
+    choices
+        .iter()
+        .any(|word| word_slice_contains_word(words, word))
+}
+
+fn find_word_matching_any(words: &[&str], choices: &[&str]) -> Option<usize> {
+    words.iter().position(|word| choices.contains(word))
 }
 
 pub(crate) fn strip_leading_instead_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
@@ -637,8 +592,8 @@ pub(crate) fn is_token_creation_context(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn has_inline_token_rules_context(words: &[&str]) -> bool {
-    INLINE_TOKEN_RULES_CONTEXT_PATTERN.matches_words(words)
-        || EXCEPT_COPY_TOKEN_CONTEXT_PATTERN.matches_words(words)
+    word_slice_contains_any_phrase(words, INLINE_TOKEN_RULES_CONTEXT_PHRASES)
+        || words_contain_all(words, EXCEPT_COPY_TOKEN_CONTEXT_WORDS)
 }
 
 fn should_keep_and_for_token_rules(current: &[OwnedLexToken], remaining: &[OwnedLexToken]) -> bool {
@@ -692,7 +647,7 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
     let mut current = Vec::new();
 
     for (idx, token) in tokens.iter().enumerate() {
-        if AND_WORD_PATTERN.matches_token(token) {
+        if token_word_is(token, AND_WORD) {
             let prev_word = current.last().and_then(OwnedLexToken::as_word);
             let next_word = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
             let is_color_pair = prev_word.zip(next_word).is_some_and(|(left, right)| {
@@ -727,28 +682,28 @@ pub(crate) fn split_effect_chain_on_and(tokens: &[OwnedLexToken]) -> Vec<Vec<Own
 }
 
 pub(crate) fn find_verb_lexed(tokens: &[OwnedLexToken]) -> Option<(Verb, usize)> {
-    for (idx, token) in tokens.iter().enumerate() {
-        let Some(word) = token.as_word() else {
-            continue;
-        };
+    let words = token_word_refs(tokens);
+    find_verb_words_lexed(&words)
+}
+
+pub(crate) fn find_verb_words_lexed(words: &[&str]) -> Option<(Verb, usize)> {
+    for (idx, word) in words.iter().enumerate() {
         let lower = word.to_ascii_lowercase();
-        if END_WORD_PATTERN.matches_word(&lower)
-            && tokens
+        if END_WORDS.contains(&lower.as_str())
+            && words
                 .get(idx.saturating_sub(1))
-                .is_some_and(|token| UNTIL_WORD_PATTERN.matches_token(token))
-            && tokens
-                .get(idx + 1)
-                .is_some_and(|token| OF_WORD_PATTERN.matches_token(token))
-            && tokens
+                .is_some_and(|word| *word == UNTIL_WORD)
+            && words.get(idx + 1).is_some_and(|word| *word == OF_WORD)
+            && words
                 .get(idx + 2)
-                .is_some_and(|token| TURN_OR_COMBAT_WORD_PATTERN.matches_token(token))
+                .is_some_and(|word| TURN_OR_COMBAT_WORDS.contains(word))
         {
             continue;
         }
-        if COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(&lower)
-            && tokens
+        if COUNTER_OR_COUNTERS_WORDS.contains(&lower.as_str())
+            && words
                 .get(idx + 1)
-                .is_some_and(|token| COUNTER_NOUN_CONTEXT_WORD_PATTERN.matches_token(token))
+                .is_some_and(|word| COUNTER_NOUN_CONTEXT_WORDS.contains(word))
         {
             continue;
         }
@@ -874,7 +829,7 @@ fn should_keep_and_for_exchange_zones_lexed(
 ) -> bool {
     let current_words = token_word_refs(current);
     let remaining_words = token_word_refs(remaining);
-    EXCHANGE_WORD_PATTERN.matches_first_word(&current_words)
+    word_slice_first_is(&current_words, EXCHANGE_WORD)
         && current_words
             .iter()
             .any(|word| parse_zone_word(word).is_some())
@@ -913,7 +868,7 @@ fn should_keep_and_for_card_type_list_lexed(
     let current_last_type = current_words
         .iter()
         .rev()
-        .find(|word| !ARTICLE_OR_QUANTIFIER_WORD_PATTERN.matches_word(word))
+        .find(|word| !ARTICLE_OR_QUANTIFIER_WORDS.contains(word))
         .is_some_and(|word| is_card_type_word(word));
     if !current_last_type {
         return false;
@@ -921,66 +876,70 @@ fn should_keep_and_for_card_type_list_lexed(
 
     let current_has_type = current_words.iter().any(|word| is_card_type_word(word));
     let current_has_list_marker = contains_token_kind(current, TokenKind::Comma)
-        || CURRENT_CARD_TYPE_LIST_MARKER_PATTERN.matches_words(&current_words);
+        || words_contain_any(&current_words, CURRENT_CARD_TYPE_LIST_MARKER_WORDS);
 
     current_has_type && current_has_list_marker
 }
 
 fn is_prevent_next_damage_clause_words_lexed(words: &[&str]) -> bool {
-    if !PREVENT_NEXT_DAMAGE_CORE_PATTERN.matches_words(words)
-        || !PREVENT_WORD_PATTERN.matches_first_word(words)
+    if !word_slice_starts_with(words, PREVENT_NEXT_DAMAGE_CORE_PREFIX)
+        || !word_slice_ends_with(words, PREVENT_NEXT_DAMAGE_CORE_SUFFIX)
+        || !words_contain_all(words, PREVENT_NEXT_DAMAGE_CORE_REQUIRED)
+        || !word_slice_first_is(words, PREVENT_WORD)
     {
         return false;
     }
 
-    let mut idx = 1usize;
-    if THE_WORD_PATTERN.matches_word_at(words, idx) {
-        idx += 1;
-    }
-    if !NEXT_WORD_PATTERN.matches_word_at(words, idx) {
+    let next_idx = 1 + usize::from(word_slice_at_is(words, 1, THE_WORD));
+    if !word_slice_at_is(words, next_idx, NEXT_WORD) {
         return false;
     }
-    idx += 1;
 
-    if words.get(idx).is_none() {
+    // "next" then exactly one wildcard word then "damage".
+    let idx = next_idx + 2;
+    if words.get(next_idx + 1).is_none() {
         return false;
     }
-    idx += 1;
 
-    DAMAGE_WORD_PATTERN.matches_word_at(words, idx)
-        && PREVENT_NEXT_DAMAGE_TAIL_PATTERN.matches_words(&words[idx + 1..])
-        && THIS_TURN_SUFFIX_PATTERN.matches_words(words)
+    word_slice_at_is(words, idx, DAMAGE_WORD)
+        && word_slice_starts_with(&words[idx + 1..], PREVENT_NEXT_DAMAGE_TAIL_PREFIX)
+        && word_slice_ends_with(words, THIS_TURN_SUFFIX)
         && words.len() > idx + 7
 }
 
 fn is_prevent_all_damage_clause_words_lexed(words: &[&str]) -> bool {
-    if PREVENT_ALL_DAMAGE_DURATION_FIRST_PATTERN.matches_words(words) {
+    if word_slice_starts_with(words, PREVENT_ALL_DAMAGE_DURATION_FIRST_PREFIX) {
         return words.len() > 11;
     }
 
-    PREVENT_ALL_DAMAGE_TARGET_FIRST_PATTERN.matches_words(words) && words.len() > 9
+    word_slice_starts_with(words, PREVENT_ALL_DAMAGE_TARGET_FIRST_PREFIX)
+        && word_slice_ends_with(words, THIS_TURN_SUFFIX)
+        && words.len() > 9
 }
 
 fn is_can_attack_as_though_no_defender_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(can_idx) = find_word_matching_shape(words, &CAN_WORD_PATTERN) else {
+    let Some(can_idx) = find_word_matching_any(words, &[CAN_WORD]) else {
         return false;
     };
     let tail = &words[can_idx..];
-    CAN_ATTACK_AS_THOUGH_NO_DEFENDER_TAIL_PATTERN.matches_words(tail)
+    word_slice_starts_with(tail, CAN_ATTACK_AS_THOUGH_NO_DEFENDER_PREFIX)
+        && word_slice_ends_with(tail, CAN_ATTACK_AS_THOUGH_NO_DEFENDER_SUFFIX)
+        && word_slice_contains_phrase(tail, AS_THOUGH_PHRASE)
+        && words_contain_all(tail, CAN_ATTACK_AS_THOUGH_NO_DEFENDER_REQUIRED)
 }
 
 fn is_attack_or_block_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(attack_idx) = find_word_matching_shape(words, &ATTACK_OR_ATTACKS_WORD_PATTERN) else {
+    let Some(attack_idx) = find_word_matching_any(words, ATTACK_OR_ATTACKS_WORDS) else {
         return false;
     };
-    ATTACK_OR_BLOCK_IF_ABLE_TAIL_PATTERN.matches_words(&words[attack_idx..])
+    word_slice_eq_any(&words[attack_idx..], ATTACK_OR_BLOCK_IF_ABLE_TAIL_PHRASES)
 }
 
 fn is_attack_this_turn_if_able_clause_words_lexed(words: &[&str]) -> bool {
-    let Some(attack_idx) = find_word_matching_shape(words, &ATTACK_OR_ATTACKS_WORD_PATTERN) else {
+    let Some(attack_idx) = find_word_matching_any(words, ATTACK_OR_ATTACKS_WORDS) else {
         return false;
     };
-    ATTACK_IF_ABLE_TAIL_PATTERN.matches_words(&words[attack_idx..])
+    word_slice_eq_any(&words[attack_idx..], ATTACK_IF_ABLE_TAIL_PHRASES)
 }
 
 fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
@@ -991,7 +950,7 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
         return true;
     }
 
-    let Some(block_idx) = find_word_matching_shape(words, &BLOCK_OR_BLOCKS_WORD_PATTERN) else {
+    let Some(block_idx) = find_word_matching_any(words, BLOCK_OR_BLOCKS_WORDS) else {
         return false;
     };
     if block_idx == 0 || block_idx + 1 >= words.len() {
@@ -999,15 +958,17 @@ fn is_must_block_if_able_clause_words_lexed(words: &[&str]) -> bool {
     }
 
     let tail = &words[block_idx..];
-    BLOCK_IF_ABLE_TAIL_PATTERN.matches_words(tail) || IF_ABLE_SUFFIX_PATTERN.matches_words(tail)
+    word_slice_eq_any(tail, BLOCK_IF_ABLE_TAIL_PHRASES)
+        || word_slice_ends_with(tail, IF_ABLE_SUFFIX)
 }
 
 fn is_phase_clause_words_lexed(words: &[&str]) -> bool {
-    PHASE_WORD_TAIL_PATTERN.matches_words(words) && words.len() >= 3
+    word_slice_ends_with_any(words, PHASE_WORD_TAIL_SUFFIXES) && words.len() >= 3
 }
 
 fn is_choose_target_prelude_clause_words_lexed(words: &[&str]) -> bool {
-    CHOOSE_TARGET_PRELUDE_PATTERN.matches_words(words)
+    word_slice_starts_with_any(words, CHOOSE_TARGET_PRELUDE_PREFIXES)
+        && word_slice_contains_word(words, TARGET_WORD)
 }
 
 fn should_keep_and_for_power_toughness_axis_lexed(
@@ -1016,8 +977,8 @@ fn should_keep_and_for_power_toughness_axis_lexed(
 ) -> bool {
     let current_words = token_word_refs(current);
     let remaining_words = token_word_refs(remaining);
-    POWER_TOUGHNESS_AXIS_PATTERN.matches_words(&current_words)
-        && TOUGHNESS_WORD_PATTERN.matches_first_word(&remaining_words)
+    word_slice_ends_with_any(&current_words, POWER_TOUGHNESS_AXIS_SUFFIXES)
+        && word_slice_first_is(&remaining_words, TOUGHNESS_WORD)
 }
 
 fn should_keep_and_for_become_with_quoted_ability(
@@ -1025,7 +986,7 @@ fn should_keep_and_for_become_with_quoted_ability(
     remaining: &[OwnedLexToken],
 ) -> bool {
     let current_words = token_word_refs(current);
-    if !BECOME_WITH_QUOTED_ABILITY_CONTEXT_PATTERN.matches_words(&current_words) {
+    if !words_contain_all(&current_words, BECOME_WITH_QUOTED_ABILITY_CONTEXT_WORDS) {
         return false;
     }
     remaining
@@ -1041,14 +1002,14 @@ fn should_keep_and_for_shared_subject_gain_clause(
     let current_words = token_word_refs(current);
     let has_shared_subject_modifier = current_words
         .iter()
-        .any(|word| SHARED_SUBJECT_MODIFIER_WORD_PATTERN.matches_word(word));
+        .any(|word| SHARED_SUBJECT_MODIFIER_WORDS.contains(word));
     if !has_shared_subject_modifier {
         return false;
     }
     remaining
         .iter()
         .find_map(OwnedLexToken::as_word)
-        .is_some_and(|word| GAIN_HAVE_LOSE_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| GAIN_HAVE_LOSE_WORDS.contains(&word))
 }
 
 pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
@@ -1056,7 +1017,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
     let mut start = 0usize;
 
     for (idx, token) in tokens.iter().enumerate() {
-        if !AND_WORD_PATTERN.matches_token(token) {
+        if !token_word_is(token, AND_WORD) {
             continue;
         }
         let current = trim_lexed_commas(&tokens[start..idx]);
@@ -1096,7 +1057,7 @@ pub(crate) fn split_effect_chain_on_and_lexed(tokens: &[OwnedLexToken]) -> Vec<&
 
 pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
     let token_words = token_word_refs(tokens);
-    if REPEAT_THIS_PROCESS_PATTERN.matches_words(&token_words) {
+    if word_slice_eq_any(&token_words, REPEAT_THIS_PROCESS_PHRASES) {
         return true;
     }
 
@@ -1132,7 +1093,7 @@ pub(crate) fn has_effect_head_without_verb(tokens: &[OwnedLexToken]) -> bool {
 
 pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bool {
     let token_words = token_word_refs(tokens);
-    if REPEAT_THIS_PROCESS_PATTERN.matches_words(&token_words) {
+    if word_slice_eq_any(&token_words, REPEAT_THIS_PROCESS_PHRASES) {
         return true;
     }
 
@@ -1201,10 +1162,10 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 && (matches!(segment[i].kind, TokenKind::Comma)
                     && segment
                         .get(i + 1)
-                        .is_some_and(|token| THEN_WORD_PATTERN.matches_token(token))
-                    || THEN_WORD_PATTERN.matches_token(&segment[i]))
+                        .is_some_and(|token| token_word_is(token, THEN_WORD))
+                    || token_word_is(&segment[i], THEN_WORD))
             {
-                let then_idx = if THEN_WORD_PATTERN.matches_token(&segment[i]) {
+                let then_idx = if token_word_is(&segment[i], THEN_WORD) {
                     i
                 } else {
                     i + 1
@@ -1214,16 +1175,20 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                     grammar::words_match_any_prefix(before_then, CLASH_PREFIXES).is_some();
                 let after_then = trim_lexed_commas(&segment[then_idx + 1..]);
                 let after_words = token_word_refs(after_then);
-                let has_back_ref = BACK_REFERENCE_WORD_PATTERN.matches_words(&after_words);
+                let has_back_ref = words_contain_any(&after_words, BACK_REFERENCE_WORDS);
                 let has_nonverb_effect_head =
-                    NONVERB_EFFECT_HEAD_WORD_PATTERN.matches_first_word(&after_words);
+                    word_slice_first_is_any(&after_words, NONVERB_EFFECT_HEAD_WORDS);
                 let has_effect_head = find_verb_lexed(after_then).is_some()
                     || parse_ability_line_lexed(after_then).is_some()
                     || has_nonverb_effect_head;
                 let allow_backref_split = has_back_ref
-                    && PUT_OR_DOUBLE_COUNTER_FOLLOWUP_PATTERN.matches_words(&after_words);
+                    && word_slice_starts_with_any(
+                        &after_words,
+                        PUT_OR_DOUBLE_COUNTER_FOLLOWUP_PREFIXES,
+                    )
+                    && words_contain_any(&after_words, COUNTER_OR_COUNTERS_WORDS);
                 let allow_attach_followup =
-                    ATTACH_OR_ATTACHES_WORD_PATTERN.matches_first_word(&after_words);
+                    word_slice_first_is_any(&after_words, ATTACH_OR_ATTACHES_WORDS);
                 let allow_that_many_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
                     && grammar::words_match_any_prefix(after_then, THAT_MANY_FOLLOWUP_PREFIXES)
@@ -1244,15 +1209,21 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                 let allow_deal_damage_equal_total_mana_value_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
-                        && DEAL_DAMAGE_EQUAL_TOTAL_MANA_VALUE_PATTERN.matches_words(&after_words);
+                        && words_contain_any(&after_words, DEAL_OR_DEALS_WORDS)
+                        && words_contain_all(
+                            &after_words,
+                            DEAL_DAMAGE_EQUAL_TOTAL_MANA_VALUE_REQUIRED,
+                        );
                 let allow_for_each_damage_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, GENERIC_FOR_EACH_PREFIXES)
                         .is_some()
-                    && DEAL_DAMAGE_FOLLOWUP_PATTERN.matches_words(&after_words);
+                    && words_contain_any(&after_words, DEAL_OR_DEALS_WORDS)
+                    && words_contain_all(&after_words, DEAL_DAMAGE_FOLLOWUP_REQUIRED);
                 let allow_return_with_counter_followup = !starts_with_for_each_player_or_opponent
                     && has_back_ref
-                    && RETURN_WITH_COUNTER_FOLLOWUP_PATTERN.matches_words(&after_words)
-                    && BACKREF_COUNTER_TARGET_MARKER_PATTERN.matches_words(&after_words);
+                    && word_slice_starts_with(&after_words, RETURN_WITH_COUNTER_FOLLOWUP_PREFIX)
+                    && words_contain_any(&after_words, COUNTER_OR_COUNTERS_WORDS)
+                    && word_slice_contains_any_phrase(&after_words, BACKREF_COUNTER_TARGET_PHRASES);
                 let allow_put_battlefield_with_counter_followup =
                     !starts_with_for_each_player_or_opponent
                         && has_back_ref
@@ -1260,8 +1231,11 @@ pub(crate) fn split_segments_on_comma_then_lexed(
                         && grammar::contains_word(after_then, "battlefield")
                         && after_words
                             .iter()
-                            .any(|word| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word))
-                        && BACKREF_COUNTER_TARGET_MARKER_PATTERN.matches_words(&after_words);
+                            .any(|word| COUNTER_OR_COUNTERS_WORDS.contains(word))
+                        && word_slice_contains_any_phrase(
+                            &after_words,
+                            BACKREF_COUNTER_TARGET_PHRASES,
+                        );
                 let allow_put_into_hand_followup = has_back_ref
                     && grammar::words_match_any_prefix(after_then, PUT_PREFIXES).is_some()
                     && grammar::contains_word(after_then, "into")
@@ -1290,7 +1264,7 @@ pub(crate) fn split_segments_on_comma_then_lexed(
             }
         }
         if let Some(idx) = split_point {
-            let then_idx = if THEN_WORD_PATTERN.matches_token(&segment[idx]) {
+            let then_idx = if token_word_is(&segment[idx], THEN_WORD) {
                 idx
             } else {
                 idx + 1
@@ -1338,12 +1312,12 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 || has_effect_head_without_verb_lexed(after);
             let before_words = token_word_refs(before);
             let after_words = token_word_refs(after);
-            let duration_trigger_prefix = UNTIL_OR_DURING_WORD_PATTERN
-                .matches_first_word(&before_words)
-                && (grammar::contains_word(before, "whenever")
-                    || grammar::contains_word(before, "when")
-                    || AT_THE_MARKER_PATTERN.matches_words(&before_words));
-            if UNLESS_WORD_PATTERN.matches_first_word(&before_words) || duration_trigger_prefix {
+            let duration_trigger_prefix =
+                word_slice_first_is_any(&before_words, UNTIL_OR_DURING_WORDS)
+                    && (grammar::contains_word(before, "whenever")
+                        || grammar::contains_word(before, "when")
+                        || word_slice_contains_phrase(&before_words, AT_THE_PHRASE));
+            if word_slice_first_is(&before_words, UNLESS_WORD) || duration_trigger_prefix {
                 continue;
             }
             if grammar::contains_word(before, "search") && grammar::contains_word(before, "library")
@@ -1351,9 +1325,11 @@ pub(crate) fn split_segments_on_comma_effect_head_lexed(
                 continue;
             }
             if grammar::contains_word(before, "target")
-                && (TARGET_CARD_TYPE_WORD_PATTERN.matches_first_word(&after_words)
-                    || (OR_WORD_PATTERN.matches_first_word(&after_words)
-                        && TARGET_CARD_TYPE_WORD_PATTERN.matches_word_at(&after_words, 1)))
+                && (word_slice_first_is_any(&after_words, TARGET_CARD_TYPE_WORDS)
+                    || (word_slice_first_is(&after_words, OR_WORD)
+                        && after_words
+                            .get(1)
+                            .is_some_and(|word| TARGET_CARD_TYPE_WORDS.contains(word))))
             {
                 continue;
             }

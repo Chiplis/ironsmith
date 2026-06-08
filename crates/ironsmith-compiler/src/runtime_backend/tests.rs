@@ -5530,14 +5530,12 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_look_then_permanent_spell
         0,
     )
     .expect("rewrite lexer should classify inner no-suffix permission");
-    let inner_no_suffix_effect = super::permission_helpers::parse_cast_or_play_tagged_clause(
-        &inner_no_suffix_tokens,
-    )
-    .expect("inner no-suffix permission effect should parse");
-    let inner_no_suffix_spec = super::permission_helpers::parse_permission_clause_spec(
-        &inner_no_suffix_tokens,
-    )
-    .expect("inner no-suffix spec should parse");
+    let inner_no_suffix_effect =
+        super::permission_helpers::parse_cast_or_play_tagged_clause(&inner_no_suffix_tokens)
+            .expect("inner no-suffix permission effect should parse");
+    let inner_no_suffix_spec =
+        super::permission_helpers::parse_permission_clause_spec(&inner_no_suffix_tokens)
+            .expect("inner no-suffix spec should parse");
     let inner_no_suffix_debug = format!("{:?}", inner_no_suffix_spec.as_ref());
     assert!(
         inner_no_suffix_effect.is_some(),
@@ -5554,7 +5552,10 @@ fn rewrite_lexed_permission_helpers_parse_while_exiled_look_then_permanent_spell
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("LookAtObjects"), "{debug}");
-    assert!(debug.contains("GrantPlayTaggedForAsLongAsExiled"), "{debug}");
+    assert!(
+        debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+        "{debug}"
+    );
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("Planeswalker"), "{debug}");
@@ -5650,8 +5651,8 @@ fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permission() {
 }
 
 #[test]
-fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_down() -> Result<(), CardTextError>
-{
+fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_down()
+-> Result<(), CardTextError> {
     let def = CardDefinitionBuilder::new(CardId::new(), "Bottom Library Exile")
         .mana_cost(super::util::parse_scryfall_mana_cost("{3}{B}").unwrap())
         .card_types(vec![CardType::Sorcery])
@@ -5660,7 +5661,10 @@ fn rewrite_lowering_exile_bottom_card_of_each_opponent_library_face_down() -> Re
     let debug = format!("{def:#?}");
     assert!(debug.contains("ForPlayersEffect"), "{debug}");
     assert!(debug.contains("filter: Opponent"), "{debug}");
-    assert!(debug.contains("zone: Some(\n                                                    Library"), "{debug}");
+    assert!(
+        debug.contains("zone: Some(\n                                                    Library"),
+        "{debug}"
+    );
     assert!(debug.contains("chooser: IteratedPlayer"), "{debug}");
     assert!(debug.contains("top_only: false"), "{debug}");
     assert!(debug.contains("bottom_only: true"), "{debug}");
@@ -5726,6 +5730,42 @@ fn flashback_keyword_accepts_non_mana_total_cost() {
     assert!(debug.contains("Sacrifice"), "{debug}");
     assert!(debug.contains("count: 3"), "{debug}");
     assert!(!debug.contains("Mana("), "{debug}");
+}
+
+#[test]
+fn rewrite_spell_cost_increase_per_target_beyond_first_hits_specific_parser() {
+    let tokens = lex_line(
+        "This spell costs {1} more to cast for each target beyond the first.",
+        0,
+    )
+    .expect("rewrite lexer should classify additional-target spell tax");
+
+    let parsed =
+        super::keyword_static::parse_spell_cost_increase_per_target_beyond_first_line(&tokens)
+            .expect("additional-target spell tax parser should not error");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("CostIncreaseManaCostPerAdditionalTarget"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_combined_spell_and_activation_tax_hits_multi_parser() {
+    let tokens = lex_line(
+        "During your turn, spells your opponents cast cost {1} more to cast and abilities your opponents activate cost {1} more to activate unless they're mana abilities.",
+        0,
+    )
+    .expect("rewrite lexer should classify combined tax line");
+
+    let parsed =
+        super::keyword_static::parse_spell_and_player_activated_ability_cost_modifier_line(&tokens)
+            .expect("combined tax parser should not error");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("CostIncrease"), "{debug}");
+    assert!(debug.contains("ActivatedAbilityCostIncrease"), "{debug}");
 }
 
 #[test]
@@ -8371,10 +8411,9 @@ fn rewrite_keyword_static_as_enters_revealed_hand_card_name_choice() {
     )
     .expect("rewrite lexer should classify revealed-hand card-name choice");
 
-    let ability = super::keyword_static::parse_revealed_hand_choose_nonland_card_name_as_enters_line(
-        &tokens,
-    )
-    .expect("revealed-hand card-name choice should parse");
+    let ability =
+        super::keyword_static::parse_revealed_hand_choose_nonland_card_name_as_enters_line(&tokens)
+            .expect("revealed-hand card-name choice should parse");
 
     assert!(matches!(
         ability,
@@ -8536,6 +8575,57 @@ fn rewrite_grammar_draw_replace_exile_top_face_down_probe_matches_static_shape()
 }
 
 #[test]
+fn rewrite_grammar_draw_replacement_exile_top_and_play_probe_matches_static_shape() {
+    let tokens = lex_line(
+        "If you would draw a card, exile the top two cards of your library instead. You may play those cards this turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify draw-replacement exile/play static line");
+
+    let parsed = super::keyword_static::parse_draw_replacement_exile_top_and_play_line(&tokens)
+        .expect("draw-replacement exile/play static line should parse");
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::DrawReplacementExileTopAndPlay
+    ));
+}
+
+#[test]
+fn rewrite_grammar_token_creation_replacement_probe_matches_static_shape() {
+    let tokens = lex_line(
+        "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",
+        0,
+    )
+    .expect("rewrite lexer should classify token-creation replacement static line");
+
+    let parsed = super::keyword_static::parse_double_token_creation_replacement_line(&tokens)
+        .expect("token-creation replacement static line should parse");
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::AddTokenCreationReplacement
+    ));
+}
+
+#[test]
+fn rewrite_grammar_named_source_characteristic_pt_probe_matches_static_shape() {
+    let tokens = lex_line(
+        "Power Tester's power is equal to the number of creatures you control.",
+        0,
+    )
+    .expect("rewrite lexer should classify named-source characteristic P/T static line");
+
+    let parsed = super::keyword_static::parse_characteristic_defining_pt_line(&tokens)
+        .expect("named-source characteristic P/T static line should parse");
+    assert!(matches!(
+        parsed,
+        Some(ability)
+            if ability.id() == crate::static_abilities::StaticAbilityId::CharacteristicDefiningPT
+    ));
+}
+
+#[test]
 fn rewrite_grammar_living_conundrum_empty_library_draw_skip_matches_static_shape() {
     let tokens = lex_line(
         "If you would draw a card while your library has no cards in it, skip that draw instead.",
@@ -8594,7 +8684,10 @@ fn aether_refinery_oracle_dispatches_energy_doubling_line_as_static() {
         .expect("Aether Refinery oracle should dispatch");
 
     assert!(
-        matches!(cst.lines.first(), Some(super::cst::RewriteLineCst::Static(_))),
+        matches!(
+            cst.lines.first(),
+            Some(super::cst::RewriteLineCst::Static(_))
+        ),
         "expected Aether Refinery energy replacement to dispatch as static, got {cst:?}"
     );
 }
@@ -10578,7 +10671,10 @@ fn rewrite_lexed_effect_sentence_keeps_where_x_trailing_clause_after_dispatch_in
         parse_effect_sentence_lexed(&lexed).expect("lexed where-x trailing sentence should parse");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("PowerOf"), "{debug}");
+    assert!(
+        debug.contains("SourcePower") && debug.contains("WhereXIs"),
+        "{debug}"
+    );
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
 }
 
@@ -10967,12 +11063,17 @@ fn rewrite_lexed_leading_may_trailing_if_keeps_condition_outside_permission() {
         .expect("may-if draw sentence should parse");
 
     match parsed.as_slice() {
-        [crate::cards::builders::EffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false,
-        }] => {
-            assert!(matches!(predicate, crate::cards::builders::PredicateAst::SourceIsEnchanted));
+        [
+            crate::cards::builders::EffectAst::Conditional {
+                predicate,
+                if_true,
+                if_false,
+            },
+        ] => {
+            assert!(matches!(
+                predicate,
+                crate::cards::builders::PredicateAst::SourceIsEnchanted
+            ));
             assert!(if_false.is_empty());
             assert!(matches!(
                 if_true.as_slice(),
@@ -11823,8 +11924,10 @@ fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bundle() {
     );
     assert_eq!(matched.consumed_sentences, 4);
     assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
     assert!(
-        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary"),
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
 }
@@ -12037,8 +12140,13 @@ fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_into_hand_res
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(
-        debug.contains("PutSomeIntoHandRestOnBottomOfLibrary") && debug.contains("up_to"),
-        "expected up-to counted looked-card move with remainder to bottom, got {debug}"
+        debug.contains("ChooseTaggedObjectsInZone") && debug.contains("up_to"),
+        "expected up-to counted looked-card choose, got {debug}"
+    );
+    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "expected remainder to bottom, got {debug}"
     );
 }
 
@@ -12242,13 +12350,13 @@ fn rewrite_lexed_effect_sequence_parses_consult_dynamic_mana_value_gate() {
 
     assert!(debug.contains("Conditional"), "{debug}");
     assert!(
-        debug.contains("mana_value: Some(LessThanOrEqualExpr(SourcePower))"),
+        debug.contains("operator: LessThanOrEqual") && debug.contains("right: SourcePower"),
         "{debug}"
     );
     assert!(debug.contains("SourcePower"), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
     assert!(
-        debug.contains("MoveToZone") && debug.contains("zone: Library"),
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
     );
 }
@@ -14057,12 +14165,14 @@ fn night_shift_parses_die_adjustment_and_zombie_employee_token() -> Result<(), C
 
 #[test]
 fn token_definition_keeps_multiple_creature_subtypes() {
-    let token = super::compile_support::token_definition_for(
-        "2/2 black Zombie Employee creature token",
-    )
-    .expect("Zombie Employee token should be recognized");
+    let token =
+        super::compile_support::token_definition_for("2/2 black Zombie Employee creature token")
+            .expect("Zombie Employee token should be recognized");
 
-    assert_eq!(token.card.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
+    assert_eq!(
+        token.card.subtypes,
+        vec![Subtype::Zombie, Subtype::Employee]
+    );
 }
 
 #[test]

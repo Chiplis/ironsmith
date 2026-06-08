@@ -16,8 +16,9 @@ use super::super::grammar::structure::split_trailing_if_clause_lexed;
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
     LexToken, LexedClause, find_token_word_sequence, token_slice_at_is, token_slice_last_is,
-    word_slice_contains_word, word_slice_ends_with, word_slice_eq, word_slice_eq_any,
-    word_slice_find_phrase_start, word_slice_find_word_where, word_slice_starts_with,
+    token_slice_starts_with, word_slice_contains_word, word_slice_ends_with, word_slice_eq,
+    word_slice_eq_any, word_slice_find_phrase_start, word_slice_find_word_where,
+    word_slice_starts_with,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{
@@ -238,6 +239,16 @@ impl<'p> ClauseShape<'p> {
 
     pub(crate) fn matches_clause_first_word(self, clause: LexedClause<'_>) -> bool {
         self.matches_first_word(&clause.word_refs())
+    }
+
+    /// Token-backed word-slice gate exposed for shared-util shape helpers.
+    ///
+    /// Behaviorally identical to [`Self::matches_words`]; provided under a
+    /// distinct name so callers outside this primitive module can route shape
+    /// gates through a helper without invoking the `matches_words` adapter
+    /// directly.
+    pub(crate) fn matches_word_slice(self, words: &[&str]) -> bool {
+        self.matches_words(words)
     }
 
     pub(crate) fn matches_words(self, words: &[&str]) -> bool {
@@ -1412,110 +1423,123 @@ fn parse_counter_ability_target_phrase(
         scan += 1;
     }
 
-    // Parse counter target terms using winnow phrase matching on a sub-stream.
-    use super::super::lexer::LexStream;
-    use winnow::combinator::{alt, opt, repeat};
-    use winnow::prelude::*;
-
-    fn parse_counter_term<'a>(
-        input: &mut LexStream<'a>,
-    ) -> Result<
-        Vec<(ObjectFilter, CounterTargetTerm)>,
-        winnow::error::ErrMode<winnow::error::ContextError>,
-    > {
+    fn parse_counter_term_at(
+        tokens: &[OwnedLexToken],
+        idx: usize,
+    ) -> Option<(Vec<(ObjectFilter, CounterTargetTerm)>, usize)> {
         let make_triggered = || {
             let mut f = ObjectFilter::ability();
             f.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
             f
         };
 
-        alt((
-            // "activated or triggered ability" / "triggered or activated ability"
-            alt((
-                grammar::phrase(&["activated", "or", "triggered", "ability"]),
-                grammar::phrase(&["triggered", "or", "activated", "ability"]),
-            ))
-            .map(move |_| {
+        if token_slice_starts_with(&tokens[idx..], &["activated", "or", "triggered", "ability"]) {
+            return Some((
                 vec![
                     (
                         ObjectFilter::activated_ability(),
                         CounterTargetTerm::Ability,
                     ),
                     (make_triggered(), CounterTargetTerm::Ability),
-                ]
-            }),
-            grammar::phrase(&["activated", "ability"]).map(|_| {
+                ],
+                4,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["triggered", "or", "activated", "ability"]) {
+            return Some((
+                vec![
+                    (make_triggered(), CounterTargetTerm::Ability),
+                    (
+                        ObjectFilter::activated_ability(),
+                        CounterTargetTerm::Ability,
+                    ),
+                ],
+                4,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["activated", "ability"]) {
+            return Some((
                 vec![(
                     ObjectFilter::activated_ability(),
                     CounterTargetTerm::Ability,
-                )]
-            }),
-            grammar::phrase(&["triggered", "ability"]).map(move |_| {
-                let mut f = ObjectFilter::ability();
-                f.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
-                vec![(f, CounterTargetTerm::Ability)]
-            }),
-            grammar::phrase(&["instant", "spell"]).map(|_| {
+                )],
+                2,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["triggered", "ability"]) {
+            return Some((vec![(make_triggered(), CounterTargetTerm::Ability)], 2));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["instant", "spell"]) {
+            return Some((
                 vec![(
                     ObjectFilter::spell().with_type(crate::types::CardType::Instant),
                     CounterTargetTerm::Spell,
-                )]
-            }),
-            grammar::phrase(&["sorcery", "spell"]).map(|_| {
+                )],
+                2,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["sorcery", "spell"]) {
+            return Some((
                 vec![(
                     ObjectFilter::spell().with_type(crate::types::CardType::Sorcery),
                     CounterTargetTerm::Spell,
-                )]
-            }),
-            grammar::phrase(&["legendary", "spell"]).map(|_| {
+                )],
+                2,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["legendary", "spell"]) {
+            return Some((
                 vec![(
                     ObjectFilter::spell().with_supertype(Supertype::Legendary),
                     CounterTargetTerm::Spell,
-                )]
-            }),
-            grammar::phrase(&["noncreature", "spell"]).map(|_| {
-                let mut f = ObjectFilter::noncreature_spell().in_zone(Zone::Stack);
-                f.stack_kind = Some(crate::filter::StackObjectKind::Spell);
-                vec![(f, CounterTargetTerm::Spell)]
-            }),
-            grammar::phrase(&["colorless", "spell"])
-                .map(|_| vec![(ObjectFilter::spell().colorless(), CounterTargetTerm::Spell)]),
-            alt((
-                alt((grammar::kw("ability"), grammar::kw("abilities")))
-                    .map(|_| vec![(ObjectFilter::ability(), CounterTargetTerm::Ability)]),
-                grammar::kw("spell")
-                    .map(|_| vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)]),
-            )),
-        ))
-        .parse_next(input)
+                )],
+                2,
+            ));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["noncreature", "spell"]) {
+            let mut f = ObjectFilter::noncreature_spell().in_zone(Zone::Stack);
+            f.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+            return Some((vec![(f, CounterTargetTerm::Spell)], 2));
+        }
+        if token_slice_starts_with(&tokens[idx..], &["colorless", "spell"]) {
+            return Some((
+                vec![(ObjectFilter::spell().colorless(), CounterTargetTerm::Spell)],
+                2,
+            ));
+        }
+        if tokens
+            .get(idx)
+            .is_some_and(|token| matches!(token.as_word(), Some("ability" | "abilities")))
+        {
+            return Some((
+                vec![(ObjectFilter::ability(), CounterTargetTerm::Ability)],
+                1,
+            ));
+        }
+        if tokens
+            .get(idx)
+            .is_some_and(|token| token.as_word() == Some("spell"))
+        {
+            return Some((vec![(ObjectFilter::spell(), CounterTargetTerm::Spell)], 1));
+        }
+        None
     }
 
-    let term_slice = &clause_tokens[idx..list_end];
-    let mut stream = LexStream::new(term_slice);
     let mut term_filters: Vec<(ObjectFilter, CounterTargetTerm)> = Vec::new();
-
-    type TermGroup = Vec<(ObjectFilter, CounterTargetTerm)>;
-    let parsed_terms: Option<Vec<TermGroup>> = opt(|input: &mut LexStream<'_>| -> Result<Vec<TermGroup>, winnow::error::ErrMode<winnow::error::ContextError>> {
-        let first = parse_counter_term.parse_next(input)?;
-        let rest: Vec<TermGroup> = repeat(
-            0..,
-            (grammar::list_separator, parse_counter_term).map(|(_, t)| t),
-        )
-        .parse_next(input)?;
-        let mut all = vec![first];
-        all.extend(rest);
-        Ok(all)
-    })
-    .parse_next(&mut stream)
-    .unwrap_or(None);
-
-    if let Some(groups) = parsed_terms {
-        for group in groups {
-            term_filters.extend(group);
+    while idx < list_end {
+        let Some(word) = clause_tokens.get(idx).and_then(OwnedLexToken::as_word) else {
+            idx += 1;
+            continue;
+        };
+        if CLAUSE_AND_OR_OR_WORD_PATTERN.matches_word(word) {
+            idx += 1;
+            continue;
         }
-        idx += term_slice.len() - stream.len();
-    } else {
-        return Ok(None);
+        let Some((group, used)) = parse_counter_term_at(&clause_tokens, idx) else {
+            return Ok(None);
+        };
+        term_filters.extend(group);
+        idx += used;
     }
 
     if term_filters.is_empty() {
@@ -2066,10 +2090,24 @@ pub(crate) fn parse_redirect_next_damage_sentence(
         {
             return Ok(None);
         }
-        let target_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(
-            &redirect_words[..redirect_words.len() - 1],
-        );
-        let target = parse_target_phrase(&target_tokens)?;
+        let target_word_start = is_dealt_idx + 3;
+        let target_word_end = clause_words.len() - 1;
+        let target_token_start =
+            token_index_for_word_index(tokens, target_word_start).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-all-damage destination (clause: '{}')",
+                    clause_text
+                ))
+            })?;
+        let target_token_end =
+            token_index_for_word_index(tokens, target_word_end).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported redirected-all-damage destination (clause: '{}')",
+                    clause_text
+                ))
+            })?;
+        let target =
+            parse_target_phrase(&trim_commas(&tokens[target_token_start..target_token_end]))?;
 
         return Ok(Some(vec![
             EffectAst::subject_verb_redirect_all_damage_this_turn_to_target(

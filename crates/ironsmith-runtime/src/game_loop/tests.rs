@@ -232,8 +232,8 @@ fn resolve_myrkuls_edict(game: &mut GameState, roll: u32) {
     game.force_next_die_roll(roll);
 
     let mut dm = SelectFirstDecisionMaker;
-    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
-        .with_decision_maker(&mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
     for effect in def
         .spell_effect
         .as_ref()
@@ -610,8 +610,12 @@ fn necromancers_covenant_exiles_target_graveyard_creatures_and_creates_that_many
         .filter_map(|id| game.object(*id).map(|object| object.name.clone()))
         .collect::<Vec<_>>();
     assert!(
-        exiled_names.iter().any(|name| name == "Bob Graveyard Creature One")
-            && exiled_names.iter().any(|name| name == "Bob Graveyard Creature Two"),
+        exiled_names
+            .iter()
+            .any(|name| name == "Bob Graveyard Creature One")
+            && exiled_names
+                .iter()
+                .any(|name| name == "Bob Graveyard Creature Two"),
         "target player's creature cards should be exiled, got {exiled_names:?}"
     );
     assert_eq!(
@@ -975,10 +979,7 @@ fn wondrous_crucible_definition() -> crate::cards::CardDefinition {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn wondrous_crucible_spell_definition(
-    card_id: u32,
-    name: &str,
-) -> crate::cards::CardDefinition {
+fn wondrous_crucible_spell_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
         .card_types(vec![CardType::Instant])
@@ -1120,8 +1121,14 @@ fn wondrous_crucible_end_step_randomly_exiles_nonland_and_declining_cast_leaves_
         random_before + 1,
         "the at-random graveyard selection should consume match randomness"
     );
-    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Milled Plains"), 1);
-    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Milled Plains"),
+        1
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"),
+        1
+    );
     assert_eq!(
         count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
         0,
@@ -1153,11 +1160,17 @@ fn wondrous_crucible_end_step_accepting_may_casts_copy_without_paying_mana() {
     let land = wondrous_crucible_land_card(696_485, "Milled Island");
     game.create_object_from_card(&land, alice, Zone::Library);
 
-    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    assert_eq!(
+        put_wondrous_crucible_end_step_trigger_on_stack(&mut game),
+        1
+    );
     let mut dm = AcceptMay;
     resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
 
-    assert_eq!(count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Exile, "Crucible Spark"),
+        1
+    );
     assert_eq!(
         count_named_objects_in_zone(&game, Zone::Stack, "Crucible Spark"),
         1,
@@ -1202,12 +1215,21 @@ fn wondrous_crucible_end_step_with_no_nonland_graveyard_card_mills_but_casts_no_
     game.create_object_from_card(&plains, alice, Zone::Library);
     game.create_object_from_card(&island, alice, Zone::Library);
 
-    assert_eq!(put_wondrous_crucible_end_step_trigger_on_stack(&mut game), 1);
+    assert_eq!(
+        put_wondrous_crucible_end_step_trigger_on_stack(&mut game),
+        1
+    );
     let mut dm = AcceptMay;
     resolve_stack_entry_with(&mut game, &mut dm).expect("Wondrous Crucible trigger should resolve");
 
-    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Plains"), 1);
-    assert_eq!(count_named_objects_in_zone(&game, Zone::Graveyard, "Only Island"), 1);
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Only Plains"),
+        1
+    );
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Only Island"),
+        1
+    );
     assert_eq!(
         game.objects_in_zone(Zone::Exile).len(),
         0,
@@ -8748,19 +8770,25 @@ fn alhammarret_high_arbiter_reveals_opponents_hand_and_blocks_chosen_nonland_nam
         Some("Lightning Bolt".to_string()),
         "Alhammarret should store the nonland name chosen from an opponent's revealed hand"
     );
-    assert_eq!(dm.view_calls.len(), 2, "Bob's hand should be revealed to both players");
-    assert!(dm.view_calls.iter().all(|(_, subject, zone, public, cards)| {
-        *subject == bob
-            && *zone == Zone::Hand
-            && *public
-            && cards == &vec![bob_lightning, bob_other, bob_forest]
-    }));
+    assert_eq!(
+        dm.view_calls.len(),
+        2,
+        "Bob's hand should be revealed to both players"
+    );
+    assert!(
+        dm.view_calls
+            .iter()
+            .all(|(_, subject, zone, public, cards)| {
+                *subject == bob
+                    && *zone == Zone::Hand
+                    && *public
+                    && cards == &vec![bob_lightning, bob_other, bob_forest]
+            })
+    );
 
     let bob_filter_debug = format!(
         "{:?}",
-        game.effect_store
-            .cant_effects
-            .cast_filters_for_player(bob)
+        game.effect_store.cant_effects.cast_filters_for_player(bob)
     );
     let alice_filter_debug = format!(
         "{:?}",
@@ -13747,19 +13775,74 @@ fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
         assert!(cards.contains(&bob_land));
     }
 
-    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard One"));
-    assert!(!player_zone_contains_named(&game, alice, Zone::Hand, "Alice Discard Two"));
-    assert!(player_zone_contains_named(&game, alice, Zone::Hand, "Alice Keeps"));
+    assert!(!player_zone_contains_named(
+        &game,
+        alice,
+        Zone::Hand,
+        "Alice Discard One"
+    ));
+    assert!(!player_zone_contains_named(
+        &game,
+        alice,
+        Zone::Hand,
+        "Alice Discard Two"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        alice,
+        Zone::Hand,
+        "Alice Keeps"
+    ));
 
-    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland One"));
-    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Nonland Two"));
-    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
+    assert!(!player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Hand,
+        "Bob Nonland One"
+    ));
+    assert!(!player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Hand,
+        "Bob Nonland Two"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Hand,
+        "Bob Land"
+    ));
 
-    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard One"));
-    assert!(player_zone_contains_named(&game, alice, Zone::Graveyard, "Alice Discard Two"));
-    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland One"));
-    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Nonland Two"));
-    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+    assert!(player_zone_contains_named(
+        &game,
+        alice,
+        Zone::Graveyard,
+        "Alice Discard One"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        alice,
+        Zone::Graveyard,
+        "Alice Discard Two"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Graveyard,
+        "Bob Nonland One"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Graveyard,
+        "Bob Nonland Two"
+    ));
+    assert!(!player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Graveyard,
+        "Bob Land"
+    ));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -13808,10 +13891,30 @@ fn last_rites_discards_available_nonlands_when_more_cards_were_discarded() {
     resolve_stack_entry_with(&mut game, &mut dm)
         .expect("Last Rites should resolve with fewer target nonlands than discarded cards");
 
-    assert!(!player_zone_contains_named(&game, bob, Zone::Hand, "Bob Only Nonland"));
-    assert!(player_zone_contains_named(&game, bob, Zone::Hand, "Bob Land"));
-    assert!(player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Only Nonland"));
-    assert!(!player_zone_contains_named(&game, bob, Zone::Graveyard, "Bob Land"));
+    assert!(!player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Hand,
+        "Bob Only Nonland"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Hand,
+        "Bob Land"
+    ));
+    assert!(player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Graveyard,
+        "Bob Only Nonland"
+    ));
+    assert!(!player_zone_contains_named(
+        &game,
+        bob,
+        Zone::Graveyard,
+        "Bob Land"
+    ));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -13835,7 +13938,9 @@ fn kodama_of_the_center_tree_definition() -> crate::cards::CardDefinition {
 #[cfg(ironsmith_runtime_parser_tests)]
 fn spirit_card_with_mana_value(name: &str, mana_value: u8) -> crate::card::Card {
     CardBuilder::new(CardId::new(), name)
-        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(mana_value)]))
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+            mana_value,
+        )]))
         .card_types(vec![CardType::Creature])
         .subtypes(vec![Subtype::Spirit])
         .power_toughness(PowerToughness::fixed(1, 1))
@@ -19081,6 +19186,154 @@ fn test_beast_within_target_requirements_include_enchantments() {
             .contains(&Target::Object(enchantment_id)),
         "Beast Within should be able to target enchantments, got {:?}",
         requirements[0].legal_targets
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resculpt_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(724_001), "Resculpt")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target artifact or creature. Its controller creates a 4/4 blue and red Elemental creature token.",
+        )
+        .expect("Resculpt oracle text should parse strictly")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_strict_parser_and_compiled_text_regression() {
+    let def = resculpt_definition();
+    let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let debug = format!("{:?}", def.spell_effect);
+
+    assert!(
+        rendered.contains("Exile target artifact or creature"),
+        "Resculpt should render the artifact-or-creature exile target, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "that object's controller creates a 4/4 blue and red Elemental creature token"
+        ),
+        "Resculpt should render the target controller token clause, got {rendered}"
+    );
+    assert!(
+        debug.contains("Exile") && debug.contains("CreateTokenEffect"),
+        "Resculpt should lower to exile plus token creation effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_targets_artifacts_and_creatures_but_not_other_permanents() {
+    let def = resculpt_definition();
+    let effects = def.spell_effect.as_ref().expect("Resculpt should be a spell");
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let artifact = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_002), "Target Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let creature = create_creature(&mut game, "Target Creature", bob, 2, 2);
+    let enchantment = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_003), "Target Enchantment")
+            .card_types(vec![CardType::Enchantment])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Resculpt should have one target requirement, got {requirements:?}"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(artifact)),
+        "Resculpt should be able to target artifacts, got {legal_targets:?}"
+    );
+    assert!(
+        legal_targets.contains(&Target::Object(creature)),
+        "Resculpt should be able to target creatures, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(enchantment)),
+        "Resculpt should not be able to target nonartifact noncreature permanents, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Player(bob)),
+        "Resculpt should not be able to target players, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn resculpt_exiles_target_and_gives_elemental_to_targets_controller() {
+    let def = resculpt_definition();
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let target = game.create_object_from_card(
+        &CardBuilder::new(CardId::from_raw(724_004), "Bob's Relic")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let target_stable = game.object(target).expect("target exists").stable_id;
+
+    game.push_to_stack(
+        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target)]),
+    );
+    resolve_stack_entry(&mut game).expect("Resculpt should resolve");
+
+    let exiled_target = game
+        .find_object_by_stable_id(target_stable)
+        .expect("exiled target should still exist");
+    assert!(
+        game.exile.contains(&exiled_target),
+        "Resculpt should exile its artifact target"
+    );
+
+    let elemental_tokens: Vec<_> = game
+        .objects_in_zone(Zone::Battlefield)
+        .into_iter()
+        .filter(|id| {
+            let object = game.object(*id).expect("battlefield object exists");
+            object.kind == ObjectKind::Token
+                && object.name == "Elemental"
+                && object.subtypes.contains(&Subtype::Elemental)
+        })
+        .collect();
+    assert_eq!(
+        elemental_tokens.len(),
+        1,
+        "Resculpt should create exactly one Elemental token, got {elemental_tokens:?}"
+    );
+    let token = elemental_tokens[0];
+    assert_eq!(
+        game.controller_of(game.object(token).expect("token exists")),
+        bob,
+        "the target's controller should control the Elemental token"
+    );
+    assert_eq!(game.current_power(token), Some(4));
+    assert_eq!(game.current_toughness(token), Some(4));
+    assert_eq!(
+        game.current_colors(token),
+        Some(crate::color::ColorSet::BLUE.union(crate::color::ColorSet::RED)),
+        "the Elemental token should be blue and red"
     );
 }
 
@@ -46243,9 +46496,9 @@ fn test_invasive_surgery_with_delirium_exiles_same_name_cards_from_controller_zo
 
     let invasive_surgery = invasive_surgery_test_definition();
     let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
-    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
-        stack_copy,
-    )]));
+    game.push_to_stack(
+        StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(stack_copy)]),
+    );
 
     let mut decisions = InvasiveSurgeryDecisionMaker::default();
     resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");
@@ -46302,9 +46555,9 @@ fn test_invasive_surgery_without_delirium_only_counters_target_sorcery() {
 
     let invasive_surgery = invasive_surgery_test_definition();
     let invasive_id = game.create_object_from_definition(&invasive_surgery, alice, Zone::Stack);
-    game.push_to_stack(StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(
-        stack_copy,
-    )]));
+    game.push_to_stack(
+        StackEntry::new(invasive_id, alice).with_targets(vec![Target::Object(stack_copy)]),
+    );
 
     let mut decisions = InvasiveSurgeryDecisionMaker::default();
     resolve_stack_entry_with(&mut game, &mut decisions).expect("Invasive Surgery should resolve");

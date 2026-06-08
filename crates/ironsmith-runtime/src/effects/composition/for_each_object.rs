@@ -76,9 +76,11 @@ impl EffectExecutor for ForEachObject {
         // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
         let it_tag = TagKey::from("__it__");
         if let [move_effect, shuffle_effect] = self.effects.as_slice()
-            && let Some(move_to_zone) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(move_to_zone) =
+                move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
             && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
-            && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+            && let Some(shuffle) =
+                shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
             && matches!(
                 &shuffle.player,
                 crate::target::PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag))
@@ -117,12 +119,12 @@ impl EffectExecutor for ForEachObject {
 
             for owner in owners {
                 game.shuffle_player_library(owner);
-                outcomes.push(
-                    EffectOutcome::resolved().with_event(TriggerEvent::new_with_provenance(
+                outcomes.push(EffectOutcome::resolved().with_event(
+                    TriggerEvent::new_with_provenance(
                         ShuffleLibraryEvent::new(owner, ctx.cause.clone()),
                         ctx.provenance,
-                    )),
-                );
+                    ),
+                ));
             }
 
             return Ok(EffectOutcome::aggregate_summing_counts(outcomes));

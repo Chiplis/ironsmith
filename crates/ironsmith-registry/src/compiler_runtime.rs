@@ -714,6 +714,31 @@ mod tests {
     }
 
     #[test]
+    fn compile_builder_to_runtime_definition_handles_cumulative_upkeep_payment_from_metadata_builder()
+     {
+        let definition = compile_builder_to_runtime_definition(
+            compiler::CardDefinitionBuilder::new(ironsmith::ids::CardId::new(), "Jötun Grunt")
+                .mana_cost(ironsmith::mana::ManaCost::from_pips(vec![
+                    vec![ironsmith::mana::ManaSymbol::Generic(1)],
+                    vec![ironsmith::mana::ManaSymbol::White],
+                ]))
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![
+                    ironsmith::types::Subtype::Giant,
+                    ironsmith::types::Subtype::Soldier,
+                ])
+                .power_toughness(ironsmith::card::PowerToughness::fixed(4, 4)),
+            "Cumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+            false,
+        )
+        .expect("Jötun Grunt should compile through runtime compiler integration");
+
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("CumulativeUpkeepEffect"), "{debug}");
+        assert!(debug.contains("MoveToZoneEffect"), "{debug}");
+    }
+
+    #[test]
     fn supported_keyword_mechanics_do_not_lower_to_keyword_markers() {
         let cases = [
             (
@@ -805,6 +830,11 @@ mod tests {
                 "Cumulative Choice Fixture",
                 "Mana cost: {G}{W}\nType: Enchantment\nCumulative upkeep {G} or {W}",
                 "UnlessActionEffect",
+            ),
+            (
+                "Jötun Grunt",
+                "Mana cost: {1}{W}\nType: Creature — Giant Soldier\nPower/Toughness: 4/4\nCumulative upkeep—Put two cards from a single graveyard on the bottom of their owner's library. (At the beginning of your upkeep, put an age counter on this permanent, then sacrifice it unless you pay its upkeep cost for each age counter on it.)",
+                "MoveToZoneEffect",
             ),
         ];
 

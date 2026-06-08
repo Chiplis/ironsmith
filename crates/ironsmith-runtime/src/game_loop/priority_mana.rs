@@ -4941,8 +4941,13 @@ mod priority_mana_tests {
         let non_ally_source_id =
             game.create_object_from_definition(&non_ally_source, alice, Zone::Battlefield);
         assert!(
-            spend_pool_symbol(&mut game, alice, ManaSymbol::Green, Some(non_ally_source_id))
-                .is_none(),
+            spend_pool_symbol(
+                &mut game,
+                alice,
+                ManaSymbol::Green,
+                Some(non_ally_source_id)
+            )
+            .is_none(),
             "Jasmine Dragon Tea Shop restricted mana should reject abilities of non-Ally sources"
         );
     }

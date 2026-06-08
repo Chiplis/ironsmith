@@ -308,8 +308,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::EmitKeywordAction { .. }
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::Bolster { .. }
@@ -441,14 +439,6 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }
@@ -470,6 +460,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
             | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
             | SubjectVerbActionAst::CastTagged { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
@@ -480,6 +471,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }

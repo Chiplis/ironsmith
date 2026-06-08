@@ -11,15 +11,14 @@ use winnow::token::one_of;
 use crate::cards::builders::{CardTextError, IT_TAG, TagKey};
 use crate::effect::{Value, ValueComparisonOperator};
 use crate::mana::{ManaCost, ManaSymbol};
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
+use crate::runtime_backend::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
 use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, contains_token_word, lex_line, parser_token_word_refs,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_word, lex_line,
+    parser_token_word_refs,
 };
 use super::super::object_filters::parse_object_filter_lexed;
 use super::super::token_primitives::find_index;
@@ -37,129 +36,94 @@ use super::primitives;
 
 type LexedInput<'a> = LexStream<'a>;
 
-const X_VALUE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["x"]);
-
-const WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["where", "x", "is"]);
 const SCRYFALL_EMPTY_MANA_COST_MARKERS: &[&str] = &["—"];
-const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const NUMBER_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["number", "of"]);
-const PLAYERS_WHO_CONTROL_MORE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["players", "who", "control", "more"]);
-const THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
-const THAN_YOU_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than", "you"]);
-const EQUAL_TO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal", "to"]);
-const POWER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["power"]);
-const TOUGHNESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["toughness"]);
-const SOURCE_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "power"],
-            &["thiss", "power"],
-            &["this", "creature", "power"],
-            &["this", "creatures", "power"],
-            &["thiss", "creature", "power"],
-            &["thiss", "creatures", "power"],
-            &["its", "power"],
-        ]
-);
-const SOURCE_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["this", "toughness"],
-            &["thiss", "toughness"],
-            &["this", "creature", "toughness"],
-            &["this", "creatures", "toughness"],
-            &["thiss", "creature", "toughness"],
-            &["thiss", "creatures", "toughness"],
-            &["its", "toughness"],
-        ]
-);
-const TAGGED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "creature", "power"],
-            &["that", "creatures", "power"],
-            &["that", "objects", "power"],
-        ]
-);
-const TAGGED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["that", "creature", "toughness"],
-            &["that", "creatures", "toughness"],
-            &["that", "objects", "toughness"],
-        ]
-);
-const SACRIFICED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "sacrificed", "creature", "power"],
-            &["the", "sacrificed", "creatures", "power"],
-            &["sacrificed", "creature", "power"],
-            &["sacrificed", "creatures", "power"],
-        ]
-);
-const SACRIFICED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "sacrificed", "creature", "toughness"],
-            &["the", "sacrificed", "creatures", "toughness"],
-            &["sacrificed", "creature", "toughness"],
-            &["sacrificed", "creatures", "toughness"],
-        ]
-);
-const EXILED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "exiled", "card", "power"],
-            &["the", "exiled", "card's", "power"],
-            &["the", "exiled", "cards", "power"],
-            &["exiled", "card", "power"],
-            &["exiled", "card's", "power"],
-            &["exiled", "cards", "power"],
-        ]
-);
-const EXILED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "exiled", "card", "toughness"],
-            &["the", "exiled", "card's", "toughness"],
-            &["the", "exiled", "cards", "toughness"],
-            &["exiled", "card", "toughness"],
-            &["exiled", "card's", "toughness"],
-            &["exiled", "cards", "toughness"],
-        ]
-);
-const EXPLOITED_POWER_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "exploited", "creature", "power"],
-            &["the", "exploited", "creatures", "power"],
-            &["exploited", "creature", "power"],
-            &["exploited", "creatures", "power"],
-        ]
-);
-const EXPLOITED_TOUGHNESS_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["the", "exploited", "creature", "toughness"],
-            &["the", "exploited", "creatures", "toughness"],
-            &["exploited", "creature", "toughness"],
-            &["exploited", "creatures", "toughness"],
-        ]
-);
-const TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+const EQUAL_TO_PHRASE: &[&str] = &["equal", "to"];
+const POWER_WORD: &str = "power";
+const TOUGHNESS_WORD: &str = "toughness";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValueStatSubjectShape {
+    Source,
+    Tagged,
+    Exploited,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValueStatAxisShape {
+    Power,
+    Toughness,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ValueStatSegmentShape {
+    subject: ValueStatSubjectShape,
+    axis: ValueStatAxisShape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ValueManaValueSubjectShape {
+    Source,
+    Tagged,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ValueManaValueSegmentShape {
+    subject: ValueManaValueSubjectShape,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PlayersWhoControlMoreValueShape {
+    filter_word_start: usize,
+    filter_word_end: usize,
+}
+
+const PLAYERS_WHO_CONTROL_MORE_THAN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::optional(&[LexPattern::phrase(&["where", "x", "is"])]),
+    LexPattern::optional(&[LexPattern::phrase(&["the"])]),
+    LexPattern::optional(&[LexPattern::phrase(&["number", "of"])]),
+    LexPattern::phrase(&["players", "who", "control", "more"]),
+    LexPattern::object("filter", LexCaptureKind::UntilPhrase(&["than", "you"])),
+    LexPattern::phrase(&["than", "you"]),
+]);
+
+const VALUE_STAT_SEGMENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::OneOfPhrase(&[
+            &["this"],
+            &["thiss"],
+            &["this", "creature"],
+            &["this", "creatures"],
+            &["thiss", "creature"],
+            &["thiss", "creatures"],
+            &["its"],
+            &["that", "creature"],
+            &["that", "creatures"],
+            &["that", "objects"],
+            &["the", "sacrificed", "creature"],
+            &["the", "sacrificed", "creatures"],
+            &["sacrificed", "creature"],
+            &["sacrificed", "creatures"],
+            &["the", "exiled", "card"],
+            &["the", "exiled", "card's"],
+            &["the", "exiled", "cards"],
+            &["exiled", "card"],
+            &["exiled", "card's"],
+            &["exiled", "cards"],
+            &["the", "exploited", "creature"],
+            &["the", "exploited", "creatures"],
+            &["exploited", "creature"],
+            &["exploited", "creatures"],
+        ]),
+    ),
+    LexPattern::action("axis", LexCaptureKind::OneOf(&["power", "toughness"])),
+]);
+const VALUE_MANA_VALUE_SEGMENT_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "subject",
+        LexCaptureKind::OneOfPhrase(&[
             &["that", "spell", "mana", "value"],
             &["that", "spell's", "mana", "value"],
             &["that", "spells", "mana", "value"],
-        ]
-);
-const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
             &["that", "card", "mana", "value"],
             &["that", "card's", "mana", "value"],
             &["that", "cards", "mana", "value"],
@@ -170,7 +134,7 @@ const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static>
                 "of",
                 "the",
                 "sacrificed",
-                "creature"
+                "creature",
             ],
             &[
                 "the",
@@ -179,7 +143,7 @@ const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static>
                 "of",
                 "the",
                 "sacrificed",
-                "artifact"
+                "artifact",
             ],
             &[
                 "the",
@@ -188,7 +152,7 @@ const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static>
                 "of",
                 "the",
                 "sacrificed",
-                "permanent"
+                "permanent",
             ],
             &["mana", "value", "of", "the", "sacrificed", "creature"],
             &["mana", "value", "of", "the", "sacrificed", "artifact"],
@@ -206,22 +170,104 @@ const TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static>
             &["sacrificed", "artifacts", "mana", "value"],
             &["sacrificed", "permanents", "mana", "value"],
             &["its", "mana", "value"],
-        ]
-);
-const SOURCE_MANA_VALUE_SEGMENT_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
             &["this", "spell", "mana", "value"],
             &["this", "creature", "mana", "value"],
             &["this", "permanent", "mana", "value"],
             &["this", "card", "mana", "value"],
-        ]
-);
-const THAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that"]);
-const MANA_VALUE_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["mana", "value"]);
-const PLUS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["plus"]);
-const SACRIFICED_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["sacrificed"]);
+        ]),
+    )]);
+const THAT_WORD: &str = "that";
+const MANA_VALUE_SUFFIX: &[&str] = &["mana", "value"];
+const PLUS_WORD: &str = "plus";
+
+fn parse_players_who_control_more_value_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayersWhoControlMoreValueShape> {
+    let clause = crate::runtime_backend::lexer::LexedClause::new(tokens);
+    let matched = PLAYERS_WHO_CONTROL_MORE_THAN_YOU_PATTERN.match_clause(clause)?;
+    let filter_capture = matched.capture_by_role(LexCaptureRole::Object)?;
+    (filter_capture.word_range.start < filter_capture.word_range.end).then_some(
+        PlayersWhoControlMoreValueShape {
+            filter_word_start: filter_capture.word_range.start,
+            filter_word_end: filter_capture.word_range.end,
+        },
+    )
+}
+
+fn parse_value_stat_segment_shape(clause: LexedClause<'_>) -> Option<ValueStatSegmentShape> {
+    let matched = VALUE_STAT_SEGMENT_PATTERN.match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    let axis_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    let subject_words = subject_clause.word_refs();
+    let axis = match axis_clause.word_refs().first().copied()? {
+        "power" => ValueStatAxisShape::Power,
+        "toughness" => ValueStatAxisShape::Toughness,
+        _ => return None,
+    };
+    let subject = if subject_words
+        .first()
+        .is_some_and(|word| matches!(*word, "this" | "thiss" | "its"))
+    {
+        ValueStatSubjectShape::Source
+    } else if subject_words.contains(&"exploited") {
+        ValueStatSubjectShape::Exploited
+    } else {
+        ValueStatSubjectShape::Tagged
+    };
+    Some(ValueStatSegmentShape { subject, axis })
+}
+
+fn value_from_stat_segment_shape(shape: ValueStatSegmentShape) -> Value {
+    let choose_spec = match shape.subject {
+        ValueStatSubjectShape::Source => ChooseSpec::Source,
+        ValueStatSubjectShape::Tagged => ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+        ValueStatSubjectShape::Exploited => {
+            ChooseSpec::Tagged(TagKey::from(crate::tag::EXPLOITED_TAG))
+        }
+    };
+    match shape.axis {
+        ValueStatAxisShape::Power => Value::PowerOf(Box::new(choose_spec)),
+        ValueStatAxisShape::Toughness => Value::ToughnessOf(Box::new(choose_spec)),
+    }
+}
+
+fn parse_value_stat_segment(clause: LexedClause<'_>) -> Option<Value> {
+    parse_value_stat_segment_shape(clause).map(value_from_stat_segment_shape)
+}
+
+fn parse_value_mana_value_segment_shape(
+    clause: LexedClause<'_>,
+) -> Option<ValueManaValueSegmentShape> {
+    let matched = VALUE_MANA_VALUE_SEGMENT_PATTERN
+        .match_clause(clause)
+        .or_else(|| VALUE_MANA_VALUE_SEGMENT_PATTERN.match_prefix(clause))?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let subject_words = subject_clause.word_refs();
+    let subject = if subject_words
+        .first()
+        .is_some_and(|word| matches!(*word, "this" | "thiss"))
+    {
+        if matched.word_range.end != clause.word_len() {
+            return None;
+        }
+        ValueManaValueSubjectShape::Source
+    } else {
+        ValueManaValueSubjectShape::Tagged
+    };
+    Some(ValueManaValueSegmentShape { subject })
+}
+
+fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Value {
+    let choose_spec = match shape.subject {
+        ValueManaValueSubjectShape::Source => ChooseSpec::Source,
+        ValueManaValueSubjectShape::Tagged => ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+    };
+    Value::ManaValueOf(Box::new(choose_spec))
+}
+
+fn parse_value_mana_value_segment(clause: LexedClause<'_>) -> Option<Value> {
+    parse_value_mana_value_segment_shape(clause).map(value_from_mana_value_segment_shape)
+}
 
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq)]
@@ -311,39 +357,10 @@ pub(crate) fn parse_max_cards_in_hand_value_lexed(tokens: &[OwnedLexToken]) -> O
 pub(crate) fn parse_players_who_control_more_than_you_value_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
-    let mut idx = if WHERE_X_IS_PREFIX_PATTERN.matches_words(&words) {
-        3usize
-    } else {
-        0usize
-    };
+    let shape = parse_players_who_control_more_value_shape(tokens)?;
 
-    if words
-        .get(idx)
-        .is_some_and(|word| THE_WORD_PATTERN.matches_word(word))
-    {
-        idx += 1;
-    }
-    if NUMBER_OF_PREFIX_PATTERN.matches_words(&words[idx..]) {
-        idx += 2;
-    }
-
-    if !PLAYERS_WHO_CONTROL_MORE_PREFIX_PATTERN.matches_words(&words[idx..]) {
-        return None;
-    }
-    idx += 4;
-
-    let Some(than_offset) = THAN_WORD_PATTERN.find_word(&words[idx..]) else {
-        return None;
-    };
-    let than_idx = idx + than_offset;
-    let tail = &words[than_idx..];
-    if !THAN_YOU_TAIL_PATTERN.matches_words(tail) {
-        return None;
-    }
-
-    let filter_start_token_idx = token_index_for_word_index(tokens, idx)?;
-    let filter_end_token_idx = token_index_for_word_index(tokens, than_idx)?;
+    let filter_start_token_idx = token_index_for_word_index(tokens, shape.filter_word_start)?;
+    let filter_end_token_idx = token_index_for_word_index(tokens, shape.filter_word_end)?;
     let filter_tokens = &tokens[filter_start_token_idx..filter_end_token_idx];
     if filter_tokens.is_empty() {
         return None;
@@ -381,7 +398,15 @@ pub(crate) fn parse_mana_symbol_inner(input: &mut &str) -> WResult<ManaSymbol> {
 }
 
 pub(crate) fn parse_mana_symbol(raw: &str) -> Result<ManaSymbol, CardTextError> {
-    finish_text_parse(raw, spaced(parse_mana_symbol_inner), "mana-symbol")
+    // Tolerate an enclosing mana brace pair (e.g. "{s}") so callers that parse
+    // a single mana symbol straight from a token's parser text match callers that
+    // parse from brace-stripped word pieces, consistent with `parse_mana_symbol_group`.
+    let trimmed = raw.trim();
+    let unbraced = trimmed
+        .strip_prefix('{')
+        .and_then(|inner| inner.strip_suffix('}'))
+        .unwrap_or(trimmed);
+    finish_text_parse(unbraced, spaced(parse_mana_symbol_inner), "mana-symbol")
 }
 
 pub(crate) fn parse_mana_symbol_group_inner(input: &mut &str) -> WResult<Vec<ManaSymbol>> {
@@ -476,7 +501,7 @@ pub(crate) fn parse_mana_cost_tokens(tokens: &[OwnedLexToken]) -> Result<ManaCos
 
 fn parse_modal_value_token<'a>(input: &mut LexedInput<'a>) -> WResult<Value> {
     let word = primitives::word_text.parse_next(input)?;
-    if X_VALUE_WORD_PATTERN.matches_word(&word) {
+    if word == "x" {
         return Ok(Value::X);
     }
     if let Ok(value) = word.parse::<i32>() {
@@ -589,6 +614,90 @@ pub(crate) fn parse_value_comparison_tokens<'a>(
             && !rest.is_empty()
         {
             return Some((operator, rest));
+        }
+    }
+
+    None
+}
+
+pub(crate) fn parse_value_comparison_words<'a>(
+    words: &'a [&'a str],
+) -> Option<(ValueComparisonOperator, &'a [&'a str], usize)> {
+    for (phrase, operator) in [
+        (&["is", "equal", "to"][..], ValueComparisonOperator::Equal),
+        (&["equal", "to"][..], ValueComparisonOperator::Equal),
+        (
+            &["is", "not", "equal", "to"][..],
+            ValueComparisonOperator::NotEqual,
+        ),
+        (
+            &["not", "equal", "to"][..],
+            ValueComparisonOperator::NotEqual,
+        ),
+        (
+            &["is", "less", "than", "or", "equal", "to"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            &["less", "than", "or", "equal", "to"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            &["is", "greater", "than", "or", "equal", "to"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["greater", "than", "or", "equal", "to"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["is", "less", "than"][..],
+            ValueComparisonOperator::LessThan,
+        ),
+        (&["less", "than"][..], ValueComparisonOperator::LessThan),
+        (
+            &["is", "greater", "than"][..],
+            ValueComparisonOperator::GreaterThan,
+        ),
+        (
+            &["greater", "than"][..],
+            ValueComparisonOperator::GreaterThan,
+        ),
+    ] {
+        if words.starts_with(phrase) {
+            return Some((operator, &words[phrase.len()..], phrase.len()));
+        }
+    }
+
+    for (phrase, operator) in [
+        (
+            &["or", "less"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            &["or", "fewer"][..],
+            ValueComparisonOperator::LessThanOrEqual,
+        ),
+        (
+            &["or", "greater"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+        (
+            &["or", "more"][..],
+            ValueComparisonOperator::GreaterThanOrEqual,
+        ),
+    ] {
+        if words.starts_with(&["is"])
+            && words[1..].ends_with(phrase)
+            && words.len() > 1 + phrase.len()
+        {
+            let operand = &words[1..words.len() - phrase.len()];
+            return Some((operator, operand, words.len().saturating_sub(operand.len())));
+        }
+
+        if words.ends_with(phrase) && words.len() > phrase.len() {
+            let operand = &words[..words.len() - phrase.len()];
+            return Some((operator, operand, words.len().saturating_sub(operand.len())));
         }
     }
 
@@ -724,92 +833,52 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         }
     }
 
+    let clause = LexedClause::new(tokens);
     let words_all = parser_token_word_refs(tokens);
-    let equal_idx = EQUAL_TO_PATTERN.find_exact_window(&words_all, 2)?;
-    let tail = &words_all[equal_idx + 2..];
+    let equal_idx = words_all
+        .windows(EQUAL_TO_PHRASE.len())
+        .position(|window| window == EQUAL_TO_PHRASE)?;
+    let tail_start = equal_idx + EQUAL_TO_PHRASE.len();
+    let tail = &words_all[tail_start..];
     if tail.is_empty() {
         return None;
     }
 
-    let is_source_power_segment =
-        |segment: &[&str]| SOURCE_POWER_SEGMENT_PATTERN.matches_words(segment);
-    let is_source_toughness_segment =
-        |segment: &[&str]| SOURCE_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment);
-
-    let parse_power_or_toughness_segment = |segment: &[&str]| -> Option<Value> {
-        let tagged_it_power = Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
-        let tagged_it_toughness =
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))));
-
-        if segment
-            .last()
-            .is_some_and(|word| POWER_WORD_PATTERN.matches_word(word))
-        {
-            if let Some(surface) =
-                source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
-            {
-                return Some(Value::PowerOf(Box::new(
-                    ChooseSpec::Source
-                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-                )));
-            }
-        }
-        if segment
-            .last()
-            .is_some_and(|word| TOUGHNESS_WORD_PATTERN.matches_word(word))
-        {
-            if let Some(surface) =
-                source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
-            {
-                return Some(Value::ToughnessOf(Box::new(
-                    ChooseSpec::Source
-                        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
-                )));
-            }
-        }
-
-        if is_source_power_segment(segment) {
-            return Some(Value::PowerOf(Box::new(ChooseSpec::Source)));
-        }
-        if is_source_toughness_segment(segment) {
-            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Source)));
-        }
-        if TAGGED_POWER_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_power.clone());
-        }
-        if TAGGED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_toughness.clone());
-        }
-        if SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_power);
-        }
-        if EXILED_POWER_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_power);
-        }
-        if EXPLOITED_POWER_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                crate::tag::EXPLOITED_TAG,
-            )))));
-        }
-        if SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_toughness);
-        }
-        if EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(tagged_it_toughness);
-        }
-        if EXPLOITED_TOUGHNESS_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(Value::ToughnessOf(Box::new(ChooseSpec::Tagged(
-                TagKey::from(crate::tag::EXPLOITED_TAG),
-            ))));
-        }
-        None
+    let segment_clause = |start: usize, end: usize| -> Option<LexedClause<'_>> {
+        clause.between_word_range(tail_start + start, tail_start + end)
     };
 
-    let parse_mana_value_segment = |segment: &[&str]| -> Option<Value> {
+    let parse_power_or_toughness_segment =
+        |segment: &[&str], segment_clause: LexedClause<'_>| -> Option<Value> {
+            if segment.last().copied() == Some(POWER_WORD) {
+                if let Some(surface) =
+                    source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
+                {
+                    return Some(Value::PowerOf(Box::new(
+                        ChooseSpec::Source
+                            .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                    )));
+                }
+            }
+            if segment.last().copied() == Some(TOUGHNESS_WORD) {
+                if let Some(surface) =
+                    source_reference_surface_for_possessive_words(&segment[..segment.len() - 1])
+                {
+                    return Some(Value::ToughnessOf(Box::new(
+                        ChooseSpec::Source
+                            .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(surface)),
+                    )));
+                }
+            }
+
+            parse_value_stat_segment(segment_clause)
+        };
+
+    let parse_mana_value_segment = |segment: &[&str],
+                                    segment_clause: LexedClause<'_>|
+     -> Option<Value> {
         let is_tagged_that_object_mana_value = || {
-            if segment.len() < 4
-                || !THAT_WORD_PATTERN.matches_word(segment[0])
-                || !MANA_VALUE_SUFFIX_PATTERN.matches_words(segment)
+            if segment.len() < 4 || segment[0] != THAT_WORD || !segment.ends_with(MANA_VALUE_SUFFIX)
             {
                 return false;
             }
@@ -817,31 +886,26 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             !segment[1..segment.len() - 2].is_empty()
         };
 
-        if TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment) {
+        if let Some(value) = parse_value_mana_value_segment(segment_clause) {
+            return Some(value);
+        }
+        if is_tagged_that_object_mana_value() {
             return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
                 TagKey::from(IT_TAG),
             ))));
-        }
-        if TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment)
-            || is_tagged_that_object_mana_value()
-        {
-            return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-                TagKey::from(IT_TAG),
-            ))));
-        }
-        if SOURCE_MANA_VALUE_SEGMENT_PATTERN.matches_words(segment) {
-            return Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)));
         }
         None
     };
 
-    let parse_amount_segment = |segment: &[&str]| -> Option<Value> {
-        parse_mana_value_segment(segment)
+    let parse_amount_segment = |start: usize, end: usize| -> Option<Value> {
+        let segment = &tail[start..end];
+        let segment_clause = segment_clause(start, end)?;
+        parse_mana_value_segment(segment, segment_clause)
             .or_else(|| {
                 parse_value_expr_words(segment)
                     .and_then(|(value, used)| (used == segment.len()).then_some(value))
             })
-            .or_else(|| parse_power_or_toughness_segment(segment))
+            .or_else(|| parse_power_or_toughness_segment(segment, segment_clause))
             .or_else(|| {
                 if segment.len() == 1 {
                     parse_number_word_i32(segment[0]).map(Value::Fixed)
@@ -851,11 +915,11 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
             })
     };
 
-    if let Some(plus_idx) = find_index(tail, |word| PLUS_WORD_PATTERN.matches_word(word))
+    if let Some(plus_idx) = find_index(tail, |word| *word == PLUS_WORD)
         && plus_idx > 0
         && plus_idx + 1 < tail.len()
-        && let Some(left) = parse_amount_segment(&tail[..plus_idx])
-        && let Some(right) = parse_amount_segment(&tail[plus_idx + 1..])
+        && let Some(left) = parse_amount_segment(0, plus_idx)
+        && let Some(right) = parse_amount_segment(plus_idx + 1, tail.len())
     {
         return Some(canonical_add_mana_equal_amount_value(Value::Add(
             Box::new(left),
@@ -863,54 +927,8 @@ pub(crate) fn parse_add_mana_equal_amount_value_lexed(tokens: &[OwnedLexToken]) 
         )));
     }
 
-    if let Some(value) = parse_amount_segment(tail) {
+    if let Some(value) = parse_amount_segment(0, tail.len()) {
         return Some(canonical_add_mana_equal_amount_value(value));
-    }
-
-    if is_source_power_segment(tail)
-        || TAGGED_POWER_SEGMENT_PATTERN.matches_words(tail)
-        || SACRIFICED_POWER_SEGMENT_PATTERN.matches_words(tail)
-        || EXILED_POWER_SEGMENT_PATTERN.matches_words(tail)
-    {
-        let source = if THAT_WORD_PATTERN.matches_word(tail[0])
-            || SACRIFICED_MARKER_PATTERN.matches_words(tail)
-            || EXILED_POWER_SEGMENT_PATTERN.matches_words(tail)
-        {
-            ChooseSpec::Tagged(TagKey::from(IT_TAG))
-        } else {
-            ChooseSpec::Source
-        };
-        return Some(Value::PowerOf(Box::new(source)));
-    }
-
-    if is_source_toughness_segment(tail)
-        || TAGGED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
-        || SACRIFICED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
-        || EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
-    {
-        let source = if THAT_WORD_PATTERN.matches_word(tail[0])
-            || SACRIFICED_MARKER_PATTERN.matches_words(tail)
-            || EXILED_TOUGHNESS_SEGMENT_PATTERN.matches_words(tail)
-        {
-            ChooseSpec::Tagged(TagKey::from(IT_TAG))
-        } else {
-            ChooseSpec::Source
-        };
-        return Some(Value::ToughnessOf(Box::new(source)));
-    }
-
-    if TAGGED_SPELL_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from(IT_TAG),
-        ))));
-    }
-    if TAGGED_CARD_OR_SACRIFICED_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
-            TagKey::from(IT_TAG),
-        ))));
-    }
-    if SOURCE_MANA_VALUE_SEGMENT_PATTERN.matches_words(tail) {
-        return Some(Value::ManaValueOf(Box::new(ChooseSpec::Source)));
     }
 
     None

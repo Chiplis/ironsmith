@@ -2,286 +2,339 @@
 
 use crate::cards::builders::IfResultPredicate;
 
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
-use super::lexer::{OwnedLexToken, TokenWordView};
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom};
+use super::lexer::{LexedClause, OwnedLexToken};
 pub(crate) use super::util::{
-    find_activation_cost_start, non_article_word_refs, replace_unbound_x_with_value,
+    find_activation_cost_start, is_article, non_article_word_refs, replace_unbound_x_with_value,
     starts_with_activation_cost, value_contains_unbound_x,
 };
 
-const RESULT_VERB_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["remove"],
-            &["removed"],
-            &["sacrifice"],
-            &["sacrificed"],
-            &["discard"],
-            &["discarded"],
-            &["exile"],
-            &["exiled"],
-        ]
-);
-const THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(suffix & ["this", "way"]);
-const RESULT_QUALIFIER_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&[], &["it"], &["them"], &["that"]]);
-const CONTRACTED_NEGATION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["dont"], &["doesnt"], &["didnt"], &["cant"]]);
-const SPLIT_NEGATION_FIRST_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["do"], &["does"], &["did"], &["can"]]);
-const NOT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["not"]);
-const YOU_DO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["you", "do"]);
-const THEY_DO_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["they", "do"]);
-const PLAYER_DOES_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["player", "do"],
-            &["player", "does"],
-            &["players", "do"],
-            &["players", "does"]
-        ]
-);
-const YOU_WIN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "win"], &["you", "won"]]);
-const CLASH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["clash"]);
-const YOU_SEARCHED_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "searched"]; suffix & ["this", "way"]);
-const PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["a", "player", "is", "dealt", "damage", "this", "way"],
-            &["player", "is", "dealt", "damage", "this", "way"],
-        ]
-);
-const SPELL_COUNTERED_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any & [&["that", "spell"], &["it", "spell"]];
-    suffix & ["this", "way"];
-    contains_words & ["countered"]
-);
-const DIES_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["that", "creature", "dies", "this", "way"],
-            &["that", "permanent", "dies", "this", "way"],
-            &["that", "card", "dies", "this", "way"],
-            &["it", "creature", "dies", "this", "way"],
-            &["it", "permanent", "dies", "this", "way"],
-            &["it", "card", "dies", "this", "way"],
-        ]
-);
-const WOULD_DIE_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &[
-                "creature", "dealt", "damage", "this", "way", "would", "die", "this", "turn"
-            ],
-            &[
-                "permanent",
-                "dealt",
-                "damage",
-                "this",
-                "way",
-                "would",
-                "die",
-                "this",
-                "turn"
-            ],
-            &[
-                "card", "dealt", "damage", "this", "way", "would", "die", "this", "turn"
-            ],
-        ]
-);
-const EXCESS_DAMAGE_THIS_WAY_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["it", "deals", "excess", "damage", "this", "way"]);
-const EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["excess", "damage", "was", "dealt", "to"];
-    suffix & ["this", "way"];
-    contains_words & ["creature"]
-);
-const POWER_BECOMES_THIS_WAY_PATTERN: ClauseShape<'static> = clause_shape!(prefix_any & [&["its", "power", "becomes"], &["it", "power", "becomes"]]; suffix & ["this", "way"]);
+const MODAL_RESULT_SUBJECT_WORDS: &[&str] = &["if", "when", "you", "they", "player", "players"];
+const RESULT_VERB_WORDS: &[&str] = &[
+    "remove",
+    "removed",
+    "sacrifice",
+    "sacrificed",
+    "discard",
+    "discarded",
+    "exile",
+    "exiled",
+];
+const CONTRACTED_NEGATION_WORDS: &[&str] = &["dont", "doesnt", "didnt", "cant"];
+const SPLIT_NEGATION_FIRST_WORDS: &[&str] = &["do", "does", "did", "can"];
+const YOU_DO_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::phrase(&["you", "do"])]);
+const THEY_DO_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["they", "do"])]);
+const PLAYER_DOES_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
+    &["player", "do"],
+    &["player", "does"],
+    &["players", "do"],
+    &["players", "does"],
+])]);
+const YOU_WIN_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[&["you", "win"], &["you", "won"]])]);
+const YOU_SEARCHED_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["you", "searched"])]);
+const PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &["a", "player", "is", "dealt", "damage", "this", "way"],
+        &["player", "is", "dealt", "damage", "this", "way"],
+    ])]);
+const SPELL_COUNTERED_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_phrase(&[&["that", "spell"], &["it", "spell"]]),
+]);
+const DIES_THIS_WAY_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
+    &["that", "creature", "dies", "this", "way"],
+    &["that", "permanent", "dies", "this", "way"],
+    &["that", "card", "dies", "this", "way"],
+    &["it", "creature", "dies", "this", "way"],
+    &["it", "permanent", "dies", "this", "way"],
+    &["it", "card", "dies", "this", "way"],
+])]);
+const WOULD_DIE_THIS_TURN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &[
+            "creature", "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+        ],
+        &[
+            "permanent",
+            "dealt",
+            "damage",
+            "this",
+            "way",
+            "would",
+            "die",
+            "this",
+            "turn",
+        ],
+        &[
+            "card", "dealt", "damage", "this", "way", "would", "die", "this", "turn",
+        ],
+    ])]);
+const EXCESS_DAMAGE_THIS_WAY_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&[
+        "it", "deals", "excess", "damage", "this", "way",
+    ])]);
+const EXCESS_DAMAGE_WAS_DEALT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["excess", "damage", "was", "dealt", "to"]),
+]);
+const POWER_BECOMES_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::any_phrase(&[&["its", "power", "becomes"], &["it", "power", "becomes"]]),
+]);
 
-fn modal_words_match_shape(words: &[&str], shape: &ClauseShape<'static>) -> bool {
-    shape.matches_words(words)
+fn modal_non_article_word_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    tokens
+        .iter()
+        .filter(|token| token.as_word().is_some_and(|word| !is_article(word)))
+        .cloned()
+        .collect()
+}
+
+fn modal_clause_matches_pattern(clause: LexedClause<'_>, pattern: LexPattern<'static>) -> bool {
+    pattern.matches_clause(clause)
+}
+
+fn modal_clause_matches_prefix(clause: LexedClause<'_>, pattern: LexPattern<'static>) -> bool {
+    pattern.matches_prefix(clause)
+}
+
+fn modal_words_end_this_way(words: &[&str]) -> bool {
+    words.ends_with(&["this", "way"])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModalResultSubject {
+    If,
+    When,
+    You,
+    They,
+    Player,
+    Players,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ModalResultShape {
+    ThisWay {
+        subject: ModalResultSubject,
+        negated: bool,
+    },
+    ExactNegated {
+        subject: ModalResultSubject,
+    },
+}
+
+fn modal_result_subject_from_clause(clause: LexedClause<'_>) -> Option<ModalResultSubject> {
+    match clause.word_refs().as_slice() {
+        ["if"] => Some(ModalResultSubject::If),
+        ["when"] => Some(ModalResultSubject::When),
+        ["you"] => Some(ModalResultSubject::You),
+        ["they"] => Some(ModalResultSubject::They),
+        ["player"] => Some(ModalResultSubject::Player),
+        ["players"] => Some(ModalResultSubject::Players),
+        _ => None,
+    }
+}
+
+fn parse_modal_result_shape_from_clause(clause: LexedClause<'_>) -> Option<ModalResultShape> {
+    const RESULT_QUALIFIER_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::object(
+        "qualifier",
+        LexCaptureKind::OneOf(&["it", "them", "that"]),
+    )];
+    const THIS_WAY_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::OneOf(MODAL_RESULT_SUBJECT_WORDS)),
+        LexPattern::action("result", LexCaptureKind::OneOf(RESULT_VERB_WORDS)),
+        LexPattern::optional(RESULT_QUALIFIER_ATOMS),
+        LexPattern::phrase(&["this", "way"]),
+    ]);
+    const CONTRACTED_NEGATED_THIS_WAY_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::OneOf(MODAL_RESULT_SUBJECT_WORDS)),
+        LexPattern::modifier("negation", LexCaptureKind::OneOf(CONTRACTED_NEGATION_WORDS)),
+        LexPattern::action("result", LexCaptureKind::OneOf(RESULT_VERB_WORDS)),
+        LexPattern::optional(RESULT_QUALIFIER_ATOMS),
+        LexPattern::phrase(&["this", "way"]),
+    ]);
+    const SPLIT_NEGATED_THIS_WAY_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::OneOf(MODAL_RESULT_SUBJECT_WORDS)),
+        LexPattern::modifier(
+            "negation",
+            LexCaptureKind::OneOf(SPLIT_NEGATION_FIRST_WORDS),
+        ),
+        LexPattern::word("not"),
+        LexPattern::action("result", LexCaptureKind::OneOf(RESULT_VERB_WORDS)),
+        LexPattern::optional(RESULT_QUALIFIER_ATOMS),
+        LexPattern::phrase(&["this", "way"]),
+    ]);
+    const CONTRACTED_EXACT_NEGATED_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::OneOf(MODAL_RESULT_SUBJECT_WORDS)),
+        LexPattern::modifier("negation", LexCaptureKind::OneOf(CONTRACTED_NEGATION_WORDS)),
+    ]);
+    const SPLIT_EXACT_NEGATED_RESULT_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::subject("subject", LexCaptureKind::OneOf(MODAL_RESULT_SUBJECT_WORDS)),
+        LexPattern::modifier(
+            "negation",
+            LexCaptureKind::OneOf(SPLIT_NEGATION_FIRST_WORDS),
+        ),
+        LexPattern::word("not"),
+    ]);
+
+    for pattern in [
+        CONTRACTED_NEGATED_THIS_WAY_RESULT_PATTERN,
+        SPLIT_NEGATED_THIS_WAY_RESULT_PATTERN,
+    ] {
+        if let Some(matched) = pattern.match_clause(clause) {
+            let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+            matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+            matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+            return Some(ModalResultShape::ThisWay {
+                subject: modal_result_subject_from_clause(subject_clause)?,
+                negated: true,
+            });
+        }
+    }
+
+    if let Some(matched) = THIS_WAY_RESULT_PATTERN.match_clause(clause) {
+        let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+        matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+        return Some(ModalResultShape::ThisWay {
+            subject: modal_result_subject_from_clause(subject_clause)?,
+            negated: false,
+        });
+    }
+
+    for pattern in [
+        CONTRACTED_EXACT_NEGATED_RESULT_PATTERN,
+        SPLIT_EXACT_NEGATED_RESULT_PATTERN,
+    ] {
+        if let Some(matched) = pattern.match_clause(clause) {
+            let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+            matched.capture_clause_by_role(LexCaptureRole::Modifier, clause)?;
+            return Some(ModalResultShape::ExactNegated {
+                subject: modal_result_subject_from_clause(subject_clause)?,
+            });
+        }
+    }
+
+    None
 }
 
 pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
-    let word_view = TokenWordView::new(tokens);
-    let raw_words = word_view.to_word_refs();
-    let words = non_article_word_refs(&raw_words);
-    let is_result_verb = |word: &str| RESULT_VERB_WORD_PATTERN.matches_word(word);
-    let is_unqualified_this_way_result = |subject: &str| {
-        if words.len() < 4
-            || words.first().copied() != Some(subject)
-            || !is_result_verb(words[1])
-            || !modal_words_match_shape(&words, &THIS_WAY_SUFFIX_PATTERN)
-        {
-            return false;
-        }
-        let qualifiers = &words[2..words.len() - 2];
-        modal_words_match_shape(qualifiers, &RESULT_QUALIFIER_PATTERN)
-    };
-    let is_exact_negated_result = |subject: &str| {
-        (words.len() == 2
-            && words.first().copied() == Some(subject)
-            && CONTRACTED_NEGATION_WORD_PATTERN.matches_word(words[1]))
-            || (words.len() == 3
-                && words.first().copied() == Some(subject)
-                && SPLIT_NEGATION_FIRST_WORD_PATTERN.matches_word(words[1])
-                && NOT_WORD_PATTERN.matches_word(words[2]))
-    };
-    let is_negated_this_way_result = |subject: &str| {
-        let action_idx = if words.len() >= 5
-            && words.first().copied() == Some(subject)
-            && CONTRACTED_NEGATION_WORD_PATTERN.matches_word(words[1])
-        {
-            2
-        } else if words.len() >= 6
-            && words.first().copied() == Some(subject)
-            && SPLIT_NEGATION_FIRST_WORD_PATTERN.matches_word(words[1])
-            && NOT_WORD_PATTERN.matches_word(words[2])
-        {
-            3
-        } else {
-            return false;
-        };
-        if !is_result_verb(words[action_idx])
-            || !modal_words_match_shape(&words, &THIS_WAY_SUFFIX_PATTERN)
-        {
-            return false;
-        }
-        let qualifiers = &words[action_idx + 1..words.len() - 2];
-        modal_words_match_shape(qualifiers, &RESULT_QUALIFIER_PATTERN)
-    };
+    let normalized_tokens = modal_non_article_word_tokens(tokens);
+    let clause = LexedClause::new(&normalized_tokens);
+    let words = clause.word_refs();
 
     if words.is_empty() {
         None
-    } else if is_unqualified_this_way_result("if") || is_exact_negated_result("if") {
-        Some(IfResultPredicate::Did)
-    } else if is_negated_this_way_result("if") {
-        Some(IfResultPredicate::DidNot)
-    } else if is_unqualified_this_way_result("when") || is_exact_negated_result("when") {
-        Some(IfResultPredicate::Did)
-    } else if is_negated_this_way_result("when") {
-        Some(IfResultPredicate::DidNot)
     } else {
-        None
+        match parse_modal_result_shape_from_clause(clause)? {
+            ModalResultShape::ThisWay {
+                subject: ModalResultSubject::If | ModalResultSubject::When,
+                negated: false,
+            }
+            | ModalResultShape::ExactNegated {
+                subject: ModalResultSubject::If | ModalResultSubject::When,
+            } => Some(IfResultPredicate::Did),
+            ModalResultShape::ThisWay {
+                subject: ModalResultSubject::If | ModalResultSubject::When,
+                negated: true,
+            } => Some(IfResultPredicate::DidNot),
+            _ => None,
+        }
     }
 }
 
 pub(crate) fn parse_if_result_predicate_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
-    let word_view = TokenWordView::new(tokens);
-    let raw_words = word_view.to_word_refs();
-    let words = non_article_word_refs(&raw_words);
-    let is_result_verb = |word: &str| RESULT_VERB_WORD_PATTERN.matches_word(word);
-    let is_unqualified_this_way_result = |subject: &str| {
-        if words.len() < 4
-            || words.first().copied() != Some(subject)
-            || !is_result_verb(words[1])
-            || !modal_words_match_shape(&words, &THIS_WAY_SUFFIX_PATTERN)
-        {
-            return false;
-        }
-        let qualifiers = &words[2..words.len() - 2];
-        modal_words_match_shape(qualifiers, &RESULT_QUALIFIER_PATTERN)
-    };
-    let is_exact_negated_result = |subject: &str| {
-        (words.len() == 2
-            && words.first().copied() == Some(subject)
-            && CONTRACTED_NEGATION_WORD_PATTERN.matches_word(words[1]))
-            || (words.len() == 3
-                && words.first().copied() == Some(subject)
-                && SPLIT_NEGATION_FIRST_WORD_PATTERN.matches_word(words[1])
-                && NOT_WORD_PATTERN.matches_word(words[2]))
-    };
-    let is_negated_this_way_result = |subject: &str| {
-        let action_idx = if words.len() >= 5
-            && words.first().copied() == Some(subject)
-            && CONTRACTED_NEGATION_WORD_PATTERN.matches_word(words[1])
-        {
-            2
-        } else if words.len() >= 6
-            && words.first().copied() == Some(subject)
-            && SPLIT_NEGATION_FIRST_WORD_PATTERN.matches_word(words[1])
-            && NOT_WORD_PATTERN.matches_word(words[2])
-        {
-            3
-        } else {
-            return false;
-        };
-        if !is_result_verb(words[action_idx])
-            || !modal_words_match_shape(&words, &THIS_WAY_SUFFIX_PATTERN)
-        {
-            return false;
-        }
-        let qualifiers = &words[action_idx + 1..words.len() - 2];
-        modal_words_match_shape(qualifiers, &RESULT_QUALIFIER_PATTERN)
-    };
+    let normalized_tokens = modal_non_article_word_tokens(tokens);
+    let clause = LexedClause::new(&normalized_tokens);
+    let words = clause.word_refs();
+    let modal_result_shape = parse_modal_result_shape_from_clause(clause);
 
-    if modal_words_match_shape(&words, &YOU_DO_PATTERN) {
+    if modal_clause_matches_pattern(clause, YOU_DO_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
-    if modal_words_match_shape(&words, &YOU_WIN_PREFIX_PATTERN)
-        && (words.len() == 2 || modal_words_match_shape(&words, &CLASH_WORD_PATTERN))
+    if modal_clause_matches_prefix(clause, YOU_WIN_PREFIX_PATTERN)
+        && (words.len() == 2 || words.contains(&"clash"))
     {
         return Some(IfResultPredicate::Value(
             crate::effect::Comparison::GreaterThan(0),
         ));
     }
-    if modal_words_match_shape(&words, &THEY_DO_PATTERN) {
+    if modal_clause_matches_pattern(clause, THEY_DO_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
-    if modal_words_match_shape(&words, &PLAYER_DOES_PATTERN) {
+    if modal_clause_matches_pattern(clause, PLAYER_DOES_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
-    if words.len() >= 6 && modal_words_match_shape(&words, &YOU_SEARCHED_THIS_WAY_PATTERN) {
+    if words.len() >= 6
+        && modal_clause_matches_prefix(clause, YOU_SEARCHED_PREFIX_PATTERN)
+        && modal_words_end_this_way(&words)
+    {
         return Some(IfResultPredicate::Did);
     }
-    if is_unqualified_this_way_result("you") {
+    if matches!(
+        modal_result_shape,
+        Some(ModalResultShape::ThisWay {
+            subject: ModalResultSubject::You | ModalResultSubject::They,
+            negated: false,
+        })
+    ) {
         return Some(IfResultPredicate::Did);
     }
-    if is_unqualified_this_way_result("they") {
-        return Some(IfResultPredicate::Did);
-    }
-    if modal_words_match_shape(&words, &PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN) {
+    if modal_clause_matches_pattern(clause, PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
 
-    if words.len() >= 5 && modal_words_match_shape(&words, &SPELL_COUNTERED_THIS_WAY_PATTERN) {
+    if words.len() >= 5
+        && modal_clause_matches_prefix(clause, SPELL_COUNTERED_SUBJECT_PATTERN)
+        && words.contains(&"countered")
+        && modal_words_end_this_way(&words)
+    {
         return Some(IfResultPredicate::Did);
     }
 
-    if words.len() >= 5 && modal_words_match_shape(&words, &DIES_THIS_WAY_PATTERN) {
+    if words.len() >= 5 && modal_clause_matches_prefix(clause, DIES_THIS_WAY_PATTERN) {
         return Some(IfResultPredicate::DiesThisWay);
     }
-    if words.len() >= 8 && modal_words_match_shape(&words, &WOULD_DIE_THIS_TURN_PATTERN) {
+    if words.len() >= 8 && modal_clause_matches_prefix(clause, WOULD_DIE_THIS_TURN_PATTERN) {
         return Some(IfResultPredicate::DiesThisWay);
     }
 
-    if modal_words_match_shape(&words, &EXCESS_DAMAGE_WAS_DEALT_THIS_WAY_PATTERN) {
+    if modal_clause_matches_prefix(clause, EXCESS_DAMAGE_WAS_DEALT_PREFIX_PATTERN)
+        && words.contains(&"creature")
+        && modal_words_end_this_way(&words)
+    {
         return Some(IfResultPredicate::ExcessDamageDealt);
     }
 
-    if modal_words_match_shape(&words, &EXCESS_DAMAGE_THIS_WAY_PATTERN) {
+    if modal_clause_matches_pattern(clause, EXCESS_DAMAGE_THIS_WAY_PATTERN) {
         return Some(IfResultPredicate::Did);
     }
 
-    if words.len() == 5 && modal_words_match_shape(&words, &POWER_BECOMES_THIS_WAY_PATTERN) {
-        return Some(IfResultPredicate::Did);
-    }
-
-    if is_exact_negated_result("you") || is_negated_this_way_result("you") {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if is_exact_negated_result("they") || is_negated_this_way_result("they") {
-        return Some(IfResultPredicate::DidNot);
-    }
-    if is_exact_negated_result("player")
-        || is_negated_this_way_result("player")
-        || is_exact_negated_result("players")
-        || is_negated_this_way_result("players")
+    if words.len() == 5
+        && modal_clause_matches_prefix(clause, POWER_BECOMES_PREFIX_PATTERN)
+        && modal_words_end_this_way(&words)
     {
+        return Some(IfResultPredicate::Did);
+    }
+
+    if matches!(
+        modal_result_shape,
+        Some(
+            ModalResultShape::ThisWay {
+                subject: ModalResultSubject::You
+                    | ModalResultSubject::They
+                    | ModalResultSubject::Player
+                    | ModalResultSubject::Players,
+                negated: true,
+            } | ModalResultShape::ExactNegated {
+                subject: ModalResultSubject::You
+                    | ModalResultSubject::They
+                    | ModalResultSubject::Player
+                    | ModalResultSubject::Players,
+            }
+        )
+    ) {
         return Some(IfResultPredicate::DidNot);
     }
 

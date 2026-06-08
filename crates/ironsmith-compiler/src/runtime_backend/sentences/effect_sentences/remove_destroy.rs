@@ -1,86 +1,60 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::SubjectVerbPrimitiveClause;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::lexer::{
     token_slice_at_is, token_slice_first_is, token_slice_first_is_any, token_slice_starts_with,
+    token_slice_words_eq, token_slice_words_eq_any, word_slice_contains_any_phrase,
+    word_slice_contains_phrase, word_slice_ends_with_any, word_slice_find_phrase_start,
+    word_slice_first_is_any,
 };
 use crate::runtime_backend::util::{
     parse_choice_count_before_target_prefix, parse_filter_counter_constraint_words,
 };
 
-const FROM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["from"]);
-const COMBAT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["combat"]);
-const COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["counter"], &["counters"]]);
-const WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const AT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["at"]);
-const COMBAT_HISTORY_DESTROY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["was", "blocked"],
-            &["was", "blocking"],
-            &["blocking", "it"],
-            &["blocked", "it"],
-            &["it", "blocked"],
-        ]]
-);
-const ATTACHED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["attached"]);
-const TO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["to"]);
-const ATTACHED_SUPPORTED_TARGET_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you"], &["it"]]);
-const ATTACHED_FILTER_TRAILING_BE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["that"], &["were"], &["was"], &["is"], &["are"]]);
-const ATTACHED_TIMING_TAIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["at"],
-            &["beginning"],
-            &["end"],
-            &["combat"],
-            &["turn"],
-            &["step"],
-            &["until"],
-        ]
-);
+const FROM_WORD: &str = "from";
+const COMBAT_WORDS: &[&str] = &["combat"];
+const COUNTER_OR_COUNTERS_WORDS: &[&str] = &["counter", "counters"];
+const WITH_WORD: &str = "with";
+const AT_WORD: &str = "at";
+const COMBAT_HISTORY_DESTROY_PHRASES: &[&[&str]] = &[
+    &["was", "blocked"],
+    &["was", "blocking"],
+    &["blocking", "it"],
+    &["blocked", "it"],
+    &["it", "blocked"],
+];
+const ATTACHED_WORD: &str = "attached";
+const TO_WORD: &str = "to";
+const ATTACHED_SUPPORTED_TARGET_WORDS: &[&[&str]] = &[&["you"], &["it"]];
+const ATTACHED_FILTER_TRAILING_BE_WORDS: &[&str] = &["that", "were", "was", "is", "are"];
+const ATTACHED_TIMING_TAIL_WORDS: &[&str] =
+    &["at", "beginning", "end", "combat", "turn", "step", "until"];
 const CHOSEN_THIS_WAY_SUFFIXES: &[&[&str]] = &[
     &["chosen", "this", "way"],
     &["that", "were", "chosen", "this", "way"],
     &["that", "was", "chosen", "this", "way"],
 ];
-const CHOSEN_THIS_WAY_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any CHOSEN_THIS_WAY_SUFFIXES);
-const EXCEPT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["except"]);
-const IF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["if"]);
-const INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const NO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["no"]);
-const ALL_OR_EACH_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["all"], &["each"]]);
-const TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
-const BLOCKED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["blocked"]);
-const DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["that", "was", "dealt", "damage", "this", "turn"]);
+const EXCEPT_WORD: &str = "except";
+const IF_WORD: &str = "if";
+const INSTEAD_WORD: &str = "instead";
+const AND_WORD: &str = "and";
+const NO_WORD: &str = "no";
+const ALL_OR_EACH_WORDS: &[&str] = &["all", "each"];
+const TARGET_WORD: &str = "target";
+const BLOCKED_WORD: &str = "blocked";
+const DEALT_DAMAGE_THIS_TURN_TAIL: &[&str] = &["that", "was", "dealt", "damage", "this", "turn"];
 const DEALT_DAMAGE_THIS_TURN_FILTER_TAILS: &[&[&str]] = &[
     &["that", "was", "dealt", "damage", "this", "turn"],
     &["that", "were", "dealt", "damage", "this", "turn"],
 ];
 const THAT_DEALT_DAMAGE_TO_PHRASE: &[&str] = &["that", "dealt", "damage", "to"];
-const THAT_DEALT_DAMAGE_TO_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & THAT_DEALT_DAMAGE_TO_PHRASE);
-const END_OF_COMBAT_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["end", "of", "combat"]]);
+const END_OF_COMBAT_PHRASE: &[&str] = &["end", "of", "combat"];
 
-fn remove_find_exact_phrase_shape(
-    words: &[&str],
-    phrase: &[&str],
-    shape: &ClauseShape<'static>,
-) -> Option<usize> {
-    if phrase.is_empty() || words.len() < phrase.len() {
-        return None;
-    }
-    words
-        .windows(phrase.len())
-        .position(|window| shape.matches_words(window))
+fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word().is_some_and(|word| word == expected)
+}
+
+fn token_is_any_word(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token.as_word().is_some_and(|word| expected.contains(&word))
 }
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -89,9 +63,8 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         return Ok(EffectAst::subject_verb_remove_all_of_them_counters_from_source());
     }
 
-    if let Some(from_idx) = find_index(tokens, |token| FROM_WORD_PATTERN.matches_token(token)) {
-        let tail_words = crate::runtime_backend::token_word_refs(&tokens[from_idx + 1..]);
-        if COMBAT_WORD_PATTERN.matches_words(&tail_words) {
+    if let Some(from_idx) = find_index(tokens, |token| token_is_word(token, FROM_WORD)) {
+        if token_slice_words_eq(&tokens[from_idx + 1..], COMBAT_WORDS) {
             let target_tokens = trim_commas(&tokens[..from_idx]);
             if target_tokens.is_empty() {
                 return Err(CardTextError::ParseError(format!(
@@ -106,7 +79,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
 
     if token_slice_first_is(tokens, "all")
         && let Some(counter_idx) = find_index(tokens, |token: &OwnedLexToken| {
-            COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
+            token_is_any_word(token, COUNTER_OR_COUNTERS_WORDS)
         })
         && counter_idx > 0
     {
@@ -162,7 +135,7 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     idx += used;
 
     let counter_idx = find_index(&tokens[idx..], |token: &OwnedLexToken| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token)
+        token_is_any_word(token, COUNTER_OR_COUNTERS_WORDS)
     })
     .map(|offset| idx + offset)
     .ok_or_else(|| CardTextError::ParseError("missing counter keyword".to_string()))?;
@@ -275,12 +248,12 @@ pub(crate) fn wrap_destroy_with_delayed_timing(
 
 fn parse_destroy_all_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
     if let Some(with_idx) = find_index(tokens, |token: &OwnedLexToken| {
-        WITH_WORD_PATTERN.matches_token(token)
+        token_is_word(token, WITH_WORD)
     }) {
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
-            && NO_WORD_PATTERN.matches_word_at(&tail_words, 0)
+            && tail_words.first().is_some_and(|word| *word == NO_WORD)
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words[1..])
             && consumed == tail_words.len().saturating_sub(1)
@@ -334,7 +307,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     let mut delayed_timing = None;
     let mut timing_cut_word_idx = original_clause_words.len();
     for word_idx in 0..original_clause_words.len() {
-        if !AT_WORD_PATTERN.matches_word(original_clause_words[word_idx]) {
+        if original_clause_words[word_idx] != AT_WORD {
             continue;
         }
         if let Some(timing) = parse_delayed_destroy_timing_words(&original_clause_words[word_idx..])
@@ -361,9 +334,11 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     if delayed_timing.is_none()
-        && (END_OF_COMBAT_PATTERN.matches_words(&original_clause_words)
-            || (grammar::contains_word(tokens, "beginning")
-                && grammar::contains_word(tokens, "end")))
+        && (word_slice_contains_phrase(
+            &crate::runtime_backend::token_word_refs(tokens),
+            END_OF_COMBAT_PHRASE,
+        ) || (grammar::contains_word(tokens, "beginning")
+            && grammar::contains_word(tokens, "end")))
     {
         return Err(CardTextError::ParseError(format!(
             "unsupported delayed destroy timing clause (clause: '{}')",
@@ -376,7 +351,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             delayed_timing,
         ));
     }
-    if ALL_OR_EACH_WORD_PATTERN.matches_word_at(&clause_words, 0)
+    if word_slice_first_is_any(&clause_words, ALL_OR_EACH_WORDS)
         && let Some(filter) = parse_destroy_all_combat_history_filter(&core_tokens[1..])?
     {
         return Ok(wrap_destroy_with_delayed_timing(
@@ -387,26 +362,29 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     let has_combat_history = (grammar::contains_word(&core_tokens, "dealt")
         && grammar::contains_word(&core_tokens, "damage")
         && grammar::contains_word(&core_tokens, "turn"))
-        || COMBAT_HISTORY_DESTROY_PATTERN.matches_words(&clause_words);
+        || word_slice_contains_any_phrase(
+            &crate::runtime_backend::token_word_refs(&core_tokens),
+            COMBAT_HISTORY_DESTROY_PHRASES,
+        );
     if has_combat_history {
         return Err(CardTextError::ParseError(format!(
             "unsupported combat-history destroy clause (clause: '{}')",
             clause_words.join(" ")
         )));
     }
-    if ALL_OR_EACH_WORD_PATTERN.matches_word_at(&clause_words, 0) {
+    if word_slice_first_is_any(&clause_words, ALL_OR_EACH_WORDS) {
         if let Some(attached_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-            ATTACHED_WORD_PATTERN.matches_token(token)
+            token_is_word(token, ATTACHED_WORD)
         }) && core_tokens
             .get(attached_idx + 1)
-            .is_some_and(|token| TO_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| token_is_word(token, TO_WORD))
             && attached_idx > 1
         {
             let mut filter_tokens = trim_commas(&core_tokens[1..attached_idx]).to_vec();
             while filter_tokens
                 .last()
                 .and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| ATTACHED_FILTER_TRAILING_BE_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| ATTACHED_FILTER_TRAILING_BE_WORDS.contains(&word))
             {
                 filter_tokens.pop();
             }
@@ -414,10 +392,10 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
             let has_timing_tail = target_words
                 .iter()
-                .any(|word| ATTACHED_TIMING_TAIL_WORD_PATTERN.matches_word(word));
+                .any(|word| ATTACHED_TIMING_TAIL_WORDS.contains(word));
             let supported_target = grammar::words_match_prefix(&target_tokens, &["target"])
                 .is_some()
-                || ATTACHED_SUPPORTED_TARGET_PATTERN.matches_words(&target_words)
+                || token_slice_words_eq_any(&target_tokens, ATTACHED_SUPPORTED_TARGET_WORDS)
                 || grammar::words_match_any_prefix(&target_tokens, ATTACHED_REFERENCE_PREFIXES)
                     .is_some();
             if !filter_tokens.is_empty()
@@ -476,7 +454,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             ));
         }
         let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
-        if CHOSEN_THIS_WAY_SUFFIX_PATTERN.matches_words(&filter_words)
+        if word_slice_ends_with_any(&filter_words, CHOSEN_THIS_WAY_SUFFIXES)
             && let Some(suffix_len) = CHOSEN_THIS_WAY_SUFFIXES.iter().find_map(|suffix| {
                 (filter_words.len() >= suffix.len()
                     && filter_words[filter_words.len() - suffix.len()..] == **suffix)
@@ -492,7 +470,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             let base_filter_tokens = trim_commas(&filter_tokens[..token_cutoff]);
             let mut filter = parse_object_filter(&base_filter_tokens, false)?;
             let relation = if let Some(except_idx) = find_index(&base_filter_tokens, |token| {
-                EXCEPT_WORD_PATTERN.matches_token(token)
+                token_is_word(token, EXCEPT_WORD)
             }) {
                 let base_before_except = trim_commas(&base_filter_tokens[..except_idx]);
                 if base_before_except.is_empty() {
@@ -528,12 +506,12 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     }
 
     if let Some(if_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-        IF_WORD_PATTERN.matches_token(token)
+        token_is_word(token, IF_WORD)
     }) {
         let mut target_tokens = trim_commas(&core_tokens[..if_idx]).to_vec();
         while target_tokens
             .last()
-            .is_some_and(|token| INSTEAD_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| token_is_word(token, INSTEAD_WORD))
         {
             target_tokens.pop();
         }
@@ -581,12 +559,12 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
         });
     }
     if let Some(and_idx) = find_index(&core_tokens, |token: &OwnedLexToken| {
-        AND_WORD_PATTERN.matches_token(token)
+        token_is_word(token, AND_WORD)
     }) {
         let tail_slice = &core_tokens[and_idx + 1..];
         let starts_multi_target = tail_slice
             .first()
-            .is_some_and(|t| TARGET_WORD_PATTERN.matches_token(t))
+            .is_some_and(|t| token_is_word(t, TARGET_WORD))
             || parse_choice_count_before_target_prefix(tail_slice).is_some();
         if starts_multi_target {
             return Err(CardTextError::ParseError(format!(
@@ -599,7 +577,7 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
     if grammar::words_match_any_prefix(&core_tokens, TARGET_BLOCKED_PREFIXES).is_some() {
         let mut target_tokens = core_tokens.to_vec();
         if let Some(blocked_idx) = find_index(&target_tokens, |token: &OwnedLexToken| {
-            BLOCKED_WORD_PATTERN.matches_token(token)
+            token_is_word(token, BLOCKED_WORD)
         }) {
             target_tokens.remove(blocked_idx);
         }
@@ -630,7 +608,7 @@ pub(crate) fn parse_destroy_combat_history_target(
     {
         return Ok(Some(target));
     }
-    let Some(that_idx) = DEALT_DAMAGE_THIS_TURN_TAIL_PATTERN.find_exact_window(&clause_words, 6)
+    let Some(that_idx) = word_slice_find_phrase_start(&clause_words, DEALT_DAMAGE_THIS_TURN_TAIL)
     else {
         return Ok(None);
     };
@@ -655,11 +633,8 @@ fn parse_destroy_target_dealt_damage_to_player_this_turn(
     tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<TargetAst>, CardTextError> {
-    let Some(that_idx) = remove_find_exact_phrase_shape(
-        clause_words,
-        THAT_DEALT_DAMAGE_TO_PHRASE,
-        &THAT_DEALT_DAMAGE_TO_PATTERN,
-    ) else {
+    let Some(that_idx) = word_slice_find_phrase_start(clause_words, THAT_DEALT_DAMAGE_TO_PHRASE)
+    else {
         return Ok(None);
     };
     if that_idx == 0

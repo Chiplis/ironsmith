@@ -7,8 +7,10 @@ use winnow::token::take_till;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, contains_token_any_word, contains_token_word,
+    LexStream, LexedClause, OwnedLexToken, TokenKind, contains_token_any_word, contains_token_word,
     find_token_kind, find_token_word, token_slice_strip_any_word_prefix,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
 };
 use super::super::token_primitives::{
     find_index, find_window_by, parse_turn_duration_prefix, parse_value_comparison_tokens,
@@ -19,7 +21,6 @@ use super::super::util::{
     token_index_for_word_index, trim_commas,
 };
 use super::super::value_helpers::parse_value_from_lexed;
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::dispatch_entry::{
     ConsultCastClause, ConsultCastCost, ConsultCastManaValueCondition, ConsultCastTiming,
     ConsultSentenceParts, consult_stop_rule_is_single_match, find_from_among_looked_cards_phrase,
@@ -36,76 +37,60 @@ use crate::effect::{EventValueSpec, Value};
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
-const CONSULT_THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
-const CONSULT_REVEAL_OR_EXILE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["reveal"], &["reveals"], &["exile"], &["exiles"]]);
-const CONSULT_REVEAL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["reveal"], &["reveals"]]);
-const CONSULT_UNTIL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["until"]);
-const CONSULT_THEY_SUBJECT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["they"]);
-const CONSULT_TOP_LIBRARY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["cards", "from", "top", "of"]; suffix & ["library"]);
-const CONSULT_THAT_MANY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "many"]);
-const CONSULT_BOTTOM_LIBRARY_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["bottom", "library"]);
-const CONSULT_RANDOM_ORDER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["random", "order"]]);
-const CONSULT_ANY_ORDER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["any", "order"]]);
-const CONSULT_THIS_POWER_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["thiss", "power"], &["this", "power"]]);
-const CONSULT_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"]]);
-const CONSULT_MAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["may"]);
-const CONSULT_PLAY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["play"]);
-const CONSULT_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["this", "turn"]);
-const CONSULT_PAY_LIFE_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather",
-            "than", "paying", "its", "mana", "cost",
-        ]
-);
-const CONSULT_NOT_CAST_THIS_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["not", "cast", "this"],
-            &["were", "not", "cast", "this", "way"],
-            &["werent", "cast", "this", "way"],
-            &["weren't", "cast", "this", "way"],
-        ]]
-);
-const CONSULT_PUT_MATCH_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["put", "that", "card", "into", "your", "hand"],
-            &["put", "the", "exiled", "card", "into", "your", "hand"],
-            &["put", "it", "into", "your", "hand"],
-            &[
-                "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast", "this",
-                "way",
-            ],
-            &[
-                "put", "that", "card", "into", "your", "hand", "if", "it", "wasn't", "cast",
-                "this", "way",
-            ],
-            &[
-                "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasnt",
-                "cast", "this", "way",
-            ],
-            &[
-                "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasn't",
-                "cast", "this", "way",
-            ],
-            &[
-                "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
-            ],
-            &[
-                "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
-            ],
-        ]
-);
+const CONSULT_REVEAL_OR_EXILE_WORDS: &[&str] = &["reveal", "reveals", "exile", "exiles"];
+const CONSULT_REVEAL_WORDS: &[&str] = &["reveal", "reveals"];
+const CONSULT_TOP_LIBRARY_PREFIX: &[&str] = &["cards", "from", "top", "of"];
+const CONSULT_TOP_LIBRARY_SUFFIX: &[&str] = &["library"];
+const CONSULT_THAT_MANY_PREFIX: &[&str] = &["that", "many"];
+const CONSULT_THIS_POWER_CLAUSES: &[&[&str]] = &[&["thiss", "power"], &["this", "power"]];
+const CONSULT_THIS_TURN_CLAUSE: &[&str] = &["this", "turn"];
+const CONSULT_PAY_LIFE_MANA_VALUE_CLAUSE: &[&str] = &[
+    "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather", "than",
+    "paying", "its", "mana", "cost",
+];
+const CONSULT_NOT_CAST_THIS_MARKER_PHRASES: &[&[&str]] = &[
+    &["not", "cast", "this"],
+    &["were", "not", "cast", "this", "way"],
+    &["werent", "cast", "this", "way"],
+    &["weren't", "cast", "this", "way"],
+];
+const CONSULT_PUT_MATCH_INTO_HAND_CLAUSES: &[&[&str]] = &[
+    &["put", "that", "card", "into", "your", "hand"],
+    &["put", "the", "exiled", "card", "into", "your", "hand"],
+    &["put", "it", "into", "your", "hand"],
+    &[
+        "put", "that", "card", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
+    ],
+    &[
+        "put", "that", "card", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
+    ],
+    &[
+        "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasnt", "cast",
+        "this", "way",
+    ],
+    &[
+        "put", "the", "exiled", "card", "into", "your", "hand", "if", "it", "wasn't", "cast",
+        "this", "way",
+    ],
+    &[
+        "put", "it", "into", "your", "hand", "if", "it", "wasnt", "cast", "this", "way",
+    ],
+    &[
+        "put", "it", "into", "your", "hand", "if", "it", "wasn't", "cast", "this", "way",
+    ],
+];
+
+fn is_consult_reveal_or_exile_word(word: &str) -> bool {
+    CONSULT_REVEAL_OR_EXILE_WORDS
+        .iter()
+        .any(|expected| word.eq_ignore_ascii_case(expected))
+}
+
+fn is_consult_reveal_word(word: &str) -> bool {
+    CONSULT_REVEAL_WORDS
+        .iter()
+        .any(|expected| word.eq_ignore_ascii_case(expected))
+}
 
 pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let (_, count) = super::dispatch_entry::parse_prefixed_top_of_your_library_count(
@@ -136,7 +121,9 @@ pub(crate) fn parse_consult_traversal_sentence(
     let mut prefix_effects = Vec::new();
     let mut prefix_tokens: Vec<OwnedLexToken> = Vec::new();
     let consult_tokens = if let Some(then_idx) = find_index(&sentence_tokens, |token| {
-        CONSULT_THEN_WORD_PATTERN.matches_token(token)
+        token
+            .as_word()
+            .is_some_and(|word| word.eq_ignore_ascii_case("then"))
     }) {
         prefix_tokens = trim_commas(&sentence_tokens[..then_idx]);
         if prefix_tokens.is_empty() {
@@ -158,15 +145,17 @@ pub(crate) fn parse_consult_traversal_sentence(
     }
 
     let Some(consult_verb_idx) = find_index(&consult_tokens, |token| {
-        CONSULT_REVEAL_OR_EXILE_WORD_PATTERN.matches_token(token)
+        token.as_word().is_some_and(is_consult_reveal_or_exile_word)
     }) else {
         return Ok(None);
     };
     let player = if consult_verb_idx == 0 {
         infer_consult_player_from_prefix(&prefix_tokens).unwrap_or(PlayerAst::You)
     } else {
-        let subject_words = TokenWordView::new(&consult_tokens[..consult_verb_idx]).word_refs();
-        if CONSULT_THEY_SUBJECT_PATTERN.matches_words(&subject_words) {
+        if word_slice_eq(
+            &crate::runtime_backend::token_word_refs(&consult_tokens[..consult_verb_idx]),
+            &["they"],
+        ) {
             PlayerAst::That
         } else {
             match parse_subject(&consult_tokens[..consult_verb_idx]) {
@@ -175,14 +164,19 @@ pub(crate) fn parse_consult_traversal_sentence(
             }
         }
     };
-    let mode = if CONSULT_REVEAL_WORD_PATTERN.matches_token(&consult_tokens[consult_verb_idx]) {
+    let mode = if consult_tokens[consult_verb_idx]
+        .as_word()
+        .is_some_and(is_consult_reveal_word)
+    {
         LibraryConsultModeAst::Reveal
     } else {
         LibraryConsultModeAst::Exile
     };
 
     let Some(until_idx) = find_index(&consult_tokens, |token| {
-        CONSULT_UNTIL_WORD_PATTERN.matches_token(token)
+        token
+            .as_word()
+            .is_some_and(|word| word.eq_ignore_ascii_case("until"))
     }) else {
         return Ok(None);
     };
@@ -190,10 +184,12 @@ pub(crate) fn parse_consult_traversal_sentence(
         return Ok(None);
     }
 
-    let consult_prefix_words = TokenWordView::new(&consult_tokens[consult_verb_idx + 1..until_idx]);
-    let raw_prefix_words = consult_prefix_words.word_refs();
-    let prefix_words = super::super::util::non_article_word_refs(&raw_prefix_words);
-    if !CONSULT_TOP_LIBRARY_PREFIX_PATTERN.matches_words(&prefix_words) {
+    let consult_prefix_tokens = &consult_tokens[consult_verb_idx + 1..until_idx];
+    let consult_prefix_words =
+        crate::runtime_backend::util::non_article_token_word_refs(consult_prefix_tokens);
+    if !word_slice_starts_with(&consult_prefix_words, CONSULT_TOP_LIBRARY_PREFIX)
+        || !word_slice_ends_with(&consult_prefix_words, CONSULT_TOP_LIBRARY_SUFFIX)
+    {
         return Ok(None);
     }
 
@@ -207,7 +203,7 @@ pub(crate) fn parse_consult_traversal_sentence(
         (stop_rule, filter)
     } else {
         let Some(match_verb_idx) = find_index(&until_tokens, |token| {
-            CONSULT_REVEAL_OR_EXILE_WORD_PATTERN.matches_token(token)
+            token.as_word().is_some_and(is_consult_reveal_or_exile_word)
         }) else {
             return Ok(None);
         };
@@ -219,9 +215,10 @@ pub(crate) fn parse_consult_traversal_sentence(
         if filter_tokens.is_empty() {
             return Ok(None);
         }
-        let filter_word_view = TokenWordView::new(&filter_tokens);
-        let filter_words = filter_word_view.word_refs();
-        let stop_rule = if CONSULT_THAT_MANY_PREFIX_PATTERN.matches_words(&filter_words) {
+        let stop_rule = if word_slice_starts_with(
+            &crate::runtime_backend::token_word_refs(&filter_tokens),
+            CONSULT_THAT_MANY_PREFIX,
+        ) {
             let remaining_start = TokenWordView::new(&filter_tokens)
                 .token_index_after_words(2)
                 .unwrap_or(2);
@@ -350,7 +347,7 @@ fn parse_passive_consult_stop_rule_and_filter(
             TokenWordView::new(&tokens)
                 .word_refs()
                 .first()
-                .is_some_and(|word| CONSULT_ARTICLE_WORD_PATTERN.matches_word(word))
+                .is_some_and(|word| matches!(*word, "a" | "an"))
                 .then_some((Value::Fixed(1), 1))
         })
     else {
@@ -414,13 +411,13 @@ fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAs
 }
 
 pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBottomOrderAst> {
-    if !CONSULT_BOTTOM_LIBRARY_PATTERN.matches_words(words) {
+    if !word_slice_contains_word(words, "bottom") || !word_slice_contains_word(words, "library") {
         return None;
     }
-    if CONSULT_RANDOM_ORDER_PATTERN.matches_words(words) {
+    if word_slice_contains_phrase(words, &["random", "order"]) {
         return Some(LibraryBottomOrderAst::Random);
     }
-    if CONSULT_ANY_ORDER_PATTERN.matches_words(words) {
+    if word_slice_contains_phrase(words, &["any", "order"]) {
         return Some(LibraryBottomOrderAst::ChooserChooses);
     }
     None
@@ -428,8 +425,10 @@ pub(crate) fn parse_consult_remainder_order(words: &[&str]) -> Option<LibraryBot
 
 pub(crate) fn parse_consult_condition_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let word_view = TokenWordView::new(tokens);
-    let word_refs = word_view.word_refs();
-    if CONSULT_THIS_POWER_PATTERN.matches_words(&word_refs) {
+    if word_slice_eq_any(
+        &crate::runtime_backend::token_word_refs(tokens),
+        CONSULT_THIS_POWER_CLAUSES,
+    ) {
         return Some(Value::SourcePower);
     }
 
@@ -550,7 +549,17 @@ pub(crate) fn parse_consult_mana_value_condition_tokens(
         tokens,
         &[
             &["if", "it's", "a", "spell", "with", "mana", "value"][..],
+            &[
+                "if", "it's", "an", "instant", "spell", "with", "mana", "value",
+            ][..],
+            &["if", "its", "a", "spell", "with", "mana", "value"][..],
+            &[
+                "if", "its", "an", "instant", "spell", "with", "mana", "value",
+            ][..],
             &["if", "it", "is", "a", "spell", "with", "mana", "value"][..],
+            &[
+                "if", "it", "is", "an", "instant", "spell", "with", "mana", "value",
+            ][..],
             &["if", "the", "spell's", "mana", "value"][..],
             &["if", "the", "spells", "mana", "value"][..],
             &["if", "that", "spell's", "mana", "value"][..],
@@ -582,7 +591,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
     }
 
     let may_idx = find_index(&second_tokens, |token| {
-        CONSULT_MAY_WORD_PATTERN.matches_token(token)
+        token.as_word().is_some_and(|word| word == "may")
     })?;
     if may_idx == 0 || may_idx + 1 >= second_tokens.len() {
         return None;
@@ -604,12 +613,10 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
             &["play", "it"],
         ],
     )?;
-    let allow_land = matched_phrase
-        .first()
-        .is_some_and(|word| CONSULT_PLAY_WORD_PATTERN.matches_words(&[*word]));
+    let allow_land = matched_phrase.first().is_some_and(|word| *word == "play");
     let remainder_word_view = TokenWordView::new(remainder_tokens);
     let remainder = remainder_word_view.word_refs();
-    if CONSULT_THIS_TURN_PATTERN.matches_words(&remainder) {
+    if word_slice_eq(&remainder, CONSULT_THIS_TURN_CLAUSE) {
         return Some(ConsultCastClause {
             caster,
             allow_land,
@@ -619,7 +626,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
         });
     }
 
-    if CONSULT_PAY_LIFE_MANA_VALUE_PATTERN.matches_words(&remainder) {
+    if word_slice_eq(&remainder, CONSULT_PAY_LIFE_MANA_VALUE_CLAUSE) {
         return Some(ConsultCastClause {
             caster,
             allow_land,
@@ -672,7 +679,10 @@ pub(crate) fn parse_consult_bottom_remainder_clause(
     if !grammar::contains_word(tokens, mode_word) {
         return None;
     }
-    let mentions_cast_window = CONSULT_NOT_CAST_THIS_MARKER_PATTERN.matches_words(&clause_words);
+    let mentions_cast_window = word_slice_contains_any_phrase(
+        &crate::runtime_backend::token_word_refs(tokens),
+        CONSULT_NOT_CAST_THIS_MARKER_PHRASES,
+    );
     let mentions_remainder =
         grammar::contains_word(tokens, "rest") || grammar::contains_word(tokens, "other");
 
@@ -683,15 +693,16 @@ pub(crate) fn parse_if_declined_put_match_into_hand(
     tokens: &[OwnedLexToken],
     match_tag: TagKey,
 ) -> Option<Vec<EffectAst>> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    let moves_to_hand = CONSULT_PUT_MATCH_INTO_HAND_PATTERN.matches_words(&clause_words)
-        || super::super::grammar::primitives::words_match_prefix(
-            tokens,
-            &[
-                "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
-            ],
-        )
-        .is_some()
+    let moves_to_hand = word_slice_eq_any(
+        &crate::runtime_backend::token_word_refs(tokens),
+        CONSULT_PUT_MATCH_INTO_HAND_CLAUSES,
+    ) || super::super::grammar::primitives::words_match_prefix(
+        tokens,
+        &[
+            "if", "you", "dont", "put", "that", "card", "into", "your", "hand",
+        ],
+    )
+    .is_some()
         || super::super::grammar::primitives::words_match_prefix(
             tokens,
             &[

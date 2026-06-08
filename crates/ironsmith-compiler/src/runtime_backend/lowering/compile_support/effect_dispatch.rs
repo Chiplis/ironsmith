@@ -195,6 +195,56 @@ fn compile_effect_inner(
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
+    if let EffectAst::ChooseOneOf { modes } = effect {
+        use crate::effect::EffectMode;
+        let mut lowered_modes = Vec::with_capacity(modes.len());
+        let mut choices = Vec::new();
+        for mode in modes {
+            let (mode_effects, mode_choices) = compile_effects(&mode.effects, ctx)?;
+            for choice in mode_choices {
+                push_choice(&mut choices, choice);
+            }
+            lowered_modes.push(EffectMode {
+                description: mode.description.clone(),
+                effects: mode_effects,
+            });
+        }
+        return Ok((vec![Effect::choose_one(lowered_modes)], choices));
+    }
+    if let EffectAst::IfEffectDidNotHappen { effect, otherwise } = effect {
+        let id = ctx.next_effect_id();
+        let (mut lowered, mut choices) = compile_effect(effect, ctx)?;
+        let inner = lowered.pop().ok_or_else(|| {
+            CardTextError::ParseError(
+                "if-effect-did-not-happen requires a single nested effect".to_string(),
+            )
+        })?;
+        if !lowered.is_empty() {
+            return Err(CardTextError::ParseError(
+                "if-effect-did-not-happen nested effect must lower to a single effect".to_string(),
+            ));
+        }
+        let wrapped = Effect::with_id(id.0, inner);
+        ctx.last_effect_id = Some(id);
+        let (otherwise_effects, otherwise_choices) = compile_effects(otherwise, ctx)?;
+        for choice in otherwise_choices {
+            push_choice(&mut choices, choice);
+        }
+        let fallback = Effect::if_then(id, EffectPredicate::DidNotHappen, otherwise_effects);
+        return Ok((vec![wrapped, fallback], choices));
+    }
+    if let EffectAst::TagAffected { effect, tag } = effect {
+        let (mut lowered, choices) = compile_effect(effect, ctx)?;
+        let inner = lowered.pop().ok_or_else(|| {
+            CardTextError::ParseError("tag-affected requires a single nested effect".to_string())
+        })?;
+        if !lowered.is_empty() {
+            return Err(CardTextError::ParseError(
+                "tag-affected nested effect must lower to a single effect".to_string(),
+            ));
+        }
+        return Ok((vec![inner.tag_all(tag.clone())], choices));
+    }
     if let EffectAst::ManaRestricted {
         effects,
         restrictions,
@@ -1470,6 +1520,33 @@ fn compile_subject_verb_effect(
                 subject.into_choices(),
             ))
         }
+        SubjectVerbActionAst::PutOntoBattlefield {
+            target,
+            tapped,
+            controller,
+        } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            let chooser = subject.clone_player_filter();
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let controller_filter = match controller {
+                ReturnControllerAst::Preserve => chooser,
+                ReturnControllerAst::You => PlayerFilter::You,
+                ReturnControllerAst::Owner => {
+                    return Err(CardTextError::ParseError(
+                        "put-onto-battlefield under owner control is unsupported".to_string(),
+                    ));
+                }
+            };
+            let mut all_choices = subject.into_choices();
+            for choice in choices {
+                push_choice(&mut all_choices, choice);
+            }
+            Ok((
+                vec![Effect::put_onto_battlefield(spec, *tapped, controller_filter)],
+                all_choices,
+            ))
+        }
         SubjectVerbActionAst::LookAtObjects { filter } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
@@ -1534,12 +1611,6 @@ fn compile_subject_verb_effect(
                 )],
                 choices,
             ))
-        }
-        SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count } => {
-            compile_put_some_into_hand_rest_to_zone(role, player, *count, Zone::Graveyard, ctx)
-        }
-        SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { count } => {
-            compile_put_some_into_hand_rest_to_zone(role, player, *count, Zone::Library, ctx)
         }
         SubjectVerbActionAst::AdditionalLandPlays { count, duration } => {
             let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
@@ -2202,6 +2273,34 @@ fn compile_subject_verb_effect(
                 Effect::with_id(id.0, Effect::new(copy_effect)).tag(COPIED_STACK_OBJECT_TAG);
             Ok((vec![effect], choices))
         }
+        SubjectVerbActionAst::PutTaggedRemainderInZone {
+            tag,
+            keep_tagged,
+            zone,
+        } => {
+            use crate::effect::Condition;
+            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+
+            let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+            let resolved_keep = resolve_it_tag_key(keep_tagged, &current_reference_env(ctx))?;
+            let mut membership_filter = ObjectFilter::default();
+            membership_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: TagKey::from("__it__"),
+                    relation: TaggedOpbjectRelation::SameStableId,
+                });
+            let in_keep = Condition::TaggedObjectMatches(resolved_keep, membership_filter);
+            let move_rest = Effect::for_each_tagged(
+                resolved_tag,
+                vec![Effect::conditional(
+                    in_keep,
+                    Vec::new(),
+                    vec![Effect::move_to_zone(ChooseSpec::Iterated, *zone, false)],
+                )],
+            );
+            Ok((vec![move_rest], Vec::new()))
+        }
         SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
             tag,
             keep_tagged,
@@ -2813,9 +2912,13 @@ fn compile_subject_verb_effect(
                     ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG
                 )
             {
-                spec = ChooseSpec::All(
-                    ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
-                );
+                spec = if let Some(tag) = ctx.last_exiled_collection_tag.clone() {
+                    ChooseSpec::Tagged(TagKey::from(tag))
+                } else {
+                    ChooseSpec::All(
+                        ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
+                    )
+                };
             }
             let move_effect = crate::effects::MoveToZoneEffect::new(spec.clone(), *zone, *to_top);
             let move_effect = if *zone == Zone::Battlefield && *battlefield_tapped {
@@ -4056,535 +4159,6 @@ fn compile_subject_verb_effect(
                     resolved_tag,
                 ))],
                 subject.into_choices(),
-            ))
-        }
-        SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count } => {
-            use crate::effect::{Condition, EffectMode, Value};
-
-            let subject = LoweredSubject::resolve_library_owner(player, ctx, true, true, false)?;
-            let player_filter = subject.clone_player_filter();
-            let choices = subject.into_choices();
-            let mut modes = Vec::new();
-            let card_type_modes = [
-                ("Artifact", CardType::Artifact),
-                ("Battle", CardType::Battle),
-                ("Creature", CardType::Creature),
-                ("Enchantment", CardType::Enchantment),
-                ("Instant", CardType::Instant),
-                ("Kindred", CardType::Kindred),
-                ("Land", CardType::Land),
-                ("Planeswalker", CardType::Planeswalker),
-                ("Sorcery", CardType::Sorcery),
-            ];
-
-            for (label, card_type) in card_type_modes {
-                let looked_tag = ctx.next_tag("revealed");
-                let mut card_type_filter = ObjectFilter::default();
-                card_type_filter.card_types.push(card_type);
-
-                let reveal = Effect::look_at_top_cards(
-                    player_filter.clone(),
-                    Value::Fixed(*count as i32),
-                    TagKey::from(looked_tag.as_str()),
-                );
-                let reveal_tagged =
-                    Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
-                let move_by_type = Effect::for_each_tagged(
-                    looked_tag,
-                    vec![Effect::conditional(
-                        Condition::TaggedObjectMatches(TagKey::from("__it__"), card_type_filter),
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Hand,
-                            false,
-                        )],
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Library,
-                            false,
-                        )],
-                    )],
-                );
-
-                modes.push(EffectMode {
-                    description: label.to_string(),
-                    effects: vec![reveal, reveal_tagged, move_by_type],
-                });
-            }
-
-            Ok((vec![Effect::choose_one(modes)], choices))
-        }
-        SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { count, filter } => {
-            use crate::effect::{Condition, Value};
-
-            let subject = LoweredSubject::resolve_library_owner(player, ctx, true, true, false)?;
-            let player_filter = subject.into_player_filter();
-            let choices = subject.into_choices();
-            let looked_tag = ctx.next_tag("revealed");
-            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            resolved_filter.zone = None;
-
-            let reveal = Effect::look_at_top_cards(
-                player_filter,
-                Value::Fixed(*count as i32),
-                TagKey::from(looked_tag.as_str()),
-            );
-            let reveal_tagged =
-                Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
-            let distribute = Effect::for_each_tagged(
-                looked_tag.clone(),
-                vec![Effect::conditional(
-                    Condition::TaggedObjectMatches(TagKey::from("__it__"), resolved_filter),
-                    vec![Effect::move_to_zone(
-                        ChooseSpec::Iterated,
-                        Zone::Hand,
-                        false,
-                    )],
-                    vec![Effect::move_to_zone(
-                        ChooseSpec::Iterated,
-                        Zone::Graveyard,
-                        false,
-                    )],
-                )],
-            );
-
-            ctx.last_object_tag = Some(looked_tag);
-            Ok((vec![reveal, reveal_tagged, distribute], choices))
-        }
-        SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-            count,
-            filter,
-            order,
-        } => {
-            use crate::effect::Value;
-            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let subject = LoweredSubject::resolve_library_owner(player, ctx, true, true, false)?;
-            let player_filter = subject.clone_player_filter();
-            let choices = subject.into_choices();
-            let looked_tag = ctx.next_tag("revealed");
-            let matched_tag = ctx.next_tag("matched");
-            let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            resolved_filter.zone = None;
-            resolved_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-
-            let reveal = Effect::look_at_top_cards(
-                player_filter.clone(),
-                Value::Fixed(*count as i32),
-                TagKey::from(looked_tag.as_str()),
-            );
-            let reveal_tagged =
-                Effect::new(crate::effects::RevealTaggedEffect::new(looked_tag.clone()));
-            let tag_matching = Effect::new(
-                crate::effects::TagMatchingObjectsEffect::new(resolved_filter, matched_tag.clone())
-                    .in_zones(vec![Zone::Library]),
-            );
-            let move_matching = Effect::for_each_tagged(
-                matched_tag.clone(),
-                vec![Effect::move_to_zone(
-                    ChooseSpec::Iterated,
-                    Zone::Hand,
-                    false,
-                )],
-            );
-            let resolved_order = match order {
-                crate::cards::builders::LibraryBottomOrderAst::Random => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::Random
-                }
-                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-                }
-            };
-            let move_rest = Effect::put_tagged_remainder_on_library_bottom(
-                TagKey::from(looked_tag.as_str()),
-                Some(TagKey::from(matched_tag.as_str())),
-                resolved_order,
-                player_filter,
-            );
-
-            ctx.last_object_tag = Some(looked_tag);
-            Ok((
-                vec![
-                    reveal,
-                    reveal_tagged,
-                    tag_matching,
-                    move_matching,
-                    move_rest,
-                ],
-                choices,
-            ))
-        }
-        SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-            filter,
-            reveal,
-            if_not_chosen,
-        } => {
-            use crate::effect::Condition;
-            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve looked-at cards without prior reference".to_string(),
-                )
-            })?;
-            let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
-            let chooser = subject.clone_player_filter();
-            let mut choose_filter =
-                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
-            let mut choices = subject.into_choices();
-            let source_zone = choose_filter.zone.unwrap_or(Zone::Library);
-            choose_filter.zone = Some(source_zone);
-            choose_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-
-            let chosen_tag = ctx.next_tag("chosen");
-            let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-            let choose = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    choose_filter,
-                    ChoiceCount::up_to(1),
-                    chooser,
-                    chosen_tag_key.clone(),
-                )
-                .in_zone(source_zone),
-            );
-
-            let mut compiled = vec![choose];
-            if *reveal {
-                compiled.push(Effect::for_each_tagged(
-                    chosen_tag.clone(),
-                    vec![Effect::new(crate::effects::RevealTaggedEffect::new(
-                        chosen_tag.clone(),
-                    ))],
-                ));
-            }
-            let move_to_hand_id = ctx.next_effect_id();
-            compiled.push(Effect::with_id(
-                move_to_hand_id.0,
-                Effect::for_each_tagged(
-                    chosen_tag.clone(),
-                    vec![Effect::move_to_zone(
-                        ChooseSpec::Iterated,
-                        Zone::Hand,
-                        false,
-                    )],
-                ),
-            ));
-
-            if source_zone == Zone::Library {
-                let mut membership_filter = ObjectFilter::default();
-                membership_filter
-                    .tagged_constraints
-                    .push(TaggedObjectConstraint {
-                        tag: TagKey::from("__it__"),
-                        relation: TaggedOpbjectRelation::SameStableId,
-                    });
-                let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key, membership_filter);
-                compiled.push(Effect::for_each_tagged(
-                    looked_tag,
-                    vec![Effect::conditional(
-                        in_chosen,
-                        Vec::new(),
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Graveyard,
-                            false,
-                        )],
-                    )],
-                ));
-            }
-
-            if !if_not_chosen.is_empty() {
-                let (if_not_effects, if_not_choices) =
-                    with_preserved_lowering_context(ctx, |_| {}, |ctx| {
-                        compile_effects(if_not_chosen, ctx)
-                    })?;
-                compiled.push(Effect::if_then(
-                    move_to_hand_id,
-                    EffectPredicate::DidNotHappen,
-                    if_not_effects,
-                ));
-                choices.extend(if_not_choices);
-            }
-
-            ctx.last_object_tag = Some(chosen_tag);
-            ctx.last_effect_id = Some(move_to_hand_id);
-            Ok((compiled, choices))
-        }
-        SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-            spell_filter,
-            order,
-        } => effect_visibility_object_handlers::compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-            player,
-            order.clone(),
-            &[
-                CardType::Artifact,
-                CardType::Battle,
-                CardType::Enchantment,
-                CardType::Instant,
-                CardType::Kindred,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Sorcery,
-            ],
-            Some(spell_filter),
-            ctx,
-        ),
-        SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-            order,
-        } => effect_visibility_object_handlers::compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-            player,
-            order.clone(),
-            &[
-                CardType::Artifact,
-                CardType::Battle,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Instant,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Sorcery,
-            ],
-            None,
-            ctx,
-        ),
-        SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-            battlefield_filter,
-            tapped,
-        } => {
-            use crate::effect::Condition;
-            use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve looked-at cards without prior reference".to_string(),
-                )
-            })?;
-
-            let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
-            let chooser = subject.clone_player_filter();
-
-            let mut primary_filter = subject
-                .resolve_object_refs_and_bind_player_refs_in_filter(battlefield_filter, ctx)?;
-            let choices = subject.into_choices();
-            primary_filter.zone = Some(Zone::Library);
-            primary_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-
-            let battlefield_tag = ctx.next_tag("chosen");
-            let battlefield_tag_key: TagKey = battlefield_tag.as_str().into();
-            let choose_primary = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    primary_filter,
-                    ChoiceCount::up_to(1),
-                    chooser.clone(),
-                    battlefield_tag_key.clone(),
-                )
-                .in_zone(Zone::Library),
-            );
-
-            let move_primary_id = ctx.next_effect_id();
-            let move_primary = Effect::with_id(
-                move_primary_id.0,
-                Effect::for_each_tagged(
-                    battlefield_tag.clone(),
-                    vec![Effect::put_onto_battlefield(
-                        ChooseSpec::Iterated,
-                        *tapped,
-                        chooser.clone(),
-                    )],
-                ),
-            );
-
-            let hand_tag = ctx.next_tag("chosen");
-            let hand_tag_key: TagKey = hand_tag.as_str().into();
-            let mut fallback_filter = ObjectFilter::tagged(looked_tag.clone());
-            fallback_filter.zone = Some(Zone::Library);
-            let fallback_choose = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    fallback_filter,
-                    ChoiceCount::exactly(1),
-                    chooser.clone(),
-                    hand_tag_key.clone(),
-                )
-                .in_zone(Zone::Library),
-            );
-            let move_fallback = Effect::for_each_tagged(
-                hand_tag.clone(),
-                vec![Effect::move_to_zone(
-                    ChooseSpec::Iterated,
-                    Zone::Hand,
-                    false,
-                )],
-            );
-            let fallback = Effect::if_then(
-                move_primary_id,
-                EffectPredicate::DidNotHappen,
-                vec![fallback_choose, move_fallback],
-            );
-
-            let mut in_battlefield_choice_filter = ObjectFilter::default();
-            in_battlefield_choice_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from("__it__"),
-                    relation: TaggedOpbjectRelation::SameStableId,
-                });
-            let in_battlefield_choice =
-                Condition::TaggedObjectMatches(battlefield_tag_key, in_battlefield_choice_filter);
-
-            let mut in_hand_choice_filter = ObjectFilter::default();
-            in_hand_choice_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from("__it__"),
-                    relation: TaggedOpbjectRelation::SameStableId,
-                });
-            let in_hand_choice =
-                Condition::TaggedObjectMatches(hand_tag_key, in_hand_choice_filter);
-
-            let move_rest = Effect::for_each_tagged(
-                looked_tag,
-                vec![Effect::conditional(
-                    in_battlefield_choice,
-                    Vec::new(),
-                    vec![Effect::conditional(
-                        in_hand_choice,
-                        Vec::new(),
-                        vec![Effect::move_to_zone(
-                            ChooseSpec::Iterated,
-                            Zone::Library,
-                            false,
-                        )],
-                    )],
-                )],
-            );
-
-            ctx.last_object_tag = Some(hand_tag);
-            ctx.last_effect_id = Some(move_primary_id);
-            Ok((
-                vec![choose_primary, move_primary, fallback, move_rest],
-                choices,
-            ))
-        }
-        SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-            battlefield_filter,
-            hand_filter,
-            tapped,
-            order,
-        } => {
-            use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
-
-            let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-                CardTextError::ParseError(
-                    "unable to resolve looked-at cards without prior reference".to_string(),
-                )
-            })?;
-
-            let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
-            let chooser = subject.clone_player_filter();
-
-            let mut primary_filter = subject
-                .resolve_object_refs_and_bind_player_refs_in_filter(battlefield_filter, ctx)?;
-            let choices = subject.into_choices();
-            primary_filter.zone = Some(Zone::Library);
-            primary_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-
-            let battlefield_tag = ctx.next_tag("chosen");
-            let battlefield_tag_key: TagKey = battlefield_tag.as_str().into();
-            let choose_primary = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    primary_filter,
-                    ChoiceCount::up_to(1),
-                    chooser.clone(),
-                    battlefield_tag_key.clone(),
-                )
-                .in_zone(Zone::Library),
-            );
-
-            let kept_tag = ctx.next_tag("kept");
-            let kept_tag_key: TagKey = kept_tag.as_str().into();
-            let move_primary = Effect::put_onto_battlefield(
-                ChooseSpec::Tagged(battlefield_tag_key.clone()),
-                *tapped,
-                chooser.clone(),
-            )
-            .tag_all(kept_tag_key.clone());
-
-            let mut secondary_filter = resolve_it_tag(hand_filter, &current_reference_env(ctx))?;
-            secondary_filter.zone = Some(Zone::Library);
-            secondary_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: TagKey::from(looked_tag.as_str()),
-                    relation: TaggedOpbjectRelation::IsTaggedObject,
-                });
-            secondary_filter
-                .tagged_constraints
-                .push(TaggedObjectConstraint {
-                    tag: battlefield_tag_key.clone(),
-                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
-                });
-
-            let hand_tag = ctx.next_tag("chosen");
-            let hand_tag_key: TagKey = hand_tag.as_str().into();
-            let choose_secondary = Effect::new(
-                crate::effects::ChooseObjectsEffect::new(
-                    secondary_filter,
-                    ChoiceCount::up_to(1),
-                    chooser.clone(),
-                    hand_tag_key.clone(),
-                )
-                .in_zone(Zone::Library),
-            );
-            let move_secondary =
-                Effect::move_to_zone(ChooseSpec::Tagged(hand_tag_key.clone()), Zone::Hand, false)
-                    .tag_all(kept_tag_key.clone());
-
-            let resolved_order = match order {
-                crate::cards::builders::LibraryBottomOrderAst::Random => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::Random
-                }
-                crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
-                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-                }
-            };
-            let move_rest = Effect::put_tagged_remainder_on_library_bottom(
-                TagKey::from(looked_tag.as_str()),
-                Some(kept_tag_key.clone()),
-                resolved_order,
-                chooser.clone(),
-            );
-
-            ctx.last_object_tag = Some(kept_tag);
-            ctx.last_effect_id = None;
-            Ok((
-                vec![
-                    choose_primary,
-                    move_primary,
-                    choose_secondary,
-                    move_secondary,
-                    move_rest,
-                ],
-                choices,
             ))
         }
         SubjectVerbActionAst::RetargetStackObject {
@@ -6237,76 +5811,6 @@ fn compile_subject_verb_effect(
     }
 }
 
-fn compile_put_some_into_hand_rest_to_zone(
-    role: SubjectRole,
-    player: PlayerAst,
-    count: ChoiceCount,
-    rest_zone: Zone,
-    ctx: &mut EffectLoweringContext,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    use crate::effect::Condition;
-    use crate::effects::consult_helpers::LibraryBottomOrder;
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-    let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-        CardTextError::ParseError("unable to resolve 'them' without prior reference".to_string())
-    })?;
-    let subject = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
-    let chooser = subject.as_chooser();
-    let player_filter = subject.clone_player_filter();
-    let choices = subject.into_choices();
-
-    let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
-    choose_filter.zone = Some(Zone::Library);
-    let chosen_tag = ctx.next_tag("chosen");
-    let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-    let choose = Effect::new(
-        crate::effects::ChooseObjectsEffect::new(
-            choose_filter,
-            count,
-            chooser,
-            chosen_tag_key.clone(),
-        )
-        .in_zone(Zone::Library),
-    );
-    let move_chosen = Effect::for_each_tagged(
-        chosen_tag,
-        vec![Effect::move_to_zone(
-            ChooseSpec::Iterated,
-            Zone::Hand,
-            false,
-        )],
-    );
-
-    let mut membership_filter = ObjectFilter::default();
-    membership_filter
-        .tagged_constraints
-        .push(TaggedObjectConstraint {
-            tag: TagKey::from("__it__"),
-            relation: TaggedOpbjectRelation::SameStableId,
-        });
-    let in_chosen = Condition::TaggedObjectMatches(chosen_tag_key.clone(), membership_filter);
-    let move_rest = if rest_zone == Zone::Library {
-        Effect::put_tagged_remainder_on_library_bottom(
-            TagKey::from(looked_tag.as_str()),
-            Some(chosen_tag_key),
-            LibraryBottomOrder::Random,
-            player_filter,
-        )
-    } else {
-        Effect::for_each_tagged(
-            looked_tag,
-            vec![Effect::conditional(
-                in_chosen,
-                Vec::new(),
-                vec![Effect::move_to_zone(ChooseSpec::Iterated, rest_zone, false)],
-            )],
-        )
-    };
-
-    Ok((vec![choose, move_chosen, move_rest], choices))
-}
-
 fn subject_verb_role(role: SubjectVerbRoleAst) -> SubjectRole {
     match role {
         SubjectVerbRoleAst::Actor => SubjectRole::Actor,
@@ -6506,7 +6010,9 @@ fn collect_choose_spec_player_target_choices(spec: &ChooseSpec, choices: &mut Ve
     match spec {
         ChooseSpec::SurfaceHinted { spec, .. }
         | ChooseSpec::Target(spec)
-        | ChooseSpec::WithCount(spec, _) => collect_choose_spec_player_target_choices(spec, choices),
+        | ChooseSpec::WithCount(spec, _) => {
+            collect_choose_spec_player_target_choices(spec, choices)
+        }
         ChooseSpec::Player(player)
         | ChooseSpec::PlayerOrPlaneswalker(player)
         | ChooseSpec::EachPlayer(player) => collect_player_filter_target_choice(player, choices),
@@ -6527,7 +6033,9 @@ fn collect_object_filter_player_target_choices(
         filter.owner.as_ref(),
         filter.targets_player.as_ref(),
         filter.targets_only_player.as_ref(),
-        filter.attacking_player_or_planeswalker_controlled_by.as_ref(),
+        filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref(),
         filter.attached_to_player.as_ref(),
         filter.entered_battlefield_controller.as_ref(),
         filter.dealt_damage_to_player_this_turn.as_ref(),
@@ -6550,6 +6058,12 @@ fn collect_object_filter_player_target_choices(
 
 fn collect_player_filter_target_choice(player: &PlayerFilter, choices: &mut Vec<ChooseSpec>) {
     if let PlayerFilter::Target(inner) = player {
+        if matches!(**inner, PlayerFilter::Any) {
+            // `Target(Any)` inside a value is how resolved back-references to the
+            // spell's existing player targets surface (e.g. "those players"); the
+            // explicit choose effect already carries the target requirement.
+            return;
+        }
         push_choice(
             choices,
             ChooseSpec::target(ChooseSpec::Player((**inner).clone())),

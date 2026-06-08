@@ -1,6 +1,7 @@
 use super::super::grammar::primitives::TokenWordView;
-use super::super::lexer::{OwnedLexToken, split_lexed_sentences};
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
+use super::super::lexer::{
+    OwnedLexToken, split_lexed_sentences, token_word_refs, word_slice_starts_with,
+};
 use super::dispatch_entry::SentenceInput;
 use super::dispatch_inner::parse_effect_sentence_lexed;
 use crate::cards::builders::{
@@ -11,22 +12,19 @@ use crate::effect::{ChoiceCount, Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
-const DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "search",
-            "your",
-            "library",
-            "and",
-            "graveyard",
-            "for",
-            "up",
-            "to",
-            "four",
-            "creature",
-            "cards",
-        ]
-);
+const DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX: &[&str] = &[
+    "search",
+    "your",
+    "library",
+    "and",
+    "graveyard",
+    "for",
+    "up",
+    "to",
+    "four",
+    "creature",
+    "cards",
+];
 
 fn membership_predicate_for_iterated_object(tag: &str) -> PredicateAst {
     PredicateAst::TaggedMatches(
@@ -69,11 +67,9 @@ fn matches_sentence_sequence(sentence_words: &[TokenWordView<'_>], expected: &[&
             .all(|(words, expected)| matches_sentence(words, expected))
 }
 
-fn first_sentence_has_prefix(sentence_words: &[TokenWordView<'_>], prefix: &[&str]) -> bool {
-    sentence_words.first().is_some_and(|words| {
-        ClauseShape::new()
-            .prefix(prefix)
-            .matches_words(&words.word_refs())
+fn first_sentence_has_prefix(sentences: &[SentenceInput], prefix: &[&str]) -> bool {
+    sentences.first().is_some_and(|sentence| {
+        word_slice_starts_with(&token_word_refs(sentence.lowered()), prefix)
     })
 }
 
@@ -91,12 +87,13 @@ pub(super) fn try_parse_divvy_sentence_sequence(
 
     if sentences.len() == 1 {
         let words = TokenWordView::new(sentences[0].lowered());
-        let word_refs = words.word_refs();
         if words.has_phrase(&["chooses", "two", "of", "those", "cards"])
             && words.has_phrase(&["shuffle", "the", "chosen", "cards"])
             && words.has_phrase(&["put", "the", "rest", "onto", "the", "battlefield"])
-            && DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX_PATTERN
-                .matches_words(&word_refs)
+            && word_slice_starts_with(
+                &token_word_refs(sentences[0].lowered()),
+                DIVVY_SEARCH_LIBRARY_GRAVEYARD_CREATURE_CARDS_PREFIX,
+            )
         {
             let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
                 .into_iter()
@@ -360,7 +357,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &[
             "each",
             "opponent",
@@ -428,7 +425,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &[
             "separate",
             "all",
@@ -532,7 +529,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &[
             "separate",
             "all",
@@ -653,7 +650,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &[
             "exile",
             "up",
@@ -755,7 +752,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(Some(effects));
     }
 
-    if first_sentence_has_prefix(&sentence_words, &["reveal", "the", "top"])
+    if first_sentence_has_prefix(sentences, &["reveal", "the", "top"])
         && sentence_has_phrase(&sentence_words, &["cards", "of", "your", "library"])
         && sentence_has_phrase(
             &sentence_words,
@@ -950,7 +947,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &[
             "search",
             "your",
@@ -1102,7 +1099,7 @@ pub(super) fn try_parse_divvy_sentence_sequence(
     }
 
     if first_sentence_has_prefix(
-        &sentence_words,
+        sentences,
         &["search", "your", "library", "for", "up", "to", "four"],
     ) && sentence_has_phrase(&sentence_words, &["cards", "with", "different", "names"])
         && sentence_has_phrase(&sentence_words, &["reveal", "them"])

@@ -1,40 +1,30 @@
 use super::*;
-
-const STATIC_LIBRARY_SEARCH_ZONE_PATTERN: ClauseShape<'static> = ClauseShape::new()
-    .contains_any_phrases(&[STATIC_LIBRARY_SEARCH_ZONE_PHRASES])
-    .contains_phrases(&[FROM_YOUR_LIBRARY_PHRASE]);
-const CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES]);
-const CAST_OR_PLAY_SELF_FROM_EXILE_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES]);
-const DISCARD_TO_BATTLEFIELD_REPLACEMENT_ZONE_PATTERN: ClauseShape<'static> = ClauseShape::new()
-    .contains_phrases(&[
-        CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE,
-        INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE,
-    ]);
-const RETURN_SELF_FROM_GRAVEYARD_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[RETURN_SELF_FROM_GRAVEYARD_PHRASES]);
-const DISCARD_THIS_CARD_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[DISCARD_THIS_CARD_PHRASE]);
+use crate::runtime_backend::lexer::{
+    token_word_refs, word_slice_contains_any_phrase, word_slice_contains_phrase,
+};
 
 pub(super) fn infer_static_ability_functional_zones(tokens: &[OwnedLexToken]) -> Option<Vec<Zone>> {
     let words = token_word_refs(tokens);
-    if STATIC_LIBRARY_SEARCH_ZONE_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, STATIC_LIBRARY_SEARCH_ZONE_PHRASES)
+        && word_slice_contains_phrase(&words, FROM_YOUR_LIBRARY_PHRASE)
+    {
         return Some(vec![Zone::Library]);
     }
-    if CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, CAST_OR_PLAY_SELF_FROM_GRAVEYARD_PHRASES) {
         return Some(vec![Zone::Graveyard]);
     }
-    if CAST_OR_PLAY_SELF_FROM_EXILE_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, CAST_OR_PLAY_SELF_FROM_EXILE_PHRASES) {
         return Some(vec![Zone::Exile]);
     }
-    if DISCARD_TO_BATTLEFIELD_REPLACEMENT_ZONE_PATTERN.matches_words(&words) {
+    if word_slice_contains_phrase(&words, CAUSES_YOU_TO_DISCARD_THIS_CARD_PHRASE)
+        && word_slice_contains_phrase(&words, INSTEAD_OF_PUTTING_IT_INTO_YOUR_GRAVEYARD_PHRASE)
+    {
         return Some(vec![Zone::Hand]);
     }
 
     let mut zones = Vec::new();
     for (phrase, zone) in STATIC_ZONE_HINT_PHRASES {
-        if token_words_contain_phrase(&words, phrase) {
+        if word_slice_contains_phrase(&words, phrase) {
             zones.push(zone.clone());
         }
     }
@@ -59,25 +49,19 @@ pub(super) fn infer_triggered_ability_functional_zones(
 
     let words = token_word_refs(tokens);
     for (phrase, zone) in TRIGGER_ZONE_HINT_PHRASES {
-        if token_words_contain_phrase(&words, phrase) {
+        if word_slice_contains_phrase(&words, phrase) {
             zones = vec![zone.clone()];
             break;
         }
     }
-    if RETURN_SELF_FROM_GRAVEYARD_PATTERN.matches_words(&words)
+    if word_slice_contains_any_phrase(&words, RETURN_SELF_FROM_GRAVEYARD_PHRASES)
         && !trigger_references_attached_object(trigger)
     {
         zones = vec![Zone::Graveyard];
-    } else if DISCARD_THIS_CARD_PATTERN.matches_words(&words) {
+    } else if word_slice_contains_phrase(&words, DISCARD_THIS_CARD_PHRASE) {
         zones = vec![Zone::Hand];
     }
     zones
-}
-
-fn token_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    ClauseShape::new()
-        .contains_phrases(&[phrase])
-        .matches_words(words)
 }
 
 fn trigger_references_attached_object(trigger: &TriggerSpec) -> bool {

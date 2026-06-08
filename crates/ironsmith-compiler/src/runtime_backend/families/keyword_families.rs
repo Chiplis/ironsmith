@@ -1,9 +1,9 @@
 use winnow::Parser;
 
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::primitives::{self as grammar, TokenWordView};
 use super::keyword_registry as registry;
-use super::lexer::OwnedLexToken;
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::lexer::{LexedClause, OwnedLexToken};
 use super::util::word_is_cycling_keyword_marker;
 
 pub(super) type KeywordRuleFn = fn(
@@ -62,11 +62,36 @@ pub(super) enum KeywordDispatchHint {
     Exploit,
 }
 
-const BASIC_LANDCYCLING_FALLBACK_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["basic", "landcycling"]);
-const ENCORE_FALLBACK_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["encore"]);
-const JUMP_START_FALLBACK_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["jumpstart"], &["jump-start"], &["jump", "start"]]);
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum KeywordFallbackKind {
+    BasicLandcycling,
+    Encore,
+    JumpStart,
+}
+
+fn keyword_fallback_kind(tokens: &[OwnedLexToken]) -> Option<KeywordFallbackKind> {
+    const KEYWORD_FALLBACK_PREFIX_PATTERN: LexPattern<'static> =
+        LexPattern::new(&[LexPattern::action(
+            "keyword",
+            LexCaptureKind::OneOfPhrase(&[
+                &["basic", "landcycling"],
+                &["encore"],
+                &["jumpstart"],
+                &["jump-start"],
+                &["jump", "start"],
+            ]),
+        )]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)?;
+    let keyword_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    match keyword_clause.word_refs().as_slice() {
+        ["basic", "landcycling"] => Some(KeywordFallbackKind::BasicLandcycling),
+        ["encore"] => Some(KeywordFallbackKind::Encore),
+        ["jumpstart"] | ["jump-start"] | ["jump", "start"] => Some(KeywordFallbackKind::JumpStart),
+        _ => None,
+    }
+}
 
 mod additional_costs {
     use super::*;
@@ -387,7 +412,8 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     let word_view = TokenWordView::new(tokens);
     let word_refs = word_view.to_word_refs();
     let first = word_refs.first().copied()?;
-    if BASIC_LANDCYCLING_FALLBACK_PATTERN.matches_words(&word_refs) {
+    let fallback_kind = keyword_fallback_kind(tokens);
+    if matches!(fallback_kind, Some(KeywordFallbackKind::BasicLandcycling)) {
         return Some(KeywordDispatchHint::Cycling);
     }
     if word_view.at_is(0, "basic") {
@@ -396,10 +422,10 @@ pub(super) fn parse_keyword_dispatch_hint(tokens: &[OwnedLexToken]) -> Option<Ke
     if word_is_cycling_keyword_marker(first) {
         return Some(KeywordDispatchHint::Cycling);
     }
-    if ENCORE_FALLBACK_PATTERN.matches_words(&word_refs) {
-        return Some(KeywordDispatchHint::AlternativeOrExertFamily);
-    }
-    if JUMP_START_FALLBACK_PATTERN.matches_words(&word_refs) {
+    if matches!(
+        fallback_kind,
+        Some(KeywordFallbackKind::Encore | KeywordFallbackKind::JumpStart)
+    ) {
         return Some(KeywordDispatchHint::AlternativeOrExertFamily);
     }
 
