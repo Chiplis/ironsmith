@@ -237,6 +237,10 @@ const ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES: &[&[&str]] = &[
         "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
     ],
     &[
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "those",
+        "spells",
+    ],
+    &[
         "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
     ],
     &[

@@ -278,6 +278,12 @@ pub(crate) fn parse_exile(
     }
     if !face_down
         && !until_source_leaves
+        && let Some(effect) = parse_exile_dynamic_count_from_top_library_clause(tokens, subject)
+    {
+        return Ok(effect);
+    }
+    if !face_down
+        && !until_source_leaves
         && let Some(effect) = parse_exile_top_library_clause(tokens, subject)
     {
         return Ok(effect);
@@ -587,6 +593,59 @@ fn parse_library_owner_prefix_lexed(
     )
 }
 
+fn parse_exile_dynamic_count_from_top_library_clause(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let tokens = trim_commas(tokens);
+    let words = crate::runtime_backend::token_word_refs(&tokens);
+    if !words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORDS.contains(word))
+    {
+        return None;
+    }
+
+    let from_word_idx = find_index(&words, |word| **word == *"from")?;
+    if from_word_idx <= 1 {
+        return None;
+    }
+    let count_start = token_index_for_word_index(&tokens, 1)?;
+    let from_token_idx = token_index_for_word_index(&tokens, from_word_idx)?;
+    let count_tokens = trim_commas(&tokens[count_start..from_token_idx]);
+    let count =
+        crate::runtime_backend::front_end::grammar::values::parse_add_mana_equal_amount_value_lexed(
+            &count_tokens,
+        )?;
+
+    let after_from = &words[from_word_idx + 1..];
+    let owner_word_idx = if after_from.len() >= 3
+        && after_from[0] == "the"
+        && after_from[1] == "top"
+        && after_from[2] == "of"
+    {
+        from_word_idx + 1 + 3
+    } else if after_from.len() >= 2 && after_from[0] == "top" && after_from[1] == "of" {
+        from_word_idx + 1 + 2
+    } else {
+        return None;
+    };
+
+    let owner_start = token_index_for_word_index(&tokens, owner_word_idx)?;
+    let owner_tokens = trim_commas(&tokens[owner_start..]);
+    let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
+    let owner = parse_library_owner_prefix_lexed(&owner_tokens, default_player)?;
+    if owner.consumed_words < crate::runtime_backend::token_word_refs(&owner_tokens).len() {
+        return None;
+    }
+
+    Some(EffectAst::subject_verb_exile_top_of_library(
+        owner.player,
+        count,
+        vec![helper_tag_for_tokens(&tokens, "exiled")],
+        Vec::new(),
+    ))
+}
 
 pub(crate) fn parse_exile_top_library_clause(
     tokens: &[OwnedLexToken],
