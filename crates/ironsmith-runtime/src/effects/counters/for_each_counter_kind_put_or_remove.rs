@@ -15,6 +15,8 @@ use crate::target::ChooseSpec;
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
     pub all_kinds: bool,
+    pub fixed_counter_type: Option<CounterType>,
+    pub optional_action: bool,
 }
 
 impl ForEachCounterKindPutOrRemoveEffect {
@@ -22,6 +24,8 @@ impl ForEachCounterKindPutOrRemoveEffect {
         Self {
             target,
             all_kinds: true,
+            fixed_counter_type: None,
+            optional_action: false,
         }
     }
 
@@ -29,6 +33,21 @@ impl ForEachCounterKindPutOrRemoveEffect {
         Self {
             target,
             all_kinds: false,
+            fixed_counter_type: None,
+            optional_action: false,
+        }
+    }
+
+    pub fn fixed_counter_type(
+        target: ChooseSpec,
+        counter_type: CounterType,
+        optional_action: bool,
+    ) -> Self {
+        Self {
+            target,
+            all_kinds: false,
+            fixed_counter_type: Some(counter_type),
+            optional_action,
         }
     }
 
@@ -100,7 +119,9 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
             }
             counter_kinds.sort_by_key(|counter_type| format!("{counter_type:?}"));
 
-            let selected_kinds = if self.all_kinds {
+            let selected_kinds = if let Some(counter_type) = self.fixed_counter_type {
+                vec![counter_type]
+            } else if self.all_kinds {
                 counter_kinds
             } else {
                 let Some(counter_type) = self.choose_counter_kind(game, ctx, &counter_kinds) else {
@@ -111,10 +132,16 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
 
             for counter_type in selected_kinds {
                 let label = Self::counter_label(counter_type);
-                let options = vec![
+                let mut options = vec![
                     SelectableOption::new(0, format!("Put one {label} counter on it")),
                     SelectableOption::new(1, format!("Remove one {label} counter from it")),
                 ];
+                if self.optional_action {
+                    options.push(SelectableOption::new(
+                        2,
+                        format!("Don't add or remove a {label} counter"),
+                    ));
+                }
                 let choice_ctx = SelectOptionsContext::new(
                     ctx.controller,
                     Some(ctx.source),
@@ -131,9 +158,14 @@ impl EffectExecutor for ForEachCounterKindPutOrRemoveEffect {
                 if ctx.decision_maker.awaiting_choice() {
                     return Ok(EffectOutcome::count(0));
                 }
-                let Some(choice) = choice.filter(|idx| *idx <= 1) else {
+                let max_choice = if self.optional_action { 2 } else { 1 };
+                let Some(choice) = choice.filter(|idx| *idx <= max_choice) else {
                     return Ok(EffectOutcome::count(0));
                 };
+
+                if choice == 2 {
+                    continue;
+                }
 
                 let spec = ChooseSpec::SpecificObject(target_id);
                 let outcome = if choice == 1 {

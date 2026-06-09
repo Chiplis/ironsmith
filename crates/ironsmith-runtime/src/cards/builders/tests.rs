@@ -1769,6 +1769,33 @@ fn clockspinning_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn all_of_history_all_at_once_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("All of History, All at Once");
+
+    let def = parse_oracle_card_definition("All of History, All at Once");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(def.name(), "All of History, All at Once");
+    assert!(
+        rendered.contains("Time travel"),
+        "All of History, All at Once should render its time travel keyword action, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Storm"),
+        "All of History, All at Once should retain storm after time travel parses, got {rendered}"
+    );
+    assert!(
+        spell_debug.contains("ForEachCounterKindPutOrRemoveEffect")
+            && spell_debug.contains("fixed_counter_type: Some")
+            && spell_debug.contains("Time")
+            && spell_debug.contains("all_kinds: false")
+            && spell_debug.contains("optional_action: true"),
+        "All of History, All at Once should lower time travel to fixed time-counter put/remove support, got {spell_debug}"
+    );
+}
+
 fn ichormoon_gauntlet_chosen_counter_effect(def: &CardDefinition) -> &Effect {
     def.abilities
         .iter()

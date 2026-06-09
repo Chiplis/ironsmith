@@ -4996,10 +4996,27 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], choices))
         }
-        SubjectVerbActionAst::ForEachCounterKindPutOrRemove { target, all_kinds } => {
-            let (spec, choices) =
+        SubjectVerbActionAst::ForEachCounterKindPutOrRemove {
+            target,
+            all_kinds,
+            fixed_counter_type,
+            optional_action,
+        } => {
+            let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let effect = if *all_kinds {
+            if fixed_counter_type.is_some()
+                && let TargetAst::Object(filter, explicit_target_span, _) = target
+                && explicit_target_span.is_none()
+            {
+                spec = ChooseSpec::All(resolve_it_tag(filter, &current_reference_env(ctx))?);
+            }
+            let effect = if let Some(counter_type) = fixed_counter_type {
+                crate::effects::ForEachCounterKindPutOrRemoveEffect::fixed_counter_type(
+                    spec,
+                    *counter_type,
+                    *optional_action,
+                )
+            } else if *all_kinds {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::new(spec)
             } else {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(spec)

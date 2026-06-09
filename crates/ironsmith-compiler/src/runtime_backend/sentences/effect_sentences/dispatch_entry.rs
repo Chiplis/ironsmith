@@ -143,6 +143,7 @@ const THIS_OBJECT_DAMAGE_TARGET_PHRASES: &[&[&str]] =
 const TO_THAT_PLAYER_PHRASE: &[&str] = &["to", "that", "player"];
 const WITH_WORD: &str = "with";
 const LEARN_WORDS: &[&str] = &["learn"];
+const TIME_TRAVEL_WORDS: &[&str] = &["time", "travel"];
 const OUTSIDE_GAME_ART_RATING_PHRASES: &[&[&str]] = &[
     &["ask", "a", "person", "outside", "the", "game", "to", "rate"],
     &["when", "they", "rate", "the", "art"],
@@ -1386,6 +1387,16 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
+        if word_slice_eq(
+            &crate::runtime_backend::token_word_refs(&sentence_tokens),
+            TIME_TRAVEL_WORDS,
+        ) {
+            effects.push(time_travel_effect_ast());
+            carried_context = None;
+            sentence_idx += 1;
+            continue;
+        }
+
         if sentence_tokens
             .first()
             .is_some_and(|token| token.is_word("unless"))
@@ -2410,6 +2421,30 @@ pub(crate) fn primary_target_from_effect(effect: &EffectAst) -> Option<TargetAst
             found
         }
     }
+}
+
+fn time_travel_effect_ast() -> EffectAst {
+    let permanent_with_time_counter = ObjectFilter::permanent()
+        .you_control()
+        .with_counter_type(crate::object::CounterType::Time);
+    let suspended_card_with_time_counter = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .owned_by(PlayerFilter::You)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend)
+        .with_counter_type(crate::object::CounterType::Time);
+    let target = TargetAst::Object(
+        ObjectFilter {
+            any_of: vec![permanent_with_time_counter, suspended_card_with_time_counter],
+            ..ObjectFilter::default()
+        },
+        None,
+        None,
+    );
+    EffectAst::subject_verb_fixed_counter_kind_put_or_remove(
+        target,
+        crate::object::CounterType::Time,
+        true,
+    )
 }
 
 pub(crate) fn replace_it_damage_target_in_effects(effects: &mut [EffectAst], target: &TargetAst) {

@@ -9997,6 +9997,237 @@ fn clockspinning_remove_branch_removes_one_chosen_counter() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn all_of_history_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(80_610), "All of History, All at Once")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Time travel. (For each suspended card you own and each permanent you control with a time counter on it, you may add or remove a time counter.)\n\
+             Storm (When you cast this spell, copy it for each spell cast before it this turn.)",
+        )
+        .expect("All of History, All at Once should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn all_of_history_time_travel_effect(def: &crate::cards::CardDefinition) -> &crate::effect::Effect {
+    def.spell_effect
+        .as_ref()
+        .expect("All of History, All at Once should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachCounterKindPutOrRemoveEffect>()
+                .is_some_and(|effect| {
+                    effect.fixed_counter_type == Some(crate::object::CounterType::Time)
+                })
+        })
+        .expect("All of History, All at Once should have a fixed time-counter put/remove effect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn time_travel_permanent(game: &mut GameState, controller: PlayerId) -> ObjectId {
+    let permanent = CardBuilder::new(CardId::from_raw(80_611), "Time Travel Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&permanent, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct TimeTravelDecisionMaker {
+    mode_index: usize,
+    prompts: usize,
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for TimeTravelDecisionMaker {
+    fn decide_options(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectOptionsContext,
+    ) -> Vec<usize> {
+        if ctx.description.starts_with("Choose for time counter") {
+            self.prompts += 1;
+            vec![self.mode_index.min(ctx.options.len().saturating_sub(1))]
+        } else {
+            vec![0]
+        }
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn all_of_history_all_at_once_adds_time_counters_to_each_eligible_object() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = all_of_history_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let alice_permanent = time_travel_permanent(&mut game, alice);
+    game.add_counters(alice_permanent, crate::object::CounterType::Time, 1)
+        .expect("eligible controlled permanent should accept a time counter");
+    let bob_permanent = time_travel_permanent(&mut game, bob);
+    game.add_counters(bob_permanent, crate::object::CounterType::Time, 1)
+        .expect("opponent permanent should accept a time counter");
+
+    let suspended = suspended_card_definition();
+    let alice_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(alice_suspended, crate::object::CounterType::Time, 2)
+        .expect("eligible owned suspended card should accept time counters");
+    let bob_suspended = game.create_object_from_definition(&suspended, bob, Zone::Exile);
+    game.add_counters(bob_suspended, crate::object::CounterType::Time, 2)
+        .expect("opponent suspended card should accept time counters");
+    let alice_unsuspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(alice_unsuspended, crate::object::CounterType::Charge, 1)
+        .expect("ineligible exiled card should accept non-time counters");
+
+    let mut dm = TimeTravelDecisionMaker {
+        mode_index: 0,
+        prompts: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
+        .expect("All of History, All at Once time travel add branch should execute");
+
+    assert_eq!(
+        game.counter_count(alice_permanent, crate::object::CounterType::Time),
+        2,
+        "time travel should add a time counter to each controlled permanent with one"
+    );
+    assert_eq!(
+        game.counter_count(alice_suspended, crate::object::CounterType::Time),
+        3,
+        "time travel should add a time counter to each owned suspended card"
+    );
+    assert_eq!(
+        game.counter_count(bob_permanent, crate::object::CounterType::Time),
+        1,
+        "time travel should not affect permanents controlled by opponents"
+    );
+    assert_eq!(
+        game.counter_count(bob_suspended, crate::object::CounterType::Time),
+        2,
+        "time travel should not affect suspended cards owned by opponents"
+    );
+    assert_eq!(
+        game.counter_count(alice_unsuspended, crate::object::CounterType::Charge),
+        1,
+        "time travel should not affect exiled cards without time counters"
+    );
+    assert_eq!(dm.prompts, 2, "time travel should offer one choice per eligible object");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn all_of_history_all_at_once_removes_time_counters_from_each_eligible_object() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = all_of_history_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let alice_permanent = time_travel_permanent(&mut game, alice);
+    game.add_counters(alice_permanent, crate::object::CounterType::Time, 2)
+        .expect("eligible controlled permanent should accept time counters");
+    let suspended = suspended_card_definition();
+    let alice_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(alice_suspended, crate::object::CounterType::Time, 2)
+        .expect("eligible owned suspended card should accept time counters");
+
+    let mut dm = TimeTravelDecisionMaker {
+        mode_index: 1,
+        prompts: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
+        .expect("All of History, All at Once time travel remove branch should execute");
+
+    assert_eq!(
+        game.counter_count(alice_permanent, crate::object::CounterType::Time),
+        1,
+        "time travel should remove one time counter from each eligible permanent when chosen"
+    );
+    assert_eq!(
+        game.counter_count(alice_suspended, crate::object::CounterType::Time),
+        1,
+        "time travel should remove one time counter from each eligible suspended card when chosen"
+    );
+    assert_eq!(dm.prompts, 2, "time travel should offer one remove choice per eligible object");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn all_of_history_all_at_once_can_leave_eligible_objects_unchanged() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = all_of_history_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+
+    let alice_permanent = time_travel_permanent(&mut game, alice);
+    game.add_counters(alice_permanent, crate::object::CounterType::Time, 2)
+        .expect("eligible controlled permanent should accept time counters");
+    let suspended = suspended_card_definition();
+    let alice_suspended = game.create_object_from_definition(&suspended, alice, Zone::Exile);
+    game.add_counters(alice_suspended, crate::object::CounterType::Time, 2)
+        .expect("eligible owned suspended card should accept time counters");
+
+    let mut dm = TimeTravelDecisionMaker {
+        mode_index: 2,
+        prompts: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
+        .expect("All of History, All at Once time travel skip branch should execute");
+
+    assert_eq!(
+        game.counter_count(alice_permanent, crate::object::CounterType::Time),
+        2,
+        "time travel should let you leave an eligible permanent unchanged"
+    );
+    assert_eq!(
+        game.counter_count(alice_suspended, crate::object::CounterType::Time),
+        2,
+        "time travel should let you leave an eligible suspended card unchanged"
+    );
+    assert_eq!(dm.prompts, 2, "time travel should offer one skip choice per eligible object");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn all_of_history_all_at_once_does_nothing_when_no_objects_are_eligible() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let def = all_of_history_definition();
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let permanent = time_travel_permanent(&mut game, alice);
+    game.add_counters(permanent, crate::object::CounterType::Charge, 1)
+        .expect("ineligible permanent should accept non-time counters");
+
+    let mut dm = TimeTravelDecisionMaker {
+        mode_index: 0,
+        prompts: 0,
+    };
+    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
+        .with_decision_maker(&mut dm);
+    crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
+        .expect("All of History, All at Once should resolve with no eligible objects");
+
+    assert_eq!(
+        game.counter_count(permanent, crate::object::CounterType::Charge),
+        1,
+        "time travel should not alter non-time counters on otherwise ineligible permanents"
+    );
+    assert_eq!(dm.prompts, 0, "time travel should not ask for choices with no eligible objects");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn feudkillers_verdict_creates_token_when_you_have_more_life_than_an_opponent() {
     let mut game = setup_game();

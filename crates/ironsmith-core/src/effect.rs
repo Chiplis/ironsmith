@@ -3532,6 +3532,8 @@ impl DealDistributedDamageEffect {
 pub struct ForEachCounterKindPutOrRemoveEffect {
     pub target: ChooseSpec,
     pub all_kinds: bool,
+    pub fixed_counter_type: Option<crate::counter::CounterType>,
+    pub optional_action: bool,
 }
 
 impl ForEachCounterKindPutOrRemoveEffect {
@@ -3539,6 +3541,8 @@ impl ForEachCounterKindPutOrRemoveEffect {
         Self {
             target,
             all_kinds: true,
+            fixed_counter_type: None,
+            optional_action: false,
         }
     }
 
@@ -3546,6 +3550,21 @@ impl ForEachCounterKindPutOrRemoveEffect {
         Self {
             target,
             all_kinds: false,
+            fixed_counter_type: None,
+            optional_action: false,
+        }
+    }
+
+    pub fn fixed_counter_type(
+        target: ChooseSpec,
+        counter_type: crate::counter::CounterType,
+        optional_action: bool,
+    ) -> Self {
+        Self {
+            target,
+            all_kinds: false,
+            fixed_counter_type: Some(counter_type),
+            optional_action,
         }
     }
 }
