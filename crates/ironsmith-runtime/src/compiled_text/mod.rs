@@ -1066,11 +1066,32 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+            if let Some((left_counter, left_condition)) =
+                split_self_enters_with_counter_if_condition(left)
+                && let Some((right_counter, right_condition)) =
+                    split_self_enters_with_counter_if_condition(right)
+                && left_condition.eq_ignore_ascii_case(right_condition)
+            {
+                merged.push(format!(
+                    "If {left_condition}, this creature enters with {left_counter} and {right_counter} on it."
+                ));
+                idx += 2;
+                continue;
+            }
         }
         merged.push(lines[idx].clone());
         idx += 1;
     }
     merged
+}
+
+fn split_self_enters_with_counter_if_condition(line: &str) -> Option<(&str, &str)> {
+    let rest = line.strip_prefix("This creature enters with ")?;
+    let (counter_phrase, condition) = rest.split_once(" on it if ")?;
+    if counter_phrase.is_empty() || condition.is_empty() {
+        return None;
+    }
+    Some((counter_phrase, condition.trim_end_matches('.')))
 }
 
 fn merge_cast_and_activate_restriction_lines(left: &str, right: &str) -> Option<String> {

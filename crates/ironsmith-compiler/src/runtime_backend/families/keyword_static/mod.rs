@@ -3236,7 +3236,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
         single_static_ability_ast_passthrough_rule!(parse_creatures_cant_block_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
-        single_static_ability_ast_rule!(parse_enters_with_counters_line),
+        multi_static_ability_ast_rule!(parse_enters_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),

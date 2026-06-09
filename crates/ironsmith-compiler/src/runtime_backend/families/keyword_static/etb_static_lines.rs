@@ -749,12 +749,15 @@ pub(crate) fn parse_enters_tapped_with_counters_line(
         return Ok(None);
     };
 
-    Ok(Some(vec![StaticAbility::enters_tapped_ability(), counters]))
+    let mut abilities = vec![StaticAbility::enters_tapped_ability()];
+    abilities.extend(counters);
+
+    Ok(Some(abilities))
 }
 
 pub(crate) fn parse_enters_with_counters_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     let full_words = crate::runtime_backend::lexer::token_word_refs(tokens);
     if etb_starts_with_trigger_intro_after_label(tokens) {
         return Ok(None);
@@ -797,6 +800,7 @@ pub(crate) fn parse_enters_with_counters_line(
     }
 
     let mut added_abilities: Vec<Ability> = Vec::new();
+    let mut additional_counters: Vec<(CounterType, Value)> = Vec::new();
     let mut after_with = captured.counter_clause_tokens;
     if let Some((and_with_idx, and_with_end)) =
         crate::runtime_backend::lexer::find_token_word_sequence_span(after_with, &["and", "with"])
@@ -876,6 +880,10 @@ pub(crate) fn parse_enters_with_counters_line(
         };
         if let Some(abilities) = parse_enters_with_added_abilities_tail(&tail) {
             added_abilities = abilities;
+        } else if let Some(sibling_counters) =
+            parse_enters_with_counter_conjunction_tail_tokens(&tail)
+        {
+            additional_counters = sibling_counters;
         } else if let Some(condition_tail) = parse_enters_with_counter_condition_tail_tokens(&tail)
         {
             let parsed =
@@ -960,15 +968,39 @@ pub(crate) fn parse_enters_with_counters_line(
     }
 
     if let Some((condition, display)) = condition {
-        return Ok(Some(
-            StaticAbility::enters_with_counters_and_abilities_if_condition(
+        let mut abilities = vec![StaticAbility::enters_with_counters_and_abilities_if_condition(
+            counter_type,
+            count,
+            condition.clone(),
+            display.clone(),
+            added_abilities,
+        )];
+        for (counter_type, count) in additional_counters {
+            abilities.push(
+                StaticAbility::enters_with_counters_and_abilities_if_condition(
+                    counter_type,
+                    count,
+                    condition.clone(),
+                    display.clone(),
+                    Vec::new(),
+                ),
+            );
+        }
+        return Ok(Some(abilities));
+    }
+
+    if !additional_counters.is_empty() {
+        let mut abilities = vec![StaticAbility::enters_with_counters_value(
+            counter_type,
+            count,
+        )];
+        for (counter_type, count) in additional_counters {
+            abilities.push(StaticAbility::enters_with_counters_value(
                 counter_type,
                 count,
-                condition,
-                display,
-                added_abilities,
-            ),
-        ));
+            ));
+        }
+        return Ok(Some(abilities));
     }
 
     if !added_abilities.is_empty() {
@@ -978,10 +1010,46 @@ pub(crate) fn parse_enters_with_counters_line(
         )));
     }
 
-    Ok(Some(StaticAbility::enters_with_counters_value(
+    Ok(Some(vec![StaticAbility::enters_with_counters_value(
         counter_type,
         count,
-    )))
+    )]))
+}
+
+fn parse_enters_with_counter_conjunction_tail_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<(CounterType, Value)>> {
+    let mut rest = trim_commas(tokens);
+    let mut counters = Vec::new();
+
+    while rest.first().is_some_and(|token| ETB_AND_WORD_PATTERN.matches_token(token)) {
+        rest = trim_commas(&rest[1..]);
+        let (count, used) = if rest
+            .first()
+            .is_some_and(|token| ETB_ARTICLE_WORD_PATTERN.matches_token(token))
+        {
+            (Value::Fixed(1), 1)
+        } else {
+            parse_value(&rest)?
+        };
+        let counter_idx = crate::runtime_backend::grammar::primitives::find_token_index(
+            &rest[used..],
+            |token| ETB_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token),
+        )? + used;
+        let counter_type = parse_counter_type_from_tokens(&rest[used..=counter_idx])?;
+        counters.push((counter_type, count));
+
+        rest = trim_commas(&rest[counter_idx + 1..]);
+        if token_slice_first_is(&rest, "on") {
+            rest = trim_commas(&rest[1..]);
+        }
+        if token_slice_first_is(&rest, "it") {
+            rest = trim_commas(&rest[1..]);
+        }
+    }
+
+    (!counters.is_empty() && !rest.iter().any(|token| token.as_word().is_some()))
+        .then_some(counters)
 }
 
 fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {
@@ -3457,11 +3525,11 @@ mod etb_enters_tapped_with_counters_tests {
             ["this", "creature"]
         );
 
-        let ability = parse_enters_with_counters_line(&tokens)
+        let abilities = parse_enters_with_counters_line(&tokens)
             .expect("parser should not error")
             .expect("enters with counters should parse");
         assert_eq!(
-            ability.id(),
+            abilities[0].id(),
             crate::static_abilities::StaticAbilityId::EnterWithCounters
         );
     }
