@@ -2792,6 +2792,11 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("during"),
             StaticAbilityLineHeadHint::Pair("during", "each"),
         ],
+        "parse_play_from_permission_with_haste_this_way_line"
+        | "parse_play_from_permission_with_enter_counter_this_way_line" => vec![
+            StaticAbilityLineHeadHint::Single("you"),
+            StaticAbilityLineHeadHint::Pair("you", "may"),
+        ],
         "parse_you_may_cast_exile_counter_cards_with_mana_permission_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
             StaticAbilityLineHeadHint::Pair("you", "may"),
@@ -3208,6 +3213,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         multi_static_ability_ast_rule!(parse_surveilled_graveyard_play_life_cost_line),
         single_static_ability_ast_rule!(parse_play_from_permission_with_haste_this_way_line),
+        single_static_ability_ast_rule!(parse_play_from_permission_with_enter_counter_this_way_line),
         single_static_ability_ast_rule!(parse_you_may_static_grant_line),
         single_static_ability_ast_rule!(parse_grant_flash_to_noncreature_spells_line),
         single_static_ability_ast_rule!(parse_cast_this_spell_as_though_it_had_flash_line),
@@ -10353,6 +10359,55 @@ pub(crate) fn parse_play_from_permission_with_haste_this_way_line(
                 )
             }))
         }
+        _ => Ok(None),
+    }
+}
+
+pub(crate) fn parse_play_from_permission_with_enter_counter_this_way_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let sentences = split_lexed_sentences(tokens);
+    let [permission_sentence, counter_sentence] = sentences.as_slice() else {
+        return Ok(None);
+    };
+
+    let counter_words = parser_token_word_refs(counter_sentence);
+    let counter_type = match counter_words.as_slice() {
+        [
+            "if",
+            "you",
+            "do",
+            "it",
+            "enters",
+            "with",
+            "a" | "an",
+            counter_word,
+            "counter",
+            "on",
+            "it",
+        ] => parse_counter_type_word(counter_word),
+        _ => None,
+    };
+    let Some(counter_type) = counter_type else {
+        return Ok(None);
+    };
+
+    match parse_permission_clause_spec(permission_sentence)? {
+        Some(crate::cards::builders::PermissionClauseSpec::GrantBySpec {
+            player,
+            spec,
+            lifetime: crate::cards::builders::PermissionLifetime::Static,
+        }) if matches!(spec.grantable, crate::grant::Grantable::PlayFrom) => Ok(
+            static_grant_beneficiary(player).map(|beneficiary| {
+                StaticAbility::grants(
+                    spec.with_beneficiary(beneficiary)
+                        .with_cast_this_way_grant(StaticAbility::enters_with_counters_value(
+                            counter_type,
+                            Value::Fixed(1),
+                        )),
+                )
+            }),
+        ),
         _ => Ok(None),
     }
 }

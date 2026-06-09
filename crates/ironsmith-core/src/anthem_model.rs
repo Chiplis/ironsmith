@@ -10,6 +10,7 @@ pub enum AnthemCountExpression {
     AffectedAttackedThisTurn,
     CountersOnSource(CounterType),
     CountersAmong(ObjectFilter, CounterType),
+    DistinctCounterTypesAmong(ObjectFilter),
     BasicLandTypesAmong(ObjectFilter),
     CreatureTypesAmong(ObjectFilter),
     BlockingSource,

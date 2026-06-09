@@ -241,9 +241,10 @@ pub struct Object {
     // - is_commander -> GameState::commanders
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TemporaryStaticAbilityGrant {
     pub ability: StaticAbilityId,
+    pub ability_payload: Option<StaticAbility>,
     pub expires_end_of_turn: u32,
 }
 
@@ -253,7 +254,9 @@ impl TemporaryStaticAbilityGrant {
     }
 
     pub fn materialize(&self) -> Option<StaticAbility> {
-        static_ability_from_id(self.ability)
+        self.ability_payload
+            .clone()
+            .or_else(|| static_ability_from_id(self.ability))
     }
 }
 
