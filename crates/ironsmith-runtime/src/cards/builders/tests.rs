@@ -19431,6 +19431,30 @@ fn frightful_delusion_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn thassas_intervention_strict_parser_and_twice_x_counter_text_regression() {
+    assert_oracle_card_parses_strict("Thassa's Intervention");
+
+    let def = parse_oracle_card_definition("Thassa's Intervention");
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    let spell_compact_debug = format!("{:?}", def.spell_effect);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
+    assert!(
+        spell_debug.contains("ChooseModeEffect")
+            && spell_debug.contains("UnlessPaysEffect")
+            && spell_debug.contains("CounterEffect")
+            && spell_compact_debug.contains("multiplier: Some(Fixed(2))"),
+        "expected Thassa's Intervention to lower twice-X counter mode structurally, got {spell_debug}"
+    );
+    assert!(
+        rendered.contains("Look at the top X cards of your library")
+            && rendered.contains("Counter target spell unless its controller pays twice {X}"),
+        "expected Thassa's Intervention compiled text to preserve both modes and twice-X payment, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_counter_unless_pays_and_life_rendering() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Mundungu Probe")
         .card_types(vec![CardType::Creature])

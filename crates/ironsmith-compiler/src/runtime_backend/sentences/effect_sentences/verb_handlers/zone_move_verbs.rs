@@ -740,19 +740,28 @@ fn counter_unless_payment_total_cost(
     mana: Vec<ManaSymbol>,
     life: Option<Value>,
     additional_generic: Option<Value>,
+    mana_multiplier: Option<Value>,
     x_value: Option<Value>,
     display_hint: ironsmith_core::DynamicManaDisplayHint,
 ) -> crate::cost::TotalCost {
     let mut components = Vec::new();
     let mana_cost = crate::mana::ManaCost::from_symbols(mana);
-    if !mana_cost.is_empty() || additional_generic.is_some() || x_value.is_some() {
-        if mana_cost.has_x() || additional_generic.is_some() || x_value.is_some() {
+    if !mana_cost.is_empty()
+        || additional_generic.is_some()
+        || mana_multiplier.is_some()
+        || x_value.is_some()
+    {
+        if mana_cost.has_x()
+            || additional_generic.is_some()
+            || mana_multiplier.is_some()
+            || x_value.is_some()
+        {
             components.push(crate::costs::Cost::dynamic_mana(
                 ironsmith_core::DynamicManaCost::new(
                     mana_cost,
                     x_value,
                     additional_generic,
-                    None,
+                    mana_multiplier,
                     display_hint,
                 ),
             ));
@@ -886,6 +895,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
 
         let mut life = None;
         let mut additional_generic = None;
+        let mut mana_multiplier = None;
         let mut x_value = None;
         let mut dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::Default;
         if mana.is_empty() {
@@ -900,6 +910,10 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             {
                 additional_generic = Some(value);
                 dynamic_display_hint = ironsmith_core::DynamicManaDisplayHint::ManaEqualTo;
+                trailing_start = None;
+            } else if has_x_mana_payment && payment_words.as_slice() == ["twice"] {
+                mana.push(ManaSymbol::X);
+                mana_multiplier = Some(Value::Fixed(2));
                 trailing_start = None;
             } else {
                 return Err(CardTextError::ParseError(format!(
@@ -995,7 +1009,12 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             }
         }
 
-        if mana.is_empty() && life.is_none() && additional_generic.is_none() && x_value.is_none() {
+        if mana.is_empty()
+            && life.is_none()
+            && additional_generic.is_none()
+            && mana_multiplier.is_none()
+            && x_value.is_none()
+        {
             return Err(CardTextError::ParseError(format!(
                 "missing mana cost (clause: '{}')",
                 crate::runtime_backend::token_word_refs(tokens).join(" ")
@@ -1027,6 +1046,7 @@ pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 mana,
                 life,
                 additional_generic,
+                mana_multiplier,
                 x_value,
                 dynamic_display_hint,
             ),

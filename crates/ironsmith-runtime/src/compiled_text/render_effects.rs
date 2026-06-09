@@ -21793,6 +21793,13 @@ fn describe_dynamic_mana_cost(dynamic: &ironsmith_core::DynamicManaCost) -> Stri
         dynamic.base.to_oracle()
     };
     if let Some(multiplier) = dynamic.multiplier.as_ref() {
+        if dynamic.base.to_oracle() == "{X}"
+            && dynamic.x_value.is_none()
+            && dynamic.additional_generic.is_none()
+            && matches!(multiplier, Value::Fixed(2))
+        {
+            return "twice {X}".to_string();
+        }
         let each = describe_payment_each_value(multiplier);
         if text.is_empty() {
             text = format!("{{1}} for each {each}");
