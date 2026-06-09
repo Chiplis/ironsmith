@@ -24,6 +24,12 @@ equivalent to the oracle text even when wording differs.
 
 **29 previously-failing cards now compile.** No card that compiled at baseline regressed.
 
+> **Update (test regressions):** post-merge the suite had **57 failures**; after two rounds of
+> root-cause fixes (no cards dropped) the `ironsmith-runtime` suite is at **8 failures /
+> 6815 passing**, all 9 architectural ratchet lints green (`ironsmith-tools` 429/429). The 8
+> remaining failures are exactly two unimplemented mechanics — Katara's **Waterbend** keyword-cost
+> (×5) and Captain Howler's **linked "that creature" delayed trigger** (×3). See *Follow-up 2* below.
+
 ## The big picture: why conflicts were heavy
 
 Every PR was authored against an older `main` whose parser has since been **heavily
@@ -235,3 +241,53 @@ predicate routed through the shared captured parser, #716/#722 util `.matches_wo
 - Mindstorm Crown (×3) — turn-start "you had a card in hand" predicate (no-amount form) isn't routed through the shared captured parser; needs a token-based no-amount path.
 - Captain Howler, Sea Scourge (×3) — "that creature" as a trigger subject filter is unsupported.
 - fade-counter representation (×2, Tangle Wire) — parser yields `CountersOnSource(Fade)` where the PR's tests expect `CountersOn(<this artifact>, Fade)`.
+
+# Follow-up 2: closing out the partials (8 failures remain, all-2-features)
+
+Continued the "fix the root cause, keep the card" directive. The full `ironsmith-runtime`
+suite now reports **8 failures (6815 passed, 3 skipped)**, down from 15, with all
+architectural ratchet lints still green (`ironsmith-tools` 429/429). The 8 remaining are
+exactly two large, unimplemented mechanics (Captain Howler ×3, Katara ×5).
+
+## Fixed this round
+
+- **Mindstorm Crown (×3)** — the cards-in-hand predicate parser handled `Greater/LessThan(OrEqual)`
+  but not `Comparison::Equal`, so "if you had **a** card in hand" (which parses as `Equal(1)`) fell
+  through to `None`. Map `Equal(count)` to the count-or-more reading so the past-tense turn-start
+  variant resolves. (`predicate_phrases.rs`)
+- **Tangle Wire fade-counter (×1 strict test)** — `parse_for_each_count_value_words` dropped the
+  "on this artifact" surface, lowering "for each fade counter on this artifact" to
+  `CountersOnSource(Fade)` instead of `CountersOn(this artifact, Fade)`. Mirrored the surface-hint
+  branch the value-term parser already uses. Rendering unchanged; "the number of … counters on this
+  artifact" (Magma Mine, Opaline Bracers, Eternity Elevator) keeps `CountersOnSource`. (`util.rs`)
+- **Commander Liara Portyr (×1)** — the exile-top + cast-permission renderer emitted plural
+  "cast spells from among those cards" for the X-card exile, which a downstream normalization then
+  collapsed to the single-card "cast that card this turn". Emit "those exiled cards" for
+  exiled-collection helper tags (matches the expected text and dodges the normalizer), and plumbed a
+  `cast_pool_is_plural` flag (compiler `LoweringFrame` → core/runtime `GrantPlayTaggedEffect` →
+  renderer) so the standalone grant render is count-aware. Single-card cards (Feral Encounter,
+  Ragavan) keep "that card this turn".
+- **Unbound Flourishing (×3)** — the general object-filter parser dropped the "with a mana cost that
+  contains {X}" qualifier on the permanent-spell cast trigger. Detect the phrase in
+  `parse_object_filter_inner` and set `has_x_in_cost` (the filter renderer already surfaces it).
+- **Stoic Sphinx (×1)** & **The Sixth Doctor (×1)** — worker-test convention conflicts, not engine
+  bugs (semantic comparison already matched). Stoic Sphinx: keyword grants render lowercase
+  "hexproof" locally (several passing cards agree); aligned the test's capitalized "Hexproof". The
+  Sixth Doctor: the shared `triggering` copy tag renders "that spell or ability" (correct for genuine
+  spell-or-ability copy triggers that share the tag); aligned the test rather than narrow the
+  renderer. Per the merge-steward convention: keep local output, update the worker test.
+
+## Remaining 8 — two unimplemented mechanics (genuine new feature work)
+
+- **Katara, Seeking Revenge (×5)** — the **Waterbend** keyword-cost mechanic ("you may waterbend {N}"
+  as an additional/activation cost, with artifact/creature tap-helpers each paying {1}). No
+  `waterbend` verb or cost type exists; "waterbend 2" fails as "could not find verb in effect clause".
+  This is a new cost subsystem (parse + cost model + payment + tap-helper choice), not a render tweak.
+- **Captain Howler, Sea Scourge (×3)** — a linked delayed trigger: the discard trigger pumps a target
+  creature, and a second sentence ("Whenever **that creature** deals combat damage to a player this
+  turn, you draw a card") must schedule a `DealsCombatDamageToPlayer` delayed trigger **bound to that
+  pumped creature**. The core spec (`DelayedTriggerSpec::DealsCombatDamageToPlayer`) and some
+  `linked_trigger` / "that creature" attack-binding machinery exist, but wiring the discard-pump
+  sentence to a tagged-source delayed trigger — and allowing "that creature" as a back-reference in the
+  trigger-subject parser (used by hundreds of cards) — is a multi-file feature with real regression
+  risk, deliberately left for focused work rather than rushed.
