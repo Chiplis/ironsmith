@@ -38591,6 +38591,286 @@ fn render_activation_typed_discard_cost_keeps_card_type() {
     );
 }
 
+fn niambi_draw_activated_ability(def: &CardDefinition) -> &crate::ability::ActivatedAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated)
+                if activated.effects.flattened_default_effects().iter().any(|effect| {
+                    effect.downcast_ref::<DrawCardsEffect>().is_some()
+                }) =>
+            {
+                Some(activated)
+            }
+            _ => None,
+        })
+        .expect("Niambi, Esteemed Speaker should have a draw activated ability")
+}
+
+fn niambi_enter_triggered_ability(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
+    def.abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered)
+                if triggered.effects.flattened_default_effects().iter().any(|effect| {
+                    effect.downcast_ref::<IfEffect>().is_some_and(|if_effect| {
+                        if_effect.then.iter().any(|effect| {
+                            effect.downcast_ref::<GainLifeEffect>().is_some()
+                        })
+                    })
+                }) =>
+            {
+                Some(triggered)
+            }
+            _ => None,
+        })
+        .expect("Niambi, Esteemed Speaker should have an enters triggered ability")
+}
+
+#[test]
+fn niambi_esteemed_speaker_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Niambi, Esteemed Speaker");
+
+    let def = parse_oracle_card_definition("Niambi, Esteemed Speaker");
+    let activated = niambi_draw_activated_ability(&def);
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let activated_debug = format!("{activated:#?}");
+
+    assert!(
+        rendered.contains("Discard a legendary card: Draw two cards"),
+        "Niambi compiled text should preserve the legendary discard activation cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When Niambi enters, you may return another target creature you control to its owner's hand. If you do, you gain life equal to that creature's mana value"
+        ),
+        "Niambi compiled text should preserve the named ETB and returned-creature mana-value reference, got {rendered}"
+    );
+    assert!(
+        activated_debug.contains("DiscardEffect")
+            && activated_debug.contains("supertypes: [")
+            && activated_debug.contains("Legendary")
+            && activated_debug.contains("DrawCardsEffect"),
+        "Niambi activation should structurally require discarding a legendary card and draw two cards, got {activated_debug}"
+    );
+}
+
+#[test]
+fn niambi_esteemed_speaker_activation_cost_requires_and_discards_legendary_card() {
+    let def = parse_oracle_card_definition("Niambi, Esteemed Speaker");
+    let activated = niambi_draw_activated_ability(&def);
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.remove_summoning_sickness(source);
+
+    let nonlegendary_card = CardBuilder::new(CardId::new(), "Nonlegendary Test Card")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let nonlegendary_id = game.create_object_from_card(&nonlegendary_card, alice, Zone::Hand);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::White, 2);
+    game.player_mut(alice)
+        .expect("Alice should exist")
+        .mana_pool
+        .add(ManaSymbol::Blue, 1);
+
+    assert!(
+        crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost).is_err(),
+        "Niambi activation should not be payable with only a nonlegendary card in hand"
+    );
+
+    let legendary_card = CardBuilder::new(CardId::new(), "Legendary Test Card")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .build();
+    let legendary_id = game.create_object_from_card(&legendary_card, alice, Zone::Hand);
+    let draw_one = CardBuilder::new(CardId::new(), "Niambi Draw One").build();
+    let draw_two = CardBuilder::new(CardId::new(), "Niambi Draw Two").build();
+    game.create_object_from_card(&draw_one, alice, Zone::Library);
+    game.create_object_from_card(&draw_two, alice, Zone::Library);
+
+    crate::cost::can_pay_cost(&game, source, alice, &activated.mana_cost)
+        .expect("Niambi activation should be payable with a legendary card in hand");
+    let mut dm = crate::decision::AutoPassDecisionMaker::default();
+    crate::special_actions::pay_total_cost_with_choice(
+        &mut game,
+        alice,
+        source,
+        &activated.mana_cost,
+        crate::costs::PaymentReason::ActivateAbility,
+        &mut dm,
+    )
+    .expect("Niambi activation cost should select and discard the legendary card");
+
+    let player = game.player(alice).expect("Alice should exist");
+    assert!(game.is_tapped(source), "Niambi should tap to pay the cost");
+    assert!(
+        player.hand.contains(&nonlegendary_id),
+        "nonlegendary hand card should not satisfy Niambi's legendary discard cost"
+    );
+    assert!(
+        !player.hand.contains(&legendary_id),
+        "legendary hand card should be discarded to pay Niambi's activation cost"
+    );
+    assert_eq!(player.graveyard.len(), 1, "one card should be discarded");
+
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in activated.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Niambi activated ability should draw two cards after costs are paid");
+    }
+    let player = game.player(alice).expect("Alice should exist");
+    assert_eq!(
+        player.hand.len(),
+        3,
+        "after discarding one legendary card, Niambi should draw two cards"
+    );
+    assert_eq!(player.library.len(), 0, "Niambi should draw both library cards");
+}
+
+#[test]
+fn niambi_esteemed_speaker_enter_trigger_returns_another_creature_and_gains_life() {
+    struct DeclineMay;
+    impl crate::decision::DecisionMaker for DeclineMay {}
+
+    let def = parse_oracle_card_definition("Niambi, Esteemed Speaker");
+    let triggered = niambi_enter_triggered_ability(&def);
+    let target_spec = triggered
+        .choices
+        .first()
+        .expect("Niambi enters trigger should target another creature")
+        .clone();
+    let ChooseSpec::Target(inner) = target_spec.unhinted() else {
+        panic!("Niambi enters trigger should use a target spec, got {target_spec:#?}");
+    };
+    let ChooseSpec::Object(filter) = inner.unhinted() else {
+        panic!("Niambi enters trigger should target an object, got {inner:#?}");
+    };
+    assert!(
+        filter.other,
+        "Niambi enters trigger must target another creature, not Niambi itself"
+    );
+    assert_eq!(
+        filter.controller,
+        Some(PlayerFilter::You),
+        "Niambi enters trigger should only target a creature you control"
+    );
+    assert_eq!(
+        filter.card_types,
+        vec![CardType::Creature],
+        "Niambi enters trigger should target a creature"
+    );
+
+    let alice = PlayerId::from_index(0);
+    let returned_def = CardDefinitionBuilder::new(CardId::new(), "Niambi Returned Creature")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let returned = game.create_object_from_definition(&returned_def, alice, Zone::Battlefield);
+    let returned_stable_id = game
+        .object(returned)
+        .expect("returned creature should exist")
+        .stable_id;
+    let source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(source).expect("Niambi should exist"),
+        &game,
+    );
+    let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            source,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(source_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(returned)])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec.clone(),
+            range: 0..1,
+        }])
+        .with_triggering_event(entry_event);
+    ctx.snapshot_targets(&game);
+
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Niambi enters trigger should return target and gain life");
+    }
+
+    let returned_hand_id = game
+        .find_object_by_stable_id(returned_stable_id)
+        .expect("returned creature should still exist after changing zones");
+    let player = game.player(alice).expect("Alice should exist");
+    assert!(
+        player.hand.contains(&returned_hand_id),
+        "accepted Niambi trigger should return the targeted creature to hand"
+    );
+    assert_eq!(
+        game.life_total(alice),
+        24,
+        "Niambi should gain life equal to the returned creature's mana value"
+    );
+
+    let mut declined_game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let declined_source =
+        declined_game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let declined_returned =
+        declined_game.create_object_from_definition(&returned_def, alice, Zone::Battlefield);
+    let declined_source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        declined_game
+            .object(declined_source)
+            .expect("Niambi should exist"),
+        &declined_game,
+    );
+    let declined_entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            declined_source,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(declined_source_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut dm = DeclineMay;
+    let mut declined_ctx = crate::effects::ExecutionContext::new_default(declined_source, alice)
+        .with_decision_maker(&mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(
+            declined_returned,
+        )])
+        .with_target_assignments(vec![crate::game_state::TargetAssignment {
+            spec: target_spec,
+            range: 0..1,
+        }])
+        .with_triggering_event(declined_entry_event);
+    declined_ctx.snapshot_targets(&declined_game);
+
+    for effect in triggered.effects.flattened_default_effects() {
+        crate::effects::execute_effect(&mut declined_game, effect, &mut declined_ctx)
+            .expect("declined Niambi enters trigger should resolve without doing anything");
+    }
+
+    let declined_player = declined_game.player(alice).expect("Alice should exist");
+    assert!(
+        !declined_player.hand.contains(&declined_returned),
+        "declining Niambi trigger should not return the targeted creature"
+    );
+    assert_eq!(
+        declined_game.life_total(alice),
+        20,
+        "declining Niambi trigger should skip the conditional life gain"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn render_activation_discard_hand_cost_keeps_full_hand_clause() {
