@@ -2739,14 +2739,29 @@ pub fn resolve_objects_for_effect_with_choice_description(
         }
 
         let count = spec.count();
+        let resolved_dynamic_count = if count.is_dynamic_x() {
+            if let Some(count_value) = spec.count_value() {
+                Some(resolve_value(game, count_value, ctx)?.max(0) as usize)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
         let mut candidates = candidate_object_ids_for_filter(game, filter, ctx);
         if candidates.is_empty() {
+            if resolved_dynamic_count.is_some() {
+                return Ok(Vec::new());
+            }
             return Err(ExecutionError::InvalidTarget);
+        }
+        if resolved_dynamic_count == Some(0) {
+            return Ok(Vec::new());
         }
 
         let (min, max) = if count.is_dynamic_x() {
-            let x = if let Some(count_value) = spec.count_value() {
-                resolve_value(game, count_value, ctx)?.max(0) as usize
+            let x = if let Some(x) = resolved_dynamic_count {
+                x
             } else {
                 ctx.x_value.ok_or_else(|| {
                     ExecutionError::UnresolvableValue("X value not set".to_string())
@@ -2754,6 +2769,9 @@ pub fn resolve_objects_for_effect_with_choice_description(
             };
             if count.is_up_to_dynamic_x() {
                 (0, x.min(candidates.len()))
+            } else if spec.count_value().is_some() {
+                let bounded = x.min(candidates.len());
+                (bounded, bounded)
             } else if x > candidates.len() {
                 return Err(ExecutionError::InvalidTarget);
             } else {
@@ -3075,15 +3093,30 @@ pub fn resolve_objects_from_spec(
                     .map(|(id, _)| id)
                     .collect();
 
+                let resolved_dynamic_count = if count.is_dynamic_x() {
+                    if let Some(count_value) = spec.count_value() {
+                        Some(resolve_value(game, count_value, ctx)?.max(0) as usize)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
                 if objects.is_empty() {
+                    if resolved_dynamic_count.is_some() {
+                        return Ok(objects);
+                    }
                     return Err(ExecutionError::InvalidTarget);
                 }
 
                 let max = if count.is_dynamic_x() {
-                    ctx.x_value
-                        .map(|x| x as usize)
-                        .or(count.max)
-                        .unwrap_or(objects.len())
+                    resolved_dynamic_count.unwrap_or_else(|| {
+                        ctx.x_value
+                            .map(|x| x as usize)
+                            .or(count.max)
+                            .unwrap_or(objects.len())
+                    })
                 } else {
                     count.max.unwrap_or(objects.len())
                 };

@@ -1639,6 +1639,7 @@ mod tests {
     use crate::cards::builders::CardDefinitionBuilder;
     use crate::events::phase::BeginningOfUpkeepEvent;
     use crate::ids::CardId;
+    use crate::object::CounterType;
     use crate::static_abilities::StaticAbility;
     use crate::types::CardType;
 
@@ -1752,6 +1753,22 @@ mod tests {
         parse_spell_definition(name, vec![CardType::Instant], oracle_text)
     }
 
+    fn tangle_wire_definition() -> crate::cards::CardDefinition {
+        CardDefinitionBuilder::new(CardId::from_raw(3_694), "Tangle Wire")
+            .mana_cost(crate::mana::ManaCost::from_pips(vec![vec![
+                crate::mana::ManaSymbol::Generic(3),
+            ]]))
+            .card_types(vec![CardType::Artifact])
+            .parse_text(concat!(
+                "Fading 4 (This artifact enters with four fade counters on it. ",
+                "At the beginning of your upkeep, remove a fade counter from it. ",
+                "If you can't, sacrifice it.)\n",
+                "At the beginning of each player's upkeep, that player taps an untapped artifact, ",
+                "creature, or land they control for each fade counter on this artifact."
+            ))
+            .expect("Tangle Wire should parse for runtime test")
+    }
+
     fn create_creature(
         game: &mut GameState,
         name: &str,
@@ -1762,6 +1779,13 @@ mod tests {
         let card = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(power, toughness))
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
+
+    fn create_artifact(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Artifact])
             .build();
         game.create_object_from_card(&card, controller, Zone::Battlefield)
     }
@@ -1839,6 +1863,83 @@ mod tests {
             game.effect_store.delayed_triggers.len(),
             1,
             "upkeep copy should not install another Epic delayed trigger"
+        );
+    }
+
+    #[test]
+    fn tangle_wire_upkeep_trigger_has_active_player_choose_their_permanent() {
+        struct TangleWireDecisionMaker {
+            expected_player: PlayerId,
+            selected: ObjectId,
+            saw_object_choice: bool,
+        }
+
+        impl crate::decision::DecisionMaker for TangleWireDecisionMaker {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                assert_eq!(
+                    ctx.player, self.expected_player,
+                    "Tangle Wire's active upkeep player should choose what they tap"
+                );
+                assert!(
+                    ctx.candidates.iter().any(|candidate| candidate.id == self.selected),
+                    "expected selected permanent to be eligible: {:?}",
+                    ctx.candidates
+                );
+                self.saw_object_choice = true;
+                vec![self.selected]
+            }
+        }
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+        game.turn.phase = crate::game_state::Phase::Beginning;
+        game.turn.step = Some(crate::game_state::Step::Upkeep);
+
+        let tangle_wire = game.create_object_from_definition(
+            &tangle_wire_definition(),
+            alice,
+            Zone::Battlefield,
+        );
+        game.add_counters(tangle_wire, CounterType::Fade, 1)
+            .expect("Tangle Wire should accept fade counters");
+        let alice_artifact = create_artifact(&mut game, "Alice Relic", alice);
+        let bob_default_artifact = create_artifact(&mut game, "Bob Relic", bob);
+        let bob_selected_artifact = create_artifact(&mut game, "Bob Choice", bob);
+
+        let upkeep_event = crate::triggers::generate_step_trigger_events(&game)
+            .expect("Bob's upkeep should generate a trigger event");
+        let mut trigger_queue = TriggerQueue::new();
+        for trigger in crate::triggers::check_triggers(&game, &upkeep_event) {
+            trigger_queue.add(trigger);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("Tangle Wire trigger should go on the stack");
+
+        let mut dm = TangleWireDecisionMaker {
+            expected_player: bob,
+            selected: bob_selected_artifact,
+            saw_object_choice: false,
+        };
+        resolve_stack_entry_with(&mut game, &mut dm).expect("Tangle Wire trigger should resolve");
+
+        assert!(
+            dm.saw_object_choice,
+            "Tangle Wire should ask the active player to choose a permanent"
+        );
+        assert!(game.is_tapped(bob_selected_artifact));
+        assert!(
+            !game.is_tapped(bob_default_artifact),
+            "the test chooses a non-default eligible permanent"
+        );
+        assert!(
+            !game.is_tapped(alice_artifact),
+            "Tangle Wire should not tap the controller's permanent during Bob's upkeep"
         );
     }
 

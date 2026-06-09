@@ -7706,6 +7706,44 @@ fn test_builder_fading_creates_counter_upkeep_and_sacrifice_triggers() {
 }
 
 #[test]
+fn parse_tangle_wire_strictly_and_renders_fade_counter_tap_clause() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(3_694), "Tangle Wire")
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(3)]]))
+        .card_types(vec![CardType::Artifact])
+        .parse_text(concat!(
+            "Fading 4 (This artifact enters with four fade counters on it. ",
+            "At the beginning of your upkeep, remove a fade counter from it. ",
+            "If you can't, sacrifice it.)\n",
+            "At the beginning of each player's upkeep, that player taps an untapped artifact, ",
+            "creature, or land they control for each fade counter on this artifact."
+        ))
+        .expect("Tangle Wire should parse strictly");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Fading 4"),
+        "expected fading keyword line, got {rendered}"
+    );
+    assert!(
+        rendered.contains(concat!(
+            "At the beginning of each player's upkeep, that player taps an untapped artifact, ",
+            "creature, or land they control for each fade counter on this artifact"
+        )),
+        "expected exact Tangle Wire dynamic tap clause, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("WithCountValue")
+            && debug.contains("Fade")
+            && debug.contains("ThisPermanentType")
+            && debug.contains("this artifact")
+            && debug.contains("BeginningOfUpkeepTrigger"),
+        "expected Tangle Wire to lower to an upkeep tap choice counted by fade counters on this artifact, got {debug}"
+    );
+}
+
+#[test]
 fn test_builder_vanishing_creates_counter_upkeep_and_sacrifice_triggers() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Vanishing Test")
         .card_types(vec![CardType::Creature])

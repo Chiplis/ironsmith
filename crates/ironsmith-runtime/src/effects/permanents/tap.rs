@@ -135,10 +135,12 @@ impl CostExecutableEffect for TapEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::{ChoiceCount, Value};
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::object::Object;
+    use crate::object::{CounterType, Object};
+    use crate::target::{ChooseSpecSurfaceHint, SourceReferenceSurface};
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -164,6 +166,38 @@ mod tests {
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
         id
+    }
+
+    fn create_permanent(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        card_types: Vec<CardType>,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(card_types)
+            .build();
+        let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    fn tangle_wire_dynamic_tap_effect() -> TapEffect {
+        let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        filter.controller = Some(PlayerFilter::Active);
+        filter.card_types = vec![CardType::Artifact, CardType::Creature, CardType::Land];
+        filter.untapped = true;
+
+        let source = ChooseSpec::Source.with_surface_hint(
+            ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(
+                "this artifact".to_string(),
+            )),
+        );
+        TapEffect::with_spec(ChooseSpec::Object(filter).with_count_value(
+            ChoiceCount::dynamic_x(),
+            Value::CountersOn(Box::new(source), Some(CounterType::Fade)),
+        ))
     }
 
     // === Targeted tap tests ===
@@ -367,6 +401,102 @@ mod tests {
         let effect = TapEffect::all(ObjectFilter::creature());
         // All effects don't have a target spec
         assert!(effect.get_target_spec().is_none());
+    }
+
+    #[test]
+    fn tangle_wire_taps_active_players_untapped_permanents_for_each_fade_counter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let tangle_wire =
+            create_permanent(&mut game, "Tangle Wire", alice, vec![CardType::Artifact]);
+        game.add_counters(tangle_wire, CounterType::Fade, 2);
+        let alice_artifact =
+            create_permanent(&mut game, "Alice Relic", alice, vec![CardType::Artifact]);
+        let bob_artifact =
+            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+        let bob_creature = create_creature(&mut game, "Bob Bear", bob);
+        let bob_land = create_permanent(&mut game, "Bob Land", bob, vec![CardType::Land]);
+
+        let effect = tangle_wire_dynamic_tap_effect();
+        let mut ctx = ExecutionContext::new_default(tangle_wire, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        let bob_tapped = [bob_artifact, bob_creature, bob_land]
+            .into_iter()
+            .filter(|id| game.is_tapped(*id))
+            .count();
+        assert_eq!(bob_tapped, 2, "exactly two Bob permanents should be tapped");
+        assert!(
+            !game.is_tapped(alice_artifact),
+            "Tangle Wire should not tap the non-active player's permanent"
+        );
+    }
+
+    #[test]
+    fn tangle_wire_taps_no_permanents_when_it_has_no_fade_counters() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let tangle_wire =
+            create_permanent(&mut game, "Tangle Wire", alice, vec![CardType::Artifact]);
+        let bob_artifact =
+            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+        let bob_creature = create_creature(&mut game, "Bob Bear", bob);
+
+        let effect = tangle_wire_dynamic_tap_effect();
+        let mut ctx = ExecutionContext::new_default(tangle_wire, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert!(!game.is_tapped(bob_artifact));
+        assert!(!game.is_tapped(bob_creature));
+    }
+
+    #[test]
+    fn tangle_wire_with_no_fade_counters_allows_no_eligible_permanents() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let tangle_wire =
+            create_permanent(&mut game, "Tangle Wire", alice, vec![CardType::Artifact]);
+
+        let effect = tangle_wire_dynamic_tap_effect();
+        let mut ctx = ExecutionContext::new_default(tangle_wire, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+    }
+
+    #[test]
+    fn tangle_wire_taps_available_permanents_when_fade_counters_exceed_choices() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.active_player = bob;
+
+        let tangle_wire =
+            create_permanent(&mut game, "Tangle Wire", alice, vec![CardType::Artifact]);
+        game.add_counters(tangle_wire, CounterType::Fade, 3);
+        let alice_artifact =
+            create_permanent(&mut game, "Alice Relic", alice, vec![CardType::Artifact]);
+        let bob_artifact =
+            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+
+        let effect = tangle_wire_dynamic_tap_effect();
+        let mut ctx = ExecutionContext::new_default(tangle_wire, alice);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert!(game.is_tapped(bob_artifact));
+        assert!(!game.is_tapped(alice_artifact));
     }
 
     #[test]
