@@ -231,6 +231,7 @@ pub(crate) struct ModalHeaderChooseSpec {
 pub(crate) struct ModalHeaderFlags {
     pub(crate) commander_allows_both: bool,
     pub(crate) choose_both_control_card_types: Vec<crate::types::CardType>,
+    pub(crate) choose_both_exact_life_total: Option<i32>,
     pub(crate) same_mode_more_than_once: bool,
     pub(crate) mode_must_be_unchosen: bool,
     pub(crate) mode_must_be_unchosen_this_turn: bool,
@@ -1276,11 +1277,13 @@ pub(crate) fn scan_modal_header_flags(tokens: &[OwnedLexToken]) -> ModalHeaderFl
         );
 
     let choose_both_control_card_types = scan_choose_both_control_card_types(tokens);
+    let choose_both_exact_life_total = scan_choose_both_exact_life_total(tokens);
 
     ModalHeaderFlags {
         commander_allows_both: primitives::contains_word(tokens, "commander")
             && primitives::contains_word(tokens, "both"),
         choose_both_control_card_types,
+        choose_both_exact_life_total,
         same_mode_more_than_once: primitives::contains_phrase(
             tokens,
             &["same", "mode", "more", "than", "once"],
@@ -1323,6 +1326,31 @@ fn scan_choose_both_control_card_types(tokens: &[OwnedLexToken]) -> Vec<crate::t
         }
     }
     card_types
+}
+
+fn scan_choose_both_exact_life_total(tokens: &[OwnedLexToken]) -> Option<i32> {
+    if !primitives::contains_phrase(tokens, &["you", "may", "choose", "both", "instead"]) {
+        return None;
+    }
+
+    for window in tokens.windows(5) {
+        if !window[0].is_word("you")
+            || !window[1].is_word("have")
+            || !window[2].is_word("exactly")
+            || !window[4].is_word("life")
+        {
+            continue;
+        }
+
+        return match window[3].kind {
+            TokenKind::Number => window[3].parser_text().parse::<i32>().ok(),
+            TokenKind::Word => ironsmith_core::parse_cardinal_word(window[3].parser_text())
+                .and_then(|count| i32::try_from(count).ok()),
+            _ => None,
+        };
+    }
+
+    None
 }
 
 pub(crate) fn split_leading_result_prefix_lexed<'a>(

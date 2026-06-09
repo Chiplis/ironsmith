@@ -69217,6 +69217,213 @@ fn auditore_ambush_strict_parser_and_compiled_text_regression() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn disciple_of_perdition_modal_effect(def: &CardDefinition) -> &crate::effect::Effect {
+    let ability = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Disciple of Perdition should have a dies triggered ability");
+
+    ability
+        .effects
+        .segments
+        .first()
+        .and_then(|segment| segment.default_effects.first())
+        .expect("Disciple of Perdition trigger should contain a modal effect")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn disciple_of_perdition_modal_choice(def: &CardDefinition) -> &ChooseModeEffect {
+    let conditional = disciple_of_perdition_modal_effect(def)
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("Disciple choose-both clause should lower to a conditional modal effect");
+
+    conditional.if_true[0]
+        .downcast_ref::<ChooseModeEffect>()
+        .expect("Disciple exact-life branch should contain modal choices")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn disciple_of_perdition_exile_effect(
+    effect: &crate::effect::Effect,
+) -> Option<&crate::effects::ExileEffect> {
+    effect.downcast_ref::<crate::effects::ExileEffect>().or_else(|| {
+        effect
+            .downcast_ref::<TaggedEffect>()
+            .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn disciple_of_perdition_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Disciple of Perdition");
+
+    let def = parse_oracle_card_definition("Disciple of Perdition");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let lower = rendered.to_ascii_lowercase();
+    let modal_effect = disciple_of_perdition_modal_effect(&def);
+    let conditional = modal_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("Disciple choose-both clause should lower to a conditional modal effect");
+
+    assert!(
+        lower.contains("when this creature dies, choose one. if you have exactly 13 life, you may choose both instead"),
+        "expected compiled text to preserve the exact-life choose-both-instead clause, got {rendered}"
+    );
+    assert_eq!(
+        &conditional.condition,
+        &crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::LifeTotal(PlayerFilter::You),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::Fixed(13),
+        },
+        "expected exact 13 life condition, got {conditional:?}"
+    );
+
+    let modal = disciple_of_perdition_modal_choice(&def);
+    let exile = modal.modes[1]
+        .effects
+        .iter()
+        .find_map(disciple_of_perdition_exile_effect)
+        .expect("Disciple graveyard mode should contain a graveyard exile effect");
+    let ChooseSpec::All(filter) = &exile.spec else {
+        panic!("Disciple should exile all cards in the targeted opponent's graveyard, got {exile:?}");
+    };
+    assert_eq!(filter.zone, Some(Zone::Graveyard));
+    assert_eq!(
+        filter.owner,
+        Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
+        "Disciple should model target opponent's graveyard as all graveyard cards owned by the targeted opponent, got {filter:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn disciple_of_perdition_runtime_allows_both_modes_at_exactly_13_life() {
+    let def = parse_oracle_card_definition("Disciple of Perdition");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.lose_life(alice, 7);
+
+    let modal_spec = disciple_of_perdition_modal_effect(&def)
+        .0
+        .get_modal_spec_with_context(&game, alice, source)
+        .expect("Disciple trigger should expose modal choices");
+
+    assert_eq!(modal_spec.min_modes, crate::effect::Value::Fixed(1));
+    assert_eq!(modal_spec.max_modes, crate::effect::Value::Fixed(2));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn disciple_of_perdition_runtime_stays_choose_one_when_not_at_exactly_13_life() {
+    let def = parse_oracle_card_definition("Disciple of Perdition");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    let modal_spec = disciple_of_perdition_modal_effect(&def)
+        .0
+        .get_modal_spec_with_context(&game, alice, source)
+        .expect("Disciple trigger should expose modal choices");
+
+    assert_eq!(modal_spec.min_modes, crate::effect::Value::Fixed(1));
+    assert_eq!(modal_spec.max_modes, crate::effect::Value::Fixed(1));
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn disciple_of_perdition_runtime_modes_apply_draw_life_loss_and_graveyard_exile() {
+    let def = parse_oracle_card_definition("Disciple of Perdition");
+    let modal = disciple_of_perdition_modal_choice(&def);
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let _library_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_601), "Disciple Draw Card").build(),
+        alice,
+        Zone::Library,
+    );
+    let alice_graveyard_card = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_602), "Disciple Alice Graveyard Card")
+            .build(),
+        alice,
+        Zone::Graveyard,
+    );
+    let _bob_graveyard_card_one = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_603), "Disciple Bob Graveyard Card One")
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+    let _bob_graveyard_card_two = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::from_raw(91_604), "Disciple Bob Graveyard Card Two")
+            .build(),
+        bob,
+        Zone::Graveyard,
+    );
+
+    let mut draw_ctx = crate::effects::ExecutionContext::new_default(source, alice);
+    for effect in &modal.modes[0].effects {
+        crate::effects::execute_effect(&mut game, effect, &mut draw_ctx)
+            .expect("Disciple draw/life-loss mode should resolve");
+    }
+
+    assert_eq!(game.player(alice).expect("alice").life, 19);
+    assert_eq!(game.player(alice).expect("alice").library.len(), 0);
+    assert!(
+        game.player(alice).expect("alice").hand.len() == 1,
+        "the first mode should draw the top card"
+    );
+
+    let mut exile_ctx = crate::effects::ExecutionContext::new_default(source, alice)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    for effect in &modal.modes[1].effects {
+        crate::effects::execute_effect(&mut game, effect, &mut exile_ctx)
+            .expect("Disciple graveyard-exile mode should resolve");
+    }
+
+    assert_eq!(game.player(bob).expect("bob").life, 19);
+    assert_eq!(
+        game.player(bob).expect("bob").graveyard.len(),
+        0,
+        "the second mode should empty the targeted opponent's whole graveyard"
+    );
+    assert_eq!(
+        game.player(alice).expect("alice").graveyard.len(),
+        1,
+        "the second mode should not exile a non-targeted player's graveyard"
+    );
+    assert_eq!(
+        game.objects_in_zone(Zone::Exile).len(),
+        2,
+        "the second mode should exile each card in the targeted opponent's graveyard"
+    );
+    assert_eq!(
+        game.object(alice_graveyard_card)
+            .expect("alice graveyard card")
+            .zone,
+        Zone::Graveyard
+    );
+    let exile_names: Vec<_> = game
+        .objects_in_zone(Zone::Exile)
+        .into_iter()
+        .filter_map(|id| game.object(id).map(|object| object.name.clone()))
+        .collect();
+    assert!(
+        exile_names.contains(&"Disciple Bob Graveyard Card One".to_string())
+            && exile_names.contains(&"Disciple Bob Graveyard Card Two".to_string()),
+        "the second mode should exile both cards from Bob's graveyard, got {exile_names:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn auditore_ambush_runtime_returns_target_creature() {
     use crate::effects::ResolvedTarget;

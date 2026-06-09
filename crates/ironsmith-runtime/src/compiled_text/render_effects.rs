@@ -32084,8 +32084,12 @@ pub(super) fn describe_conditional_choose_both_instead(
     }
 
     let condition = describe_condition(&conditional.condition);
-    let mut out =
-        format!("Choose one. If {condition} as you cast this spell, you may choose both instead.");
+    let timing = if choose_both_condition_is_cast_time(&conditional.condition) {
+        " as you cast this spell"
+    } else {
+        ""
+    };
+    let mut out = format!("Choose one. If {condition}{timing}, you may choose both instead.");
     for mode in &choose_true.modes {
         let description = ensure_trailing_period(mode.description.trim());
         if description.trim().is_empty() {
@@ -32096,6 +32100,17 @@ pub(super) fn describe_conditional_choose_both_instead(
         out.push_str(description.trim());
     }
     Some(out)
+}
+
+fn choose_both_condition_is_cast_time(condition: &crate::effect::Condition) -> bool {
+    match condition {
+        crate::effect::Condition::YouControlCommander => true,
+        crate::effect::Condition::PlayerControls { .. } => true,
+        crate::effect::Condition::And(left, right) => {
+            choose_both_condition_is_cast_time(left) && choose_both_condition_is_cast_time(right)
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn describe_conditional_replacement_instead(
