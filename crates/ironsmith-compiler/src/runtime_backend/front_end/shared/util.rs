@@ -1439,15 +1439,15 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         ));
     }
     if let Some(counter_idx) = find_index(count_words, |word| {
-        COUNTER_OR_COUNTERS_WORD_PATTERN.matches_word(word)
+        shared_util_shape_matches_word(word, COUNTER_OR_COUNTERS_WORD_PATTERN)
     }) && count_words
         .get(counter_idx + 1)
-        .is_some_and(|word| ON_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| shared_util_shape_matches_word(word, ON_WORD_PATTERN))
     {
         let counter_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(count_words);
         if let Some(counter_type) = parse_counter_type_from_tokens(&counter_tokens) {
             let reference = &count_words[counter_idx + 2..];
-            if SOURCE_COUNTER_REFERENCE_PATTERN.matches_words(reference) {
+            if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
                 if let Some(surface) = this_source_surface_for_words(reference) {
                     return Some((
                         Value::CountersOn(
@@ -1459,7 +1459,7 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 }
                 return Some((Value::CountersOnSource(counter_type), filter_end));
             }
-            if TAGGED_COUNTER_REFERENCE_PATTERN.matches_words(reference) {
+            if shared_util_shape_matches_words(reference, TAGGED_COUNTER_REFERENCE_PATTERN) {
                 return Some((
                     Value::CountersOn(
                         Box::new(ChooseSpec::Tagged(TagKey::from(

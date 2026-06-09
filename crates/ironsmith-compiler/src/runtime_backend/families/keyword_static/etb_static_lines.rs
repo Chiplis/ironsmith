@@ -1036,11 +1036,14 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
     let mut rest = trim_commas(tokens);
     let mut counters = Vec::new();
 
-    while rest.first().is_some_and(|token| AND_WORD_PATTERN.matches_token(token)) {
+    while rest
+        .first()
+        .is_some_and(|token| etb_token_word_is(token, ETB_AND_WORD))
+    {
         rest = trim_commas(&rest[1..]);
         let (count, used) = if rest
             .first()
-            .is_some_and(|token| ARTICLE_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
         {
             (Value::Fixed(1), 1)
         } else {
@@ -1048,7 +1051,7 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
         };
         let counter_idx = crate::runtime_backend::grammar::primitives::find_token_index(
             &rest[used..],
-            |token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token),
+            |token| etb_token_word_is_any(token, ETB_COUNTER_OR_COUNTERS_WORDS),
         )? + used;
         let counter_type = parse_counter_type_from_tokens(&rest[used..=counter_idx])?;
         counters.push((counter_type, count));
@@ -1084,13 +1087,13 @@ fn parse_enters_with_counter_choice_tokens(
     loop {
         while tokens
             .get(idx)
-            .is_some_and(|token| ARTICLE_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
         {
             idx += 1;
         }
         let counter_end = tokens[idx..]
             .iter()
-            .position(|token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))?
+            .position(|token| etb_token_word_is_any(token, ETB_COUNTER_OR_COUNTERS_WORDS))?
             + idx;
         let counter_tokens = &tokens[idx..=counter_end];
         let counter_type = parse_counter_type_from_tokens(counter_tokens)?;

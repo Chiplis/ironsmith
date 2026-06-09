@@ -441,7 +441,7 @@ pub(crate) fn parse_discard_trigger_card_filter(
     let qualifier_tokens = trim_commas(&remainder[..qualifier_end]);
     let mut qualifier_tokens = strip_leading_articles(&qualifier_tokens);
     let qualifier_words = crate::runtime_backend::token_word_refs(&qualifier_tokens);
-    if ONE_OR_MORE_PATTERN.matches_words(&qualifier_words) {
+    if trigger_subject_shape_matches_words(&qualifier_words, ONE_OR_MORE_PATTERN) {
         qualifier_tokens.clear();
     }
     if qualifier_tokens.len() >= 2

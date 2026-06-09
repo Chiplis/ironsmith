@@ -1756,6 +1756,27 @@ impl<'a> LexedClause<'a> {
         }
         trimmed.before(end)
     }
+
+    /// If this clause's trailing tokens exactly spell `phrase` (word for word),
+    /// return the clause with that phrase removed; otherwise return it unchanged.
+    /// Unlike `without_trailing_words_clause`, this requires the exact ordered
+    /// phrase and does not trim, so callers can detect a match by token count.
+    pub(crate) fn without_trailing_phrase(self, phrase: &[&str]) -> Self {
+        let len = self.tokens.len();
+        if phrase.is_empty() || len < phrase.len() {
+            return self;
+        }
+        let tail = &self.tokens[len - phrase.len()..];
+        let matches = tail
+            .iter()
+            .zip(phrase)
+            .all(|(token, expected)| token.as_word().is_some_and(|word| word == *expected));
+        if matches {
+            self.before(len - phrase.len())
+        } else {
+            self
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

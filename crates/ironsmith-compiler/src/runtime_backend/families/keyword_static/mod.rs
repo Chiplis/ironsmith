@@ -2601,6 +2601,8 @@ pub(crate) fn parse_can_be_attached_only_to_line(
     }))
 }
 
+const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this aura")];
+
 const AS_ENTERS_STANDARD_SUBJECTS: &[(&str, &str)] = &[
     ("land", "this land"),
     ("creature", "this creature"),
@@ -4658,7 +4660,9 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
-        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_AURA_SUBJECTS).or_else(|| {
+            parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
+        })
     else {
         return Ok(None);
     };
@@ -9881,25 +9885,26 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_line(
             subject_tokens,
             tail_tokens,
         }) => {
-            let subject = crate::runtime_backend::token_word_refs(subject_tokens).join(" ");
+            let subject = render_token_slice(subject_tokens);
             let text = format!("{subject} doesnt untap during its controllers untap step");
             let condition = if tail_tokens.is_empty() {
                 None
             } else {
-                let tail_words = crate::runtime_backend::token_word_refs(tail_tokens);
-                if !tail_words.first().is_some_and(|word| *word == "unless") {
-                    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+                let clause_display = render_token_slice(tokens);
+                if !tail_tokens
+                    .first()
+                    .is_some_and(|token| token.as_word() == Some("unless"))
+                {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported trailing attached untap-step clause (clause: '{}')",
-                        clause_words.join(" ")
+                        clause_display
                     )));
                 }
                 let condition_tokens = trim_commas(&tail_tokens[1..]);
                 if condition_tokens.is_empty() {
-                    let clause_words = crate::runtime_backend::token_word_refs(tokens);
                     return Err(CardTextError::ParseError(format!(
                         "missing condition after attached untap-step unless-clause (clause: '{}')",
-                        clause_words.join(" ")
+                        clause_display
                     )));
                 }
                 Some(crate::ConditionExpr::Not(Box::new(
