@@ -11775,7 +11775,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             format!("it is one of your first {count} turns of the game")
         }
-        Condition::CreatureDiedThisTurn => "a creature died this turn".to_string(),
+        Condition::CreatureDiedThisTurn => "one or more creatures died this turn".to_string(),
         Condition::CreatureDiedThisTurnOrMore(count) => {
             format!("{count} or more creatures died this turn")
         }

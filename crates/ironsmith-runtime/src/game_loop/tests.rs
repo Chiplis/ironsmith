@@ -1010,6 +1010,147 @@ fn put_wondrous_crucible_end_step_trigger_on_stack(game: &mut GameState) -> usiz
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+fn feast_of_the_victorious_dead_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(111_668), "Feast of the Victorious Dead")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::White],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "At the beginning of your end step, if one or more creatures died this turn, you gain that much life and distribute that many +1/+1 counters among any number of creatures you control.",
+        )
+        .expect("Feast of the Victorious Dead should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn put_feast_end_step_trigger_on_stack(game: &mut GameState) -> usize {
+    let alice = PlayerId::from_index(0);
+    game.turn.phase = Phase::Ending;
+    game.turn.step = Some(crate::game_state::Step::End);
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+
+    let mut trigger_queue = TriggerQueue::new();
+    generate_and_queue_step_triggers(game, &mut trigger_queue);
+    put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Feast end-step trigger processing should succeed");
+    game.stack.len()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+struct ChooseAllLegalObjects;
+
+#[cfg(ironsmith_runtime_parser_tests)]
+impl DecisionMaker for ChooseAllLegalObjects {
+    fn decide_objects(
+        &mut self,
+        _game: &GameState,
+        ctx: &crate::decisions::context::SelectObjectsContext,
+    ) -> Vec<ObjectId> {
+        ctx.candidates
+            .iter()
+            .filter(|candidate| candidate.legal)
+            .map(|candidate| candidate.id)
+            .take(ctx.max.unwrap_or(usize::MAX))
+            .collect()
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feast_of_the_victorious_dead_does_not_trigger_without_a_creature_death() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let feast = feast_of_the_victorious_dead_definition();
+    let survivor = vanilla_creature_definition(111_669, "Feast Survivor", 2, 2);
+    let survivor_id = game.create_object_from_definition(&survivor, alice, Zone::Battlefield);
+    game.create_object_from_definition(&feast, alice, Zone::Battlefield);
+
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_creatures_died_this_turn(),
+        0,
+        "test setup should start with no creatures dying this turn"
+    );
+    assert_eq!(
+        put_feast_end_step_trigger_on_stack(&mut game),
+        0,
+        "Feast should not trigger unless a creature died this turn"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").life, 20);
+    assert_eq!(
+        game.counter_count(survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Feast should not distribute counters when its intervening-if condition is false"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn feast_of_the_victorious_dead_gains_life_and_distributes_counters_for_creatures_died() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let feast = feast_of_the_victorious_dead_definition();
+    game.create_object_from_definition(&feast, alice, Zone::Battlefield);
+
+    let alice_doomed = vanilla_creature_definition(111_670, "Alice's Doomed Creature", 1, 1);
+    let bob_doomed = vanilla_creature_definition(111_671, "Bob's Doomed Creature", 1, 1);
+    let first_survivor = vanilla_creature_definition(111_672, "First Feast Survivor", 2, 2);
+    let second_survivor = vanilla_creature_definition(111_673, "Second Feast Survivor", 2, 2);
+    let bob_survivor = vanilla_creature_definition(111_674, "Bob's Feast Survivor", 2, 2);
+    let alice_doomed_id =
+        game.create_object_from_definition(&alice_doomed, alice, Zone::Battlefield);
+    let bob_doomed_id = game.create_object_from_definition(&bob_doomed, bob, Zone::Battlefield);
+    let first_survivor_id =
+        game.create_object_from_definition(&first_survivor, alice, Zone::Battlefield);
+    let second_survivor_id =
+        game.create_object_from_definition(&second_survivor, alice, Zone::Battlefield);
+    let bob_survivor_id = game.create_object_from_definition(&bob_survivor, bob, Zone::Battlefield);
+
+    game.move_object_by_effect(alice_doomed_id, Zone::Graveyard);
+    game.move_object_by_effect(bob_doomed_id, Zone::Graveyard);
+    assert_eq!(
+        game.turn_store
+            .turn_history
+            .total_creatures_died_this_turn(),
+        2,
+        "Feast should count all creatures that died this turn"
+    );
+
+    assert_eq!(
+        put_feast_end_step_trigger_on_stack(&mut game),
+        1,
+        "Feast should trigger at the beginning of your end step after creatures died"
+    );
+    let mut dm = ChooseAllLegalObjects;
+    resolve_stack_entry_with(&mut game, &mut dm).expect("Feast trigger should resolve");
+
+    assert_eq!(
+        game.player(alice).expect("Alice exists").life,
+        22,
+        "Feast should gain life equal to the number of creatures that died this turn"
+    );
+    assert_eq!(
+        game.counter_count(first_survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Feast should distribute the first counter to a controlled creature"
+    );
+    assert_eq!(
+        game.counter_count(second_survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "Feast should distribute the second counter to another controlled creature"
+    );
+    assert_eq!(
+        game.counter_count(bob_survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "Feast should not distribute counters to creatures controlled by opponents"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 fn vanilla_creature_definition(
     card_id: u32,
     name: &str,

@@ -411,6 +411,96 @@ fn aether_refinery_strict_parser_compiled_text_and_model_regression() {
 }
 
 #[test]
+fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Feast of the Victorious Dead");
+
+    let def = parse_oracle_card_definition("Feast of the Victorious Dead");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Feast of the Victorious Dead should have an end-step trigger");
+
+    assert_eq!(
+        triggered.intervening_if,
+        Some(crate::effect::Condition::CreatureDiedThisTurn),
+        "Feast of the Victorious Dead should be gated by creatures dying this turn"
+    );
+
+    let effects = triggered.effects.flattened_default_effects();
+    let gain_life = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<GainLifeEffect>())
+        .expect("Feast of the Victorious Dead should gain life");
+    assert_eq!(
+        gain_life.amount,
+        Value::CreaturesDiedThisTurn,
+        "Feast life gain should count creatures that died this turn"
+    );
+
+    let put_counters = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        .expect("Feast of the Victorious Dead should distribute counters");
+    assert_eq!(
+        put_counters.amount,
+        Value::CreaturesDiedThisTurn,
+        "Feast counter distribution should count creatures that died this turn"
+    );
+    assert!(
+        put_counters.distributed,
+        "Feast should lower as a distributed counter effect"
+    );
+    assert!(
+        put_counters.target_count.is_some(),
+        "Feast should preserve the any-number distribution target count"
+    );
+    let (inner_target, target_count) = match &put_counters.target {
+        ChooseSpec::WithCount(inner, count) => (inner.as_ref(), count),
+        other => panic!("expected counted distribution target, got {other:?}"),
+    };
+    assert_eq!(target_count.min, 0, "Feast should allow zero distribution targets");
+    assert_eq!(target_count.max, None, "Feast should allow any number of distribution targets");
+    assert_eq!(
+        put_counters.target_count,
+        Some(*target_count),
+        "Feast should preserve the same distribution target count on the effect"
+    );
+    let target_filter = match inner_target {
+        ChooseSpec::Object(filter) => filter,
+        other => panic!("expected object distribution target, got {other:?}"),
+    };
+    assert_eq!(
+        target_filter.zone,
+        Some(Zone::Battlefield),
+        "Feast should distribute counters only on battlefield objects"
+    );
+    assert_eq!(
+        target_filter.controller,
+        Some(PlayerFilter::You),
+        "Feast should distribute counters only among creatures you control"
+    );
+    assert!(
+        target_filter.card_types.contains(&CardType::Creature),
+        "Feast should distribute counters only among creatures, got {target_filter:?}"
+    );
+
+    assert!(
+        rendered.contains("At the beginning of your end step")
+            && rendered.contains("creature")
+            && rendered.contains("died this turn")
+            && rendered.contains(
+                "you gain that much life and distribute that many +1/+1 counters among any number of creatures you control"
+            ),
+        "expected Feast compiled text to preserve the end-step died-this-turn distribution, got {rendered}"
+    );
+}
+
+#[test]
 fn wondrous_crucible_strict_parser_compiled_text_and_model_regression() {
     assert_oracle_card_parses_strict("Wondrous Crucible");
 

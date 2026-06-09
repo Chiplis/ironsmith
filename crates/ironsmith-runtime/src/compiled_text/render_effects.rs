@@ -777,6 +777,49 @@ fn normalize_compile_effect_list_surface(line: &str) -> String {
     line.to_string()
 }
 
+fn describe_gain_life_then_distribute_creatures_died_counters(
+    effects: &[Effect],
+) -> Option<String> {
+    let [gain_effect, put_effect] = effects else {
+        return None;
+    };
+    let gain = gain_effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
+    if !matches!(gain.amount, Value::CreaturesDiedThisTurn)
+        || !matches!(gain.player, ChooseSpec::Player(PlayerFilter::You))
+    {
+        return None;
+    }
+
+    let put = put_effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if !put.distributed
+        || !matches!(put.amount, Value::CreaturesDiedThisTurn)
+        || put.counter_type != crate::object::CounterType::PlusOnePlusOne
+    {
+        return None;
+    }
+    let ChooseSpec::WithCount(inner, count) = &put.target else {
+        return None;
+    };
+    let ChooseSpec::Object(filter) = inner.as_ref() else {
+        return None;
+    };
+    if count.min != 0
+        || count.max.is_some()
+        || put.target_count != Some(*count)
+        || filter.zone != Some(Zone::Battlefield)
+        || filter.controller != Some(PlayerFilter::You)
+        || !filter.card_types.contains(&CardType::Creature)
+    {
+        return None;
+    }
+
+    Some(format!(
+        "You gain that much life and distribute that many {} counters among {}",
+        describe_counter_type(put.counter_type),
+        describe_choose_spec(&put.target)
+    ))
+}
+
 fn is_effect_count_reference(value: &Value, effect_id: Option<crate::effect::EffectId>) -> bool {
     match value {
         Value::SurfaceHinted { value, .. } => is_effect_count_reference(value, effect_id),
@@ -5715,6 +5758,9 @@ fn describe_group_pump_then_conditional_untap(effects: &[Effect]) -> Option<Stri
 }
 
 pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
+    if let Some(compact) = describe_gain_life_then_distribute_creatures_died_counters(effects) {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
