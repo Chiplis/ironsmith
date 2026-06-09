@@ -5761,6 +5761,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_gain_life_then_distribute_creatures_died_counters(effects) {
         return compact;
     }
+    if let Some(compact) = describe_turn_start_hand_condition_effects(effects) {
+        return compact;
+    }
     if let [first, second] = effects
         && let Some(tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
         && let Some(cant) = second.downcast_ref::<crate::effects::CantEffect>()
@@ -16740,6 +16743,47 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
         return compact;
     }
     cleanup_decompiled_text(&text)
+}
+
+fn describe_turn_start_hand_condition_effects(effects: &[Effect]) -> Option<String> {
+    let [first_effect, second_effect] = effects else {
+        return None;
+    };
+    let first = first_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let second = second_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !first.if_false.is_empty()
+        || !second.if_false.is_empty()
+        || first.if_true.len() != 1
+        || second.if_true.len() != 1
+    {
+        return None;
+    }
+    let Condition::PlayerCardsInHandAtTurnStartOrFewer {
+        player: first_player,
+        count: 0,
+    } = &first.condition
+    else {
+        return None;
+    };
+    let Condition::PlayerCardsInHandAtTurnStartOrMore {
+        player: second_player,
+        count: 1,
+    } = &second.condition
+    else {
+        return None;
+    };
+    if first_player != second_player {
+        return None;
+    }
+
+    let first_text = lowercase_first(describe_effect(&first.if_true[0]).trim_end_matches('.'));
+    let first_condition = lowercase_first(&describe_condition(&first.condition));
+    let second_condition = lowercase_first(&describe_condition(&second.condition))
+        .replace(" at the beginning of this turn", "");
+    let second_text = lowercase_first(describe_effect(&second.if_true[0]).trim_end_matches('.'));
+    Some(format!(
+        "{first_text} if {first_condition}. If {second_condition}, {second_text}"
+    ))
 }
 
 fn describe_vote_with_received_vote_followups(effects: &[Effect]) -> Option<String> {

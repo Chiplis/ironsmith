@@ -539,6 +539,14 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         count: u32,
     },
+    PlayerCardsInHandAtTurnStartOrMore {
+        player: PlayerAst,
+        count: u32,
+    },
+    PlayerCardsInHandAtTurnStartOrFewer {
+        player: PlayerAst,
+        count: u32,
+    },
     PlayerHasMoreCardsInHandThanYou {
         player: PlayerAst,
     },

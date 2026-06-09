@@ -260,6 +260,8 @@ pub struct TurnStore {
     pub skip_current_turn_main_phases: HashSet<PlayerId>,
     /// Unified owner for per-turn event and action history.
     pub turn_history: TurnHistory,
+    /// Hand sizes captured as the current turn began, before the untap step.
+    pub hand_sizes_at_turn_start: HashMap<PlayerId, usize>,
     /// Total number of spells cast during the immediately previous turn.
     /// Updated when turn advances.
     pub spells_cast_last_turn_total: u32,
@@ -7528,6 +7530,16 @@ impl GameState {
         if let Some(player) = self.player_mut(next_player) {
             player.begin_turn();
         }
+        self.record_turn_start_hand_sizes();
+    }
+
+    pub fn record_turn_start_hand_sizes(&mut self) {
+        self.turn_store.hand_sizes_at_turn_start = self
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| (player.id, player.hand.len()))
+            .collect();
     }
 
     pub fn mark_combat_phase_started(&mut self) {

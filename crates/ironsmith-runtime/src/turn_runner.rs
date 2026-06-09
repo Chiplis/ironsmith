@@ -315,6 +315,7 @@ impl TurnRunner {
             // Beginning Phase
             // ================================================================
             TurnState::BeginTurn => {
+                game.record_turn_start_hand_sizes();
                 game.activate_pending_player_control(game.turn.active_player);
 
                 // Untap step — no priority
