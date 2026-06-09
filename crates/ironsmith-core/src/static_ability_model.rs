@@ -340,6 +340,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         power: i32,
         toughness: i32,
     },
+    SourceCharacteristicsOfLastExiledCreatureCard {
+        filter: ObjectFilter,
+        retained_subtypes: Vec<Subtype>,
+    },
     AddCardTypes {
         filter: ObjectFilter,
         card_types: Vec<CardType>,
@@ -1165,6 +1169,13 @@ where
                 filter,
                 power,
                 toughness,
+            },
+            StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
+                filter,
+                retained_subtypes,
+            } => StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
+                filter,
+                retained_subtypes,
             },
             StaticAbilityPayload::AddCardTypes { filter, card_types } => {
                 StaticAbilityPayload::AddCardTypes { filter, card_types }
@@ -2038,6 +2049,20 @@ impl<
                 filter,
                 power,
                 toughness,
+            },
+        }
+    }
+
+    pub fn source_characteristics_of_last_exiled_creature_card(
+        filter: ObjectFilter,
+        retained_subtypes: Vec<Subtype>,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard),
+            label: "source characteristics of last exiled creature card".to_string(),
+            payload: StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
+                filter,
+                retained_subtypes,
             },
         }
     }

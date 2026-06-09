@@ -3360,6 +3360,38 @@ fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken]) -> 
     ))
 }
 
+fn parse_source_characteristics_of_last_exiled_creature_card_line(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
+    let words = parser_token_word_refs(tokens);
+    let base = [
+        "as", "long", "as", "a", "card", "exiled", "with", "this", "creature", "is", "a",
+        "creature", "card", "this", "creature", "has", "the", "power", "toughness", "and",
+        "creature", "types", "of", "the", "last", "creature", "card", "exiled", "with",
+        "it",
+    ];
+    if words.len() < base.len() || words[..base.len()] != base {
+        return None;
+    }
+
+    let retained_subtypes = match words.get(base.len()..) {
+        Some([]) => Vec::new(),
+        Some(["it's", "still", "a", subtype]) | Some(["its", "still", "a", subtype]) => {
+            vec![parse_subtype_flexible(subtype)?]
+        }
+        _ => return None,
+    };
+
+    let mut filter = ObjectFilter::default();
+    filter.card_types.push(CardType::Creature);
+    filter.nontoken = true;
+    filter.zone = Some(Zone::Exile);
+    Some(StaticAbility::source_characteristics_of_last_exiled_creature_card(
+        filter,
+        retained_subtypes,
+    ))
+}
+
 fn parse_static_ability_ast_line_early_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -3368,6 +3400,11 @@ fn parse_static_ability_ast_line_early_lexed(
         return Ok(Some(vec![keyword_static_marker(tokens).into()]));
     }
 
+    if let Some(ability) = parse_source_characteristics_of_last_exiled_creature_card_line(tokens) {
+        return Ok(Some(vec![ability.into()]));
+    }
+
+    if X_CANT_EXCEED_PLAYER_COUNT_PATTERN.matches_words(&rendered_words) {
     if let Some(ability) = parse_enter_as_copy_as_enters_line(tokens)? {
         return Ok(Some(vec![ability.into()]));
     }

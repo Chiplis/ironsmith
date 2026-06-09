@@ -358,6 +358,55 @@ fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
 }
 
 #[test]
+fn duplicant_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Duplicant");
+
+    let def = parse_oracle_card_definition("Duplicant");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let source_static_debug = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            (static_ability.id() == StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard)
+                .then(|| format!("{static_ability:#?}"))
+        })
+        .expect("Duplicant should have source-linked static characteristics");
+
+    assert!(
+        rendered.contains("When this creature enters, you may exile target nontoken creature"),
+        "expected Duplicant's optional nontoken exile trigger to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("last creature card exiled with it")
+            && rendered.contains("It's still a Shapeshifter"),
+        "expected Duplicant's exiled-card characteristic static ability to render, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("MayEffect")
+            && ability_debug.contains("nontoken: true")
+            && static_ids.contains(&StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard),
+        "expected Duplicant to model optional nontoken exile plus source-linked static characteristics, got ids {static_ids:?} and abilities {ability_debug}"
+    );
+    assert!(
+        source_static_debug.contains("nontoken: true")
+            && source_static_debug.contains("zone: Some(Exile)"),
+        "expected Duplicant's source-linked static filter to require nontoken creature cards in exile, got {source_static_debug}"
+    );
+}
+
+#[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");
     let ability_debug = format!("{:#?}", def.abilities);
