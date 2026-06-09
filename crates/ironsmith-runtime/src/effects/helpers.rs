@@ -1559,6 +1559,17 @@ pub fn resolve_value(
             Ok(source_obj.mana_spent_to_cast.total() as i32)
         }
 
+        Value::UnspentMana(player) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player, &ctx.filter_context(game), ctx)?;
+            let total = player_ids
+                .iter()
+                .filter_map(|player_id| game.player(*player_id))
+                .map(|player| player.mana_pool.total() as i32)
+                .sum();
+            Ok(total)
+        }
+
         Value::ColorsOfManaSpentToCastThisSpell => {
             let Some(source_obj) = game.object(ctx.source) else {
                 return Ok(0);

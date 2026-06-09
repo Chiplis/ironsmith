@@ -91,6 +91,7 @@ pub enum Value {
     LifeTotal(PlayerFilter),
     LifeTotalAsTurnBegan(PlayerFilter),
     LifeTotalDifference(PlayerFilter),
+    UnspentMana(PlayerFilter),
     Speed(PlayerFilter),
     StartingLifeTotal(PlayerFilter),
     HalfLifeTotalRoundedUp(PlayerFilter),

@@ -1380,6 +1380,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::Devotion { .. }
         | Value::DevotionToChosenColor(_)
         | Value::ManaSpentToCastThisSpell
+        | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::LifeTotal(_)

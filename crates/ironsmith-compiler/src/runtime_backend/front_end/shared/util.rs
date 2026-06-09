@@ -2854,6 +2854,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::Fixed(value), 1));
     }
 
+    if let Some(used) = [
+        &["the", "amount", "of", "unspent", "mana", "you", "have"][..],
+        &["amount", "of", "unspent", "mana", "you", "have"][..],
+        &["unspent", "mana", "you", "have"][..],
+    ]
+    .iter()
+    .find_map(|pattern| words.starts_with(pattern).then_some(pattern.len()))
+    {
+        return Some((Value::UnspentMana(PlayerFilter::You), used));
+    }
+
     if shared_util_shape_matches_words(words, YOUR_SPEED_VALUE_PATTERN) {
         return Some((Value::Speed(PlayerFilter::You), 2));
     }

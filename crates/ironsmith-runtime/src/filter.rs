@@ -1015,6 +1015,15 @@ fn resolve_filter_comparison_rhs_value(
             }
             _ => None,
         },
+        Value::UnspentMana(player_filter) => Some(
+            game.players
+                .iter()
+                .filter(|player| {
+                    player.is_in_game() && player_filter.matches_player(player.id, ctx)
+                })
+                .map(|player| player.mana_pool.total() as i32)
+                .sum(),
+        ),
         _ => None,
     }
 }
@@ -4942,6 +4951,15 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 } else {
                     "that card's mana value".to_string()
                 }
+            }
+            Value::UnspentMana(player) => {
+                let subject = player.description();
+                let verb = if matches!(player, PlayerFilter::You) {
+                    "have"
+                } else {
+                    "has"
+                };
+                format!("the amount of unspent mana {subject} {verb}")
             }
             Value::EffectValue(_) => "that result".to_string(),
             Value::EffectMetric {

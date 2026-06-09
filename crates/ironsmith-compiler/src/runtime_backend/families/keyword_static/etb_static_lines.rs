@@ -819,10 +819,10 @@ pub(crate) fn parse_enters_with_counters_line(
                 full_words.join(" ")
             )));
         }
-        return Ok(Some(StaticAbility::enters_with_counter_choice(
+        return Ok(Some(vec![StaticAbility::enters_with_counter_choice(
             choice.counter_types,
             choice.count,
-        )));
+        )]));
     }
 
     let (mut count, used) = if after_with
@@ -1084,13 +1084,13 @@ fn parse_enters_with_counter_choice_tokens(
     loop {
         while tokens
             .get(idx)
-            .is_some_and(|token| ETB_ARTICLE_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| ARTICLE_WORD_PATTERN.matches_token(token))
         {
             idx += 1;
         }
         let counter_end = tokens[idx..]
             .iter()
-            .position(|token| ETB_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))?
+            .position(|token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))?
             + idx;
         let counter_tokens = &tokens[idx..=counter_end];
         let counter_type = parse_counter_type_from_tokens(counter_tokens)?;

@@ -8684,6 +8684,11 @@ pub(crate) fn describe_value(value: &Value) -> String {
             "the number of colors of mana spent to cast this spell".to_string()
         }
         Value::ManaSpentToCastThisSpell => "the amount of mana spent to cast this spell".to_string(),
+        Value::UnspentMana(player) => {
+            let subject = describe_player_filter(player);
+            let verb = player_verb(&subject, "have", "has");
+            format!("the amount of unspent mana {subject} {verb}")
+        }
         Value::MagicGamesLostToOpponentsSinceLastWin => {
             "the number of Magic games you've lost to one of your opponents since you last won a game against them".to_string()
         }
