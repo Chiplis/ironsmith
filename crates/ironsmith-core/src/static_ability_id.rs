@@ -92,6 +92,7 @@ pub enum StaticAbilityId {
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     CantBlock,
     MayAssignDamageAsUnblocked,
+    YouAssignCombatDamageOfCreaturesAttackingYou,
     ThisCreatureAssignsCombatDamageUsingToughness,
     CreaturesAssignCombatDamageUsingToughness,
     CreaturesYouControlAssignCombatDamageUsingToughness,
@@ -363,6 +364,7 @@ impl StaticAbilityId {
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
             | CantBlock
             | MayAssignDamageAsUnblocked
+            | YouAssignCombatDamageOfCreaturesAttackingYou
             | ThisCreatureAssignsCombatDamageUsingToughness
             | CreaturesAssignCombatDamageUsingToughness
             | CreaturesYouControlAssignCombatDamageUsingToughness
@@ -673,6 +675,7 @@ impl StaticAbilityId {
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
                 | CantBlock
                 | MayAssignDamageAsUnblocked
+                | YouAssignCombatDamageOfCreaturesAttackingYou
                 | ThisCreatureAssignsCombatDamageUsingToughness
                 | CreaturesAssignCombatDamageUsingToughness
                 | CreaturesYouControlAssignCombatDamageUsingToughness

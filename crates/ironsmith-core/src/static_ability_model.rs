@@ -3614,6 +3614,13 @@ impl<
             payload: StaticAbilityPayload::None,
         }
     }
+    pub fn you_assign_combat_damage_of_creatures_attacking_you() -> Self {
+        Self {
+            id: Some(StaticAbilityId::YouAssignCombatDamageOfCreaturesAttackingYou),
+            label: "you assign combat damage of creatures attacking you".into(),
+            payload: StaticAbilityPayload::None,
+        }
+    }
     pub fn remove_ability(filter: ObjectFilter, ability: StaticAbility<T, E, C, Cond>) -> Self {
         Self {
             id: Some(StaticAbilityId::RemoveAbilityForFilter),

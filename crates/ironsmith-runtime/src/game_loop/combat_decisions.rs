@@ -80,6 +80,61 @@ pub(super) fn static_abilities_for_object_with_effects(
         .unwrap_or_default()
 }
 
+pub(super) fn player_assigns_combat_damage_of_creatures_attacking_them(
+    game: &GameState,
+    player: PlayerId,
+) -> bool {
+    let all_effects = game.all_continuous_effects();
+    for &source_id in &game.battlefield {
+        let Some(source) = game.object(source_id) else {
+            continue;
+        };
+        if game.controller_of(source) != player {
+            continue;
+        }
+        for ability in static_abilities_for_object_with_effects(game, source_id, &all_effects) {
+            if ability.id()
+                == crate::static_abilities::StaticAbilityId::YouAssignCombatDamageOfCreaturesAttackingYou
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+pub(super) fn defender_assigns_combat_damage_for_attacker(
+    game: &GameState,
+    combat: &CombatState,
+    attacker: ObjectId,
+) -> bool {
+    if let Some(crate::combat_state::AttackTarget::Player(defender)) =
+        crate::combat_state::get_attack_target(combat, attacker)
+    {
+        return player_assigns_combat_damage_of_creatures_attacking_them(game, *defender);
+    }
+
+    false
+}
+
+pub fn combat_damage_assignment_player_for_attacker(
+    game: &GameState,
+    combat: &CombatState,
+    attacker: ObjectId,
+) -> Option<PlayerId> {
+    let attacker_obj = game.object(attacker)?;
+    let attacking_player = game.controller_of(attacker_obj);
+    if defender_assigns_combat_damage_for_attacker(game, combat, attacker) {
+        if let crate::combat_state::AttackTarget::Player(defender) =
+            crate::combat_state::get_attack_target(combat, attacker)?
+        {
+            return Some(*defender);
+        }
+    }
+
+    Some(attacking_player)
+}
+
 pub(super) fn generic_attack_tax_per_attacker_against_player(
     game: &GameState,
     defending_player: PlayerId,
@@ -740,9 +795,8 @@ pub fn get_blocker_order_decision(
         return None;
     }
 
-    // The attacking creature's controller orders the blockers
     let attacker_obj = game.object(attacker)?;
-    let attacking_player = game.controller_of(attacker_obj);
+    let assignment_player = combat_damage_assignment_player_for_attacker(game, combat, attacker)?;
 
     // Convert blockers to items with names
     let items: Vec<(ObjectId, String)> = blockers
@@ -758,7 +812,7 @@ pub fn get_blocker_order_decision(
 
     let attacker_name = attacker_obj.name.clone();
     let ctx = crate::decisions::context::OrderContext::new(
-        attacking_player,
+        assignment_player,
         Some(attacker),
         format!("Order blockers for {}", attacker_name),
         items,

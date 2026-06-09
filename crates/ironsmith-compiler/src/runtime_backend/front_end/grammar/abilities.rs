@@ -2640,6 +2640,51 @@ pub(crate) fn parse_creatures_assign_combat_damage_using_toughness_line_lexed(
     None
 }
 
+pub(crate) fn is_you_assign_combat_damage_of_creatures_attacking_you_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    const EXPECTED: &[&str] = &[
+        "rather",
+        "than",
+        "the",
+        "attacking",
+        "player",
+        "you",
+        "assign",
+        "the",
+        "combat",
+        "damage",
+        "of",
+        "each",
+        "creature",
+        "attacking",
+        "you",
+        "you",
+        "can",
+        "divide",
+        "that",
+        "creature's",
+        "combat",
+        "damage",
+        "as",
+        "you",
+        "choose",
+        "among",
+        "any",
+        "of",
+        "the",
+        "creatures",
+        "blocking",
+        "it",
+    ];
+    words.len() == EXPECTED.len()
+        && words
+            .iter()
+            .zip(EXPECTED.iter())
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+}
+
 pub(crate) fn is_lethal_damage_to_creatures_you_control_uses_power_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> bool {
