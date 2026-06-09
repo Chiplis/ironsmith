@@ -4072,7 +4072,7 @@ fn stoic_sphinx_strict_parser_and_compiled_text_regression() {
     );
     assert!(
         rendered
-            .contains("This creature has Hexproof as long as you haven't cast a spell this turn."),
+            .contains("This creature has hexproof as long as you haven't cast a spell this turn."),
         "Stoic Sphinx compiled text should preserve the haven't-cast-a-spell static clause, got {rendered}"
     );
 }
@@ -11613,7 +11613,7 @@ fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("copy it, except the copy isn't legendary"),
+        rendered.contains("copy that spell or ability, except the copy isn't legendary"),
         "expected legendary exception to survive rendering, got {rendered}"
     );
     assert!(
