@@ -12933,6 +12933,14 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
                 && label.eq_ignore_ascii_case("tribute")
             {
                 "tribute wasn't paid".to_string()
+            } else if let Condition::ThisSpellPaidLabel(label) = inner.as_ref() {
+                // Render the negation as a flat clause (no parentheses): the generic
+                // `not (...)` fallback collides with the reminder-text paren stripping
+                // in debug_safe and would silently drop the condition.
+                format!(
+                    "this spell's {} cost wasn't paid",
+                    label.to_ascii_lowercase()
+                )
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 let subject = describe_player_filter(player);
                 let mut described_filter = filter.clone();

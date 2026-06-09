@@ -729,12 +729,12 @@ fn katara_seeking_revenge_strict_parser_and_compiled_text_regression() {
     // Render expectations follow local conventions: ETB triggers surface the
     // generic "this creature" subject (not the card name), and PerCount anthems
     // render as "+X/+X, where X is the number of …". The waterbend additional-cost
-    // line renders verbatim. The structural assertion below pins the actual
-    // unless-paid discard wiring.
+    // line renders verbatim, and the unless-paid discard renders faithfully via the
+    // negated paid-label clause.
     assert!(
         rendered.contains("As an additional cost to cast this spell, you may waterbend {2}.")
             && rendered.contains(
-                "When this creature enters, draw a card. Then if not, you discard a card.",
+                "When this creature enters, draw a card. Then if this spell's additional cost wasn't paid, you discard a card.",
             )
             && rendered.contains(
                 "Katara gets +X/+X, where X is the number of Lesson cards in your graveyard",
