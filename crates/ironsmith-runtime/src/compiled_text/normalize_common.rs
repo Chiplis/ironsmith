@@ -11938,6 +11938,9 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             if label.eq_ignore_ascii_case("bargain") {
                 return "this spell was bargained".to_string();
             }
+            if let Some(cost) = label.strip_prefix("Kicker ") {
+                return format!("it was kicked with its {cost} kicker");
+            }
             if label.eq_ignore_ascii_case("tribute") {
                 return "tribute was paid".to_string();
             }

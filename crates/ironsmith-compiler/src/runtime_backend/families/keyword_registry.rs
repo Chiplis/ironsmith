@@ -579,6 +579,13 @@ pub(super) fn lower_kicker(
     line: &RewriteKeywordLine,
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    if let Some(label) = line.text.strip_prefix("__split_kicker_label:") {
+        let cost = require_keyword_parse(line, "kicker", parse_kicker_line_lexed(tokens)?)?;
+        return Ok(LineAst::OptionalCost(
+            crate::cost::OptionalCost::custom(label, cost.cost).into(),
+        ));
+    }
+
     Ok(LineAst::OptionalCost(
         require_keyword_parse(line, "kicker", parse_kicker_line_lexed(tokens)?)?.into(),
     ))

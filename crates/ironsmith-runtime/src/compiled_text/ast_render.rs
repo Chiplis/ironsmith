@@ -77,6 +77,23 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
             }
         }
 
+        if let Some(cost) = split_kicker_cost_line(&lines[idx]) {
+            let mut costs = vec![cost.to_string()];
+            let mut consumed = 1usize;
+            while let Some(next) = lines.get(idx + consumed) {
+                let Some(next_cost) = split_kicker_cost_line(next) else {
+                    break;
+                };
+                costs.push(next_cost.to_string());
+                consumed += 1;
+            }
+            if consumed > 1 {
+                out.push(format!("Kicker {}", costs.join(" and/or ")));
+                idx += consumed;
+                continue;
+            }
+        }
+
         if let Some(keyword) = split_bare_keyword_line(&lines[idx]) {
             let mut keywords = vec![keyword.to_string()];
             let mut consumed = 1usize;
@@ -150,6 +167,12 @@ fn merge_adjacent_keyword_surface_lines(lines: Vec<String>) -> Vec<String> {
         idx += 1;
     }
     out
+}
+
+fn split_kicker_cost_line(line: &str) -> Option<&str> {
+    let trimmed = line.trim().trim_end_matches('.');
+    let cost = trimmed.strip_prefix("Kicker ")?.trim();
+    (!cost.is_empty()).then_some(cost)
 }
 
 fn split_keyword_ability_line(line: &str) -> Option<(&str, &str)> {

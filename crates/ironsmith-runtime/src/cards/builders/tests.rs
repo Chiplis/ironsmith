@@ -12854,6 +12854,214 @@ fn test_parse_kicker_keyword_line_with_reminder_text_strips_reminder_tail() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn nightscape_battlemage_strict_parser_text_and_structure_regression() {
+    let def = parse_oracle_card_definition("Nightscape Battlemage");
+
+    assert_eq!(def.optional_costs.len(), 2);
+    assert_eq!(def.optional_costs[0].label, "Kicker {2}{U}");
+    assert_eq!(def.optional_costs[1].label, "Kicker {2}{R}");
+    assert_eq!(
+        def.optional_costs[0]
+            .cost
+            .mana_cost()
+            .expect("blue kicker should be a mana cost")
+            .to_oracle(),
+        "{2}{U}"
+    );
+    assert_eq!(
+        def.optional_costs[1]
+            .cost
+            .mana_cost()
+            .expect("red kicker should be a mana cost")
+            .to_oracle(),
+        "{2}{R}"
+    );
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert!(
+        rendered.contains("Kicker {2}{U} and/or {2}{R}"),
+        "expected split kicker costs to render as one and/or keyword line, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, if it was kicked with its {2}{U} kicker, return up to two target nonblack creatures to their owners' hands."
+        ),
+        "expected blue kicker ETB clause in compiled text, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "When this creature enters, if it was kicked with its {2}{R} kicker, destroy target land."
+        ),
+        "expected red kicker ETB clause in compiled text, got {rendered}"
+    );
+
+    let conditions: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered.intervening_if.as_ref(),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        conditions.contains(&&crate::effect::Condition::ThisSpellPaidLabel(
+            "Kicker {2}{U}".to_string()
+        )),
+        "expected blue kicker paid-label condition, got {conditions:?}"
+    );
+    assert!(
+        conditions.contains(&&crate::effect::Condition::ThisSpellPaidLabel(
+            "Kicker {2}{R}".to_string()
+        )),
+        "expected red kicker paid-label condition, got {conditions:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
+    fn trigger_effects_for_label(
+        def: &CardDefinition,
+        label: &str,
+    ) -> crate::resolution::ResolutionProgram {
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered)
+                    if triggered.intervening_if.as_ref()
+                        == Some(&crate::effect::Condition::ThisSpellPaidLabel(label.to_string())) =>
+                {
+                    Some(triggered.effects.clone())
+                }
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("missing Nightscape Battlemage trigger for {label}"))
+    }
+
+    fn paid(def: &CardDefinition, index: usize) -> crate::cost::OptionalCostsPaid {
+        let mut paid = crate::cost::OptionalCostsPaid::from_costs(&def.optional_costs);
+        paid.pay(index);
+        paid
+    }
+
+    let def = parse_oracle_card_definition("Nightscape Battlemage");
+    let blue_effects = trigger_effects_for_label(&def, "Kicker {2}{U}");
+    let red_effects = trigger_effects_for_label(&def, "Kicker {2}{R}");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let etb_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::EnterBattlefieldEvent::new(source, Zone::Stack),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let nonblack_def = CardDefinitionBuilder::new(CardId::new(), "Nonblack Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let other_nonblack_def = CardDefinitionBuilder::new(CardId::new(), "Other Nonblack Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let land_def = CardDefinitionBuilder::new(CardId::new(), "Target Land")
+        .card_types(vec![CardType::Land])
+        .build();
+    let first_creature = game.create_object_from_definition(&nonblack_def, bob, Zone::Battlefield);
+    let second_creature =
+        game.create_object_from_definition(&other_nonblack_def, bob, Zone::Battlefield);
+    let land = game.create_object_from_definition(&land_def, bob, Zone::Battlefield);
+
+    game.push_to_stack(
+        crate::game_state::StackEntry::ability(source, alice, blue_effects.clone())
+            .with_targets(vec![
+                crate::game_state::Target::Object(first_creature),
+                crate::game_state::Target::Object(second_creature),
+            ])
+            .with_optional_costs_paid(paid(&def, 0))
+            .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
+                "Kicker {2}{U}".to_string(),
+            )),
+    );
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("blue Nightscape Battlemage trigger should resolve");
+    assert!(
+        !game.battlefield.contains(&first_creature) && !game.battlefield.contains(&second_creature),
+        "blue kicker trigger should remove both nonblack creatures from the battlefield"
+    );
+    let bob_hand_names: Vec<_> = game
+        .player(bob)
+        .expect("Bob exists")
+        .hand
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .map(|object| object.name.as_str())
+        .collect();
+    assert!(
+        bob_hand_names.contains(&"Nonblack Target")
+            && bob_hand_names.contains(&"Other Nonblack Target"),
+        "blue kicker trigger should return both nonblack creatures to hand, got {bob_hand_names:?}"
+    );
+
+    assert!(
+        !crate::triggers::verify_intervening_if(
+            &game,
+            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".to_string()),
+            alice,
+            &etb_event,
+            source,
+            None,
+            Some(&paid(&def, 0)),
+        ),
+        "red kicker intervening-if must be false when only the blue kicker was paid"
+    );
+    assert!(
+        game.battlefield.contains(&land),
+        "checking the unpaid red branch must not move the target land"
+    );
+
+    assert!(
+        crate::triggers::verify_intervening_if(
+            &game,
+            &crate::effect::Condition::ThisSpellPaidLabel("Kicker {2}{R}".to_string()),
+            alice,
+            &etb_event,
+            source,
+            None,
+            Some(&paid(&def, 1)),
+        ),
+        "red kicker intervening-if should be true when the red kicker was paid"
+    );
+
+    game.push_to_stack(
+        crate::game_state::StackEntry::ability(source, alice, red_effects)
+            .with_targets(vec![crate::game_state::Target::Object(land)])
+            .with_optional_costs_paid(paid(&def, 1))
+            .with_intervening_if(crate::effect::Condition::ThisSpellPaidLabel(
+                "Kicker {2}{R}".to_string(),
+            )),
+    );
+    crate::game_loop::resolve_stack_entry(&mut game)
+        .expect("red Nightscape Battlemage trigger should resolve when red kicker was paid");
+    assert!(
+        !game.battlefield.contains(&land),
+        "red kicker trigger should destroy the target land"
+    );
+    let bob_graveyard_names: Vec<_> = game
+        .player(bob)
+        .expect("Bob exists")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id))
+        .map(|object| object.name.as_str())
+        .collect();
+    assert!(
+        bob_graveyard_names.contains(&"Target Land"),
+        "destroyed land should move to its owner's graveyard, got {bob_graveyard_names:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_dash_kicker_with_typed_discard_cost_compiles_to_optional_cost() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Dash Kicker Probe")
         .card_types(vec![CardType::Creature])
