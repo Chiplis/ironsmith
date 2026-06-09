@@ -192,8 +192,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             filter,
             cause_controller,
             effect_like_only,
+            one_or_more,
         } => {
-            if let Some(cause_controller) = cause_controller {
+            if one_or_more {
+                Trigger::player_discards_cards(player, filter)
+            } else if let Some(cause_controller) = cause_controller {
                 Trigger::player_discards_card_caused_by_controller(
                     player,
                     filter,
@@ -707,6 +710,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::CounterPutOn { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
+            TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
             TriggerSpec::StateBased { .. } => false,
             TriggerSpec::Either(left, right) => {
                 trigger_supports_event_value(left, spec)

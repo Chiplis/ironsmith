@@ -18579,7 +18579,10 @@ fn describe_triggered_resolution_text(
         return None;
     }
 
-    let effects = super::ast_render::describe_resolution_program(&triggered.effects);
+    let mut effects = super::ast_render::describe_resolution_program(&triggered.effects);
+    if effects.contains("Whenever that creature ") {
+        effects = effects.replace(", draw ", ", you draw ");
+    }
     let effects = rewrite_damaged_player_reference_for_damage_trigger(triggered, effects);
     Some(rewrite_damage_phrases_for_permanent_abilities(
         &effects,
@@ -35816,8 +35819,25 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 describe_count_filter_value_subject(filter)
             ),
             Value::ColorsAmong(filter) => describe_colors_among(filter),
+            value if value_has_surface_hint(value, ValueSurfaceHint::CardsDiscardedThisWay) => {
+                "card discarded this way".to_string()
+            }
             _ => describe_value(&modify_pt_each.count),
         };
+        if value_has_surface_hint(
+            &modify_pt_each.count,
+            ValueSurfaceHint::CardsDiscardedThisWay,
+        ) {
+            return format!(
+                "{} {} {}/{} {} for each {}",
+                target_text,
+                gets_verb,
+                describe_signed_i32(modify_pt_each.power_per),
+                describe_signed_i32(modify_pt_each.toughness_per),
+                describe_until(&modify_pt_each.duration),
+                each_text,
+            );
+        }
         return format!(
             "{} {} {}/{} for each {} {}",
             target_text,
@@ -38442,6 +38462,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "if any of those cards remain exiled, return them to their owners' graveyards",
             );
         }
+        if delayed_text.starts_with("draw ") {
+            delayed_text = format!("you {delayed_text}");
+        }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature is dealt damage")
                 || trigger_lower.contains("whenever this creature is dealt damage"))
@@ -38453,6 +38476,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 || trigger_lower.contains("whenever this permanent is dealt damage"))
         {
             return format!("Whenever that permanent is dealt damage this turn, {delayed_text}");
+        }
+        if schedule.target_tag.is_some()
+            && let Some((_, recipient)) = trigger_text.split_once(" deals combat damage to ")
+        {
+            let subject = schedule
+                .target_filter
+                .as_ref()
+                .map(|filter| {
+                    if filter.card_types.contains(&CardType::Creature) {
+                        "that creature"
+                    } else {
+                        "that permanent"
+                    }
+                })
+                .unwrap_or("that creature");
+            return format!("Whenever {subject} deals combat damage to {recipient}, {delayed_text}");
         }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature attacks and isn't blocked")

@@ -1,6 +1,7 @@
 use super::super::activation_and_restrictions::activated_line_core::{
     is_activate_only_restriction_sentence_lexed, is_trigger_only_restriction_sentence_lexed,
 };
+use super::super::activation_and_restrictions::trigger_subject_filters::parse_trigger_subject_player_filter;
 use super::super::clause_support::parse_trigger_clause_lexed;
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::effects::{

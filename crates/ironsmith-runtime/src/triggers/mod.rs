@@ -936,6 +936,10 @@ impl Trigger {
         Self::new(YouDiscardCardTrigger::new(player, filter))
     }
 
+    pub fn player_discards_cards(player: PlayerFilter, filter: Option<ObjectFilter>) -> Self {
+        Self::new(YouDiscardCardTrigger::new(player, filter).one_or_more())
+    }
+
     pub fn player_discards_card_caused_by_controller(
         player: PlayerFilter,
         filter: Option<ObjectFilter>,

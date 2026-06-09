@@ -22,6 +22,12 @@ pub struct CardDiscardedEvent {
     pub cause: Option<EventCause>,
     /// Last-known information for the card as it existed in hand before the discard.
     pub snapshot: Option<ObjectSnapshot>,
+    /// Cards discarded by the same discard action, in event order.
+    pub batch_cards: Vec<ObjectId>,
+    /// Last-known information for cards discarded by the same discard action.
+    pub batch_snapshots: Vec<ObjectSnapshot>,
+    /// This card's index in `batch_cards` when the event came from a batch discard.
+    pub batch_index: Option<usize>,
 }
 
 impl CardDiscardedEvent {
@@ -32,6 +38,9 @@ impl CardDiscardedEvent {
             card,
             cause: None,
             snapshot: None,
+            batch_cards: vec![card],
+            batch_snapshots: Vec::new(),
+            batch_index: Some(0),
         }
     }
 
@@ -41,11 +50,26 @@ impl CardDiscardedEvent {
             card,
             cause: Some(cause),
             snapshot: None,
+            batch_cards: vec![card],
+            batch_snapshots: Vec::new(),
+            batch_index: Some(0),
         }
     }
 
     pub fn with_snapshot(mut self, snapshot: ObjectSnapshot) -> Self {
         self.snapshot = Some(snapshot);
+        self
+    }
+
+    pub fn with_batch(
+        mut self,
+        batch_cards: Vec<ObjectId>,
+        batch_snapshots: Vec<ObjectSnapshot>,
+        batch_index: usize,
+    ) -> Self {
+        self.batch_cards = batch_cards;
+        self.batch_snapshots = batch_snapshots;
+        self.batch_index = Some(batch_index);
         self
     }
 }

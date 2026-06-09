@@ -193,6 +193,9 @@ fn effect_references_prior_object_targets(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::FightEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+            .is_some_and(|schedule| schedule.target_tag.is_some())
 }
 
 fn representative_segment_targets(

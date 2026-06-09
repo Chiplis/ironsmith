@@ -322,7 +322,7 @@ impl StaticAbilityKind for Ward {
     }
 
     fn display(&self) -> String {
-        format!("Ward {}", self.cost.display())
+        format!("Ward—{}", self.cost.display())
     }
 
     fn is_keyword(&self) -> bool {

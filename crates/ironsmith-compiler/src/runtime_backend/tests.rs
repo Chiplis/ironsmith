@@ -10369,6 +10369,35 @@ fn rewrite_lexed_triggered_line_parses_stonebinders_familiar_trigger() {
 }
 
 #[test]
+fn parse_trigger_clause_supports_you_discard_one_or_more_cards() {
+    let tokens = lex_line("you discard one or more cards", 0)
+        .expect("discard trigger clause should lex");
+    let parsed = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+        &tokens,
+    )
+    .expect("discard one-or-more trigger clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("PlayerDiscardsCard"), "{debug}");
+    assert!(debug.contains("one_or_more: true"), "{debug}");
+}
+
+#[test]
+fn parse_effect_sentence_supports_target_pump_for_each_card_discarded_this_way() {
+    let tokens = lex_line(
+        "target creature gets +2/+0 until end of turn for each card discarded this way",
+        0,
+    )
+    .expect("discarded-this-way pump clause should lex");
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("discarded-this-way pump clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("PumpForEach"), "{debug}");
+    assert!(debug.contains("EventValue") && debug.contains("Amount"), "{debug}");
+}
+
+#[test]
 fn rewrite_lexed_triggered_line_handles_punctuation_before_enter_verb() {
     let text = "Whenever one or more noncreature, nonland permanents you control enter, put a +1/+1 counter on target creature you control.";
     let tokens = lex_line(text, 0)

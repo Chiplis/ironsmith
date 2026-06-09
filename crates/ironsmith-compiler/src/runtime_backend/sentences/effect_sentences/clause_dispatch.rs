@@ -70,7 +70,7 @@ use crate::cards::builders::{
     CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
     ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TargetAst,
 };
-use crate::effect::{ChoiceCount, Until, Value};
+use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype};
@@ -1672,6 +1672,23 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             let modifier_tail = collapsed_modifier_tail
                 .as_deref()
                 .unwrap_or(&tokens[verb_idx + 1..]);
+            let modifier_words = ClauseDispatchCompatWords::new(modifier_tail).to_word_refs();
+            if modifier_words.len() == 11
+                && starts_with_until_end_of_turn(&modifier_words[1..])
+                && word_slice_eq(&modifier_words[5..], &["for", "each", "card", "discarded", "this", "way"])
+                && let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
+                && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
+            {
+                let target = parse_target_phrase(subject_tokens)?;
+                return Ok(EffectAst::subject_verb_pump_for_each(
+                    power_per,
+                    toughness_per,
+                    target,
+                    Value::EventValue(EventValueSpec::Amount)
+                        .with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay),
+                    Until::EndOfTurn,
+                ));
+            }
             if let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
                 && let Ok((power, toughness)) = parse_pt_modifier_values(mod_token)
             {

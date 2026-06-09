@@ -469,6 +469,14 @@ pub(super) fn describe_resolution_program(
         }
 
         if !segment.default_effects.is_empty() {
+            if let [effect] = segment.default_effects.as_slice()
+                && effect
+                    .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+                    .is_some_and(|schedule| schedule.target_tag.is_some())
+            {
+                rendered_segments.push(describe_effect(effect));
+                continue;
+            }
             rendered_segments.push(
                 describe_effect_clause_list(&segment.default_effects)
                     .map(|text| capitalize_first(&text))
