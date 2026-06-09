@@ -1435,7 +1435,7 @@ fn compile_subject_verb_effect(
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
                 effect = effect.append_tagged(resolved_tag);
             }
-            if let Some(tag) = tags.first() {
+            if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
                 ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
             }

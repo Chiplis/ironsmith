@@ -747,7 +747,16 @@ pub(crate) fn parse_exile_top_library_clause(
     }
 
     let count_start = token_index_for_word_index(&tokens, start + 1)?;
-    let (count, used_after_top) = parse_value(&tokens[count_start..])?;
+    let count_start_words =
+        crate::runtime_backend::token_word_refs(&tokens[count_start..=count_start]);
+    let (count, used_after_top) = if count_start_words
+        .first()
+        .is_some_and(|word| EXILE_CARD_OR_CARDS_WORDS.contains(word))
+    {
+        (Value::Fixed(1), 0)
+    } else {
+        parse_value(&tokens[count_start..])?
+    };
     let after_count = trim_commas(&tokens[count_start + used_after_top..]);
     let after_count_words = crate::runtime_backend::token_word_refs(&after_count);
     if !after_count_words
@@ -773,8 +782,8 @@ pub(crate) fn parse_exile_top_library_clause(
             effects: vec![EffectAst::subject_verb_exile_top_of_library(
                 PlayerAst::That,
                 count,
-                vec![helper_tag_for_tokens(&tokens, "exiled")],
                 Vec::new(),
+                vec![helper_tag_for_tokens(&tokens, "exiled")],
             )],
         });
     }
