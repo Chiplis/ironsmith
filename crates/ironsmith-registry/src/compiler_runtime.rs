@@ -224,6 +224,12 @@ impl ironsmith::effect_model_interpreter::EffectModelInterpreterHooks<CompilerEf
                 ironsmith::effects::cards::ImprintFromHandEffect::new(payload.filter.clone()),
             )));
         }
+        if let Some(payload) = effect.downcast_ref::<compiler::effects::ScaleXValueEffect>() {
+            return Ok(Some(ironsmith::effect::Effect::scale_x_value(
+                payload.target.clone(),
+                payload.multiplier,
+            )));
+        }
         Ok(None)
     }
 }

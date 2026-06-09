@@ -2340,6 +2340,11 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![move_rest], Vec::new()))
         }
+        SubjectVerbActionAst::ScaleXValue { target, multiplier } => {
+            let (spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            Ok((vec![Effect::scale_x_value(spec, *multiplier)], choices))
+        }
         SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
             tag,
             keep_tagged,

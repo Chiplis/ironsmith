@@ -229,12 +229,26 @@ pub(super) fn queue_ability_activated_event(
                 crate::ability::AbilityKind::Activated(activated) => activated.is_loyalty_ability(),
                 _ => false,
             });
+    let x_value = game
+        .stack
+        .iter()
+        .rev()
+        .find(|entry| entry.is_ability && entry.object_id == source)
+        .and_then(|entry| entry.x_value);
+    let activation_cost_has_x = game
+        .stack
+        .iter()
+        .rev()
+        .find(|entry| entry.is_ability && entry.object_id == source)
+        .is_some_and(|entry| entry.activation_cost_has_x);
     let event_provenance = game
         .provenance_graph_mut()
         .alloc_root_event(crate::events::EventKind::AbilityActivated);
     let event = TriggerEvent::new_with_provenance(
         AbilityActivatedEvent::new(source, activator, is_mana_ability)
             .with_loyalty_ability(is_loyalty_ability)
+            .with_activation_cost_has_x(activation_cost_has_x)
+            .with_x_value(x_value)
             .with_snapshot(snapshot),
         event_provenance,
     );

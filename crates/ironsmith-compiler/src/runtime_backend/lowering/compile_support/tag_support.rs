@@ -710,6 +710,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PutSticker { .. }
         | SubjectVerbActionAst::SwitchPowerToughness { .. }
         | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+        | SubjectVerbActionAst::ScaleXValue { .. }
         | SubjectVerbActionAst::AddManaColorsAmong { .. }
         | SubjectVerbActionAst::AddManaImprintedColors
         | SubjectVerbActionAst::DoubleManaPool

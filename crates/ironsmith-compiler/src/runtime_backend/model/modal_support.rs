@@ -424,6 +424,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+            | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }

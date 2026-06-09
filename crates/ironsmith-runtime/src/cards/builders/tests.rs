@@ -5374,6 +5374,31 @@ fn ordeal_of_erebos_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn unbound_flourishing_strict_parser_compiled_text_and_model_regression() {
+    let text = "Mana cost: {2}{G}\n\
+Type: Enchantment\n\
+Whenever you cast a permanent spell with a mana cost that contains {X}, double the value of X.\n\
+Whenever you cast an instant or sorcery spell or activate an ability, if that spell's mana cost or that ability's activation cost contains {X}, copy that spell or ability. You may choose new targets for the copy.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(88_101), "Unbound Flourishing")
+        .parse_text(text)
+        .expect("Unbound Flourishing should strict-parse");
+
+    let rendered = compiled_text_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Whenever you cast a permanent spell with a mana cost that contains {X}, double the value of X.\nWhenever you cast an instant or sorcery spell or activate an ability, if that spell's mana cost or that ability's activation cost contains {X}, copy that spell or ability. You may choose new targets for the copy."
+    );
+
+    let debug = format!("{def:#?}");
+    assert!(debug.contains("ScaleXValueEffect"), "{debug}");
+    assert!(debug.contains("target: Tagged"), "{debug}");
+    assert!(debug.contains("\"triggering\""), "{debug}");
+    assert!(debug.contains("CopySpellEffect"), "{debug}");
+    assert!(debug.contains("AbilityActivatedTrigger"), "{debug}");
+    assert!(debug.contains("has_x_in_cost: true"), "{debug}");
+}
+
 struct OrdealTargetBob {
     bob: PlayerId,
 }

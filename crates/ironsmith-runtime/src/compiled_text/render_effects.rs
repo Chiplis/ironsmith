@@ -37384,6 +37384,17 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 }
                 return text;
             }
+            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" || tag.as_str() == "__it__")
+            {
+                let mut text = "Copy that spell or ability".to_string();
+                if copy_spell
+                    .removed_supertypes
+                    .contains(&crate::types::Supertype::Legendary)
+                {
+                    text.push_str(", except the copy isn't legendary");
+                }
+                return text;
+            }
             let mut text = format!("Copy {target_text}");
             if copy_spell
                 .removed_supertypes
@@ -37414,6 +37425,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 "chooses"
             },
         );
+    }
+    if let Some(scale_x) = effect.downcast_ref::<crate::effects::ScaleXValueEffect>() {
+        if scale_x.multiplier == 2 {
+            return "Double the value of X".to_string();
+        }
+        return format!("Multiply the value of X by {}", scale_x.multiplier);
     }
     if let Some(retarget) = effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>() {
         let target_text = describe_choose_spec(&retarget.target);

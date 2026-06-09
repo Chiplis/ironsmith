@@ -2168,6 +2168,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReorderTopOfLibrary { .. }
             | SubjectVerbActionAst::ShuffleObjectsIntoLibrary { .. }
             | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
+            | SubjectVerbActionAst::ScaleXValue { .. }
             | SubjectVerbActionAst::GrantProtectionChoice { .. }
             | SubjectVerbActionAst::PreventAllCombatDamage { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageFromSource { .. }

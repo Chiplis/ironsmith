@@ -1129,6 +1129,10 @@ pub(crate) enum SubjectVerbActionAst {
         exclude_current_targets: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
     },
+    ScaleXValue {
+        target: TargetAst,
+        multiplier: u32,
+    },
     PutTaggedRemainderOnBottomOfLibrary {
         tag: TagKey,
         keep_tagged: Option<TagKey>,
@@ -2380,6 +2384,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("player", player)
                 .field("exclude_current_targets", exclude_current_targets)
                 .field("removed_supertypes", removed_supertypes)
+                .finish(),
+            Self::ScaleXValue { target, multiplier } => f
+                .debug_struct("ScaleXValue")
+                .field("target", target)
+                .field("multiplier", multiplier)
                 .finish(),
             Self::PutTaggedRemainderOnBottomOfLibrary {
                 tag,
@@ -4041,6 +4050,14 @@ impl EffectAst {
                 exclude_current_targets,
                 removed_supertypes,
             },
+        )
+    }
+
+    pub(crate) fn subject_verb_scale_x_value(target: TargetAst, multiplier: u32) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::ScaleXValue { target, multiplier },
         )
     }
 

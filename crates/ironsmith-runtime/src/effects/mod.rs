@@ -194,7 +194,7 @@ pub use restrictions::CantEffect;
 pub(crate) use stack::EpicSpellCopyEffect;
 pub use stack::{
     ChooseNewTargetsEffect, CopySpellEffect, CopySpellForEachTargetEffect, CounterEffect,
-    NewTargetRestriction, RetargetMode, RetargetStackObjectEffect,
+    NewTargetRestriction, RetargetMode, RetargetStackObjectEffect, ScaleXValueEffect,
     VariableCasualtyPlaneswalkerCopyEffect,
 };
 pub use tokens::{

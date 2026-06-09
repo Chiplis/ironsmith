@@ -3882,6 +3882,12 @@ impl ObjectFilterExt for ObjectFilter {
                 describe_comparison(mana_value)
             ));
         }
+        if self.has_x_in_cost {
+            parts.push("with a mana cost that contains {X}".to_string());
+        }
+        if self.no_x_in_cost {
+            parts.push("with no {X} in its mana cost".to_string());
+        }
         if let Some(ref color_count) = self.color_count {
             parts.push(format!(
                 "with color count {}",

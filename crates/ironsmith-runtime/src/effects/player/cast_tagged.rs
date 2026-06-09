@@ -583,6 +583,7 @@ impl EffectExecutor for CastTaggedEffect {
             targets: selected_targets,
             target_assignments,
             x_value,
+            activation_cost_has_x: false,
             ability_effects: None,
             mana_usage_restrictions: Vec::new(),
             mana_source_chosen_creature_type: None,

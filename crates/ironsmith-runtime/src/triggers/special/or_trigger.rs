@@ -2,8 +2,10 @@
 
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
-    ThisAttacksTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
+    AbilityActivatedTrigger, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger,
+    TriggerEvent, ZoneChangeTrigger, ZonePattern,
 };
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 /// A trigger that matches if any of the inner triggers match.
@@ -151,6 +153,53 @@ impl OrTrigger {
             "Whenever {this_subject} or another {other_subject} enters"
         ))
     }
+
+    fn spell_or_activated_ability_x_cost_display(&self) -> Option<String> {
+        let [first, second] = self.triggers.as_slice() else {
+            return None;
+        };
+        let (spell, ability) = if let (Some(spell), Some(ability)) = (
+            first.downcast_ref::<SpellCastTrigger>(),
+            second.downcast_ref::<AbilityActivatedTrigger>(),
+        ) {
+            (spell, ability)
+        } else if let (Some(ability), Some(spell)) = (
+            first.downcast_ref::<AbilityActivatedTrigger>(),
+            second.downcast_ref::<SpellCastTrigger>(),
+        ) {
+            (spell, ability)
+        } else {
+            return None;
+        };
+
+        let Some(spell_filter) = spell.filter.as_ref() else {
+            return None;
+        };
+        let mut spell_filter_without_x = spell_filter.clone();
+        spell_filter_without_x.has_x_in_cost = false;
+        let mut ability_filter_without_x = ability.filter.clone();
+        ability_filter_without_x.has_x_in_cost = false;
+
+        if spell.caster == PlayerFilter::You
+            && spell.during_turn.is_none()
+            && spell.min_spells_this_turn.is_none()
+            && spell.exact_spells_this_turn.is_none()
+            && !spell.from_not_hand
+            && spell_filter.has_x_in_cost
+            && spell_filter_without_x == ObjectFilter::instant_or_sorcery()
+            && ability.activator == PlayerFilter::You
+            && ability.filter.has_x_in_cost
+            && ability_filter_without_x == ObjectFilter::default()
+            && !ability.non_mana_only
+            && !ability.loyalty_only
+        {
+            return Some(
+                "Whenever you cast an instant or sorcery spell or activate an ability, if that spell's mana cost or that ability's activation cost contains {X}"
+                    .to_string(),
+            );
+        }
+        None
+    }
 }
 
 impl TriggerMatcher for OrTrigger {
@@ -193,6 +242,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.this_or_another_enters_display() {
+            return display;
+        }
+        if let Some(display) = self.spell_or_activated_ability_x_cost_display() {
             return display;
         }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();

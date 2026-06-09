@@ -577,6 +577,7 @@ fn cast_from_library_while_searching(
         targets: vec![],
         target_assignments: vec![],
         x_value: None,
+        activation_cost_has_x: false,
         ability_effects: None,
         mana_usage_restrictions: Vec::new(),
         mana_source_chosen_creature_type: None,
