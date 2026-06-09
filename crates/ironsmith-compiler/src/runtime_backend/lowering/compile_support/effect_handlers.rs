@@ -318,6 +318,41 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
+                TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
+                    let resolved_filter = resolve_it_tag(source, &current_reference_env(ctx))?;
+                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_filter) {
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                                source: crate::target::ObjectFilter::source(),
+                                player: player.clone(),
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        );
+                        let delayed = delayed
+                            .with_target_filter(resolved_filter)
+                            .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                                    source: resolved_filter,
+                                    player: player.clone(),
+                                },
+                                delayed_effects,
+                                *one_shot,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
                 TriggerSpec::PutIntoGraveyard(filter)
                 | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
                     let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;

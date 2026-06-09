@@ -43,6 +43,11 @@ const DELAYED_TAGGED_DEALT_DAMAGE_TRIGGER_PATTERN: LexPattern<'static> = LexPatt
     LexPattern::optional(DELAYED_TAGGED_DEALT_DAMAGE_OPTIONAL_COMBAT_ATOMS),
     LexPattern::word("damage"),
 ]);
+const DELAYED_THAT_DEALS_COMBAT_DAMAGE_TO_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::word("that"),
+    LexPattern::object("kind", LexCaptureKind::OneOf(&["creature", "permanent"])),
+    LexPattern::phrase(&["deals", "combat", "damage", "to", "a", "player"]),
+]);
 const DELAYED_TAGGED_DAMAGE_CREATURE_KIND_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::object(
         "kind",
@@ -335,6 +340,28 @@ fn delayed_tagged_dealt_damage_trigger_from_core(
     }
 }
 
+fn delayed_that_deals_combat_damage_to_player_trigger_from_core(
+    trigger_core_tokens: &[OwnedLexToken],
+) -> Option<TriggerSpec> {
+    let trigger_clause = LexedClause::new(trigger_core_tokens).trimmed();
+    let matched = DELAYED_THAT_DEALS_COMBAT_DAMAGE_TO_PLAYER_PATTERN.match_clause(trigger_clause)?;
+    let kind_clause = matched
+        .capture_clause_by_role(LexCaptureRole::Object, trigger_clause)?
+        .trimmed();
+    let mut filter = if DELAYED_TAGGED_DAMAGE_CREATURE_KIND_PATTERN.matches_clause(kind_clause) {
+        ObjectFilter::creature()
+    } else if DELAYED_TAGGED_DAMAGE_PERMANENT_KIND_PATTERN.matches_clause(kind_clause) {
+        ObjectFilter::permanent()
+    } else {
+        return None;
+    };
+    filter = filter.match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+    Some(TriggerSpec::DealsCombatDamageToPlayer {
+        source: filter,
+        player: PlayerFilter::Any,
+    })
+}
+
 fn delayed_trigger_is_one_shot(trigger_clause: LexedClause<'_>) -> bool {
     DELAYED_NEXT_TRIGGER_MARKER_PATTERN
         .find_in_clause(trigger_clause.trimmed())
@@ -396,6 +423,16 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             ]));
         }
 
+        if let Some(trigger) =
+            delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_tokens)
+        {
+            return Ok(Some(vec![EffectAst::DelayedTriggerThisTurn {
+                trigger,
+                effects: delayed_effects,
+                one_shot: false,
+            }]));
+        }
+
         let trigger = parse_trigger_clause_lexed(&trigger_tokens)?;
         let one_shot = delayed_trigger_is_one_shot(trigger_clause);
         if matches!(trigger, TriggerSpec::SpellCast { .. }) {
@@ -427,6 +464,10 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
     let trigger = if let Some(trigger) =
+        delayed_that_deals_combat_damage_to_player_trigger_from_core(trigger_core_tokens)
+    {
+        trigger
+    } else if let Some(trigger) =
         delayed_tagged_dealt_damage_trigger_from_core(trigger_core_tokens)
     {
         trigger
