@@ -23,6 +23,7 @@ use super::{
     parse_text_with_annotations_lowered, parse_triggered_times_each_turn_lexed,
     parse_type_line_rewrite, split_lexed_sentences, token_word_refs,
 };
+use crate::runtime_backend::util::parse_value_expr_words;
 
 fn rewrite_line_info(text: &str) -> super::LineInfo {
     super::LineInfo {
@@ -3807,6 +3808,43 @@ fn rewrite_zone_counter_helpers_parse_half_starting_life_total_variants() {
             crate::target::PlayerFilter::target_player(),
         ))
     );
+}
+
+#[test]
+fn rewrite_value_expr_parses_half_rounded_forest_count_and_y_pt_modifier() {
+    let pt_tokens = lex_line("+X/+Y", 0).expect("rewrite lexer should classify +X/+Y");
+    assert_eq!(token_word_refs(&pt_tokens), vec!["+X/+Y"]);
+
+    let down_words = [
+        "half", "the", "number", "of", "forests", "you", "control", "rounded", "down",
+    ];
+    let up_words = [
+        "half", "the", "number", "of", "forests", "you", "control", "rounded", "up",
+    ];
+    let (down, down_used) = parse_value_expr_words(&down_words)
+        .expect("half rounded-down Forest count should parse");
+    let (up, up_used) = parse_value_expr_words(&up_words)
+        .expect("half rounded-up Forest count should parse");
+
+    assert_eq!(down_used, down_words.len());
+    assert_eq!(up_used, up_words.len());
+    assert!(matches!(down, Value::HalfRoundedDown(_)), "{down:?}");
+    assert!(
+        matches!(
+            up,
+            Value::HalfRoundedDown(ref inner) if matches!(inner.as_ref(), Value::Add(_, _))
+        ),
+        "{up:?}"
+    );
+
+    let anthem_tokens = lex_line(
+        "enchanted creature gets +x/+y, where x is half the number of forests you control, rounded down, and y is half the number of forests you control, rounded up.",
+        0,
+    )
+    .expect("Aspect-style anthem line should lex");
+    let anthem = super::keyword_static::parse_anthem_line(&anthem_tokens)
+        .expect("Aspect-style anthem line should parse without an error");
+    assert!(anthem.is_some(), "Aspect-style anthem line should match anthem parser");
 }
 
 #[test]

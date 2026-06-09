@@ -1,4 +1,4 @@
-use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter};
+use crate::{CounterType, ManaSymbol, ObjectFilter, PlayerFilter, Value};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemCountExpression {
@@ -25,6 +25,7 @@ pub enum AnthemCountExpression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum AnthemValue {
     Fixed(i32),
+    Dynamic(Value),
     PerCount {
         multiplier: i32,
         count: AnthemCountExpression,

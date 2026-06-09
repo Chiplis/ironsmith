@@ -2734,6 +2734,51 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
 
+    if words[0] == "half" {
+        let inner_start = 1;
+        for round_idx in inner_start..words.len().saturating_sub(1) {
+            let Some(rounding) = words.get(round_idx..round_idx + 2) else {
+                continue;
+            };
+            let rounded_down = rounding == ["rounded", "down"];
+            let rounded_up = rounding == ["rounded", "up"];
+            if !rounded_down && !rounded_up {
+                continue;
+            }
+            let (base, used_inner) = parse_value_expr_term_words(&words[inner_start..round_idx])?;
+            if used_inner != round_idx.saturating_sub(inner_start) {
+                return None;
+            }
+            if rounded_down {
+                return Some((Value::HalfRoundedDown(Box::new(base)), round_idx + 2));
+            }
+            return Some((
+                Value::HalfRoundedDown(Box::new(Value::Add(
+                    Box::new(base),
+                    Box::new(Value::Fixed(1)),
+                ))),
+                round_idx + 2,
+            ));
+        }
+        let (base, used_inner) = parse_value_expr_term_words(&words[inner_start..])?;
+        let used = inner_start + used_inner;
+        match words.get(used..used + 2) {
+            Some(["rounded", "down"]) => {
+                return Some((Value::HalfRoundedDown(Box::new(base)), used + 2));
+            }
+            Some(["rounded", "up"]) => {
+                return Some((
+                    Value::HalfRoundedDown(Box::new(Value::Add(
+                        Box::new(base),
+                        Box::new(Value::Fixed(1)),
+                    ))),
+                    used + 2,
+                ));
+            }
+            _ => {}
+        }
+    }
+
     for (shape, used) in EVENT_AMOUNT_VALUE_PATTERNS {
         if shared_util_shape_matches_words(words, *shape) {
             return Some((Value::EventValue(EventValueSpec::Amount), *used));
