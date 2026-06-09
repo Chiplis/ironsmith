@@ -167,6 +167,13 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::Battlefield)),
                 None,
             ),
+            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => (
+                "special_action",
+                Some(room_id.0),
+                None,
+                Some(zone_name(Zone::Battlefield)),
+                Some(zone_name(Zone::Battlefield)),
+            ),
         },
     }
 }
@@ -438,6 +445,9 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     object_name(game, *permanent_id)
                 )
             }
+            ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
+                format!("Unlock {}", object_name(game, *room_id))
+            }
         },
     }
 }
@@ -673,6 +683,9 @@ pub(super) fn special_action_ref(
             permanent_id: permanent_id.0,
             ability_index: *ability_index,
         },
+        ironsmith::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
+            SpecialActionRef::UnlockRoomDoor { room_id: room_id.0 }
+        }
     }
 }
 

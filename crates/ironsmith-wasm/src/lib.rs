@@ -1885,6 +1885,9 @@ enum SpecialActionRef {
         permanent_id: u64,
         ability_index: usize,
     },
+    UnlockRoomDoor {
+        room_id: u64,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
