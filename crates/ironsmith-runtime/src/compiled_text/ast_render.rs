@@ -1259,7 +1259,8 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": this creature gets ")
         || lower.contains(": this creature gains ")
         || lower.contains(": this creature deals ")
-        || lower.contains(": whenever this creature deals combat damage to a player");
+        || lower.contains(": whenever this creature deals combat damage to a player")
+        || lower.starts_with("this planeswalker has ");
     if card.supertypes.contains(&Supertype::Legendary) && lower.starts_with("soulshift ") {
         let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
         if !source_name.is_empty() {
@@ -1295,6 +1296,8 @@ pub(super) fn substitute_legendary_source_reference(
         ("this land", source_name),
         ("This artifact", source_name),
         ("this artifact", source_name),
+        ("This planeswalker", source_name),
+        ("this planeswalker", source_name),
     ]
     .into_iter()
     .fold(line, |line, (from, to)| {

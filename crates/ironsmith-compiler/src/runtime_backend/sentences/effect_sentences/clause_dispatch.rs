@@ -57,7 +57,10 @@ use super::subject_verb_primitives::{
 use super::verb_dispatch::parse_effect_with_verb;
 use super::verb_handlers::parse_control_duration;
 use super::zone_counter_helpers::{parse_half_starting_life_total_value, parse_put_counters};
-use super::zone_handlers::{collapse_leading_signed_pt_modifier_tokens, parse_sacrifice};
+use super::zone_handlers::{
+    collapse_leading_signed_pt_modifier_tokens,
+    parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control, parse_sacrifice,
+};
 use super::{
     Verb, bind_implicit_player_context, find_verb, parse_effect_chain_with_subject_verb_primitives,
     parse_simple_gain_ability_clause, parse_simple_lose_ability_clause, parse_subtype_word,
@@ -1186,6 +1189,12 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             [effect] => effect.clone(),
             _ => EffectAst::Sequence { effects },
         });
+    }
+
+    if let Some(effect) =
+        parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(tokens)
+    {
+        return Ok(effect);
     }
 
     if let Some(effect) = run_clause_primitives(tokens)? {

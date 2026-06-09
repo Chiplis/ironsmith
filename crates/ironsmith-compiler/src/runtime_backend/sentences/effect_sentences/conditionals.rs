@@ -94,6 +94,9 @@ pub(crate) fn parse_for_each_opponent_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)? {
+        return Ok(Some(effect));
+    }
     let Some(split) = split_for_each_opponent_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
@@ -116,6 +119,9 @@ pub(crate) fn parse_for_each_player_doesnt(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, false)? {
+        return Ok(Some(effect));
+    }
     let Some(split) = split_for_each_player_doesnt_clause_lexed(tokens) else {
         return Ok(None);
     };
@@ -129,6 +135,76 @@ pub(crate) fn parse_for_each_player_doesnt(
     let effects = parse_effect_chain_inner(split.effect_tokens)?;
     let predicate = parse_negated_who_this_way_predicate(split.inner_tokens)?;
     Ok(Some(EffectAst::ForEachPlayerDoesNot { effects, predicate }))
+}
+
+fn parse_for_each_doesnt_control_lose_game(
+    tokens: &[OwnedLexToken],
+    opponent: bool,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let split = if opponent {
+        split_for_each_opponent_doesnt_clause_lexed(tokens)
+    } else {
+        split_for_each_player_doesnt_clause_lexed(tokens)
+    };
+    let Some(split) = split else {
+        return Ok(None);
+    };
+
+    let inner_words = crate::runtime_backend::token_word_refs(split.inner_tokens);
+    let verb_idx = split.negation_idx + split.negation_len;
+    if !inner_words
+        .get(verb_idx)
+        .is_some_and(|word| *word == "control")
+    {
+        return Ok(None);
+    }
+
+    let Some(lose_idx) = inner_words
+        .windows(3)
+        .enumerate()
+        .find_map(|(idx, window)| {
+            ((window[0] == "loses" || window[0] == "lose")
+                && window[1] == "the"
+                && window[2] == "game")
+                .then_some(idx)
+        })
+    else {
+        return Ok(None);
+    };
+    if lose_idx <= verb_idx + 1 {
+        return Ok(None);
+    }
+
+    let Some(filter_start) = token_index_for_word_index(split.inner_tokens, verb_idx + 1) else {
+        return Ok(None);
+    };
+    let Some(filter_end) = token_index_for_word_index(split.inner_tokens, lose_idx) else {
+        return Ok(None);
+    };
+    let filter_tokens = trim_commas(&split.inner_tokens[filter_start..filter_end]);
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(&filter_tokens, false)?;
+
+    let effect = EffectAst::Conditional {
+        predicate: PredicateAst::PlayerControlsNo {
+            player: PlayerAst::That,
+            filter,
+        },
+        if_true: vec![EffectAst::subject_verb_lose_game(PlayerAst::That)],
+        if_false: Vec::new(),
+    };
+
+    Ok(Some(if opponent {
+        EffectAst::ForEachOpponent {
+            effects: vec![effect],
+        }
+    } else {
+        EffectAst::ForEachPlayer {
+            effects: vec![effect],
+        }
+    }))
 }
 
 pub(crate) fn negated_action_word_index(words: &[&str]) -> Option<(usize, usize)> {

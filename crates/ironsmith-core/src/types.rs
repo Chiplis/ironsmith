@@ -418,6 +418,7 @@ pub enum Subtype {
     // Planeswalker types
     Ajani,
     Ashiok,
+    Bolas,
     Chandra,
     Elspeth,
     Garruk,
@@ -726,6 +727,7 @@ impl Subtype {
         &[
             Subtype::Ajani,
             Subtype::Ashiok,
+            Subtype::Bolas,
             Subtype::Chandra,
             Subtype::Elspeth,
             Subtype::Garruk,
@@ -1065,6 +1067,7 @@ impl Subtype {
             self,
             Subtype::Ajani
                 | Subtype::Ashiok
+                | Subtype::Bolas
                 | Subtype::Chandra
                 | Subtype::Elspeth
                 | Subtype::Garruk

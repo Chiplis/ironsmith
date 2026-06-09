@@ -43,6 +43,84 @@ const EXILE_EACH_OPPONENT_LIBRARY_PREFIXES: &[&[&str]] = &[
 ];
 const EXILE_THE_TOP_PREFIX: &[&str] = &["the", "top"];
 const EXILE_WITH_THAT_NAME_PHRASE: &[&str] = &["with", "that", "name"];
+const EXILE_CARD_FROM_THEIR_HAND_OR_PERMANENT_THEY_CONTROL_PHRASES: &[&[&str]] = &[
+    &[
+        "a", "card", "from", "their", "hand", "or", "a", "permanent", "they", "control",
+    ],
+    &[
+        "a", "card", "from", "their", "hand", "or", "permanent", "they", "control",
+    ],
+    &[
+        "card", "from", "their", "hand", "or", "a", "permanent", "they", "control",
+    ],
+    &[
+        "card", "from", "their", "hand", "or", "permanent", "they", "control",
+    ],
+];
+
+pub(crate) fn parse_each_opponent_exiles_card_from_their_hand_or_permanent_they_control(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.len() < 4
+        || words[0] != "each"
+        || !matches!(words[1], "opponent" | "opponents")
+        || !matches!(words[2], "exile" | "exiles")
+    {
+        return None;
+    }
+    let target_start = token_index_for_word_index(tokens, 3)?;
+    parse_exile_card_from_their_hand_or_permanent_they_control(
+        &tokens[target_start..],
+        Some(SubjectAst::Player(PlayerAst::Opponent)),
+    )
+}
+
+fn parse_exile_card_from_their_hand_or_permanent_they_control(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !EXILE_CARD_FROM_THEIR_HAND_OR_PERMANENT_THEY_CONTROL_PHRASES
+        .iter()
+        .any(|phrase| word_slice_eq(&words, phrase))
+    {
+        return None;
+    }
+
+    let wrap_for_each_opponent = matches!(subject, Some(SubjectAst::Player(PlayerAst::Opponent)));
+    let chooser = match subject {
+        Some(SubjectAst::Player(PlayerAst::That | PlayerAst::Opponent)) => PlayerAst::That,
+        _ => return None,
+    };
+
+    let mut hand_card = ObjectFilter::default().in_zone(Zone::Hand);
+    hand_card.owner = Some(PlayerFilter::IteratedPlayer);
+    let mut permanent = ObjectFilter::permanent_card().in_zone(Zone::Battlefield);
+    permanent.controller = Some(PlayerFilter::IteratedPlayer);
+
+    let mut filter = ObjectFilter::default();
+    filter.any_of = vec![hand_card, permanent];
+    let tag = helper_tag_for_tokens(tokens, "exiled");
+    let effects = vec![
+        EffectAst::ChooseObjectsAcrossZones {
+            filter,
+            count: crate::effect::ChoiceCount::exactly(1),
+            count_value: None,
+            player: chooser,
+            tag: tag.clone(),
+            zones: vec![Zone::Hand, Zone::Battlefield],
+            search_mode: None,
+        },
+        EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false),
+    ];
+
+    Some(if wrap_for_each_opponent {
+        EffectAst::ForEachOpponent { effects }
+    } else {
+        EffectAst::Sequence { effects }
+    })
+}
 
 fn exile_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some_and(|word| word == expected)
@@ -243,6 +321,13 @@ pub(crate) fn parse_exile(
         until_source_leaves,
         face_down,
     )? {
+        return Ok(effect);
+    }
+    if !face_down
+        && !until_source_leaves
+        && let Some(effect) =
+            parse_exile_card_from_their_hand_or_permanent_they_control(tokens, subject)
+    {
         return Ok(effect);
     }
     if clause_words
