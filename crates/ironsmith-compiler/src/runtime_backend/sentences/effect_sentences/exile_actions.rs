@@ -749,13 +749,14 @@ pub(crate) fn parse_exile_top_library_clause(
     let count_start = token_index_for_word_index(&tokens, start + 1)?;
     let count_start_words =
         crate::runtime_backend::token_word_refs(&tokens[count_start..=count_start]);
-    let (count, used_after_top) = if count_start_words
+    let (count, used_after_top, count_was_implicit) = if count_start_words
         .first()
         .is_some_and(|word| EXILE_CARD_OR_CARDS_WORDS.contains(word))
     {
-        (Value::Fixed(1), 0)
+        (Value::Fixed(1), 0, true)
     } else {
-        parse_value(&tokens[count_start..])?
+        let (count, used_after_top) = parse_value(&tokens[count_start..])?;
+        (count, used_after_top, false)
     };
     let after_count = trim_commas(&tokens[count_start + used_after_top..]);
     let after_count_words = crate::runtime_backend::token_word_refs(&after_count);
@@ -786,6 +787,13 @@ pub(crate) fn parse_exile_top_library_clause(
                 vec![helper_tag_for_tokens(&tokens, "exiled")],
             )],
         });
+    }
+
+    // An implicit single-card count ("exile the top card of <owner> library") with a
+    // named owner belongs to the dedicated exile-top-then-cast/play parser (e.g. Mind's
+    // Dilation, Urabrask). Only the each-opponent shape above keeps the implicit count.
+    if count_was_implicit {
+        return None;
     }
 
     let default_player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
