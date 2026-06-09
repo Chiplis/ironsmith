@@ -1093,6 +1093,12 @@ pub(crate) fn parse_copy_spell_clause(
     let clause = LexedClause::new(tokens);
     let clause_words = clause.word_refs();
     let clause_text = clause.text();
+    if clause_words
+        .windows(2)
+        .any(|words| matches!(words, ["emblem", "with"]))
+    {
+        return Ok(None);
+    }
     let Some(copy_idx) = find_token_index(tokens, |token| {
         CLAUSE_COPY_OR_COPIES_WORD_PATTERN.matches_token(token)
     }) else {

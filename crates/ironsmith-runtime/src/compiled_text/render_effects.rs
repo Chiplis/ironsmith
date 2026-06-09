@@ -33018,6 +33018,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         );
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        if let [inner] = for_players.effects.as_slice()
+            && let Some(create_emblem) = inner.downcast_ref::<crate::effects::CreateEmblemEffect>()
+        {
+            let subject = match &for_players.filter {
+                PlayerFilter::Target(inner) if **inner == PlayerFilter::Any => {
+                    "Target player".to_string()
+                }
+                filter => capitalize_first(&describe_player_filter(filter)),
+            };
+            let emblem_text = create_emblem.emblem.text.trim();
+            if !emblem_text.is_empty() {
+                let emblem_text = capitalize_first(&ensure_trailing_period(emblem_text));
+                return format!("{subject} gets an emblem with \"{emblem_text}\"");
+            }
+            return format!("{subject} gets an emblem named {}", create_emblem.emblem.name);
+        }
         if let Some(compact) = describe_each_player_return_from_graveyard_to_hand(for_players) {
             return compact;
         }
@@ -39597,10 +39613,27 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             })
             .unwrap_or(spell_text);
         let player_suffix = format!(" cast by {player_text}");
+        let cast_by_text = grant_next_spell_cost_reduction
+            .filter
+            .cast_by
+            .as_ref()
+            .map(describe_player_filter);
+        let cast_by_suffix = cast_by_text
+            .as_ref()
+            .map(|text| format!(" cast by {text}"));
         let spell_text = spell_text
             .strip_suffix(player_suffix.as_str())
+            .or_else(|| {
+                cast_by_suffix
+                    .as_ref()
+                    .and_then(|suffix| spell_text.strip_suffix(suffix.as_str()))
+            })
             .unwrap_or(spell_text.as_str());
         if grant_next_spell_cost_reduction.applies_to_all_matching_this_turn {
+            let duration_text = match grant_next_spell_cost_reduction.duration {
+                Until::EndOfTurn => "this turn".to_string(),
+                _ => describe_until(&grant_next_spell_cost_reduction.duration),
+            };
             let (reduction, where_suffix) = grant_next_spell_cost_reduction
                 .generic_reduction
                 .as_ref()
@@ -39635,23 +39668,51 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else {
                 format!("{spell_text} spells")
             };
+            if let Some(cast_by) = grant_next_spell_cost_reduction.filter.cast_by.as_ref() {
+                let caster_text = if matches!(cast_by, PlayerFilter::Target(_)) {
+                    "that player".to_string()
+                } else {
+                    describe_player_filter(cast_by)
+                };
+                let plural_spell_text = if !grant_next_spell_cost_reduction.filter.card_types.is_empty()
+                {
+                    let card_type_words = grant_next_spell_cost_reduction
+                        .filter
+                        .card_types
+                        .iter()
+                        .map(|card_type| describe_card_type_word_local(*card_type).to_string())
+                        .collect::<Vec<_>>();
+                    format!("{} spells", join_with_and(&card_type_words))
+                } else {
+                    plural_spell_text
+                };
+                return format!(
+                    "{} {} casts cost {} less to cast {}{}",
+                    plural_spell_text, caster_text, reduction, duration_text, where_suffix,
+                );
+            }
             if grant_next_spell_cost_reduction.filter.cast_by.is_none()
                 && grant_next_spell_cost_reduction.filter.zone.is_none()
             {
                 return format!(
-                    "{} cost {} less to cast this turn{}",
-                    plural_spell_text, reduction, where_suffix,
+                    "{} cost {} less to cast {}{}",
+                    plural_spell_text, reduction, duration_text, where_suffix,
                 );
             }
             return format!(
-                "{} this turn cost {} less to cast{}",
-                plural_spell_text, reduction, where_suffix,
+                "{} {} cost {} less to cast{}",
+                plural_spell_text, duration_text, reduction, where_suffix,
             );
         }
+        let duration_text = match grant_next_spell_cost_reduction.duration {
+            Until::EndOfTurn => "this turn".to_string(),
+            _ => describe_until(&grant_next_spell_cost_reduction.duration),
+        };
         return format!(
-            "The next {} {} cast this turn costs {} less to cast",
+            "The next {} {} cast {} costs {} less to cast",
             spell_text,
             player_text,
+            duration_text,
             grant_next_spell_cost_reduction.reduction.to_oracle(),
         );
     }
@@ -43375,6 +43436,11 @@ pub(super) fn describe_ability(
                     }
                 }
                 return lines;
+            }
+            if static_ability.id() == crate::static_abilities::StaticAbilityId::CanBeCommander {
+                return vec![format!(
+                    "Static ability {index}: {subject} can be your commander"
+                )];
             }
             let normalized = normalize_sentence_surface_style(static_ability.display().trim());
             let lower = normalized.to_ascii_lowercase();

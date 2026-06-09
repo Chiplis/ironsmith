@@ -549,13 +549,16 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
     let less_idx = word_slice_find_word(clause_words.as_slice(), "less")?;
 
     let has_you_cast = word_slice_contains_phrase(&clause_words, &["you", "cast"]);
+    let has_that_player_casts = word_slice_contains_phrase(&clause_words, &["that", "player", "casts"]);
     let has_chosen_name = word_slice_contains_phrase(&clause_words, &["with", "chosen", "name"])
         || word_slice_contains_phrase(&clause_words, &["with", "the", "chosen", "name"]);
+    let has_this_turn_duration = word_slice_contains_phrase(&clause_words, &["this", "turn"]);
+    let has_until_your_next_turn_duration = clause_words.starts_with(&["until", "your", "next", "turn"]);
 
     if cost_idx <= spell_idx
         || less_idx <= cost_idx
-        || (!has_you_cast && !has_chosen_name)
-        || !word_slice_contains_phrase(&clause_words, &["this", "turn"])
+        || (!has_you_cast && !has_that_player_casts && !has_chosen_name)
+        || (!has_this_turn_duration && !has_until_your_next_turn_duration)
         || clause_words.get(less_idx + 1).copied() != Some("to")
         || clause_words.get(less_idx + 2).copied() != Some("cast")
     {
@@ -565,7 +568,12 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
     let spell_token_idx = words.token_index_for_word_index(spell_idx)?;
     let cost_token_idx = words.token_index_for_word_index(cost_idx)?;
     let less_token_idx = words.token_index_for_word_index(less_idx)?;
-    let subject_tokens = trim_edge_punctuation(&tokens[..=spell_token_idx]);
+    let subject_start_token_idx = if has_until_your_next_turn_duration {
+        words.token_index_for_word_index(4)?
+    } else {
+        0
+    };
+    let subject_tokens = trim_edge_punctuation(&tokens[subject_start_token_idx..=spell_token_idx]);
     let reduction_tokens = trim_edge_punctuation(&tokens[cost_token_idx + 1..less_token_idx]);
     let (mut reduction, used) = parse_value(&reduction_tokens)?;
     if used != reduction_tokens.len() {
@@ -582,6 +590,9 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
     let player = if has_you_cast {
         filter.cast_by = Some(PlayerFilter::You);
         PlayerAst::You
+    } else if has_that_player_casts {
+        filter.cast_by = Some(PlayerFilter::IteratedPlayer);
+        PlayerAst::That
     } else {
         PlayerAst::Any
     };
@@ -607,9 +618,20 @@ fn parse_matching_spell_cost_reduction_this_turn_sentence_lexed(
             mana_reduction,
         ))
     } else {
-        Some(
-            EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(player, filter, reduction),
-        )
+        let duration = if has_until_your_next_turn_duration {
+            Until::YourNextTurn
+        } else {
+            Until::EndOfTurn
+        };
+        if duration == Until::EndOfTurn {
+            Some(EffectAst::subject_verb_reduce_matching_spell_cost_this_turn(
+                player, filter, reduction,
+            ))
+        } else {
+            Some(EffectAst::subject_verb_reduce_matching_spell_cost(
+                player, filter, reduction, duration,
+            ))
+        }
     }
 }
 

@@ -101,6 +101,7 @@ const BECOME_OR_BECOMES_WORDS: &[&str] = &["become", "becomes"];
 const GET_OR_GETS_WORDS: &[&str] = &["get", "gets"];
 const AND_WORD: &str = "and";
 const SHARED_GAIN_TAIL_PATTERNS: &[&[&str]] = &[&["and", "gain"], &["and", "gains"]];
+const SHARED_LOSE_TAIL_PATTERNS: &[&[&str]] = &[&["and", "lose"], &["and", "loses"]];
 const SHARED_GET_TAIL_PATTERNS: &[&[&str]] = &[&["and", "get"], &["and", "gets"]];
 const SHARED_HAS_TAIL_PATTERNS: &[&[&str]] = &[&["and", "has"], &["and", "have"]];
 const SIMPLE_DURATION_PATTERNS: &[(&[&str], (usize, Until))] = &[
@@ -307,6 +308,7 @@ fn parse_leading_subject_base_pt_before_gain(
     before_gain: &[&str],
     subject_start_word_idx: usize,
     gain_idx: usize,
+    duration: &Until,
 ) -> Result<Option<SharedSubjectBasePt>, CardTextError> {
     let Some(local_has_idx) = before_gain
         .iter()
@@ -328,7 +330,9 @@ fn parse_leading_subject_base_pt_before_gain(
         ))
     })?;
     let tail = &rest[5..];
+    let is_shared_tail_separator = tail == ["and"];
     if !tail.is_empty()
+        && !is_shared_tail_separator
         && !is_until_end_of_turn(tail)
         && !word_slice_eq(tail, UNTIL_END_OF_TURN_AND_TAIL)
     {
@@ -341,7 +345,7 @@ fn parse_leading_subject_base_pt_before_gain(
     if has_word_idx >= gain_idx {
         return Ok(None);
     }
-    Ok(Some((power, toughness, has_word_idx, Until::EndOfTurn)))
+    Ok(Some((power, toughness, has_word_idx, duration.clone())))
 }
 
 fn parse_shared_subject_pump_from_get_tail(
@@ -1273,6 +1277,7 @@ pub(crate) fn parse_gain_ability_sentence(
         let after_has = &word_list[gain_idx + 1..];
         if word_slice_starts_with(after_has, BASE_POWER_TOUGHNESS_PREFIX) {
             gain_find_any_phrase_start(after_has, SHARED_GAIN_TAIL_PATTERNS)
+                .or_else(|| gain_find_any_phrase_start(after_has, SHARED_LOSE_TAIL_PATTERNS))
                 .map(|(_, shared_idx)| gain_idx + 1 + shared_idx + 1)
                 .unwrap_or(gain_idx)
         } else {
@@ -1520,7 +1525,12 @@ pub(crate) fn parse_gain_ability_sentence(
         .iter()
         .position(|word| GET_OR_GETS_WORDS.contains(word));
     let leading_base_pt_effect = if !losing {
-        parse_leading_subject_base_pt_before_gain(before_gain, subject_start_word_idx, gain_idx)?
+        parse_leading_subject_base_pt_before_gain(
+            before_gain,
+            subject_start_word_idx,
+            gain_idx,
+            &duration,
+        )?
     } else {
         None
     };

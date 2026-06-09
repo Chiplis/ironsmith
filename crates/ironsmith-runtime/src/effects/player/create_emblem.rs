@@ -44,8 +44,8 @@ impl EffectExecutor for CreateEmblemEffect {
             .collect();
 
         // Create emblem using the proper constructor
-        let emblem_obj =
-            Object::new_emblem(id, ctx.controller, self.emblem.name.clone(), abilities);
+        let owner = ctx.iteration.iterated_player.unwrap_or(ctx.controller);
+        let emblem_obj = Object::new_emblem(id, owner, self.emblem.name.clone(), abilities);
 
         // add_object handles adding to command_zone for Zone::Command
         game.add_object(emblem_obj);

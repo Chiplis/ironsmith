@@ -265,6 +265,57 @@ fn rayne_academy_chancellor_strict_parser_and_compiled_text_regression() {
 }
 
 #[test]
+fn will_kenrith_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Will Kenrith");
+
+    let oracle = oracle_text_by_name()
+        .get("Will Kenrith")
+        .expect("Will Kenrith oracle text should exist")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Will Kenrith")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Planeswalker])
+        .loyalty(4)
+        .parse_text(oracle)
+        .expect("Will Kenrith oracle text should parse");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let abilities_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "+2: Until your next turn, up to two target creatures each have base power and toughness 0/3 and lose all abilities."
+        ),
+        "expected Will Kenrith +2 compiled text to preserve shared base P/T and lose-abilities clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Target player draws two cards. Until your next turn, instant, sorcery, and planeswalker spells that player casts cost {2} less to cast."
+        ),
+        "expected Will Kenrith -2 compiled text to preserve target-player cost reduction, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Target player gets an emblem with \"Whenever you cast an instant or sorcery spell, copy it. You may choose new targets for the copy.\""
+        ),
+        "expected Will Kenrith -8 compiled text to preserve target-player emblem, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Partner with Rowan Kenrith")
+            && rendered.contains("Will Kenrith can be your commander."),
+        "expected Will Kenrith commander text to render, got {rendered}"
+    );
+    assert!(
+        abilities_debug.contains("SetPowerToughness")
+            && abilities_debug.contains("RemoveAllAbilities")
+            && abilities_debug.contains("max: Some")
+            && abilities_debug.contains("GrantNextSpellCostReductionEffect")
+            && abilities_debug.contains("duration: YourNextTurn")
+            && abilities_debug.contains("CreateEmblemEffect"),
+        "expected Will Kenrith to model shared targets, timed cost reduction, and target-player emblem, got {abilities_debug}"
+    );
+}
+
+#[test]
 fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
     struct AcceptMayDecisionMaker;
     impl crate::decision::DecisionMaker for AcceptMayDecisionMaker {

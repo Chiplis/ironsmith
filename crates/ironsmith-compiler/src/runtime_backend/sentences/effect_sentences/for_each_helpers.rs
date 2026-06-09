@@ -449,7 +449,15 @@ pub(crate) fn parse_has_base_power_toughness_clause(
     }
     let is_shared_gain_tail = matches!(
         tail,
-        ["until", "end", "of", "turn", "and", "gain", ..]
+        ["and", "gain", ..]
+            | ["and", "gains", ..]
+            | ["and", "lose", ..]
+            | ["and", "loses", ..]
+            | ["and", "has", ..]
+            | ["and", "have", ..]
+            | ["and", "get", ..]
+            | ["and", "gets", ..]
+            | ["until", "end", "of", "turn", "and", "gain", ..]
             | ["until", "end", "of", "turn", "and", "gains", ..]
             | ["until", "end", "of", "turn", "and", "lose", ..]
             | ["until", "end", "of", "turn", "and", "loses", ..]

@@ -1764,6 +1764,7 @@ pub(crate) enum SubjectVerbActionAst {
     ReduceMatchingSpellCostThisTurn {
         filter: ObjectFilter,
         reduction: Value,
+        duration: Until,
     },
     GrantNextSpellAbilityThisTurn {
         filter: ObjectFilter,
@@ -3334,10 +3335,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("filter", filter)
                 .field("reduction", reduction)
                 .finish(),
-            Self::ReduceMatchingSpellCostThisTurn { filter, reduction } => f
+            Self::ReduceMatchingSpellCostThisTurn {
+                filter,
+                reduction,
+                duration,
+            } => f
                 .debug_struct("ReduceMatchingSpellCostThisTurn")
                 .field("filter", filter)
                 .field("reduction", reduction)
+                .field("duration", duration)
                 .finish(),
             Self::GrantNextSpellAbilityThisTurn { filter, ability } => f
                 .debug_struct("GrantNextSpellAbilityThisTurn")
@@ -5908,10 +5914,23 @@ impl EffectAst {
         filter: ObjectFilter,
         reduction: Value,
     ) -> Self {
+        Self::subject_verb_reduce_matching_spell_cost(player, filter, reduction, Until::EndOfTurn)
+    }
+
+    pub(crate) fn subject_verb_reduce_matching_spell_cost(
+        player: PlayerAst,
+        filter: ObjectFilter,
+        reduction: Value,
+        duration: Until,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::AffectedPlayer,
             player,
-            SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn { filter, reduction },
+            SubjectVerbActionAst::ReduceMatchingSpellCostThisTurn {
+                filter,
+                reduction,
+                duration,
+            },
         )
     }
 

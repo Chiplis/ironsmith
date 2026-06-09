@@ -488,6 +488,20 @@ const TARGET_GETS_THEN_GAINS_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::any_phrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES),
     LexPattern::tail("ability_tail", LexCaptureKind::Rest),
 ]);
+const TARGET_HAS_BASE_PT_THEN_LOSES_PHRASES: &[&[&str]] = &[&["and", "lose"], &["and", "loses"]];
+const TARGET_HAS_BASE_PT_THEN_LOSES_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::subject(
+        "subject",
+        LexCaptureKind::UntilAnyPhrase(&[&["has"], &["have"]]),
+    ),
+    LexPattern::action("has_action", LexCaptureKind::OneOf(&["has", "have"])),
+    LexPattern::capture(
+        "base_pt_clause",
+        LexCaptureKind::UntilAnyPhrase(TARGET_HAS_BASE_PT_THEN_LOSES_PHRASES),
+    ),
+    LexPattern::any_phrase(TARGET_HAS_BASE_PT_THEN_LOSES_PHRASES),
+    LexPattern::tail("ability_tail", LexCaptureKind::Rest),
+]);
 const TARGET_CONTROLLED_PUMP_GRANTED_ABILITY_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::any_phrase(TARGET_GETS_THEN_GAINS_GRANT_PHRASES),
     LexPattern::tail("ability_tail", LexCaptureKind::Rest),
@@ -756,6 +770,12 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
             effects,
         )));
     }
+    if let Some(effects) = parse_target_has_base_pt_then_loses_subject_verb(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Have subject=target recognizer=shared-subject-base-pt-lose",
+            effects,
+        )));
+    }
 
     let program = if let Some(effect) = parse_generic_meld_subject_verb(tokens)? {
         Some(GenericTopLevelProgram::Meld { effect })
@@ -998,6 +1018,25 @@ fn parse_target_gets_then_gains_subject_verb(
     if has_where_x_value_binding(tokens) {
         return Ok(None);
     }
+    super::gain_ability::parse_gain_ability_sentence(tokens)
+}
+
+fn parse_target_has_base_pt_then_loses_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let clause = LexedClause::new(tokens).trimmed();
+    let Some(matched) = TARGET_HAS_BASE_PT_THEN_LOSES_PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let Some(base_pt_clause) = matched.capture_clause("base_pt_clause", clause) else {
+        return Ok(None);
+    };
+    if !base_pt_clause.starts_with(&["base", "power", "and", "toughness"]) {
+        return Ok(None);
+    }
+    let Some(_ability_tail) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
+        return Ok(None);
+    };
     super::gain_ability::parse_gain_ability_sentence(tokens)
 }
 
