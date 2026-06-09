@@ -700,6 +700,10 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
                 ));
             }
             AbilityKind::Triggered(triggered) => {
+                if let Some(keyword) = describe_structural_prowess_keyword(triggered) {
+                    keyword_texts.push(keyword.to_ascii_lowercase());
+                    continue;
+                }
                 if has_decayed_marker && is_decayed_sacrifice_trigger(triggered) {
                     continue;
                 }

@@ -193,6 +193,30 @@ fn last_rites_strict_parser_compiled_text_and_model_regression() {
 }
 
 #[test]
+fn aligned_heart_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Aligned Heart");
+
+    let def = parse_oracle_card_definition("Aligned Heart");
+    let rendered = compiled_text_lines(&def).join(" ");
+    let ability_debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        rendered.contains(
+            "Whenever you cast your second spell each turn, put a rally counter on this enchantment, then create a 1/1 white Monk creature token with prowess for each rally counter on it"
+        ),
+        "Aligned Heart should render the rally-counter token count with token prowess inline, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("SpellCast")
+            && ability_debug.contains("exact_spells_this_turn: Some")
+            && ability_debug.contains("rally")
+            && ability_debug.contains("CountersOnSource")
+            && ability_debug.contains("CreateTokenEffect"),
+        "Aligned Heart should lower flurry into a second-spell trigger that puts a named rally counter and creates tokens from that counter count, got {ability_debug}"
+    );
+}
+
+#[test]
 fn kodama_of_the_center_tree_strict_parser_compiled_text_and_model_regression() {
     assert_oracle_card_parses_strict("Kodama of the Center Tree");
 
