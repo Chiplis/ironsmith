@@ -4274,6 +4274,50 @@ impl StaticAbilityKind for AddChosenCreatureTypeForFilter {
     }
 }
 
+/// "Objects are the chosen basic land type in addition to their other types."
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddChosenBasicLandTypeForFilter {
+    pub filter: ObjectFilter,
+    pub display: String,
+}
+
+impl AddChosenBasicLandTypeForFilter {
+    pub fn new(filter: ObjectFilter, display: String) -> Self {
+        Self { filter, display }
+    }
+}
+
+impl StaticAbilityKind for AddChosenBasicLandTypeForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddChosenBasicLandType
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        let Some(chosen_type) = game.chosen_basic_land_type(source) else {
+            return Vec::new();
+        };
+
+        vec![
+            ContinuousEffect::new(
+                source,
+                controller,
+                effect_target_for_filter(source, &self.filter),
+                Modification::AddSubtypes(vec![chosen_type]),
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+        ]
+    }
+}
+
 /// "Objects are the chosen color in addition to their other colors."
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddChosenColorForFilter {

@@ -2828,6 +2828,13 @@ impl StaticAbility {
         Self::new(AddChosenCreatureTypeForFilter::new(filter, display))
     }
 
+    pub fn add_chosen_basic_land_type(
+        filter: crate::target::ObjectFilter,
+        display: String,
+    ) -> Self {
+        Self::new(AddChosenBasicLandTypeForFilter::new(filter, display))
+    }
+
     pub fn add_chosen_color(filter: crate::target::ObjectFilter, display: String) -> Self {
         Self::new(AddChosenColorForFilter::new(filter, display))
     }

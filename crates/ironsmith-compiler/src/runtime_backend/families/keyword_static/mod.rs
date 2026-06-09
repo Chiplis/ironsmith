@@ -190,7 +190,6 @@ fn keyword_static_shape_matches_last_word<'a>(words: &[&str], shape: ClauseShape
         .is_some_and(|word| keyword_static_shape_matches_word(word, shape))
 }
 
-const AS_ENTERS_AURA_SUBJECTS: &[(&str, &str)] = &[("aura", "this Aura")];
 const LOSES_ALL_OTHER_CREATURE_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -4654,7 +4653,7 @@ pub(crate) fn parse_choose_basic_land_type_as_enters_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let Some((tail_tokens, display_subject)) =
-        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_AURA_SUBJECTS)
+        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS_WITH_AURA)
     else {
         return Ok(None);
     };
@@ -8618,6 +8617,12 @@ pub(crate) fn parse_subject_are_card_types_in_addition_to_their_other_types_line
     };
     if CHOSEN_TYPE_PATTERN.matches(added_clause) {
         let filter = parse_object_filter_lexed(subject_tokens, false)?;
+        if filter.card_types.contains(&CardType::Land) {
+            return Ok(Some(vec![StaticAbility::add_chosen_basic_land_type(
+                filter,
+                render_token_slice(tokens),
+            )]));
+        }
         return Ok(Some(vec![StaticAbility::add_chosen_creature_type(
             filter,
             render_token_slice(tokens),

@@ -8944,6 +8944,103 @@ fn painters_servant_definition() -> CardDefinition {
     parse_oracle_card_definition("Painter's Servant")
 }
 
+#[test]
+fn realmwright_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Realmwright");
+
+    let def = parse_oracle_card_definition("Realmwright");
+    let ids: Vec<StaticAbilityId> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(ids.contains(&StaticAbilityId::ChooseBasicLandTypeAsEnters));
+    assert!(ids.contains(&StaticAbilityId::AddChosenBasicLandType));
+    assert!(
+        !ids.contains(&StaticAbilityId::RuleFallbackText)
+            && !ids.contains(&StaticAbilityId::UnsupportedParserLine),
+        "expected strict Realmwright static abilities, got {ids:?}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("As this creature enters, choose a basic land type."),
+        "expected Realmwright choose-basic-land-type as-enters wording, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Lands you control are the chosen type in addition to their other types."),
+        "expected Realmwright chosen basic land type static wording, got {rendered}"
+    );
+}
+
+#[test]
+fn realmwright_adds_chosen_basic_land_type_to_lands_you_control_only() {
+    let def = parse_oracle_card_definition("Realmwright");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_land_card = crate::card::CardBuilder::new(CardId::from_raw(2), "Alice Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let bob_land_card = crate::card::CardBuilder::new(CardId::from_raw(3), "Bob Island")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+    let alice_land =
+        game.create_object_from_card(&alice_land_card, alice, crate::zone::Zone::Battlefield);
+    let bob_land =
+        game.create_object_from_card(&bob_land_card, bob, crate::zone::Zone::Battlefield);
+
+    let realmwright_in_hand =
+        game.create_object_from_definition(&def, alice, crate::zone::Zone::Hand);
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(
+            realmwright_in_hand,
+            crate::zone::Zone::Battlefield,
+            &mut dm,
+        )
+        .expect("Realmwright should enter and choose a basic land type");
+    let realmwright = result.new_id;
+
+    assert_eq!(
+        game.chosen_basic_land_type(realmwright),
+        Some(Subtype::Plains),
+        "select-first decision maker should choose Plains"
+    );
+
+    let alice_land_chars = game
+        .calculated_characteristics(alice_land)
+        .expect("Alice's land should have calculated characteristics");
+    assert!(
+        alice_land_chars.subtypes.contains(&Subtype::Forest),
+        "Realmwright should preserve original land subtypes"
+    );
+    assert!(
+        alice_land_chars.subtypes.contains(&Subtype::Plains),
+        "Realmwright should add the chosen basic land type to lands Alice controls"
+    );
+
+    let bob_land_chars = game
+        .calculated_characteristics(bob_land)
+        .expect("Bob's land should have calculated characteristics");
+    assert!(
+        bob_land_chars.subtypes.contains(&Subtype::Island),
+        "opposing lands should keep their original subtype"
+    );
+    assert!(
+        !bob_land_chars.subtypes.contains(&Subtype::Plains),
+        "Realmwright should not affect lands controlled by opponents"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn painters_servant_strict_parse_and_compiled_text_regression() {
