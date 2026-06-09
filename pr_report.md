@@ -24,11 +24,12 @@ equivalent to the oracle text even when wording differs.
 
 **29 previously-failing cards now compile.** No card that compiled at baseline regressed.
 
-> **Update (test regressions):** post-merge the suite had **57 failures**; after two rounds of
-> root-cause fixes (no cards dropped) the `ironsmith-runtime` suite is at **8 failures /
-> 6815 passing**, all 9 architectural ratchet lints green (`ironsmith-tools` 429/429). The 8
-> remaining failures are exactly two unimplemented mechanics — Katara's **Waterbend** keyword-cost
-> (×5) and Captain Howler's **linked "that creature" delayed trigger** (×3). See *Follow-up 2* below.
+> **Update (test regressions): all fixed.** Post-merge the suite had **57 failures**; after three
+> rounds of root-cause fixes (no cards dropped) the full `ironsmith-runtime` suite is **6823/6823
+> passing (0 failures, 3 skipped)**, `ironsmith-compiler` 1154/1154, and all architectural ratchet
+> lints green (`ironsmith-tools` 429/429). The final two mechanics — Captain Howler's **linked
+> "that creature" delayed trigger** (×3) and Katara's **Waterbend** keyword-cost (×5) — are now
+> implemented. See *Follow-up 2* and *Follow-up 3* below.
 
 ## The big picture: why conflicts were heavy
 
@@ -291,3 +292,25 @@ exactly two large, unimplemented mechanics (Captain Howler ×3, Katara ×5).
   sentence to a tagged-source delayed trigger — and allowing "that creature" as a back-reference in the
   trigger-subject parser (used by hundreds of cards) — is a multi-file feature with real regression
   risk, deliberately left for focused work rather than rushed.
+
+# Follow-up 3: implementing the last two mechanics (0 failures)
+
+Both remaining mechanics are now implemented; the full `ironsmith-runtime` suite passes
+**6823/6823** with all ratchet lints green.
+
+- **Captain Howler, Sea Scourge (×3)** — extended the existing "Whenever … this turn, …" delayed-
+  trigger parser (`parse_sentence_delayed_trigger_this_turn`) to recognize "that creature deals combat
+  damage to a player" and build `TriggerSpec::DealsCombatDamageToPlayer` with an IT_TAG-bound source.
+  Added a `DealsCombatDamageToPlayer` case to the `DelayedTriggerThisTurn` lowering that schedules from
+  the prior target's tag (`ScheduleDelayedTriggerEffect::from_tag` + `DelayedTriggerSpec::
+  DealsCombatDamageToPlayer { source: ObjectFilter::source() }`, expiring at end of turn) — mirroring
+  the established "that creature dies this turn" path. The delayed trigger watches only the pumped
+  creature; rendering and runtime behavior verified.
+- **Katara, Seeking Revenge (×5)** — implemented **Waterbend** as an optional additional cost. "you
+  may waterbend {N}" lowers to a one-of cost with N+1 branches: pay {N} with mana, or tap untapped
+  artifacts/creatures you control (each paying {1}), down to fully tapping N permanents. Each tap
+  branch chooses the permanents (tag `waterbend_cost_N`) and taps them as the cost resolves. The ETB
+  "discard a card unless its additional cost was paid" (`Not(ThisSpellPaidLabel)` + discard) and the
+  Lesson-card +1/+1 scaling already lowered. Fixed an eager `.costs()` read in
+  `describe_optional_cost_line` that panicked on one-of costs, and aligned the worker test's ETB/anthem
+  render expectations to local conventions.
