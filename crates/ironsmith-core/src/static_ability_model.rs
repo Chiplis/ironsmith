@@ -4253,6 +4253,10 @@ pub struct Anthem {
     pub power: AnthemValue,
     pub toughness: AnthemValue,
     pub condition: Option<Condition>,
+    /// True when the original oracle text expressed the scaling count with a
+    /// "where X is …" clause rather than "for each …". Purely a surface hint
+    /// for rendering; the count itself is identical either way.
+    pub count_uses_where_x: bool,
 }
 
 impl Anthem {
@@ -4262,6 +4266,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            count_uses_where_x: false,
         }
     }
     pub fn for_source(power: i32, toughness: i32) -> Self {
@@ -4270,6 +4275,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            count_uses_where_x: false,
         }
     }
     pub fn with_values(mut self, power: AnthemValue, toughness: AnthemValue) -> Self {
@@ -4279,6 +4285,10 @@ impl Anthem {
     }
     pub fn with_condition(mut self, condition: Condition) -> Self {
         self.condition = Some(condition);
+        self
+    }
+    pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
+        self.count_uses_where_x = uses_where_x;
         self
     }
 }

@@ -844,6 +844,23 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
     }
 }
 
+/// "for each" subject for counts the primary helper leaves unhandled but which
+/// still read naturally with a "for each" surface — currently cards matched in a
+/// graveyard (e.g. "for each Lesson card in your graveyard"). Only consulted when
+/// the original oracle text did not use a "where X is" clause.
+fn describe_anthem_for_each_graveyard_count_expression(
+    expr: &AnthemCountExpression,
+) -> Option<String> {
+    match expr {
+        AnthemCountExpression::MatchingFilter(filter)
+            if filter.zone == Some(Zone::Graveyard) =>
+        {
+            Some(strip_article(filter.description()))
+        }
+        _ => None,
+    }
+}
+
 fn describe_anthem_where_x_count_expression(expr: &AnthemCountExpression) -> String {
     match expr {
         AnthemCountExpression::GreatestManaValueAmong(filter) => {
@@ -1833,6 +1850,9 @@ pub struct Anthem {
     pub toughness: AnthemValue,
     /// Optional activation condition.
     pub condition: Option<crate::ConditionExpr>,
+    /// True when the original oracle text scaled with a "where X is …" clause
+    /// rather than "for each …". Surface hint for rendering only.
+    pub count_uses_where_x: bool,
 }
 
 impl Anthem {
@@ -1843,6 +1863,7 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            count_uses_where_x: false,
         }
     }
 
@@ -1853,12 +1874,18 @@ impl Anthem {
             power: AnthemValue::Fixed(power),
             toughness: AnthemValue::Fixed(toughness),
             condition: None,
+            count_uses_where_x: false,
         }
     }
 
     pub fn with_values(mut self, power: AnthemValue, toughness: AnthemValue) -> Self {
         self.power = power;
         self.toughness = toughness;
+        self
+    }
+
+    pub fn with_count_uses_where_x(mut self, uses_where_x: bool) -> Self {
+        self.count_uses_where_x = uses_where_x;
         self
     }
 
@@ -2021,6 +2048,15 @@ impl StaticAbilityKind for Anthem {
                     {
                         return format!("Creatures you control get +1/+1 for each {count_subject}");
                     }
+                    return format!("{subject} {verb} +1/+1 for each {count_subject}");
+                }
+                // The original oracle wrote "for each …" (no "where X is" clause):
+                // prefer the "for each" surface for counts the primary helper can't
+                // express on its own, such as cards in a graveyard.
+                if !self.count_uses_where_x
+                    && let Some(count_subject) =
+                        describe_anthem_for_each_graveyard_count_expression(power_count)
+                {
                     return format!("{subject} {verb} +1/+1 for each {count_subject}");
                 }
                 format!(

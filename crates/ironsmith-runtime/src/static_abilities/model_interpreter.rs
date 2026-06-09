@@ -855,7 +855,8 @@ impl StaticAbilityModelInterpreter {
                         .with_values(anthem.power.clone(), anthem.toughness.clone()),
                     None => crate::static_abilities::Anthem::for_source(0, 0)
                         .with_values(anthem.power.clone(), anthem.toughness.clone()),
-                };
+                }
+                .with_count_uses_where_x(anthem.count_uses_where_x);
                 if let Some(condition) = &anthem.condition {
                     converted = converted.with_condition(condition.clone());
                 }

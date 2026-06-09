@@ -1888,6 +1888,7 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
         power: AnthemValue::Fixed(power),
         toughness: AnthemValue::Fixed(toughness),
         condition: None,
+        count_uses_where_x: false,
     };
     out.push(build_anthem_static_ability(&anthem_clause).into());
 

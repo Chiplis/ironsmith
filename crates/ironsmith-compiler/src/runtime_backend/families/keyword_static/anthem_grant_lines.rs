@@ -1815,6 +1815,7 @@ pub(crate) fn parse_granted_keyword_static_line(
         power: AnthemValue::Fixed(0),
         toughness: AnthemValue::Fixed(0),
         condition,
+        count_uses_where_x: false,
     };
     for (ability, display) in object_ability_grants {
         compiled.push(grant_object_ability_for_anthem_subject(
@@ -2324,6 +2325,9 @@ pub(crate) struct ParsedAnthemClause {
     pub(crate) power: AnthemValue,
     pub(crate) toughness: AnthemValue,
     pub(crate) condition: Option<crate::ConditionExpr>,
+    /// Whether the scaling count was written as "where X is …" (vs "for each …")
+    /// in the original oracle text. Surface hint preserved for rendering.
+    pub(crate) count_uses_where_x: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3819,12 +3823,14 @@ pub(crate) fn parse_anthem_clause(
         }
     };
     let mut scale: Option<AnthemCountExpression> = None;
+    let mut count_uses_where_x = false;
     let mut suffix_condition: Option<crate::ConditionExpr> = None;
     let mut suffix_attached_subject: Option<ObjectFilter> = None;
     if explicit_values.is_none() && !tail_tokens.is_empty() {
         if token_slice_starts_with(&tail_tokens, &["for", "each"]) {
             scale = Some(parse_anthem_for_each_expression(&tail_tokens)?);
         } else if token_slice_starts_with(&tail_tokens, &["where", "x", "is"]) {
+            count_uses_where_x = true;
             let x_value = parse_value_binding_clause(&tail_tokens).ok_or_else(|| {
                 CardTextError::ParseError(format!(
                     "unsupported where-x anthem clause (clause: '{}')",
@@ -3949,6 +3955,7 @@ pub(crate) fn parse_anthem_clause(
         power,
         toughness,
         condition,
+        count_uses_where_x,
     })
 }
 
@@ -4020,7 +4027,8 @@ pub(crate) fn build_anthem_static_ability(clause: &ParsedAnthemClause) -> Static
         AnthemSubjectAst::Source => Anthem::for_source(0, 0),
         AnthemSubjectAst::Filter(filter) => Anthem::new(filter.clone(), 0, 0),
     }
-    .with_values(clause.power.clone(), clause.toughness.clone());
+    .with_values(clause.power.clone(), clause.toughness.clone())
+    .with_count_uses_where_x(clause.count_uses_where_x);
 
     if let Some(condition) = &clause.condition {
         anthem = anthem.with_condition(condition.clone());
@@ -4488,6 +4496,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
             power: AnthemValue::Fixed(0),
             toughness: AnthemValue::Fixed(0),
             condition: None,
+            count_uses_where_x: false,
         };
         for action in actions
             .into_iter()
@@ -4594,6 +4603,7 @@ pub(crate) fn parse_anthem_and_keyword_line(
                 power: AnthemValue::Fixed(0),
                 toughness: AnthemValue::Fixed(0),
                 condition: None,
+                count_uses_where_x: false,
             }
         };
 
@@ -5929,6 +5939,7 @@ pub(crate) fn lower_granted_tail_for_anthem_subject(
         power: AnthemValue::Fixed(0),
         toughness: AnthemValue::Fixed(0),
         condition: condition.clone(),
+        count_uses_where_x: false,
     };
     let mut granted = Vec::new();
     if !granted_tail.granted_static.is_empty() {
