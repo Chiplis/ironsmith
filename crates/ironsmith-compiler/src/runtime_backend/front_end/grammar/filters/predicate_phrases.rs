@@ -193,7 +193,7 @@ const IS_OR_ARE_WORDS: &[&str] = &["is", "are"];
 const BE_VERB_WORDS: &[&str] = &["is", "are", "was", "were"];
 const MANA_SYMBOL_WORDS: &[&str] = &["w", "u", "b", "r", "g", "c", "s"];
 const SOURCE_FILTER_IGNORED_DESCRIPTOR_WORDS: &[&str] =
-    &["attached", "tapped", "untapped", "saddled"];
+    &["attached", "tapped", "untapped", "saddled", "crewed"];
 const AURA_WORDS: &[&str] = &["aura", "auras"];
 const CONTROL_WORD: &str = "control";
 const CONTROL_OR_CONTROLS_WORDS: &[&str] = &["control", "controls"];

@@ -60,6 +60,13 @@ fn normalize_until_your_next_turn_duration_order(line: &str) -> String {
     if body.starts_with("Until your next turn") {
         return line.to_string();
     }
+    // This reorder was tailored to loyalty abilities that set base power/toughness or
+    // reduce casting cost (e.g. Will Kenrith). Don't hoist the duration for unrelated
+    // clauses like "you gain protection from everything until your next turn".
+    let body_lower = body.to_ascii_lowercase();
+    if !body_lower.contains("base power and toughness") && !body_lower.contains("less to cast") {
+        return line.to_string();
+    }
     let (prefix, duration_body) = if let Some((head, tail)) = body.rsplit_once(". ") {
         (format!("{head}. "), tail)
     } else if let Some((head, tail)) = body.split_once(": ") {

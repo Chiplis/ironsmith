@@ -39722,7 +39722,19 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else {
                 format!("{spell_text} spells")
             };
-            if let Some(cast_by) = grant_next_spell_cost_reduction.filter.cast_by.as_ref() {
+            // The exile-cast-by-self surface ("spells you cast from exile") already names
+            // the caster, so don't re-append it (which produced "... you casts cost ...").
+            let cast_by_already_in_plural = grant_next_spell_cost_reduction.filter.zone
+                == Some(Zone::Exile)
+                && grant_next_spell_cost_reduction
+                    .filter
+                    .cast_by
+                    .as_ref()
+                    .is_some_and(|cast_by| cast_by == &grant_next_spell_cost_reduction.player)
+                && grant_next_spell_cost_reduction.filter.card_types.is_empty();
+            if let Some(cast_by) = grant_next_spell_cost_reduction.filter.cast_by.as_ref()
+                && !cast_by_already_in_plural
+            {
                 let caster_text = if matches!(cast_by, PlayerFilter::Target(_)) {
                     "that player".to_string()
                 } else {
