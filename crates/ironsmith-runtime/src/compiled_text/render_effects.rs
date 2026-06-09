@@ -18071,26 +18071,20 @@ pub(super) fn describe_inline_ability_with_self_subject(
                 ));
             }
             if let Some(x_definition) = trailing_x_definition {
-                if !line.is_empty() {
-                    line.push_str(". ");
-                }
-                line.push_str(&x_definition);
+                append_sentence_clause(&mut line, &x_definition);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
             );
             if !restriction_clauses.is_empty() {
-                if !line.is_empty() {
-                    line.push_str(". ");
-                }
-                line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+                append_activation_clause(
+                    &mut line,
+                    &join_activation_restriction_clauses(&restriction_clauses),
+                );
             }
             for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
-                if !line.is_empty() {
-                    line.push_str(". ");
-                }
-                line.push_str(&clause);
+                append_activation_clause(&mut line, &clause);
             }
             let line = if line.is_empty() {
                 "an activated ability".to_string()
@@ -32704,6 +32698,18 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             }
             return format!("Double the number of {counter_text} on each {filter_text}");
         }
+        if matches!(
+            double_counters.target.base(),
+            ChooseSpec::Player(_)
+                | ChooseSpec::SpecificPlayer(_)
+                | ChooseSpec::EachPlayer(_)
+                | ChooseSpec::SourceController
+                | ChooseSpec::SourceOwner
+        ) {
+            let player_text = describe_choose_spec(&double_counters.target);
+            let verb = if player_text == "you" { "have" } else { "has" };
+            return format!("Double the number of {counter_text} {player_text} {verb}");
+        }
         return format!(
             "Double the number of {counter_text} on {}",
             describe_choose_spec(&double_counters.target)
@@ -40331,6 +40337,32 @@ pub(super) fn join_activation_restriction_clauses(clauses: &[String]) -> String 
     line
 }
 
+fn append_sentence_clause(line: &mut String, clause: &str) {
+    if !line.is_empty() {
+        if line.ends_with('.') || line.ends_with('!') || line.ends_with('?') {
+            line.push(' ');
+        } else {
+            line.push_str(". ");
+        }
+    }
+    line.push_str(clause);
+}
+
+fn append_activation_clause(line: &mut String, clause: &str) {
+    let Some(newline_idx) = line.find('\n') else {
+        append_sentence_clause(line, clause);
+        return;
+    };
+
+    let mut header = line[..newline_idx].trim_end().to_string();
+    if let Some(stripped) = header.strip_suffix('—') {
+        header = stripped.trim_end().to_string();
+    }
+    append_sentence_clause(&mut header, clause);
+    header.push_str(&line[newline_idx..]);
+    *line = header;
+}
+
 pub(super) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if let AbilityKind::Activated(activated) = &ability.kind
         && let Some(craft) = describe_structural_craft_keyword(ability, activated)
@@ -43580,22 +43612,20 @@ pub(super) fn describe_ability(
                 line.push_str(&effects);
             }
             if let Some(x_definition) = trailing_x_definition {
-                if !line.is_empty() {
-                    line.push_str(". ");
-                }
-                line.push_str(&x_definition);
+                append_sentence_clause(&mut line, &x_definition);
             }
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
             );
             if !restriction_clauses.is_empty() {
-                line.push_str(". ");
-                line.push_str(&join_activation_restriction_clauses(&restriction_clauses));
+                append_activation_clause(
+                    &mut line,
+                    &join_activation_restriction_clauses(&restriction_clauses),
+                );
             }
             for clause in describe_mana_usage_restriction_clauses_for_activated(activated) {
-                line.push_str(". ");
-                line.push_str(&clause);
+                append_activation_clause(&mut line, &clause);
             }
             if is_grandeur_activation_cost(activated) {
                 line = format!("Grandeur — {line}");

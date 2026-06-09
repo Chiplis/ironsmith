@@ -6,7 +6,9 @@ use crate::effect::Value;
 use crate::target::PlayerFilter;
 use ironsmith_core::ValueSurfaceHint;
 
-use super::activation_and_restrictions::activated_line_core::infer_activated_functional_zones_lexed;
+use super::activation_and_restrictions::activated_line_core::{
+    infer_activated_functional_zones_lexed, parse_activate_only_timing_lexed,
+};
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
 use super::grammar::primitives as grammar;
@@ -112,6 +114,14 @@ pub(crate) fn parse_modal_header(info: &LineInfo) -> Result<Option<ModalHeader>,
                 activation_restrictions: Vec::new(),
             });
             effect_start_idx = colon_idx + 1;
+        }
+    }
+
+    if let Some(activated) = activated.as_mut() {
+        for sentence in split_lexed_sentences(&tokens[choose_idx + 1..]) {
+            if let Some(timing) = parse_activate_only_timing_lexed(sentence) {
+                activated.timing = timing;
+            }
         }
     }
 

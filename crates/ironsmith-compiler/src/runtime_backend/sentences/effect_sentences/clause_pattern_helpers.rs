@@ -877,6 +877,17 @@ pub(crate) fn parse_double_counters_clause(
         )
     };
 
+    let counter_holder_words = crate::runtime_backend::token_word_refs(&tokens[counters_idx + 1..]);
+    if matches!(counter_holder_words.as_slice(), ["you", "have"]) {
+        return Ok(Some(EffectAst::subject_verb_double_counters_on_target(
+            counter_type,
+            TargetAst::Player(
+                PlayerFilter::You,
+                span_from_tokens(&tokens[counters_idx + 1..]),
+            ),
+        )));
+    }
+
     let on_idx = find_token_index(&tokens[counters_idx + 1..], |token| {
         CLAUSE_ON_WORD_PATTERN.matches_token(token)
     })
