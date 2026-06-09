@@ -1470,8 +1470,8 @@ pub(crate) fn parse_player_has_quantity_object_condition(
         LexPattern::object("object", LexCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
-    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
     let player = parse_player_has_quantity_subject_clause(relation.subject_clause)?;
+    let matched = LexPattern::new(&atoms).match_clause(relation.tail_clause)?;
     let amount_capture = matched.capture_by_role(LexCaptureRole::Amount)?;
     if amount_capture.word_range.is_empty() {
         return None;

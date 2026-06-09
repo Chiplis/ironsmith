@@ -3590,6 +3590,11 @@ fn parse_player_cards_in_hand_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         crate::effect::Comparison::LessThan(count) if count > 0 => {
             Some(cards_in_hand_or_fewer(player, (count - 1) as u32, at_turn_start))
         }
+        // "you have a card in hand" parses as Equal(1) but means "at least one";
+        // map the count-or-more reading so the turn-start variant resolves.
+        crate::effect::Comparison::Equal(count) if count >= 0 => {
+            Some(cards_in_hand_or_more(player, count as u32, at_turn_start))
+        }
         _ => None,
     }
 }
