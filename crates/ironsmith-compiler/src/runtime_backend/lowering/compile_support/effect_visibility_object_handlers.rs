@@ -146,6 +146,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_object_tag = Some(tag.as_str().to_string());
             if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
                 ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
             }
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
@@ -174,6 +175,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_object_tag = Some(tag.as_str().to_string());
             if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
                 ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
             }
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
@@ -205,6 +207,7 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_object_tag = Some(tag.as_str().to_string());
             if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
                 ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+                ctx.last_exiled_collection_is_plural = count.max.map_or(true, |max| max > 1);
             }
             ctx.last_player_filter = Some(chooser);
             (effects, subject.into_choices())

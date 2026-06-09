@@ -51,6 +51,10 @@ pub(crate) struct LoweringFrame {
     pub(crate) snapshot_tag_aliases: Vec<(String, String)>,
     pub(crate) last_revealed_tag: Option<String>,
     pub(crate) last_exiled_collection_tag: Option<String>,
+    /// True when the most recent exile/choose that bound an exiled-collection
+    /// tag set aside more than one card (a dynamic or fixed >1 count). Drives
+    /// "those exiled cards" (plural) vs "that card" cast-permission wording.
+    pub(crate) last_exiled_collection_is_plural: bool,
     pub(crate) last_player_filter: Option<PlayerFilter>,
     pub(crate) source_object_antecedent: bool,
     pub(crate) recent_player_choice_tags: Vec<String>,

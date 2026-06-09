@@ -1425,6 +1425,7 @@ fn compile_subject_verb_effect(
             let resolved_count =
                 subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();
+            let exiled_is_plural = !matches!(&resolved_count, crate::effect::Value::Fixed(1));
             let mut effect =
                 crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
             for tag in tags {
@@ -1437,6 +1438,10 @@ fn compile_subject_verb_effect(
             }
             if let Some(tag) = tags.first().or_else(|| accumulated_tags.first()) {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
+                if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str()) {
+                    ctx.last_exiled_collection_tag = Some(resolved_tag.as_str().to_string());
+                }
+                ctx.last_exiled_collection_is_plural = exiled_is_plural;
                 ctx.last_object_tag = Some(resolved_tag.as_str().to_string());
             }
             ctx.last_player_filter = Some(player_filter);
@@ -2464,6 +2469,11 @@ fn compile_subject_verb_effect(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
+                && ctx.last_exiled_collection_is_plural
+            {
+                grant_play = grant_play.cast_pool_is_plural(true);
+            }
             if *while_on_top_of_library {
                 grant_play = grant_play.while_on_top_of_library();
             }

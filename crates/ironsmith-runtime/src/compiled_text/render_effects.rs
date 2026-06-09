@@ -26675,8 +26675,15 @@ fn describe_exile_top_then_play(
     };
 
     if !grant_play.allow_land && !singular_count {
+        let pool_text = if grant_play.tag.as_str() == "exiled"
+            || crate::cards::is_sentence_helper_tag(grant_play.tag.as_str(), "exiled")
+        {
+            "those exiled cards"
+        } else {
+            "those cards"
+        };
         return Some(format!(
-            "{exile_clause}. {duration_text}, {player} may cast spells from among those cards{mana_suffix}"
+            "{exile_clause}. {duration_text}, {player} may cast spells from among {pool_text}{mana_suffix}"
         ));
     }
 
@@ -39397,7 +39404,7 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             && grant_play_tagged.duration == crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
             && matches!(grant_play_tagged.player, PlayerFilter::You)
         {
-            if helper_exiled {
+            if helper_exiled && !grant_play_tagged.cast_pool_is_plural {
                 return "you may cast that card this turn".to_string();
             }
             let cards_text = if grant_play_tagged.tag.as_str() == "exiled"

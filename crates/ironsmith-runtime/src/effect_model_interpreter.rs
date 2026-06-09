@@ -1162,7 +1162,8 @@ where
             payload.allow_land,
             payload.allow_any_color_for_cast,
         )
-        .while_on_top_of_library_if(payload.while_on_top_of_library);
+        .while_on_top_of_library_if(payload.while_on_top_of_library)
+        .cast_pool_is_plural(payload.cast_pool_is_plural);
         if let Some(filter) = payload.filter.clone() {
             grant = grant.with_filter(filter);
         }

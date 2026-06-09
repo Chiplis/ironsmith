@@ -22,6 +22,10 @@ pub struct GrantPlayTaggedEffect {
     pub allow_any_color_for_cast: bool,
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
+    /// True when the granted pool holds more than one card, selecting plural
+    /// "cast spells from among those exiled cards" wording over the singular
+    /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
+    pub cast_pool_is_plural: bool,
 }
 
 impl GrantPlayTaggedEffect {
@@ -40,7 +44,13 @@ impl GrantPlayTaggedEffect {
             allow_any_color_for_cast,
             while_on_top_of_library: false,
             filter: None,
+            cast_pool_is_plural: false,
         }
+    }
+
+    pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
+        self.cast_pool_is_plural = plural;
+        self
     }
 
     pub fn while_on_top_of_library(mut self) -> Self {
