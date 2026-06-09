@@ -39629,6 +39629,42 @@ fn parse_additional_cost_sacrificed_power_reference_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn tormented_thoughts_strict_parser_and_compiled_text_regression() {
+    let def = parse_oracle_card_definition("Tormented Thoughts");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let lower = rendered.to_ascii_lowercase();
+    assert!(
+        lower.contains("as an additional cost to cast this spell, sacrifice a creature"),
+        "expected Tormented Thoughts sacrifice additional cost, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "Target player discards a number of cards equal to the sacrificed creature's power"
+        ),
+        "expected Tormented Thoughts to render dynamic sacrificed-power discard count, got {rendered}"
+    );
+
+    let discard = def
+        .spell_effect
+        .as_ref()
+        .expect("Tormented Thoughts should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>().cloned())
+        .expect("Tormented Thoughts should lower to a discard effect");
+    assert!(
+        matches!(
+            &discard.count,
+            crate::effect::Value::PowerOf(spec)
+                if matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == "sacrificed_0")
+        ),
+        "expected Tormented Thoughts discard count to reference the sacrificed creature cost tag, got {:?}",
+        discard.count
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn soulblast_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Soulblast");
     let rendered = unprocessed_compiled_lines(&def).join(" ");

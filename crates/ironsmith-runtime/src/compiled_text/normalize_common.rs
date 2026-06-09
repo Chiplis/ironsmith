@@ -6250,6 +6250,13 @@ pub(super) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter
             Value::ColorsAmong(filter) => {
                 format!("a card for each {}", describe_colors_among(filter))
             }
+            Value::SourcePower
+            | Value::SourceToughness
+            | Value::PowerOf(_)
+            | Value::ToughnessOf(_)
+            | Value::ManaValueOf(_) => {
+                format!("a number of cards equal to {}", describe_value(value))
+            }
             _ => describe_card_count(value),
         };
     };

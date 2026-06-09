@@ -122,6 +122,22 @@ fn parse_discard_count_prefix(tokens: &[OwnedLexToken]) -> Option<(Value, bool, 
     Some((value, any_number, used))
 }
 
+fn parse_discard_number_of_cards_equal_count(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, usize)> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let prefix_len = [
+        &["a", "number", "of", "cards", "equal", "to"][..],
+        &["the", "number", "of", "cards", "equal", "to"],
+        &["number", "of", "cards", "equal", "to"],
+    ]
+    .iter()
+    .find_map(|prefix| words.starts_with(prefix).then_some(prefix.len()))?;
+    let value_token_idx = token_index_for_word_index(tokens, prefix_len)?;
+    let (value, used_value_tokens) = parse_value(&tokens[value_token_idx..])?;
+    Some((value, value_token_idx + used_value_tokens))
+}
+
 fn wrap_unless_escaped(effect: EffectAst, unless_escaped: bool) -> EffectAst {
     if unless_escaped {
         EffectAst::Conditional {
@@ -504,6 +520,21 @@ pub(crate) fn parse_discard(
             false,
             Some(tagged_filter),
             None,
+        ));
+    }
+
+    if let Some((count, used)) = parse_discard_number_of_cards_equal_count(tokens) {
+        let trailing_tokens = trim_commas(&tokens[used..]);
+        let trailing_words = crate::runtime_backend::token_word_refs(&trailing_tokens);
+        let random = DISCARD_AT_RANDOM_PATTERN.matches_words(&trailing_words);
+        if !trailing_words.is_empty() && !random {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing discard clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        }
+        return Ok(EffectAst::subject_verb_discard(
+            player, count, random, false, None, None,
         ));
     }
 

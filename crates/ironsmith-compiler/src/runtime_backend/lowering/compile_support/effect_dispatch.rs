@@ -5279,7 +5279,7 @@ fn compile_subject_verb_effect(
                     (subject.into_player_filter(), subject.into_choices())
                 };
             let subject = LoweredSubject::from_resolved(resolved_player.clone(), choices);
-            let mut resolved_count = count.clone();
+            let mut resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             subject.apply_player_refs_to_value(&mut resolved_count, ctx);
             let resolved_filter = resolved_filter
                 .map(|resolved| subject.bind_discard_filter(&resolved, ctx))
