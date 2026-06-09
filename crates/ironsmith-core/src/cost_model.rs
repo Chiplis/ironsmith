@@ -862,6 +862,10 @@ impl OptionalCostsPaid {
                 && stored
                     .to_ascii_lowercase()
                     .starts_with("as an additional cost to cast this spell, you may behold "))
+            || (query.eq_ignore_ascii_case("Additional")
+                && stored
+                    .to_ascii_lowercase()
+                    .starts_with("as an additional cost to cast this spell, you may "))
     }
 
     pub fn new(num_optional_costs: usize) -> Self {

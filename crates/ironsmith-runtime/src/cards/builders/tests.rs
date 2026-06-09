@@ -669,6 +669,259 @@ fn consulate_surveillance_activation_cost_requires_and_spends_two_energy() {
 }
 
 #[test]
+fn katara_seeking_revenge_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Katara, Seeking Revenge");
+    let def = parse_oracle_card_definition("Katara, Seeking Revenge");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let raw = format!("{def:#?}");
+
+    assert!(
+        rendered.contains("As an additional cost to cast this spell, you may waterbend {2}.")
+            && rendered.contains(
+                "When Katara enters, draw a card, then discard a card unless its additional cost was paid",
+            )
+            && rendered.contains("Katara gets +1/+1 for each Lesson card in your graveyard"),
+        "Katara, Seeking Revenge compiled text should preserve waterbend, conditional discard, and Lesson scaling, got {rendered}"
+    );
+    assert!(
+        raw.contains("ThisSpellPaidLabel")
+            && raw.contains("Additional")
+            && raw.contains("ConditionalEffect")
+            && raw.contains("DiscardEffect")
+            && raw.contains("waterbend_cost_2"),
+        "Katara, Seeking Revenge should structurally lower waterbend and unless-paid discard, got {raw}"
+    );
+}
+
+#[test]
+fn katara_seeking_revenge_waterbend_optional_cost_has_mana_and_tap_branches() {
+    let def = parse_oracle_card_definition("Katara, Seeking Revenge");
+    assert_eq!(
+        def.optional_costs.len(),
+        1,
+        "Katara should have one optional waterbend cost"
+    );
+    assert!(
+        def.optional_costs[0]
+            .label
+            .to_ascii_lowercase()
+            .contains("waterbend {2}"),
+        "Katara optional cost label should preserve waterbend, got {:?}",
+        def.optional_costs[0].label
+    );
+
+    let branches = def.optional_costs[0]
+        .cost
+        .as_one_of()
+        .expect("waterbend {2} should lower to alternative payment branches");
+    assert_eq!(
+        branches.len(),
+        3,
+        "waterbend {{2}} should have 0, 1, and 2 tap branches"
+    );
+    assert_eq!(
+        branches[0].mana_cost().map(ManaCost::to_oracle),
+        Some("{2}".to_string()),
+        "first waterbend branch should be ordinary mana"
+    );
+    assert_eq!(
+        branches[1].mana_cost().map(ManaCost::to_oracle),
+        Some("{1}".to_string()),
+        "second waterbend branch should require one remaining generic mana"
+    );
+    assert!(
+        branches[2].mana_cost().is_none(),
+        "third waterbend branch should be fully paid by tapping"
+    );
+
+    for (branch, expected_count) in [(&branches[1], 1), (&branches[2], 2)] {
+        let choose = branch
+            .costs()
+            .iter()
+            .filter_map(|cost| cost.effect_ref())
+            .find_map(|effect| effect.downcast_ref::<ChooseObjectsEffect>())
+            .expect("waterbend tap branch should choose objects to tap");
+        assert_eq!(choose.count.min, expected_count);
+        assert_eq!(choose.count.max, Some(expected_count));
+        assert!(choose.filter.untapped, "waterbend choices must be untapped");
+        assert_eq!(choose.filter.controller, Some(PlayerFilter::You));
+        assert!(
+            choose
+                .filter
+                .any_of
+                .iter()
+                .any(|filter| filter.card_types.contains(&CardType::Artifact))
+                && choose
+                    .filter
+                    .any_of
+                    .iter()
+                    .any(|filter| filter.card_types.contains(&CardType::Creature)),
+            "waterbend choices should be artifacts or creatures, got {:?}",
+            choose.filter
+        );
+    }
+}
+
+#[test]
+fn katara_seeking_revenge_waterbend_tap_cost_taps_chosen_artifact_and_creature() {
+    struct ChooseFirstLegalObjects;
+
+    impl crate::decision::DecisionMaker for ChooseFirstLegalObjects {
+        fn decide_objects(
+            &mut self,
+            _game: &crate::game_state::GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            ctx.candidates
+                .iter()
+                .filter(|candidate| candidate.legal)
+                .map(|candidate| candidate.id)
+                .take(ctx.max.unwrap_or(ctx.min) as usize)
+                .collect()
+        }
+    }
+
+    let def = parse_oracle_card_definition("Katara, Seeking Revenge");
+    let tap_branch = &def.optional_costs[0]
+        .cost
+        .as_one_of()
+        .expect("waterbend cost should have branches")[2];
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let artifact = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Katara Waterbend Artifact")
+            .card_types(vec![CardType::Artifact])
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+    let creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Katara Waterbend Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(1, 1))
+            .build(),
+        alice,
+        Zone::Battlefield,
+    );
+
+    let mut dm = ChooseFirstLegalObjects;
+    let mut ctx = crate::costs::CostContext::new(source, alice, &mut dm);
+    for cost in tap_branch.costs() {
+        cost.pay(&mut game, &mut ctx)
+            .expect("waterbend tap cost branch should be payable");
+    }
+
+    assert!(
+        game.is_tapped(artifact),
+        "waterbend should tap the chosen artifact"
+    );
+    assert!(
+        game.is_tapped(creature),
+        "waterbend should tap the chosen creature"
+    );
+}
+
+#[test]
+fn katara_seeking_revenge_unpaid_additional_cost_discards_and_paid_cost_skips() {
+    fn hand_card(game: &mut crate::game_state::GameState, player: PlayerId, name: &str) {
+        let card = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .build();
+        game.create_object_from_definition(&card, player, Zone::Hand);
+    }
+
+    fn etb_conditional(def: &CardDefinition) -> crate::effects::ConditionalEffect {
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Triggered(triggered) => triggered
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .find_map(|effect| {
+                        effect
+                            .downcast_ref::<crate::effects::ConditionalEffect>()
+                            .cloned()
+                    }),
+                _ => None,
+            })
+            .expect("Katara ETB should include an unless-paid conditional discard")
+    }
+
+    let def = parse_oracle_card_definition("Katara, Seeking Revenge");
+    let conditional = etb_conditional(&def);
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    hand_card(&mut game, alice, "Katara Revenge Fodder");
+    let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
+    conditional
+        .execute(&mut game, &mut ctx)
+        .expect("unpaid Katara discard branch should resolve");
+    assert_eq!(game.player(alice).expect("Alice exists").hand.len(), 0);
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 1);
+
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.object_mut(katara)
+        .expect("Katara object exists")
+        .optional_costs_paid
+        .mark_label_paid(&def.optional_costs[0].label);
+    hand_card(&mut game, alice, "Katara Revenge Kept Card");
+    let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
+    conditional
+        .execute(&mut game, &mut ctx)
+        .expect("paid Katara discard branch should resolve");
+    assert_eq!(
+        game.player(alice).expect("Alice exists").hand.len(),
+        1,
+        "paying Katara's waterbend additional cost should skip the discard"
+    );
+    assert_eq!(game.player(alice).expect("Alice exists").graveyard.len(), 0);
+}
+
+#[test]
+fn katara_seeking_revenge_counts_lesson_cards_in_its_controllers_graveyard() {
+    let oracle_text = oracle_text_by_name()
+        .get("Katara, Seeking Revenge")
+        .expect("Katara oracle text should exist")
+        .clone();
+    let def = CardDefinitionBuilder::new(CardId::new(), "Katara, Seeking Revenge")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(oracle_text)
+        .expect("Katara oracle text should parse for runtime P/T check");
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let lesson = CardDefinitionBuilder::new(CardId::new(), "Katara Lesson")
+        .card_types(vec![CardType::Sorcery])
+        .subtypes(vec![Subtype::Lesson])
+        .build();
+    let non_lesson = CardDefinitionBuilder::new(CardId::new(), "Katara Non-Lesson")
+        .card_types(vec![CardType::Sorcery])
+        .build();
+
+    let chars = game
+        .calculated_characteristics(katara)
+        .expect("Katara should have calculated characteristics");
+    assert_eq!((chars.power, chars.toughness), (Some(3), Some(3)));
+
+    game.create_object_from_definition(&lesson, alice, Zone::Graveyard);
+    game.create_object_from_definition(&lesson, alice, Zone::Graveyard);
+    game.create_object_from_definition(&lesson, bob, Zone::Graveyard);
+    game.create_object_from_definition(&non_lesson, alice, Zone::Graveyard);
+
+    let chars = game
+        .calculated_characteristics(katara)
+        .expect("Katara should have calculated characteristics");
+    assert_eq!((chars.power, chars.toughness), (Some(5), Some(5)));
+}
+
+#[test]
 fn katara_waterbending_master_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Katara, Waterbending Master");
     let def = parse_oracle_card_definition("Katara, Waterbending Master");

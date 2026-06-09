@@ -1605,6 +1605,10 @@ fn is_this_spell_possessive_word(word: &str) -> bool {
     )
 }
 
+fn is_paid_cost_possessive_word(word: &str) -> bool {
+    matches!(word, "its" | "his" | "her" | "their")
+}
+
 fn ordinal_number_word(word: &str) -> Option<u32> {
     ironsmith_core::parse_ordinal_word(word).or_else(|| parse_named_number(word))
 }
@@ -4007,6 +4011,9 @@ fn parse_paid_cost_label_predicate(tokens: &[OwnedLexToken]) -> Option<Predicate
     let negated = paid_cost_tail_is_negated(paid_tail)?;
     let label = match label_words {
         ["this", possessive, label] if is_this_spell_possessive_word(possessive) => {
+            named_paid_cost_label_from_word(label)?
+        }
+        [possessive, label] if is_paid_cost_possessive_word(possessive) => {
             named_paid_cost_label_from_word(label)?
         }
         [label] => mana_cost_label_from_words(label_words)
