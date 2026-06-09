@@ -1022,11 +1022,11 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
     let mut rest = trim_commas(tokens);
     let mut counters = Vec::new();
 
-    while rest.first().is_some_and(|token| ETB_AND_WORD_PATTERN.matches_token(token)) {
+    while rest.first().is_some_and(|token| AND_WORD_PATTERN.matches_token(token)) {
         rest = trim_commas(&rest[1..]);
         let (count, used) = if rest
             .first()
-            .is_some_and(|token| ETB_ARTICLE_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| ARTICLE_WORD_PATTERN.matches_token(token))
         {
             (Value::Fixed(1), 1)
         } else {
@@ -1034,7 +1034,7 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
         };
         let counter_idx = crate::runtime_backend::grammar::primitives::find_token_index(
             &rest[used..],
-            |token| ETB_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token),
+            |token| COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token),
         )? + used;
         let counter_type = parse_counter_type_from_tokens(&rest[used..=counter_idx])?;
         counters.push((counter_type, count));
@@ -1080,7 +1080,7 @@ fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Ve
 
 fn parse_enters_with_counter_line(
     tokens: &[OwnedLexToken],
-) -> Result<Option<StaticAbility>, CardTextError> {
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
     parse_enters_with_counters_line(tokens)
 }
 
