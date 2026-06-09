@@ -414,7 +414,7 @@ fn finalize_ast_surface_line(line: String) -> String {
             "put a +1/+1 counter on each tapped creature you control. Untap them",
         );
     }
-    if lower.starts_with("creatures with mana value x or less loses all abilities until end of turn, then destroy all creatures with mana value x or less")
+    if lower.starts_with("creatures with mana value x or less lose all abilities until end of turn, then destroy all creatures with mana value x or less")
     {
         return "Each creature with mana value X or less loses all abilities until end of turn, then destroy those creatures.".to_string();
     }
