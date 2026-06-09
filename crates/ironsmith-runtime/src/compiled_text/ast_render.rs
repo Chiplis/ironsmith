@@ -640,6 +640,15 @@ fn describe_single_self_replacement_segment(
     ) {
         return Some(count_override_text);
     }
+    if let Some(mill_override_text) = describe_mill_count_override_self_replacement(
+        &segment.default_effects,
+        &branch.replacement_effects,
+        &default_text,
+        &replacement_text,
+        &condition_text,
+    ) {
+        return Some(mill_override_text);
+    }
     if let Some(draw_discard_text) = describe_target_player_draw_discard_self_replacement(
         &segment.default_effects,
         &branch.replacement_effects,
@@ -923,6 +932,20 @@ fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text
     {
         replacement = replacement.replacen("target creature", "that creature", 1);
     }
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target player")
+        && replacement.starts_with("target player ")
+    {
+        replacement = replacement.replacen("target player", "that player", 1);
+    }
+    if default_text
+        .to_ascii_lowercase()
+        .contains("target opponent")
+        && replacement.starts_with("target opponent ")
+    {
+        replacement = replacement.replacen("target opponent", "that opponent", 1);
+    }
     let default_lower = default_text.to_ascii_lowercase();
     if default_lower.contains("counter target")
         && default_lower.contains("spell unless")
@@ -1002,6 +1025,64 @@ fn describe_rendered_count_override_self_replacement(
         "{default_intro}. {default_choice}. If {condition_text}, {} instead. {default_rest}",
         super::normalize_common::lowercase_first(replacement_choice)
     ))
+}
+
+fn describe_mill_count_override_self_replacement(
+    default_effects: &[Effect],
+    replacement_effects: &[Effect],
+    default_text: &str,
+    replacement_text: &str,
+    condition_text: &str,
+) -> Option<String> {
+    let default_mill = single_mill_effect(default_effects)?;
+    let replacement_mill = single_mill_effect(replacement_effects)?;
+    if default_mill.player != replacement_mill.player {
+        return None;
+    }
+    if !mill_count_is_twice_default(&default_mill.count, &replacement_mill.count) {
+        return None;
+    }
+
+    let replacement_count = super::normalize_common::describe_value(&replacement_mill.count);
+    let mut replacement = rewrite_self_replacement_referent_phrase(default_text, replacement_text);
+    replacement = replacement
+        .trim_end_matches('.')
+        .replace(&format!("{replacement_count} cards"), "twice that many cards");
+    Some(format!("{default_text}. If {condition_text}, {replacement} instead"))
+}
+
+fn mill_count_is_twice_default(default_count: &Value, replacement_count: &Value) -> bool {
+    matches!(replacement_count, Value::Scaled(inner, 2) if inner.as_ref() == default_count)
+        || matches!((default_count, replacement_count), (Value::X, Value::XTimes(2)))
+}
+
+fn single_mill_effect(effects: &[Effect]) -> Option<&crate::effects::MillEffect> {
+    let mut found = None;
+    for effect in effects {
+        let Some(mill) = unwrap_basic_render_wrapper(effect)
+            .downcast_ref::<crate::effects::MillEffect>()
+        else {
+            continue;
+        };
+        if found.is_some() {
+            return None;
+        }
+        found = Some(mill);
+    }
+    found
+}
+
+fn unwrap_basic_render_wrapper(effect: &Effect) -> &Effect {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return unwrap_basic_render_wrapper(&with_id.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return unwrap_basic_render_wrapper(&tag_all.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return unwrap_basic_render_wrapper(&tagged.effect);
+    }
+    effect
 }
 
 fn target_player_draw_discard_counts(effects: &[Effect]) -> Option<(&Value, &Value)> {

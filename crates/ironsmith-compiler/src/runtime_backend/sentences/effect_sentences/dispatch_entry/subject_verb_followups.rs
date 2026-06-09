@@ -1040,6 +1040,10 @@ fn post_rule_future_zone_and_self_replacement(
         {
             let (default_effects, carried_player) =
                 default_effects_for_self_replacement(state.effects, previous);
+            if let Some(mill_count) = default_effects.iter().rev().find_map(mill_count_from_effect)
+            {
+                replace_mill_event_amounts_with_value(&mut if_true, &mill_count);
+            }
             if let Some(player) = carried_player {
                 bind_that_player_subjects_in_effects(&mut if_true, player);
             }
@@ -1117,6 +1121,54 @@ fn bind_that_player_subjects(effect: &mut EffectAst, player: PlayerAst) {
 fn bind_that_player_subjects_in_effects(effects: &mut [EffectAst], player: PlayerAst) {
     for effect in effects {
         bind_that_player_subjects(effect, player);
+    }
+}
+
+fn mill_count_from_effect(effect: &EffectAst) -> Option<Value> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Mill { count },
+            ..
+        }) => Some(count.clone()),
+        _ => None,
+    }
+}
+
+fn replace_event_amount_with_value(value: &mut Value, replacement: &Value) {
+    match value {
+        Value::EventValue(crate::effect::EventValueSpec::Amount) => {
+            *value = replacement.clone();
+        }
+        Value::EventValueOffset(crate::effect::EventValueSpec::Amount, offset) => {
+            *value = Value::Add(Box::new(replacement.clone()), Box::new(Value::Fixed(*offset)));
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            replace_event_amount_with_value(left, replacement);
+            replace_event_amount_with_value(right, replacement);
+        }
+        Value::Scaled(inner, _)
+        | Value::DividedRoundedDown(inner, _)
+        | Value::HalfRoundedDown(inner)
+        | Value::SurfaceHinted { value: inner, .. } => {
+            replace_event_amount_with_value(inner, replacement);
+        }
+        _ => {}
+    }
+}
+
+fn replace_mill_event_amounts_with_value(effects: &mut [EffectAst], replacement: &Value) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Mill { count },
+            ..
+        }) = effect
+        {
+            replace_event_amount_with_value(count, replacement);
+        }
+
+        for_each_nested_effects_mut(effect, true, |nested| {
+            replace_mill_event_amounts_with_value(nested, replacement);
+        });
     }
 }
 

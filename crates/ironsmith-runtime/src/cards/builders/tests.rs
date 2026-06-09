@@ -10997,6 +10997,43 @@ fn test_parse_sevinnes_reclamation_flashback_copy_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn increasing_confusion_strict_parse_renders_mill_self_replacement() {
+    assert_oracle_card_parses_strict("Increasing Confusion");
+
+    let def = parse_oracle_card_definition("Increasing Confusion");
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("SelfReplacementBranch") && debug.contains("MillEffect"),
+        "Increasing Confusion should lower the flashback clause to a mill self-replacement, got {debug}"
+    );
+    assert!(
+        debug.contains("ThisSpellWasCastFromZone") && debug.contains("Graveyard"),
+        "Increasing Confusion replacement should be gated on being cast from a graveyard, got {debug}"
+    );
+    assert!(
+        debug.contains("XTimes(2)") || debug.contains("Scaled"),
+        "Increasing Confusion replacement should mill twice the default X count, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Target player mills X cards"),
+        "Increasing Confusion should render the base target-player mill clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains(
+            "If this spell was cast from a graveyard, that player mills twice that many cards instead"
+        ),
+        "Increasing Confusion should render the shared-target twice-that-many replacement, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Flashback"),
+        "Increasing Confusion should render flashback, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(81_601), "The Sixth Doctor")
         .mana_cost(ManaCost::from_pips(vec![
