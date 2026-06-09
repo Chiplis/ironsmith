@@ -38411,9 +38411,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             let object = redirect_all.object_filter.description();
             format!("{player} and {object}")
         };
+        let destination = describe_choose_spec(&redirect_all.target);
+        // Attached references ("enchanted creature", "equipped creature") take no article.
+        let destination = destination
+            .strip_prefix("an ")
+            .or_else(|| destination.strip_prefix("a "))
+            .filter(|rest| rest.starts_with("enchanted ") || rest.starts_with("equipped "))
+            .map(str::to_string)
+            .unwrap_or(destination);
         return format!(
-            "All damage that would be dealt this turn to {target_set} is dealt to {} instead",
-            describe_choose_spec(&redirect_all.target)
+            "All damage that would be dealt this turn to {target_set} is dealt to {destination} instead"
         );
     }
     if let Some(prevent_from) =
