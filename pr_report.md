@@ -194,3 +194,44 @@ the request was to surface regressions):
 
 Nothing was pushed to `origin`; all work is on the local `main`. The full per-merge resolution
 log is preserved in the commit history (`git log 93ee31241..HEAD`).
+
+---
+
+# Follow-up: fixing the lints and regressions (no cards dropped)
+
+After the merge, the suite had **57 failures**. Per the directive to root-cause and fix
+(not drop cards), they were driven down to **15** with **all 9 architectural ratchet lints
+green (workspace_boundaries 354/354)** and every card fix retained.
+
+## Fixed
+
+**Architectural lints (9):** re-expressed the word-idiom grafts in main's sanctioned
+token/clause-shape idiom — #688/#690 re-grafted onto main's refactored files (not whole-file
+reverts), #694/#721 `.matches_token`→`etb_token_word_is*`, #684 restored `AS_ENTERS_AURA_SUBJECTS`
+with an or-else to the broader set, #701 `token_word_refs`→`render_token_slice`, #672 cards-in-hand
+predicate routed through the shared captured parser, #716/#722 util `.matches_words`→`shared_util_shape_matches_words`,
+#713 trigger-subject matcher wrapper.
+
+**Existing-card regressions (≈29):**
+- Conditional-anthem "As long as …" leading form gated to Hundred-Battle Veteran's `DistinctCounterTypesAmong` shape (fixes the anthem/descend/metalcraft/labeled-condition/gnarled-sage/rampaging-cyclops splits).
+- Divided-damage target count: compare token index, not comma-stripped word index (Inferno Titan, Fire-at-Will, Captain America).
+- Exile-top "the top **one** card" → "the top card" cardinal-word elision.
+- Will Kenrith: emit the leading base-P/T even when "lose all abilities" follows.
+- Ward em dash: mana-only ⇒ "Ward {cost}", non-mana ⇒ "Ward—…" (Octavia).
+- `until your next turn` reorder gated to base-P/T / cost-reduction loyalty lines (Stasis Coffin, Orzhov Advokist, The One Ring).
+- `"crewed"` added to ignored source-filter descriptors so the crew-count predicate wins (Mighty Servant).
+- Liara cost clause: don't re-append the caster when "spells you cast from exile" already names it.
+- Exile-top implicit single-card on the **owner** branch defers to the dedicated cast parser (Mind's Dilation, Urabrask, Gwen Stacy, until-end-of-turn-may-cast, trigger-subtype split, player-subject-role) while keeping #728's each-opponent intercept (Stolen Strategy).
+- Saving Grace: drop the article on the attached redirect destination.
+
+## Remaining 15 (root-caused; not yet fixed)
+
+**2 genuine regressions — deep render/lowering interactions with the Will Kenrith merge; a naive fix re-breaks Will Kenrith, so they need careful per-clause work:**
+- `commander_liara_portyr_strict_…` — multi-card exile + cast-permission renders "You may cast that card this turn" instead of "Until end of turn, you may cast spells from among those exiled cards" (GrantPlayTagged render for a dynamic/multi count).
+- `parse_day_of_black_sun_…` — Will Kenrith's plural-aware "lose all abilities" + the new base-PT-then-loses program turned "each creature … loses … then destroy those creatures" into plural "creatures … lose …, then destroy all creatures with mana value x or less" (loses the singular verb and the "those creatures" back-reference).
+
+**13 partial-card PR tests — the PRs' own cards that never fully parsed at baseline; finishing them is new feature work, not regression repair:**
+- Katara, Seeking Revenge (×5) — needs the **Waterbend** keyword-cost mechanic implemented.
+- Mindstorm Crown (×3) — turn-start "you had a card in hand" predicate (no-amount form) isn't routed through the shared captured parser; needs a token-based no-amount path.
+- Captain Howler, Sea Scourge (×3) — "that creature" as a trigger subject filter is unsupported.
+- fade-counter representation (×2, Tangle Wire) — parser yields `CountersOnSource(Fade)` where the PR's tests expect `CountersOn(<this artifact>, Fade)`.
