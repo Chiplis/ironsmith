@@ -72312,3 +72312,53 @@ fn captain_america_throw_unattaches_equipment_and_deals_its_mana_value_divided_d
         "Throw should not be payable without an Equipment attached to Captain America"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn gloomwidows_feast_definition() -> crate::cards::CardDefinition {
+    parse_oracle_card_definition("Gloomwidow's Feast")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_parses_strictly() {
+    assert_oracle_card_parses_strict("Gloomwidow's Feast");
+
+    let def = gloomwidows_feast_definition();
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        !rendered.contains("unsupported predicate")
+            && !rendered.contains("unsupported effect")
+            && !rendered.contains("unsupported parser line fallback"),
+        "Gloomwidow's Feast should parse without unsupported fallback markers, got {rendered}"
+    );
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("DestroyEffect")
+            && debug.contains("TaggedObjectMatches")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("Spider"),
+        "Gloomwidow's Feast should lower to destroy, tagged color condition, and Spider token creation, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_compiled_text_preserves_blue_or_black_was_clause() {
+    let def = gloomwidows_feast_definition();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Destroy target creature with flying"),
+        "Gloomwidow's Feast should render the flying target restriction, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If that creature was blue or black"),
+        "Gloomwidow's Feast should render the historical blue-or-black condition, got {rendered}"
+    );
+    assert!(
+        rendered.contains("create a 1/2 green Spider creature token with reach"),
+        "Gloomwidow's Feast should render the conditional Spider token, got {rendered}"
+    );
+}

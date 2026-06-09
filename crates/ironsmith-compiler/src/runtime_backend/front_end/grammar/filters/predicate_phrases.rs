@@ -5131,6 +5131,7 @@ fn parse_tagged_state_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst
     parse_tagged_controlled_permanent_shape(tokens)
         .or_else(|| parse_tagged_entered_under_your_control_shape(tokens))
         .or_else(|| parse_tagged_wasnt_blocking_shape(tokens))
+        .or_else(|| parse_tagged_historical_identity_shape(tokens))
         .or_else(|| parse_it_soulbond_paired_shape(tokens))
         .or_else(|| parse_tagged_creature_filter_shape(tokens))
 }
@@ -5202,6 +5203,49 @@ fn parse_tagged_wasnt_blocking_shape(tokens: &[OwnedLexToken]) -> Option<Predica
         ));
     }
     None
+}
+
+fn parse_tagged_historical_identity_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let action_phrases: &[&[&str]] = &[&["was"], &["were"]];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::UntilAnyPhrase(action_phrases)),
+        LexPattern::action("action", LexCaptureKind::WordCount(1)),
+        LexPattern::object("descriptor", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_tagged_identity_subject_clause(subject_clause) {
+        return None;
+    }
+    let descriptor_clause = matched.capture_clause_by_role(LexCaptureRole::Object, clause)?;
+    let (negative, descriptor_clause) = parse_source_identity_descriptor_clause(descriptor_clause)?;
+    if negative
+        || descriptor_clause.tokens().is_empty()
+        || source_identity_descriptor_contains_ignored_state(descriptor_clause)
+    {
+        return None;
+    }
+    let filter = parse_object_filter(descriptor_clause.tokens(), false)
+        .ok()
+        .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
+        .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
+    if !object_filter_has_identity(&filter) {
+        return None;
+    }
+    Some(PredicateAst::TaggedMatches(TagKey::from(IT_TAG), filter))
+}
+
+fn is_tagged_identity_subject_clause(clause: LexedClause<'_>) -> bool {
+    clause_matches_any_phrase(
+        clause,
+        &[
+            &["it"],
+            &["that", "card"],
+            &["that", "creature"],
+            &["that", "permanent"],
+        ],
+    )
 }
 
 fn parse_it_soulbond_paired_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -8209,6 +8253,16 @@ mod tests {
                     TagKey::from(IT_TAG),
                     ObjectFilter {
                         nonblocking: true,
+                        ..Default::default()
+                    },
+                ),
+            ),
+            (
+                "If that creature was blue or black",
+                PredicateAst::TaggedMatches(
+                    TagKey::from(IT_TAG),
+                    ObjectFilter {
+                        colors: Some(ColorSet::BLUE.union(ColorSet::BLACK)),
                         ..Default::default()
                     },
                 ),

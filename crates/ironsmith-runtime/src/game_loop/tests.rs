@@ -57372,3 +57372,203 @@ fn trove_tracker_only_triggers_on_battlefield_to_graveyard_moves() {
         "moving Trove Tracker from hand to graveyard should not count as dying"
     );
 }
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn gloomwidows_feast_definition() -> crate::cards::CardDefinition {
+    CardDefinitionBuilder::new(CardId::from_raw(154_394), "Gloomwidow's Feast")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(3)],
+            vec![ManaSymbol::Green],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Destroy target creature with flying. If that creature was blue or black, create a 1/2 green Spider creature token with reach.",
+        )
+        .expect("Gloomwidow's Feast should parse for runtime tests")
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_gloomwidows_feast_target(
+    game: &mut GameState,
+    controller: PlayerId,
+    name: &str,
+    colors: crate::color::ColorSet,
+) -> ObjectId {
+    let def = CardDefinitionBuilder::new(CardId::new(), name)
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .color_indicator(colors)
+        .flying()
+        .build();
+    game.create_object_from_definition(&def, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_gloomwidows_feast_at(game: &mut GameState, controller: PlayerId, target: ObjectId) {
+    let def = gloomwidows_feast_definition();
+    let spell_id = game.create_object_from_definition(&def, controller, Zone::Stack);
+    game.push_to_stack(
+        StackEntry::new(spell_id, controller).with_targets(vec![Target::Object(target)]),
+    );
+    resolve_stack_entry(game).expect("Gloomwidow's Feast should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn gloomwidow_spider_tokens_controlled_by(game: &GameState, player: PlayerId) -> Vec<ObjectId> {
+    game.battlefield
+        .iter()
+        .copied()
+        .filter(|&id| {
+            game.object(id).is_some_and(|object| {
+                game.controller_of(object) == player
+                    && object.kind == ObjectKind::Token
+                    && object.name == "Spider"
+                    && object.card_types.contains(&CardType::Creature)
+                    && object.subtypes.contains(&Subtype::Spider)
+                    && game.current_power(id) == Some(1)
+                    && game.current_toughness(id) == Some(2)
+                    && game.current_colors(id) == Some(crate::color::ColorSet::GREEN)
+                    && game.object_has_static_ability_id(
+                        id,
+                        crate::static_abilities::StaticAbilityId::Reach,
+                    )
+            })
+        })
+        .collect()
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_targets_only_creatures_with_flying() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let def = gloomwidows_feast_definition();
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Gloomwidow's Feast should have spell effects");
+    let flying_creature = create_gloomwidows_feast_target(
+        &mut game,
+        bob,
+        "Gloomwidow Legal Flying Target",
+        crate::color::ColorSet::BLUE,
+    );
+    let nonflying_creature = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Gloomwidow Nonflying Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .color_indicator(crate::color::ColorSet::BLUE)
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+    let flying_artifact = game.create_object_from_definition(
+        &CardDefinitionBuilder::new(CardId::new(), "Gloomwidow Flying Artifact")
+            .card_types(vec![CardType::Artifact])
+            .flying()
+            .build(),
+        bob,
+        Zone::Battlefield,
+    );
+
+    let requirements = extract_target_requirements(&game, effects, alice, None);
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Gloomwidow's Feast should require exactly one target"
+    );
+    let legal_targets = &requirements[0].legal_targets;
+    assert!(
+        legal_targets.contains(&Target::Object(flying_creature)),
+        "flying creatures should be legal Gloomwidow's Feast targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(nonflying_creature)),
+        "nonflying creatures should not be legal Gloomwidow's Feast targets, got {legal_targets:?}"
+    );
+    assert!(
+        !legal_targets.contains(&Target::Object(flying_artifact)),
+        "noncreature permanents with flying should not be legal Gloomwidow's Feast targets, got {legal_targets:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_destroys_blue_flying_target_and_creates_spider() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_gloomwidows_feast_target(
+        &mut game,
+        bob,
+        "Gloomwidow Blue Target",
+        crate::color::ColorSet::BLUE,
+    );
+
+    resolve_gloomwidows_feast_at(&mut game, alice, target);
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Gloomwidow Blue Target"),
+        1,
+        "Gloomwidow's Feast should destroy its flying creature target"
+    );
+    assert_eq!(
+        gloomwidow_spider_tokens_controlled_by(&game, alice).len(),
+        1,
+        "Gloomwidow's Feast should create the Spider when the destroyed target was blue"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_destroys_black_flying_target_and_creates_spider() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_gloomwidows_feast_target(
+        &mut game,
+        bob,
+        "Gloomwidow Black Target",
+        crate::color::ColorSet::BLACK,
+    );
+
+    resolve_gloomwidows_feast_at(&mut game, alice, target);
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Gloomwidow Black Target"),
+        1,
+        "Gloomwidow's Feast should destroy its black flying creature target"
+    );
+    assert_eq!(
+        gloomwidow_spider_tokens_controlled_by(&game, alice).len(),
+        1,
+        "Gloomwidow's Feast should create the Spider when the destroyed target was black"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn gloomwidows_feast_destroys_green_flying_target_without_creating_spider() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let target = create_gloomwidows_feast_target(
+        &mut game,
+        bob,
+        "Gloomwidow Green Target",
+        crate::color::ColorSet::GREEN,
+    );
+
+    resolve_gloomwidows_feast_at(&mut game, alice, target);
+
+    assert_eq!(
+        count_named_objects_in_zone(&game, Zone::Graveyard, "Gloomwidow Green Target"),
+        1,
+        "Gloomwidow's Feast should still destroy a non-blue, non-black flying target"
+    );
+    assert!(
+        gloomwidow_spider_tokens_controlled_by(&game, alice).is_empty(),
+        "Gloomwidow's Feast should not create a Spider when the destroyed target was neither blue nor black"
+    );
+}
