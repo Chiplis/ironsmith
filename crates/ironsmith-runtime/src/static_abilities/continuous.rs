@@ -2142,7 +2142,17 @@ impl StaticAbilityKind for Anthem {
 
         if let Some(condition) = &self.condition {
             let condition_text = describe_static_condition(condition);
+            // Only the "different kinds of counters among ..." count condition reads
+            // naturally in the leading form (e.g. Hundred-Battle Veteran). All other
+            // source-only pump conditions keep the trailing "... as long as ..." form.
             if self.source_only
+                && matches!(
+                    condition,
+                    crate::ConditionExpr::CountComparison {
+                        count: AnthemCountExpression::DistinctCounterTypesAmong(_),
+                        ..
+                    }
+                )
                 && let Some(rest) = condition_text.strip_prefix("as long as ")
             {
                 return format!("As long as {rest}, {text}");

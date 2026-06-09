@@ -1524,16 +1524,16 @@ pub(crate) fn parse_gain_ability_sentence(
     let get_idx = before_gain
         .iter()
         .position(|word| GET_OR_GETS_WORDS.contains(word));
-    let leading_base_pt_effect = if !losing {
-        parse_leading_subject_base_pt_before_gain(
-            before_gain,
-            subject_start_word_idx,
-            gain_idx,
-            &duration,
-        )?
-    } else {
-        None
-    };
+    // Run even when `losing`: cards like Will Kenrith say "...have base power and
+    // toughness 0/3 and lose all abilities", where the base P/T precedes the lose
+    // clause. The parser returns None when there is no leading base-P/T clause, so
+    // ordinary "lose all abilities" lines are unaffected.
+    let leading_base_pt_effect = parse_leading_subject_base_pt_before_gain(
+        before_gain,
+        subject_start_word_idx,
+        gain_idx,
+        &duration,
+    )?;
     let pump_effect = if let Some(gi) = get_idx {
         let modifier_start_word_idx = subject_start_word_idx + gi + 1;
         let Some(modifier_start_token_idx) =

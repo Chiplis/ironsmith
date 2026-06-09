@@ -26629,9 +26629,13 @@ fn describe_exile_top_then_play(
             return None;
         }
         let count_u32 = *n as u32;
-        let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
-        let noun = if *n == 1 { "card" } else { "cards" };
-        format!("Exile the top {count_text} {noun} of {owner} library")
+        let (count_text, noun) = if *n == 1 {
+            (String::new(), "card")
+        } else {
+            let word = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
+            (format!("{word} "), "cards")
+        };
+        format!("Exile the top {count_text}{noun} of {owner} library")
     } else {
         let value_text = describe_value(&exile_top.count);
         if value_text == "X"
@@ -26961,9 +26965,14 @@ pub(super) fn describe_exile_top_of_library(
         && *n >= 0
     {
         let count_u32 = *n as u32;
-        let count_text = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
-        let noun = if *n == 1 { "card" } else { "cards" };
-        return format!("Exile the top {count_text} {noun} of {owner} library{face_down_suffix}");
+        // MTG never writes "the top one card" — elide the count word for a single card.
+        let (count_text, noun) = if *n == 1 {
+            (String::new(), "card")
+        } else {
+            let word = small_number_word(count_u32).unwrap_or_else(|| n.to_string());
+            (format!("{word} "), "cards")
+        };
+        return format!("Exile the top {count_text}{noun} of {owner} library{face_down_suffix}");
     }
 
     let value_text = describe_value(count);

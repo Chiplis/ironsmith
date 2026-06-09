@@ -719,7 +719,9 @@ fn parse_divided_damage_target(
     };
 
     let count = if let Some((count, used)) = parse_choice_count_before_target_prefix(&among_tail) {
-        if used != target_idx {
+        // `used` is a token index (it counts internal commas); compare against the
+        // token index of the target word, not the comma-stripped word index.
+        if token_index_for_word_index(&among_tail, target_idx) != Some(used) {
             return Err(CardTextError::ParseError(format!(
                 "unsupported divided-damage target count (clause: '{}')",
                 crate::runtime_backend::token_word_refs(target_tokens).join(" ")

@@ -322,7 +322,13 @@ impl StaticAbilityKind for Ward {
     }
 
     fn display(&self) -> String {
-        format!("Ward—{}", self.cost.display())
+        // Mana-only ward uses a space ("Ward {2}"); ward with any non-mana cost
+        // uses an em dash ("Ward—Discard a card").
+        if self.cost.has_non_mana_costs() {
+            format!("Ward—{}", self.cost.display())
+        } else {
+            format!("Ward {}", self.cost.display())
+        }
     }
 
     fn is_keyword(&self) -> bool {
