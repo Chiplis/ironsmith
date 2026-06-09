@@ -27,6 +27,10 @@ use super::conditions::{
 };
 use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
+use super::super::util::trim_edge_punctuation_tokens;
+use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
+    ClauseShape, clause_shape,
+};
 use crate::runtime_backend::util::{
     parse_card_type, parse_counter_type_from_tokens, parse_counter_type_word,
     parse_less_than_or_equal_quantity_prefix, parse_number,
@@ -55,7 +59,10 @@ pub(crate) enum FlyingBlockRestrictionKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DoesntUntapDuringUntapStepSpec<'a> {
     Source { tail_tokens: &'a [OwnedLexToken] },
-    Attached { subject_tokens: &'a [OwnedLexToken] },
+    Attached {
+        subject_tokens: &'a [OwnedLexToken],
+        tail_tokens: &'a [OwnedLexToken],
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2871,7 +2878,6 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
         )),
         primitives::kw("untap"),
         primitives::kw("step"),
-        primitives::sentence_end(),
     )
         .void()
         .parse_next(input)
@@ -2891,12 +2897,14 @@ pub(crate) fn parse_doesnt_untap_during_untap_step_spec_lexed(
         if tokens.len() < subject_len {
             continue;
         }
-        if let Some(((), [])) = primitives::parse_prefix(
+        if let Some(((), tail_tokens)) = primitives::parse_prefix(
             tokens,
             parse_attached_doesnt_untap_during_controller_untap_step_line,
         ) {
+            let tail_tokens = trim_edge_punctuation_tokens(tail_tokens);
             return Some(DoesntUntapDuringUntapStepSpec::Attached {
                 subject_tokens: &tokens[..subject_len],
+                tail_tokens,
             });
         }
     }

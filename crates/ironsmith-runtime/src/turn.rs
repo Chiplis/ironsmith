@@ -318,7 +318,6 @@ pub fn execute_untap_step(game: &mut GameState) {
 ///
 /// This variant prompts for optional "you may choose not to untap ..." abilities.
 pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl DecisionMaker) {
-    use crate::ability::AbilityKind;
     use crate::decisions::context::BooleanContext;
     use crate::effect::Until;
     use crate::static_abilities::StaticAbilityId;
@@ -357,10 +356,10 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         }
         let source_controller = game.controller_of(source);
         let filter_ctx = game.filter_context_for(source_controller, Some(source_id));
-        for ability in &source.abilities {
-            let AbilityKind::Static(static_ability) = &ability.kind else {
-                continue;
-            };
+        let Some(source_chars) = game.current_characteristics(source_id) else {
+            continue;
+        };
+        for static_ability in &source_chars.static_abilities {
             let Some(filter) = static_ability.untap_during_each_other_players_untap_step_filter()
             else {
                 continue;
@@ -381,23 +380,16 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
         .iter()
         .filter_map(|&id| {
             let obj = game.object(id)?;
+            let chars = game.current_characteristics(id)?;
             // Check if the permanent has "doesn't untap during your untap step"
             let has_doesnt_untap = game.controller_of(obj) == active_player
-                && obj.abilities.iter().any(|ability| {
-                    if let AbilityKind::Static(s) = &ability.kind {
-                        s.affects_untap()
-                    } else {
-                        false
-                    }
-                });
+                && chars
+                    .static_abilities
+                    .iter()
+                    .any(|static_ability| static_ability.affects_untap());
             let has_optional_choice = game.controller_of(obj) == active_player
-                && obj.abilities.iter().any(|ability| {
-                    matches!(
-                        &ability.kind,
-                        AbilityKind::Static(static_ability)
-                            if static_ability.id()
-                                == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
-                    )
+                && chars.static_abilities.iter().any(|static_ability| {
+                    static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep
                 });
             let blocked_by_restriction = !game.can_untap_during_step(id, active_player);
             if has_doesnt_untap || blocked_by_restriction {

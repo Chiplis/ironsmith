@@ -4469,6 +4469,14 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         ));
     }
     if shared_util_shape_matches_words(&remaining_words, ENCHANTED_OBJECT_TARGET_PATTERN) {
+        if remaining_words == ["enchanted", "creature"] {
+            let mut filter = ObjectFilter::tagged(TagKey::from("enchanted"));
+            filter.card_types.push(CardType::Creature);
+            return Ok(wrap_target_count(
+                TargetAst::Object(filter, None, span),
+                target_count,
+            ));
+        }
         return Ok(wrap_target_count(
             TargetAst::Tagged(TagKey::from("enchanted"), span),
             target_count,

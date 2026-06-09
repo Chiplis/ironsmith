@@ -2118,12 +2118,21 @@ pub(crate) fn continuous_effect_duration_and_condition_are_active(
     }
 
     if let Some(condition) = &effect.condition {
+        let iterated_player = match effect.applies_to {
+            EffectTarget::AttachedTo(source_id) => game
+                .object(source_id)
+                .and_then(|source| source.attached_to.and_then(|target| target.object_id()))
+                .and_then(|attached_to| game.object(attached_to))
+                .map(|attached_object| game.controller_of(attached_object)),
+            _ => None,
+        };
         let ctx = crate::condition_eval::ExternalEvaluationContext {
             controller: effect.controller,
             source: effect.source,
             defending_player: None,
             attacking_player: None,
             filter_source: Some(effect.source),
+            iterated_player,
             triggering_event: None,
             trigger_identity: None,
             ability_index: None,

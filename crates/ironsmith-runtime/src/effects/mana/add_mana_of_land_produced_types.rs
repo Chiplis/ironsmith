@@ -157,6 +157,7 @@ fn mana_ability_condition_met(
                 defending_player: None,
                 attacking_player: None,
                 filter_source: Some(source.id),
+                iterated_player: None,
                 triggering_event: None,
                 trigger_identity: None,
                 ability_index: None,
