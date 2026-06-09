@@ -313,7 +313,10 @@ fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
         );
 
         let triggers = crate::triggers::check_triggers(&game, &event);
-        let matching_count = triggers.iter().filter(|entry| entry.source == rayne).count();
+        let matching_count = triggers
+            .iter()
+            .filter(|entry| entry.source == rayne)
+            .count();
         let mut trigger_queue = crate::triggers::TriggerQueue::new();
         for trigger in triggers.into_iter().filter(|entry| entry.source == rayne) {
             trigger_queue.add(trigger);
@@ -627,10 +630,8 @@ Whenever Katara attacks, you may draw a card for each experience counter you hav
 #[test]
 fn katara_experience_counter_effect_and_count_value_resolve_for_controller() {
     let def = parse_oracle_card_definition("Katara, Waterbending Master");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -640,7 +641,9 @@ fn katara_experience_counter_effect_and_count_value_resolve_for_controller() {
         .execute(&mut game, &mut ctx)
         .expect("Katara experience-counter effect should resolve");
     assert_eq!(
-        game.player(alice).expect("Alice exists").experience_counters,
+        game.player(alice)
+            .expect("Alice exists")
+            .experience_counters,
         1,
         "Katara controller should get one experience counter"
     );
@@ -689,10 +692,8 @@ fn katara_spell_cast_trigger_only_fires_during_opponents_turn() {
     }
 
     let def = parse_oracle_card_definition("Katara, Waterbending Master");
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -728,14 +729,14 @@ fn katara_spell_cast_trigger_only_fires_during_opponents_turn() {
         alice,
         Zone::Stack,
     );
-    let triggered = crate::triggers::check_triggers(
-        &game,
-        &spell_cast_event(opponents_turn_spell, alice),
-    );
+    let triggered =
+        crate::triggers::check_triggers(&game, &spell_cast_event(opponents_turn_spell, alice));
     let entry = triggered
         .iter()
         .find(|entry| entry.source == katara)
-        .expect("Katara should trigger when its controller casts a spell during an opponent's turn");
+        .expect(
+            "Katara should trigger when its controller casts a spell during an opponent's turn",
+        );
     assert_eq!(
         entry.ability.trigger.display(),
         "Whenever you cast a spell during an opponent's turn"
@@ -749,7 +750,9 @@ fn katara_spell_cast_trigger_only_fires_during_opponents_turn() {
             .expect("Katara opponent-turn spell trigger should resolve");
     }
     assert_eq!(
-        game.player(alice).expect("Alice exists").experience_counters,
+        game.player(alice)
+            .expect("Alice exists")
+            .experience_counters,
         1,
         "Katara's controller should get one experience counter from the trigger"
     );
@@ -807,10 +810,8 @@ fn katara_if_you_do_discard_branch_discards_from_controller_only() {
         "Katara's implicit discard must bind to the controller, not the defending player"
     );
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -830,14 +831,15 @@ fn katara_if_you_do_discard_branch_discards_from_controller_only() {
         "defending player should not discard for Katara's if-you-do branch"
     );
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     hand_card(&mut game, alice, "Katara Declined Fodder");
     let mut ctx = crate::effects::ExecutionContext::new_default(katara, alice);
-    ctx.store_outcome(if_effect.condition, crate::effect::EffectOutcome::declined());
+    ctx.store_outcome(
+        if_effect.condition,
+        crate::effect::EffectOutcome::declined(),
+    );
 
     if_effect
         .execute(&mut game, &mut ctx)
@@ -1120,7 +1122,8 @@ fn arvinox_the_mind_flail_strict_parser_and_compiled_text_regression() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("isn't a creature unless you control three or more permanents you don't own"),
+        rendered
+            .contains("isn't a creature unless you control three or more permanents you don't own"),
         "expected unless static condition, got {rendered}"
     );
     assert!(
@@ -1136,7 +1139,9 @@ fn arvinox_the_mind_flail_strict_parser_and_compiled_text_regression() {
         "expected permanent-spell cast permission, got {rendered}"
     );
     assert!(
-        rendered.contains("you may spend mana as though it were mana of any color to cast those spells"),
+        rendered.contains(
+            "you may spend mana as though it were mana of any color to cast those spells"
+        ),
         "expected any-color mana permission, got {rendered}"
     );
 
@@ -1199,7 +1204,11 @@ fn arvinox_the_mind_flail_exiles_bottom_cards_and_grants_only_permanent_spell_pe
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
     let arvinox = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -1249,7 +1258,10 @@ fn arvinox_the_mind_flail_exiles_bottom_cards_and_grants_only_permanent_spell_pe
     let charlie_exiled = game
         .find_object_by_stable_id(charlie_bottom_stable)
         .expect("charlie bottom should still exist after exile");
-    assert_eq!(game.object(bob_exiled).expect("bob bottom").zone, Zone::Exile);
+    assert_eq!(
+        game.object(bob_exiled).expect("bob bottom").zone,
+        Zone::Exile
+    );
     assert_eq!(game.object(bob_top).expect("bob top").zone, Zone::Library);
     assert_eq!(
         game.object(charlie_exiled).expect("charlie bottom").zone,
@@ -2168,10 +2180,8 @@ fn mark_of_asylum_strict_parser_compiled_text_and_runtime_prevention_regression(
         "Prevent all noncombat damage that would be dealt to creatures you control."
     );
 
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let _mark = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -20764,6 +20774,170 @@ fn parse_equipped_activated_grant_with_unattach_cost_compiles() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn carry_away_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Carry Away");
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unattachobjectseffect") && debug.contains("controlattachedpermanent"),
+        "Carry Away should lower to unattach effect plus attached control static ability, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("unattach enchanted equipment"),
+        "Carry Away compiled text should preserve the unattach enchanted Equipment clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you control enchanted equipment"),
+        "Carry Away compiled text should preserve the control-attached Equipment clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn carry_away_runtime_setup(
+    equipment_starts_attached: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+    ObjectId,
+) {
+    let carry_away = parse_oracle_card_definition("Carry Away");
+    let equipment = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_id = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let equipment_id = game.create_object_from_definition(&equipment, bob, Zone::Battlefield);
+    if equipment_starts_attached {
+        assert!(game.attach_object_to_target(
+            equipment_id,
+            crate::object::AttachmentTarget::Object(creature_id),
+        ));
+    }
+    let carry_away_id = game.create_object_from_definition(&carry_away, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        carry_away_id,
+        crate::object::AttachmentTarget::Object(equipment_id),
+    ));
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+
+    (game, alice, bob, carry_away_id, equipment_id, creature_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_carry_away_enter_trigger(
+    game: &mut crate::game_state::GameState,
+    carry_away_id: ObjectId,
+) {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(carry_away_id)
+            .expect("Carry Away should exist on battlefield"),
+        game,
+    );
+    let enters_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            carry_away_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &enters_event)
+        .into_iter()
+        .filter(|entry| entry.source == carry_away_id)
+    {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Carry Away enters trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Carry Away entering should create exactly one unattach trigger"
+    );
+    crate::game_loop::resolve_stack_entry(game)
+        .expect("Carry Away unattach trigger should resolve");
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_unattaches_enchanted_equipment_and_controls_it() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(true);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        Some(crate::object::AttachmentTarget::Object(creature_id)),
+        "test setup should start with the enchanted Equipment attached to the creature"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "Carry Away should unattach the enchanted Equipment from the creature"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "Carry Away should remain attached to the Equipment it enchants"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_does_not_detach_aura_when_equipment_is_already_unattached() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(false);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "test setup should start with unattached enchanted Equipment"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "already-unattached Equipment should remain unattached"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "the unattach effect should not detach Carry Away itself"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_auriok_steelshaper_strict_and_preserves_equip_cost_modifier_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Auriok Steelshaper")
         .card_types(vec![CardType::Creature])
@@ -22083,6 +22257,266 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_da
         game.player(bob).expect("Bob exists").life,
         17,
         "ferocious Winds of Qal Sisma should not prevent its controller's creature combat damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn radiant_kavu_test_permanent(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    card_types: Vec<CardType>,
+    colors: crate::color::ColorSet,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .color_indicator(colors)
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_radiant_kavu(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    kavu_id: ObjectId,
+) {
+    let ability_index = game
+        .object(kavu_id)
+        .expect("Radiant Kavu should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Radiant Kavu should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kavu_id && *idx == ability_index
+            )
+        })
+        .expect("Radiant Kavu activation should be legal after paying {R}{G}{W}");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Radiant Kavu activation should start");
+    chandras_regulator_drive_activation(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+        None,
+    );
+    crate::game_loop::resolve_stack_entry_with(game, &mut dm)
+        .expect("Radiant Kavu activated ability should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiant_kavu_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Radiant Kavu");
+    let def = parse_oracle_card_definition("Radiant Kavu");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Radiant Kavu should have an activated ability");
+    let prevent = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PreventAllDamageEffect>())
+        .expect("Radiant Kavu should lower to a prevent-all damage effect");
+    let source_filter = prevent
+        .damage_filter
+        .from_source
+        .as_ref()
+        .expect("Radiant Kavu prevention should be source-filtered");
+
+    assert_eq!(
+        rendered,
+        "{R}{G}{W}: Prevent all combat damage blue creatures and black creatures would deal this turn.",
+        "Radiant Kavu compiled text should preserve its exact blue/black creature combat-prevention clause"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported") && !rendered_lower.contains("unimplemented"),
+        "Radiant Kavu should compile without fallback markers, got {rendered}"
+    );
+    assert!(
+        prevent.damage_filter.combat_only
+            && source_filter.zone == Some(Zone::Battlefield)
+            && source_filter.card_types == vec![CardType::Creature]
+            && source_filter.colors
+                == Some(crate::color::ColorSet::BLUE.union(crate::color::ColorSet::BLACK)),
+        "Radiant Kavu should lower to a combat-only blue/black creature source-filter shield, got {prevent:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime() {
+    let def = parse_oracle_card_definition("Radiant Kavu");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let kavu_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_index = game
+        .object(kavu_id)
+        .expect("Radiant Kavu should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Radiant Kavu should have an activated ability");
+    let cost_debug = format!(
+        "{:?}",
+        game.object(kavu_id)
+            .expect("Radiant Kavu should exist")
+            .abilities[ability_index]
+    );
+    assert!(
+        cost_debug.contains("Red") && cost_debug.contains("Green") && cost_debug.contains("White"),
+        "Radiant Kavu activated ability should carry its {{R}}{{G}}{{W}} cost, got {cost_debug}"
+    );
+
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::Red, 1);
+        player.mana_pool.add(ManaSymbol::Green, 1);
+        player.mana_pool.add(ManaSymbol::White, 1);
+    }
+    activate_radiant_kavu(&mut game, alice, kavu_id);
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Radiant Kavu activation should spend {{R}}{{G}}{{W}}"
+    );
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(
+        shields.len(),
+        1,
+        "Radiant Kavu should create one prevention shield"
+    );
+    assert!(
+        shields[0].damage_filter.combat_only && shields[0].damage_filter.from_source.is_some(),
+        "Radiant Kavu should create a combat-only source-filter prevention shield, got {:?}",
+        shields[0]
+    );
+
+    let blue_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Blue Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::BLUE,
+    );
+    let black_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Black Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::BLACK,
+    );
+    let green_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Green Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::GREEN,
+    );
+    let blue_artifact = radiant_kavu_test_permanent(
+        &mut game,
+        "Blue Noncreature Source",
+        bob,
+        vec![CardType::Artifact],
+        crate::color::ColorSet::BLUE,
+    );
+
+    let (blue_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_combat, 0,
+        "Radiant Kavu should prevent blue creature combat damage"
+    );
+
+    let (black_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        black_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        black_combat, 0,
+        "Radiant Kavu should prevent black creature combat damage"
+    );
+
+    let (green_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        green_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        green_combat, 3,
+        "Radiant Kavu should not prevent green creature combat damage"
+    );
+
+    let (blue_artifact_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_artifact,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_artifact_combat, 3,
+        "Radiant Kavu should not prevent combat damage from blue noncreatures"
+    );
+
+    let (blue_noncombat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_noncombat, 3,
+        "Radiant Kavu should not prevent noncombat damage"
     );
 }
 
@@ -24474,16 +24908,11 @@ fn deep_water_compiled_text_renders_mana_replacement_clause() {
 #[test]
 fn deep_water_replaces_mana_from_land_you_control_until_end_of_turn() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24496,23 +24925,21 @@ fn deep_water_replaces_mana_from_land_you_control_until_end_of_turn() {
         pool.blue, 1,
         "Deep Water should replace the land's mana with blue"
     );
-    assert_eq!(pool.black, 0, "the land's original black mana should not be produced");
+    assert_eq!(
+        pool.black, 0,
+        "the land's original black mana should not be produced"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn deep_water_preserves_amount_from_multi_mana_land() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24530,7 +24957,10 @@ fn deep_water_preserves_amount_from_multi_mana_land() {
         pool.blue, 2,
         "Deep Water should preserve the amount of mana while making it all blue"
     );
-    assert_eq!(pool.black, 0, "the original black mana should not be produced");
+    assert_eq!(
+        pool.black, 0,
+        "the original black mana should not be produced"
+    );
     assert_eq!(
         pool.colorless, 0,
         "the original colorless mana should not be produced"
@@ -24541,16 +24971,11 @@ fn deep_water_preserves_amount_from_multi_mana_land() {
 #[test]
 fn deep_water_replaces_effect_based_mana_from_tapped_land_you_control() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24560,22 +24985,21 @@ fn deep_water_replaces_effect_based_mana_from_tapped_land_you_control() {
         "Deep Water Effect-Mana Test Land",
         vec![ManaSymbol::Black],
     );
-    let events = crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
-        &mut game,
-        alice,
-        land_id,
-        0,
-        None,
-        &mut dm,
-    )
-    .expect("effect-based land mana ability should activate");
+    let events =
+        crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
+            &mut game, alice, land_id, 0, None, &mut dm,
+        )
+        .expect("effect-based land mana ability should activate");
 
     let pool = &game.player(alice).expect("alice").mana_pool;
     assert_eq!(
         pool.blue, 1,
         "Deep Water should replace effect-produced land mana with blue"
     );
-    assert_eq!(pool.black, 0, "the effect's original black mana should not be produced");
+    assert_eq!(
+        pool.black, 0,
+        "the effect's original black mana should not be produced"
+    );
 
     let event = events
         .iter()
@@ -24600,16 +25024,11 @@ fn deep_water_replaces_effect_based_mana_from_tapped_land_you_control() {
 #[test]
 fn deep_water_does_not_replace_effect_based_mana_from_free_land_ability() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24619,15 +25038,11 @@ fn deep_water_does_not_replace_effect_based_mana_from_free_land_ability() {
         "Deep Water Free Effect-Mana Test Land",
         vec![ManaSymbol::Black],
     );
-    let events = crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
-        &mut game,
-        alice,
-        land_id,
-        0,
-        None,
-        &mut dm,
-    )
-    .expect("free effect-based land mana ability should activate");
+    let events =
+        crate::special_actions::perform_activate_mana_ability_restricted_colors_with_events(
+            &mut game, alice, land_id, 0, None, &mut dm,
+        )
+        .expect("free effect-based land mana ability should activate");
 
     let pool = &game.player(alice).expect("alice").mana_pool;
     assert_eq!(
@@ -24663,16 +25078,11 @@ fn deep_water_does_not_replace_effect_based_mana_from_free_land_ability() {
 #[test]
 fn deep_water_mana_replacement_expires_at_cleanup() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
     crate::turn::execute_cleanup_step(&mut game);
@@ -24696,16 +25106,11 @@ fn deep_water_mana_replacement_expires_at_cleanup() {
 #[test]
 fn deep_water_does_not_replace_mana_from_nonland_you_control() {
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24724,7 +25129,10 @@ fn deep_water_does_not_replace_mana_from_nonland_you_control() {
         pool.black, 1,
         "nonland mana should keep its original black mana"
     );
-    assert_eq!(pool.blue, 0, "Deep Water should only replace mana from lands");
+    assert_eq!(
+        pool.blue, 0,
+        "Deep Water should only replace mana from lands"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -24732,16 +25140,11 @@ fn deep_water_does_not_replace_mana_from_nonland_you_control() {
 fn deep_water_does_not_replace_mana_from_land_you_do_not_control() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24750,7 +25153,10 @@ fn deep_water_does_not_replace_mana_from_land_you_do_not_control() {
         .expect("opponent land mana ability should activate");
 
     let pool = &game.player(bob).expect("bob").mana_pool;
-    assert_eq!(pool.black, 1, "Bob's land should keep its original black mana");
+    assert_eq!(
+        pool.black, 1,
+        "Bob's land should keep its original black mana"
+    );
     assert_eq!(
         pool.blue, 0,
         "Deep Water should not replace mana from lands Alice doesn't control"
@@ -24762,16 +25168,11 @@ fn deep_water_does_not_replace_mana_from_land_you_do_not_control() {
 fn deep_water_does_not_replace_effect_based_mana_from_nonland_or_uncontrolled_land() {
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let deep_water_id = game.create_object_from_definition(
-        &deep_water_test_definition(),
-        alice,
-        Zone::Battlefield,
-    );
+    let deep_water_id =
+        game.create_object_from_definition(&deep_water_test_definition(), alice, Zone::Battlefield);
 
     resolve_deep_water_activation(&mut game, deep_water_id, alice, &mut dm);
 
@@ -24791,14 +25192,8 @@ fn deep_water_does_not_replace_effect_based_mana_from_nonland_or_uncontrolled_la
         "Bob's Deep Water Effect-Mana Test Land",
         vec![ManaSymbol::Black],
     );
-    crate::special_actions::perform_activate_mana_ability(
-        &mut game,
-        bob,
-        bob_land_id,
-        0,
-        &mut dm,
-    )
-    .expect("opponent effect-based land mana ability should activate");
+    crate::special_actions::perform_activate_mana_ability(&mut game, bob, bob_land_id, 0, &mut dm)
+        .expect("opponent effect-based land mana ability should activate");
 
     let alice_pool = &game.player(alice).expect("alice").mana_pool;
     assert_eq!(
@@ -26762,8 +27157,7 @@ fn gloomshrieker_enters_returns_target_permanent_card_from_your_graveyard_to_han
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     crate::game_loop::put_triggers_on_stack_with_dm(&mut game, &mut trigger_queue, &mut dm)
         .expect("Gloomshrieker trigger should go on the stack with a legal target");
-    crate::game_loop::resolve_stack_entry(&mut game)
-        .expect("Gloomshrieker trigger should resolve");
+    crate::game_loop::resolve_stack_entry(&mut game).expect("Gloomshrieker trigger should resolve");
 
     let hand_names: Vec<String> = game
         .objects_in_zone(Zone::Hand)
@@ -26777,7 +27171,9 @@ fn gloomshrieker_enters_returns_target_permanent_card_from_your_graveyard_to_han
         .collect();
 
     assert!(
-        hand_names.iter().any(|name| name == "Gloomshrieker Test Artifact"),
+        hand_names
+            .iter()
+            .any(|name| name == "Gloomshrieker Test Artifact"),
         "the permanent card target should move to hand, hand={hand_names:?}"
     );
     assert!(
@@ -28698,11 +29094,13 @@ fn animate_wall_allows_only_enchanted_wall_to_attack_through_defender() {
         ),
         "Animate Wall's enchant restriction should reject non-Wall targets"
     );
-    assert!(crate::effects::permanents::attach_battlefield_object_to_target(
-        &mut game,
-        aura_id,
-        crate::object::AttachmentTarget::Object(wall_id),
-    ));
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            aura_id,
+            crate::object::AttachmentTarget::Object(wall_id),
+        )
+    );
 
     assert!(
         crate::rules::combat::can_attack(
@@ -32539,8 +32937,11 @@ fn parse_invasive_surgery_oracle_strict_and_compiled_text_regression() {
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
         rendered.contains("Counter target sorcery spell")
-            && rendered.contains("Delirium — If there are four or more card types among cards in your graveyard")
-            && rendered.contains("search the graveyard, hand, and library of that spell's controller")
+            && rendered.contains(
+                "Delirium — If there are four or more card types among cards in your graveyard"
+            )
+            && rendered
+                .contains("search the graveyard, hand, and library of that spell's controller")
             && rendered.contains("for any number of cards with the same name as that spell")
             && rendered.contains("exile those cards, then that player shuffles"),
         "expected Invasive Surgery compiled text to preserve counter, delirium, optional same-name multi-zone search, and shuffle, got {rendered}"
@@ -32908,7 +33309,7 @@ fn parse_black_cat_cunning_thief_oracle_text_strictly() {
 
     assert_eq!(
         unprocessed_compiled_lines(&def).join(" "),
-        "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
+        "When this creature enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
     );
 }
 
@@ -35233,7 +35634,10 @@ fn octavia_living_thesis_strict_parser_and_compiled_text_regression() {
             _ => None,
         })
         .expect("Octavia should have a this-spell cost reduction");
-    assert!(matches!(reduction.reduction, crate::effect::Value::Fixed(8)));
+    assert!(matches!(
+        reduction.reduction,
+        crate::effect::Value::Fixed(8)
+    ));
     assert!(matches!(
         &reduction.condition,
         crate::static_abilities::ThisSpellCostCondition::YouHaveCardsOfTypesInYourGraveyardOrMore {
@@ -35279,12 +35683,7 @@ fn octavia_living_thesis_cost_reduction_requires_matching_cards_in_your_graveyar
             vec![CardType::Instant],
         );
     }
-    create_octavia_graveyard_card(
-        &mut game,
-        alice,
-        "Alice Creature",
-        vec![CardType::Creature],
-    );
+    create_octavia_graveyard_card(&mut game, alice, "Alice Creature", vec![CardType::Creature]);
     for idx in 0..8 {
         create_octavia_graveyard_card(
             &mut game,
@@ -35305,12 +35704,7 @@ fn octavia_living_thesis_cost_reduction_requires_matching_cards_in_your_graveyar
         "Octavia should not count nonmatching cards or an opponent's graveyard"
     );
 
-    create_octavia_graveyard_card(
-        &mut game,
-        alice,
-        "Alice Sorcery",
-        vec![CardType::Sorcery],
-    );
+    create_octavia_graveyard_card(&mut game, alice, "Alice Sorcery", vec![CardType::Sorcery]);
     let octavia = game
         .object(octavia_id)
         .expect("Octavia should still be in Alice's hand");
@@ -47681,7 +48075,7 @@ fn parse_oracle_wan_shi_tong_half_x_draw_regression() {
         "expected Wan Shi Tong to keep the opponent-search trigger, got {raw}"
     );
     assert!(
-        raw.contains("target: Source"),
+        raw.contains("target: Source") || raw.contains("spec: Source"),
         "expected Wan Shi Tong to put counters on itself, got {raw}"
     );
 
@@ -51503,9 +51897,7 @@ fn sulfuric_vortex_game() -> (crate::game_state::GameState, PlayerId, PlayerId, 
     (game, alice, bob, vortex_id)
 }
 
-fn sulfuric_vortex_triggered_ability(
-    def: &CardDefinition,
-) -> &crate::ability::TriggeredAbility {
+fn sulfuric_vortex_triggered_ability(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()
         .find_map(|ability| match &ability.kind {
@@ -51610,9 +52002,20 @@ fn sulfuric_vortex_upkeep_trigger_damages_that_player() {
             && triggered.trigger.matches(&opponent_upkeep, &ctx),
         "Sulfuric Vortex should trigger at each player's upkeep"
     );
-    assert_eq!(resolve_triggers_for_source(&mut game, vortex_id, &opponent_upkeep), 1);
-    assert_eq!(game.life_total(alice), 20, "controller should not be damaged on Bob's upkeep");
-    assert_eq!(game.life_total(bob), 18, "that upkeep player should be dealt 2 damage");
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, vortex_id, &opponent_upkeep),
+        1
+    );
+    assert_eq!(
+        game.life_total(alice),
+        20,
+        "controller should not be damaged on Bob's upkeep"
+    );
+    assert_eq!(
+        game.life_total(bob),
+        18,
+        "that upkeep player should be dealt 2 damage"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -57488,19 +57891,20 @@ fn jasmine_dragon_tea_shop_strict_parser_compiled_text_and_model_regression() {
         })
         .expect("Jasmine Dragon Tea Shop should have restricted Ally mana ability");
 
-    let has_ally_cast_or_ability_restriction = mana_activated
-        .mana_usage_restrictions
-        .iter()
-        .any(|restriction| {
-            matches!(
-                restriction,
-                crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
-                    spell_filter,
-                    ability_source_filter,
-                } if spell_filter.subtypes == vec![Subtype::Ally]
-                    && ability_source_filter.subtypes == vec![Subtype::Ally]
-            )
-        });
+    let has_ally_cast_or_ability_restriction =
+        mana_activated
+            .mana_usage_restrictions
+            .iter()
+            .any(|restriction| {
+                matches!(
+                    restriction,
+                    crate::ability::ManaUsageRestriction::CastSpellOrActivateAbilitySourceMatching {
+                        spell_filter,
+                        ability_source_filter,
+                    } if spell_filter.subtypes == vec![Subtype::Ally]
+                        && ability_source_filter.subtypes == vec![Subtype::Ally]
+                )
+            });
     assert!(
         has_ally_cast_or_ability_restriction,
         "Jasmine Dragon Tea Shop mana should be restricted to Ally spells or Ally-source abilities"

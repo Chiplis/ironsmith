@@ -48,12 +48,11 @@ use super::{
 #[allow(unused_imports)]
 use crate::cards::builders::{
     CardTextError, EffectAst, ExtraTurnAnchorAst, GrantedAbilityAst, IT_TAG, KeywordAction,
-    LineAst, PlayerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec, Verb,
+    LineAst, PlayerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst,
+    SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec, Verb,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};
 use crate::object::CounterType;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::runtime_backend::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom,
 };

@@ -4,14 +4,15 @@ use crate::runtime_backend::util::tokenize_line;
 
 #[test]
 fn parse_graveyard_owner_prefix_handles_shared_phrases() {
-    assert_eq!(
-        parse_graveyard_owner_prefix(&["that", "player", "graveyard", "as", "you", "choose"]),
-        Some((PlayerAst::That, 3))
-    );
-    assert_eq!(
-        parse_graveyard_owner_prefix(&["its", "owner", "graveyard"]),
-        Some((PlayerAst::ItsOwner, 3))
-    );
+    let tokens = tokenize_line("that player graveyard as you choose", 0);
+    let owner = parse_graveyard_owner_prefix_lexed(&tokens).expect("that player graveyard owner");
+    assert_eq!(owner.player, PlayerAst::That);
+    assert_eq!(owner.consumed_words, 3);
+
+    let tokens = tokenize_line("its owner graveyard", 0);
+    let owner = parse_graveyard_owner_prefix_lexed(&tokens).expect("its owner graveyard owner");
+    assert_eq!(owner.player, PlayerAst::ItsOwner);
+    assert_eq!(owner.consumed_words, 3);
 }
 
 #[test]

@@ -1525,7 +1525,9 @@ pub(crate) fn mana_production_provenance_for_activation_cost(
 ) -> crate::events::mana::ManaProductionProvenance {
     fn cost_taps_source(cost: &crate::cost::TotalCost) -> bool {
         match cost.kind() {
-            ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| cost.requires_tap()),
+            ironsmith_core::TotalCostKind::All(costs) => {
+                costs.iter().any(|cost| cost.requires_tap())
+            }
             ironsmith_core::TotalCostKind::OneOf(branches) => {
                 !branches.is_empty() && branches.iter().all(cost_taps_source)
             }

@@ -12,12 +12,12 @@ use crate::effect::{EventValueSpec, Value};
 use crate::mana::ManaSymbol;
 use crate::object::CounterType;
 use crate::runtime_backend::effect_sentences;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
-use crate::runtime_backend::front_end::lexer::LexedClause;
-use crate::runtime_backend::object_filters::parse_object_filter_lexed;
-use crate::runtime_backend::util::{
-    mana_pips_from_token, non_article_token_word_refs, trim_commas,
+use crate::runtime_backend::front_end::lexer::{
+    LexedClause, word_slice_contains_all_words, word_slice_contains_any_word,
+    word_slice_contains_phrase, word_slice_eq, word_slice_eq_any, word_slice_starts_with,
 };
+use crate::runtime_backend::object_filters::parse_object_filter_lexed;
+use crate::runtime_backend::util::{mana_pips_from_token, non_article_token_word_refs};
 use crate::target::PlayerFilter;
 use crate::zone::Zone;
 
@@ -57,145 +57,120 @@ impl GenericSubjectVerbSequence {
     }
 }
 
-const FLASHBACK_UNTIL_END_TAIL: ClauseShape<'static> =
-    clause_shape!(exact & ["flashback", "until", "end", "of", "turn"]);
-const FLASHBACK_COST_FOLLOWUP: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "the",
-                "flashback",
-                "cost",
-                "is",
-                "equal",
-                "to",
-                "its",
-                "mana",
-                "cost",
-            ],
-            &[
-                "that",
-                "cards",
-                "flashback",
-                "cost",
-                "is",
-                "equal",
-                "to",
-                "its",
-                "mana",
-                "cost",
-            ],
-        ]
-);
+const FLASHBACK_UNTIL_END_TAIL: &[&str] = &["flashback", "until", "end", "of", "turn"];
+const FLASHBACK_COST_FOLLOWUPS: &[&[&str]] = &[
+    &[
+        "the",
+        "flashback",
+        "cost",
+        "is",
+        "equal",
+        "to",
+        "its",
+        "mana",
+        "cost",
+    ],
+    &[
+        "that",
+        "cards",
+        "flashback",
+        "cost",
+        "is",
+        "equal",
+        "to",
+        "its",
+        "mana",
+        "cost",
+    ],
+];
 
-const EXILE_TOP_CARD_OF_LIBRARY: ClauseShape<'static> =
-    clause_shape!(exact & ["exile", "top", "card", "of", "your", "library"]);
-const SEARCH_YOUR_LIBRARY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["search", "your", "library"]);
-const ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has",
-                "same", "name", "as", "another", "card", "exiled", "this", "way",
-            ],
-            &[
-                "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same",
-                "name", "as", "another", "card", "exiled", "this", "way",
-            ],
-        ]
-);
-const ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "repeat",
-            "this",
-            "process",
-            "until",
-            "you",
-            "put",
-            "card",
-            "into",
-            "your",
-            "hand",
-            "or",
-            "you",
-            "exile",
-            "two",
-            "cards",
-            "with",
-            "same",
-            "name",
-            "whichever",
-            "comes",
-            "first",
-        ]
-);
-const STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "starting", "with", "you", "each", "player", "may", "pay", "any", "amount", "of",
-            "life",
-        ]
-);
-const REPEAT_UNTIL_NO_ONE_PAYS_LIFE: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "repeat", "this", "process", "until", "no", "one", "pays", "life"
-        ]
-);
-const EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID: ClauseShape<'static> = clause_shape!(
-    exact
-        & [
-            "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for", "each",
-            "1", "life", "they", "paid", "this", "way",
-        ]
-);
+const EXILE_TOP_CARD_OF_LIBRARY: &[&str] = &["exile", "top", "card", "of", "your", "library"];
+const SEARCH_YOUR_LIBRARY_PREFIX: &[&str] = &["search", "your", "library"];
+const ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME_CLAUSES: &[&[&str]] = &[
+    &[
+        "you", "may", "put", "that", "card", "into", "your", "hand", "unless", "it", "has", "same",
+        "name", "as", "another", "card", "exiled", "this", "way",
+    ],
+    &[
+        "you", "may", "put", "it", "into", "your", "hand", "unless", "it", "has", "same", "name",
+        "as", "another", "card", "exiled", "this", "way",
+    ],
+];
+const ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE: &[&str] = &[
+    "repeat",
+    "this",
+    "process",
+    "until",
+    "you",
+    "put",
+    "card",
+    "into",
+    "your",
+    "hand",
+    "or",
+    "you",
+    "exile",
+    "two",
+    "cards",
+    "with",
+    "same",
+    "name",
+    "whichever",
+    "comes",
+    "first",
+];
+const STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE: &[&str] = &[
+    "starting", "with", "you", "each", "player", "may", "pay", "any", "amount", "of", "life",
+];
+const REPEAT_UNTIL_NO_ONE_PAYS_LIFE: &[&str] = &[
+    "repeat", "this", "process", "until", "no", "one", "pays", "life",
+];
+const EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID: &[&str] = &[
+    "each", "player", "creates", "1/1", "black", "rat", "creature", "token", "for", "each", "1",
+    "life", "they", "paid", "this", "way",
+];
 
-const EACH_PLAYER_SHUFFLE_REVEAL_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix &["each", "player", "shuffles", "all"];
-    contains_phrases &[
-        &["they", "own", "into", "their", "library"],
-        &[
-            "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their",
-            "library",
-        ],
-    ]
-);
-const EACH_PLAYER_PUT_REVEALED_TYPES_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix &["each", "player", "puts", "all"];
-    contains_phrases &[
-        &[
-            "revealed",
-            "this",
-            "way",
-            "onto",
-            "the",
-            "battlefield",
-        ],
-        &["then", "does", "the", "same", "for"],
-        &["on", "the", "bottom", "of", "their", "library"],
-    ]
-);
+const EACH_PLAYER_SHUFFLE_REVEAL_PREFIX: &[&str] = &["each", "player", "shuffles", "all"];
+const EACH_PLAYER_SHUFFLE_REVEAL_REQUIRED_PHRASES: &[&[&str]] = &[
+    &["they", "own", "into", "their", "library"],
+    &[
+        "then", "reveals", "that", "many", "cards", "from", "the", "top", "of", "their", "library",
+    ],
+];
+const EACH_PLAYER_PUT_REVEALED_TYPES_PREFIX: &[&str] = &["each", "player", "puts", "all"];
+const EACH_PLAYER_PUT_REVEALED_TYPES_REQUIRED_PHRASES: &[&[&str]] = &[
+    &["revealed", "this", "way", "onto", "the", "battlefield"],
+    &["then", "does", "the", "same", "for"],
+    &["on", "the", "bottom", "of", "their", "library"],
+];
 
-const PREVENTED_DAMAGE_COUNTER_FOLLOWUP: ClauseShape<'static> = clause_shape!(
-    prefix &["for", "each", "1", "damage", "prevented", "this", "way"];
-    contains_words &["put", "+1/+1", "counter", "on"]
-);
-const ON_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["on"]);
+const PREVENTED_DAMAGE_COUNTER_FOLLOWUP_PREFIX: &[&str] =
+    &["for", "each", "1", "damage", "prevented", "this", "way"];
+const PREVENTED_DAMAGE_COUNTER_FOLLOWUP_WORDS: &[&str] = &["put", "+1/+1", "counter", "on"];
+const SOURCE_TAPPED_DURATION_PHRASE: &[&str] = &["for", "as", "long", "as"];
+const SOURCE_TAPPED_DURATION_WORDS: &[&str] = &["remains", "tapped"];
+const SOURCE_TAPPED_DURATION_SOURCE_WORDS: &[&str] = &[
+    "this",
+    "thiss",
+    "source",
+    "artifact",
+    "creature",
+    "permanent",
+];
 
-const SOURCE_TAPPED_DURATION_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases &[&["for", "as", "long", "as"]];
-    contains_words &["remains", "tapped"];
-    contains_any_words &[&[
-        "this",
-        "thiss",
-        "source",
-        "artifact",
-        "creature",
-        "permanent",
-    ]]
-);
+fn non_article_tokens_eq(tokens: &[OwnedLexToken], expected: &[&str]) -> bool {
+    word_slice_eq(&non_article_token_word_refs(tokens), expected)
+}
+
+fn non_article_tokens_eq_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
+    word_slice_eq_any(&non_article_token_word_refs(tokens), expected)
+}
+
+fn words_contain_all_phrases(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .all(|phrase| word_slice_contains_phrase(words, phrase))
+}
 
 pub(crate) fn parse_parameterized_flashback_grant_sequence(
     sentences: &[SentenceInput],
@@ -206,8 +181,10 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
     let Some(gain_idx) = first_clause.find_word_any(&["gain", "gains"]) else {
         return Ok(None);
     };
-    let first_words = first_clause.word_refs();
-    if !FLASHBACK_UNTIL_END_TAIL.matches_words(&first_words[gain_idx + 1..]) {
+    let Some(flashback_tail) = first_clause.from_word(gain_idx + 1) else {
+        return Ok(None);
+    };
+    if !word_slice_eq(&flashback_tail.word_refs(), FLASHBACK_UNTIL_END_TAIL) {
         return Ok(None);
     }
 
@@ -221,7 +198,7 @@ pub(crate) fn parse_parameterized_flashback_grant_sequence(
     let target = effect_sentences::parse_target_phrase(target_clause.tokens())?;
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !FLASHBACK_COST_FOLLOWUP.matches(second_clause) {
+    if !word_slice_eq_any(&second_clause.word_refs(), FLASHBACK_COST_FOLLOWUPS) {
         return Ok(None);
     }
 
@@ -262,21 +239,23 @@ pub(crate) fn parse_iterative_library_procedure_sequence(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let _shape = GenericSubjectVerbSequence::iterative_library_procedure();
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if !EXILE_TOP_CARD_OF_LIBRARY.matches_non_article_tokens(first_clause.tokens()) {
+    if !non_article_tokens_eq(first_clause.tokens(), EXILE_TOP_CARD_OF_LIBRARY) {
         return Ok(None);
     }
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME
-        .matches_non_article_tokens(second_clause.tokens())
-    {
+    if !non_article_tokens_eq_any(
+        second_clause.tokens(),
+        ITERATIVE_LIBRARY_MAY_KEEP_UNLESS_DUPLICATE_NAME_CLAUSES,
+    ) {
         return Ok(None);
     }
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    if !ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE
-        .matches_non_article_tokens(third_clause.tokens())
-    {
+    if !non_article_tokens_eq(
+        third_clause.tokens(),
+        ITERATIVE_LIBRARY_REPEAT_UNTIL_KEEP_OR_DUPLICATE,
+    ) {
         return Ok(None);
     }
 
@@ -321,17 +300,20 @@ pub(crate) fn parse_each_player_repeat_pay_life_tokens_sequence(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if !STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE.matches_non_article_tokens(first_clause.tokens()) {
+    if !non_article_tokens_eq(first_clause.tokens(), STARTING_EACH_PLAYER_MAY_PAY_ANY_LIFE) {
         return Ok(None);
     }
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !REPEAT_UNTIL_NO_ONE_PAYS_LIFE.matches_non_article_tokens(second_clause.tokens()) {
+    if !non_article_tokens_eq(second_clause.tokens(), REPEAT_UNTIL_NO_ONE_PAYS_LIFE) {
         return Ok(None);
     }
 
     let third_clause = LexedClause::new(sentences[sentence_idx + 2].lowered()).trimmed();
-    if !EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID.matches_non_article_tokens(third_clause.tokens()) {
+    if !non_article_tokens_eq(
+        third_clause.tokens(),
+        EACH_PLAYER_CREATES_RATS_FOR_LIFE_PAID,
+    ) {
         return Ok(None);
     }
 
@@ -374,12 +356,21 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if !EACH_PLAYER_SHUFFLE_REVEAL_PATTERN.matches(first_clause) {
+    let first_words = first_clause.word_refs();
+    if !word_slice_starts_with(&first_words, EACH_PLAYER_SHUFFLE_REVEAL_PREFIX)
+        || !words_contain_all_phrases(&first_words, EACH_PLAYER_SHUFFLE_REVEAL_REQUIRED_PHRASES)
+    {
         return Ok(None);
     }
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
-    if !EACH_PLAYER_PUT_REVEALED_TYPES_PATTERN.matches(second_clause) {
+    let second_words = second_clause.word_refs();
+    if !word_slice_starts_with(&second_words, EACH_PLAYER_PUT_REVEALED_TYPES_PREFIX)
+        || !words_contain_all_phrases(
+            &second_words,
+            EACH_PLAYER_PUT_REVEALED_TYPES_REQUIRED_PHRASES,
+        )
+    {
         return Ok(None);
     }
 
@@ -508,14 +499,13 @@ pub(crate) fn parse_damage_prevention_counter_sequence(
 
     let second_clause = LexedClause::new(sentences[sentence_idx + 1].lowered()).trimmed();
     let second_words = non_article_token_word_refs(second_clause.tokens());
-    if !PREVENTED_DAMAGE_COUNTER_FOLLOWUP.matches_words(&second_words) {
+    if !word_slice_starts_with(&second_words, PREVENTED_DAMAGE_COUNTER_FOLLOWUP_PREFIX)
+        || !word_slice_contains_all_words(&second_words, PREVENTED_DAMAGE_COUNTER_FOLLOWUP_WORDS)
+    {
         return Ok(None);
     }
 
-    let Some(on_idx) = second_words
-        .iter()
-        .position(|word| ON_WORD_PATTERN.matches_words(&[*word]))
-    else {
+    let Some(on_idx) = second_words.iter().position(|word| *word == "on") else {
         return Ok(None);
     };
     let target_words = &second_words[on_idx + 1..];
@@ -690,7 +680,11 @@ pub(crate) fn parse_tap_lock_sequence(
     let second_tokens = second_clause.tokens();
     let starts_with_supported_pronoun_clause =
         second_clause.starts_with_any(THEY_DONT_UNTAP_DURING_PREFIXES);
-    let has_source_tapped_duration = SOURCE_TAPPED_DURATION_PATTERN.matches(second_clause);
+    let second_words = second_clause.word_refs();
+    let has_source_tapped_duration =
+        word_slice_contains_phrase(&second_words, SOURCE_TAPPED_DURATION_PHRASE)
+            && word_slice_contains_all_words(&second_words, SOURCE_TAPPED_DURATION_WORDS)
+            && word_slice_contains_any_word(&second_words, SOURCE_TAPPED_DURATION_SOURCE_WORDS);
     if !starts_with_supported_pronoun_clause || !has_source_tapped_duration {
         return Ok(None);
     }
@@ -725,7 +719,9 @@ pub(crate) fn parse_search_delayed_upkeep_unless_pays_sequence(
         return Ok(None);
     };
     let search_clause = LexedClause::new(sentences[sentence_idx].lowered()).trimmed();
-    if first_effects.is_empty() || !SEARCH_YOUR_LIBRARY_PREFIX_PATTERN.matches(search_clause) {
+    if first_effects.is_empty()
+        || !word_slice_starts_with(&search_clause.word_refs(), SEARCH_YOUR_LIBRARY_PREFIX)
+    {
         return Ok(None);
     }
 

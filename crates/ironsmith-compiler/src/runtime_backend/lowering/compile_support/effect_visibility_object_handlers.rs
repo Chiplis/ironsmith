@@ -13,107 +13,6 @@ fn mark_choose_effects_reveal(mut effects: Vec<Effect>) -> Vec<Effect> {
     effects
 }
 
-pub(super) fn compile_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-    player: PlayerAst,
-    order: crate::cards::builders::LibraryBottomOrderAst,
-    card_type_modes: &[CardType],
-    spell_filter: Option<&ObjectFilter>,
-    ctx: &mut EffectLoweringContext,
-) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
-    use crate::effect::{Condition, Value, ValueComparisonOperator};
-    use crate::target::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
-
-    let looked_tag = ctx.last_object_tag.clone().ok_or_else(|| {
-        CardTextError::ParseError(
-            "unable to resolve looked-at cards without prior reference".to_string(),
-        )
-    })?;
-
-    let subject = LoweredSubject::resolve_chooser(player, ctx, true, true, false)?;
-    let chooser = subject.clone_player_filter();
-    let choices = subject.into_choices();
-
-    let chosen_tag = ctx.next_tag("chosen");
-    let chosen_tag_key: TagKey = chosen_tag.as_str().into();
-
-    let mut compiled = Vec::new();
-    for card_type in card_type_modes {
-        let mut choose_filter = ObjectFilter::default();
-        choose_filter.zone = Some(Zone::Library);
-        choose_filter.card_types.push(*card_type);
-        choose_filter
-            .tagged_constraints
-            .push(TaggedObjectConstraint {
-                tag: TagKey::from(looked_tag.as_str()),
-                relation: TaggedOpbjectRelation::IsTaggedObject,
-            });
-        choose_filter
-            .tagged_constraints
-            .push(TaggedObjectConstraint {
-                tag: chosen_tag_key.clone(),
-                relation: TaggedOpbjectRelation::IsNotTaggedObject,
-            });
-
-        let choose = Effect::new(
-            crate::effects::ChooseObjectsEffect::new(
-                choose_filter,
-                ChoiceCount::up_to(1),
-                chooser.clone(),
-                chosen_tag_key.clone(),
-            )
-            .in_zone(Zone::Library),
-        );
-
-        if let Some(spell_filter) = spell_filter {
-            let mut typed_spell_filter = (*spell_filter).clone();
-            if !typed_spell_filter.card_types.contains(card_type) {
-                typed_spell_filter.card_types.push(*card_type);
-            }
-
-            compiled.push(Effect::conditional(
-                Condition::ValueComparison {
-                    left: Value::SpellsCastThisTurnMatching {
-                        player: chooser.clone(),
-                        filter: typed_spell_filter,
-                        exclude_source: false,
-                    },
-                    operator: ValueComparisonOperator::GreaterThanOrEqual,
-                    right: Value::Fixed(1),
-                },
-                vec![choose],
-                Vec::new(),
-            ));
-        } else {
-            compiled.push(choose);
-        }
-    }
-
-    compiled.push(Effect::for_each_tagged(
-        chosen_tag.clone(),
-        vec![Effect::move_to_zone(
-            ChooseSpec::Iterated,
-            Zone::Hand,
-            false,
-        )],
-    ));
-    compiled.push(Effect::put_tagged_remainder_on_library_bottom(
-        looked_tag,
-        Some(chosen_tag_key),
-        match order {
-            crate::cards::builders::LibraryBottomOrderAst::Random => {
-                crate::effects::consult_helpers::LibraryBottomOrder::Random
-            }
-            crate::cards::builders::LibraryBottomOrderAst::ChooserChooses => {
-                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses
-            }
-        },
-        chooser,
-    ));
-
-    ctx.last_object_tag = Some(chosen_tag);
-    Ok((compiled, choices))
-}
-
 pub(super) fn try_compile_visibility_and_card_selection_effect(
     effect: &EffectAst,
     _ctx: &mut EffectLoweringContext,
@@ -219,17 +118,13 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                     false,
                 )
             } else if chooses_tagged_pool {
-                let choice_zones = resolved_filter
-                    .zone
-                    .map(|zone| vec![zone])
-                    .unwrap_or_else(scoped_collection_zones);
                 compile_choose_objects_across_zones_with_subject(
                     subject,
                     resolved_filter,
                     *count,
                     count_value.clone(),
                     tag.clone(),
-                    choice_zones,
+                    scoped_collection_zones(),
                     None,
                     false,
                 )
@@ -255,6 +150,34 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)
         }
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count,
+            player,
+            tag,
+            zone,
+        } => {
+            let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
+            let followup_player = subject.clone_player_filter();
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            resolved_filter.zone = Some(*zone);
+            let (effects, choices) = compile_choose_objects_with_subject(
+                subject,
+                resolved_filter,
+                *count,
+                None,
+                tag.clone(),
+                *zone,
+            );
+            ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            ctx.last_object_tag = Some(tag.as_str().to_string());
+            if is_sentence_helper_exiled_collection_tag(tag.as_str()) {
+                ctx.last_exiled_collection_tag = Some(tag.as_str().to_string());
+            }
+            ctx.last_player_filter = Some(followup_player);
+            (effects, choices)
+        }
         EffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             count,
@@ -264,7 +187,8 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
         } => {
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, false)?;
             let chooser = subject.clone_player_filter();
-            let mut resolved_filter = subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
+            let mut resolved_filter =
+                subject.resolve_object_refs_and_bind_player_refs_in_filter(filter, ctx)?;
             resolved_filter.zone = Some(Zone::Library);
             let mut choose_effect = crate::effects::ChooseObjectsEffect::new(
                 resolved_filter,

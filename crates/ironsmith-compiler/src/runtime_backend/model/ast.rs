@@ -923,6 +923,9 @@ pub(crate) enum SubjectVerbActionAst {
         object: TargetAst,
         target: TargetAst,
     },
+    Unattach {
+        object: TargetAst,
+    },
     Enchant {
         filter: AuraAttachmentFilter,
     },
@@ -987,6 +990,15 @@ pub(crate) enum SubjectVerbActionAst {
     RevealTagged {
         tag: TagKey,
     },
+    /// Put the chosen/iterated objects onto the battlefield under a resolved
+    /// controller. Inside a `ForEachTagged`, `TargetAst::Tagged(IT_TAG)` lowers
+    /// to `ChooseSpec::Iterated`; otherwise the tagged collection is used.
+    /// Lowers to `Effect::put_onto_battlefield`.
+    PutOntoBattlefield {
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+    },
     RevealCardsFromHand {
         count: ChoiceCount,
         count_value: Option<Value>,
@@ -1009,12 +1021,6 @@ pub(crate) enum SubjectVerbActionAst {
     MayMoveToZone {
         target: TargetAst,
         zone: Zone,
-    },
-    PutSomeIntoHandRestIntoGraveyard {
-        count: ChoiceCount,
-    },
-    PutSomeIntoHandRestOnBottomOfLibrary {
-        count: ChoiceCount,
     },
     AdditionalLandPlays {
         count: Value,
@@ -1115,6 +1121,17 @@ pub(crate) enum SubjectVerbActionAst {
         keep_tagged: Option<TagKey>,
         order: LibraryBottomOrderAst,
         player: PlayerAst,
+    },
+    /// Moves every object tagged `tag` that is NOT also in the `keep_tagged`
+    /// group to `zone`, preserving each object's controller. Lowers to
+    /// `for_each_tagged(tag, [conditional(in keep_tagged, [], [move iterated to
+    /// zone])])`, keeping the iterated reference internal to lowering (no bare
+    /// `it` surfaces). The graveyard/exile analog of
+    /// `PutTaggedRemainderOnBottomOfLibrary`.
+    PutTaggedRemainderInZone {
+        tag: TagKey,
+        keep_tagged: TagKey,
+        zone: Zone,
     },
     CastTagged {
         tag: TagKey,
@@ -1469,40 +1486,6 @@ pub(crate) enum SubjectVerbActionAst {
         destination: Zone,
         reveal: bool,
         progress_tag: TagKey,
-    },
-    RevealTopChooseCardTypePutToHandRestBottom {
-        count: u32,
-    },
-    RevealTopPutMatchingIntoHandRestIntoGraveyard {
-        count: u32,
-        filter: ObjectFilter,
-    },
-    RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-        count: u32,
-        filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    },
-    ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-        filter: ObjectFilter,
-        reveal: bool,
-        if_not_chosen: Vec<EffectAst>,
-    },
-    ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-        spell_filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    },
-    ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-        order: LibraryBottomOrderAst,
-    },
-    ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-        battlefield_filter: ObjectFilter,
-        tapped: bool,
-    },
-    ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-        battlefield_filter: ObjectFilter,
-        hand_filter: ObjectFilter,
-        tapped: bool,
-        order: LibraryBottomOrderAst,
     },
     RetargetStackObject {
         target: TargetAst,
@@ -2075,6 +2058,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("object", object)
                 .field("target", target)
                 .finish(),
+            Self::Unattach { object } => {
+                f.debug_struct("Unattach").field("object", object).finish()
+            }
             Self::Enchant { filter } => f.debug_tuple("Enchant").field(filter).finish(),
             Self::ExileWhenSourceLeaves { target } => f
                 .debug_tuple("ExileWhenSourceLeaves")
@@ -2181,6 +2167,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("accumulated_tags", accumulated_tags)
                 .finish(),
             Self::RevealTagged { tag } => f.debug_tuple("RevealTagged").field(tag).finish(),
+            Self::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+            } => f
+                .debug_struct("PutOntoBattlefield")
+                .field("target", target)
+                .field("tapped", tapped)
+                .field("controller", controller)
+                .finish(),
             Self::RevealCardsFromHand {
                 count,
                 count_value,
@@ -2209,14 +2205,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("MayMoveToZone")
                 .field("target", target)
                 .field("zone", zone)
-                .finish(),
-            Self::PutSomeIntoHandRestIntoGraveyard { count } => f
-                .debug_tuple("PutSomeIntoHandRestIntoGraveyard")
-                .field(count)
-                .finish(),
-            Self::PutSomeIntoHandRestOnBottomOfLibrary { count } => f
-                .debug_tuple("PutSomeIntoHandRestOnBottomOfLibrary")
-                .field(count)
                 .finish(),
             Self::AdditionalLandPlays { count, duration } => f
                 .debug_struct("AdditionalLandPlays")
@@ -2392,6 +2380,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("keep_tagged", keep_tagged)
                 .field("order", order)
                 .field("player", player)
+                .finish(),
+            Self::PutTaggedRemainderInZone {
+                tag,
+                keep_tagged,
+                zone,
+            } => f
+                .debug_struct("PutTaggedRemainderInZone")
+                .field("tag", tag)
+                .field("keep_tagged", keep_tagged)
+                .field("zone", zone)
                 .finish(),
             Self::CastTagged {
                 tag,
@@ -2966,67 +2964,6 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("reveal", reveal)
                 .field("progress_tag", progress_tag)
                 .finish(),
-            Self::RevealTopChooseCardTypePutToHandRestBottom { count } => f
-                .debug_tuple("RevealTopChooseCardTypePutToHandRestBottom")
-                .field(count)
-                .finish(),
-            Self::RevealTopPutMatchingIntoHandRestIntoGraveyard { count, filter } => f
-                .debug_struct("RevealTopPutMatchingIntoHandRestIntoGraveyard")
-                .field("count", count)
-                .field("filter", filter)
-                .finish(),
-            Self::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                count,
-                filter,
-                order,
-            } => f
-                .debug_struct("RevealTopPutMatchingIntoHandRestOnBottomOfLibrary")
-                .field("count", count)
-                .field("filter", filter)
-                .field("order", order)
-                .finish(),
-            Self::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                filter,
-                reveal,
-                if_not_chosen,
-            } => f
-                .debug_struct("ChooseFromLookedCardsIntoHandRestIntoGraveyard")
-                .field("filter", filter)
-                .field("reveal", reveal)
-                .field("if_not_chosen", if_not_chosen)
-                .finish(),
-            Self::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                order,
-            } => f
-                .debug_struct("ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary")
-                .field("spell_filter", spell_filter)
-                .field("order", order)
-                .finish(),
-            Self::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { order } => f
-                .debug_struct("ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary")
-                .field("order", order)
-                .finish(),
-            Self::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                tapped,
-            } => f
-                .debug_struct("ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary")
-                .field("battlefield_filter", battlefield_filter)
-                .field("tapped", tapped)
-                .finish(),
-            Self::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                tapped,
-                order,
-            } => f
-                .debug_struct("ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary")
-                .field("battlefield_filter", battlefield_filter)
-                .field("hand_filter", hand_filter)
-                .field("tapped", tapped)
-                .field("order", order)
-                .finish(),
             Self::RetargetStackObject {
                 target,
                 mode,
@@ -3428,6 +3365,14 @@ impl std::fmt::Debug for SubjectVerbEffectAst {
     }
 }
 
+/// One mode of an `EffectAst::ChooseOneOf` modal choice: a label shown to the
+/// player and the effects that resolve when that mode is chosen.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ChooseOneModeAst {
+    pub description: String,
+    pub effects: Vec<EffectAst>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum EffectAst {
     SubjectVerb(SubjectVerbEffectAst),
@@ -3501,6 +3446,19 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         tag: TagKey,
     },
+    /// Choose objects strictly within a single explicit `zone`, without the
+    /// cross-zone scoping heuristic `ChooseObjects` applies to tagged pools.
+    /// Lowers to a plain `ChooseObjectsEffect::new(filter, count, chooser,
+    /// tag).in_zone(zone)`, mirroring how the retired looked-cards recipes built
+    /// their inner choose. Used to compose "choose N of the looked-at cards"
+    /// where the pool is known to live in one zone (e.g. the library).
+    ChooseTaggedObjectsInZone {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        player: PlayerAst,
+        tag: TagKey,
+        zone: Zone,
+    },
     ChooseObjectsAcrossZones {
         filter: ObjectFilter,
         count: ChoiceCount,
@@ -3509,6 +3467,26 @@ pub(crate) enum EffectAst {
         tag: TagKey,
         zones: Vec<Zone>,
         search_mode: Option<crate::effect::SearchSelectionMode>,
+    },
+    /// A player-facing modal choice: the player picks one mode, and only that
+    /// mode's effects resolve. Lowers to `Effect::choose_one`.
+    ChooseOneOf {
+        modes: Vec<ChooseOneModeAst>,
+    },
+    /// Lower `effect` (which must lower to a single runtime effect) under a
+    /// fresh internal effect id, then emit an `if_then(id, DidNotHappen,
+    /// otherwise)`. The effect id stays internal to lowering and is never
+    /// exposed in the AST. Lowers to `Effect::with_id` + `Effect::if_then`.
+    IfEffectDidNotHappen {
+        effect: Box<EffectAst>,
+        otherwise: Vec<EffectAst>,
+    },
+    /// Lower `effect` (which must lower to a single runtime effect) and apply
+    /// `tag_all(tag)` to it, tagging every object the effect affects. Lowers to
+    /// `Effect::tag_all`.
+    TagAffected {
+        effect: Box<EffectAst>,
+        tag: TagKey,
     },
     DirectionalAdjacentPlayerControl {
         filter: ObjectFilter,
@@ -3575,6 +3553,26 @@ pub(crate) enum EffectAst {
     ForEachTagged {
         tag: TagKey,
         effects: Vec<EffectAst>,
+    },
+    /// Moves every object tagged `tag` to `zone`, preserving each object's
+    /// controller. Lowers to `for_each_tagged(tag, [move(Iterated, zone)])`.
+    /// Unlike a hand-written `ForEachTagged` whose body references `it`, this
+    /// keeps the iterated reference internal to lowering, so the iteration does
+    /// not surface a bare `it` that would be mistaken for an outer (triggering)
+    /// object reference.
+    MoveTaggedGroupToZone {
+        tag: TagKey,
+        zone: Zone,
+    },
+    /// Binds the most recently looked-at / referenced object collection
+    /// (whatever is currently in `last_object_tag`) to the explicit parse-time
+    /// tag `into`. This is a lowering-time alias only: it emits no runtime
+    /// effect, but lets later composed effects reference the earlier pool via
+    /// `into` even after an intervening `ChooseObjects` clobbers
+    /// `last_object_tag`. Used to compose the "put some into hand, rest
+    /// elsewhere" looked-cards shapes from reusable primitives.
+    SnapshotLastObjectTag {
+        into: TagKey,
     },
     ForEachOpponentDoesNot {
         effects: Vec<EffectAst>,
@@ -3671,27 +3669,6 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_some_into_hand_rest_into_graveyard(
-        player: PlayerAst,
-        count: u32,
-    ) -> Self {
-        Self::subject_verb_put_some_into_hand_rest_into_graveyard_with_count(
-            player,
-            ChoiceCount::exactly(count as usize),
-        )
-    }
-
-    pub(crate) fn subject_verb_put_some_into_hand_rest_into_graveyard_with_count(
-        player: PlayerAst,
-        count: ChoiceCount,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Chooser,
-            player,
-            SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { count },
-        )
-    }
-
     pub(crate) fn subject_verb_may_move_to_zone(
         player: PlayerAst,
         target: TargetAst,
@@ -3704,25 +3681,86 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_put_some_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        count: u32,
-    ) -> Self {
-        Self::subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(
-            player,
-            ChoiceCount::exactly(count as usize),
-        )
-    }
-
-    pub(crate) fn subject_verb_put_some_into_hand_rest_on_bottom_of_library_with_count(
+    /// Composes "choose up to N of the looked-at cards into hand, put the rest
+    /// on the bottom of the library" from reusable primitives, mirroring the
+    /// runtime effects the retired `PutSomeIntoHandRestOnBottomOfLibrary` recipe
+    /// lowered to. `looked_tag` names the prior looked-at pool; callers that
+    /// emit the look themselves should pass a fresh tag, while standalone
+    /// follow-ups should snapshot the prior `last_object_tag` via
+    /// `SnapshotLastObjectTag` (handled here) and pass `IT_TAG`.
+    pub(crate) fn compose_put_some_into_hand_rest_on_bottom_of_library(
         player: PlayerAst,
         count: ChoiceCount,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Chooser,
-            player,
-            SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { count },
-        )
+        looked_tag: TagKey,
+        chosen_tag: TagKey,
+    ) -> Vec<Self> {
+        let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
+        choose_filter.zone = Some(Zone::Library);
+        vec![
+            Self::SnapshotLastObjectTag {
+                into: looked_tag.clone(),
+            },
+            Self::ChooseTaggedObjectsInZone {
+                filter: choose_filter,
+                count,
+                player,
+                tag: chosen_tag.clone(),
+                zone: Zone::Library,
+            },
+            Self::MoveTaggedGroupToZone {
+                tag: chosen_tag.clone(),
+                zone: Zone::Hand,
+            },
+            Self::subject_verb_put_tagged_remainder_on_bottom_of_library(
+                looked_tag,
+                Some(chosen_tag),
+                LibraryBottomOrderAst::Random,
+                player,
+            ),
+        ]
+    }
+
+    /// Composes "choose N of the looked-at cards into hand, put the rest into
+    /// the graveyard" from reusable primitives, mirroring the runtime effects
+    /// the retired `PutSomeIntoHandRestIntoGraveyard` recipe lowered to: a
+    /// per-looked-card `ForEachTagged` that keeps cards in the chosen group and
+    /// moves the remainder to the graveyard. See
+    /// `compose_put_some_into_hand_rest_on_bottom_of_library` for the
+    /// `looked_tag` contract.
+    pub(crate) fn compose_put_some_into_hand_rest_into_graveyard(
+        player: PlayerAst,
+        count: ChoiceCount,
+        looked_tag: TagKey,
+        chosen_tag: TagKey,
+    ) -> Vec<Self> {
+        let mut choose_filter = ObjectFilter::tagged(looked_tag.clone());
+        choose_filter.zone = Some(Zone::Library);
+
+        vec![
+            Self::SnapshotLastObjectTag {
+                into: looked_tag.clone(),
+            },
+            Self::ChooseTaggedObjectsInZone {
+                filter: choose_filter,
+                count,
+                player,
+                tag: chosen_tag.clone(),
+                zone: Zone::Library,
+            },
+            Self::MoveTaggedGroupToZone {
+                tag: chosen_tag.clone(),
+                zone: Zone::Hand,
+            },
+            Self::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::PutTaggedRemainderInZone {
+                    tag: looked_tag,
+                    keep_tagged: chosen_tag,
+                    zone: Zone::Graveyard,
+                },
+            ),
+        ]
     }
 
     pub(crate) fn subject_verb_grant_protection_choice(
@@ -5061,125 +5099,6 @@ impl EffectAst {
         )
     }
 
-    pub(crate) fn subject_verb_reveal_top_choose_card_type_put_to_hand_rest_bottom(
-        player: PlayerAst,
-        count: u32,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { count },
-        )
-    }
-
-    pub(crate) fn subject_verb_reveal_top_put_matching_into_hand_rest_into_graveyard(
-        player: PlayerAst,
-        count: u32,
-        filter: ObjectFilter,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { count, filter },
-        )
-    }
-
-    pub(crate) fn subject_verb_reveal_top_put_matching_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        count: u32,
-        filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                count,
-                filter,
-                order,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_into_hand_rest_into_graveyard(
-        player: PlayerAst,
-        filter: ObjectFilter,
-        reveal: bool,
-        if_not_chosen: Vec<EffectAst>,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                filter,
-                reveal,
-                if_not_chosen,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_for_each_card_type_among_spells_cast_this_turn_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        spell_filter: ObjectFilter,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                order,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-                order,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_or_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        battlefield_filter: ObjectFilter,
-        tapped: bool,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                tapped,
-            },
-        )
-    }
-
-    pub(crate) fn subject_verb_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_bottom_of_library(
-        player: PlayerAst,
-        battlefield_filter: ObjectFilter,
-        hand_filter: ObjectFilter,
-        tapped: bool,
-        order: LibraryBottomOrderAst,
-    ) -> Self {
-        Self::subject_verb(
-            SubjectVerbRoleAst::Actor,
-            player,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                tapped,
-                order,
-            },
-        )
-    }
-
     pub(crate) fn subject_verb_retarget_stack_object(
         chooser: PlayerAst,
         target: TargetAst,
@@ -5272,6 +5191,14 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Attach { object, target },
+        )
+    }
+
+    pub(crate) fn subject_verb_unattach(object: TargetAst) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::Unattach { object },
         )
     }
 
@@ -5971,6 +5898,23 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::RevealTagged { tag },
+        )
+    }
+
+    pub(crate) fn subject_verb_put_onto_battlefield(
+        player: PlayerAst,
+        target: TargetAst,
+        tapped: bool,
+        controller: ReturnControllerAst,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            player,
+            SubjectVerbActionAst::PutOntoBattlefield {
+                target,
+                tapped,
+                controller,
+            },
         )
     }
 

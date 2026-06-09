@@ -11,7 +11,6 @@ use super::activation_helpers::{
     word_refs_at_is_article, word_refs_except,
 };
 use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effects_mut};
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::effect_sentences::find_verb;
 use super::effect_sentences::{
     is_beginning_of_end_step_words, is_end_of_combat_words, is_negated_untap_clause,
@@ -28,8 +27,8 @@ use super::keyword_static::{
 };
 use super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::lexer::{
-    OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is, token_slice_at_is_any,
-    token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
+    LexedClause, OwnedLexToken, TokenKind, contains_token_kind, token_slice_at_is,
+    token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any, token_slice_first_kind,
     token_slice_starts_with, token_slice_starts_with_at, word_slice_at_is, word_slice_at_is_any,
     word_slice_contains_all_words, word_slice_contains_any_phrase,
     word_slice_contains_any_phrase_or_empty, word_slice_contains_any_word,
@@ -49,10 +48,11 @@ use super::util::{
     current_source_reference_name, cycling_keyword_root, is_source_reference_words,
     mana_pips_from_token, parse_card_type, parse_choice_count_token_prefix,
     parse_choice_count_token_prefix_consumed, parse_choice_count_word_prefix, parse_color,
-    parse_counter_type_from_tokens, parse_greater_than_or_equal_quantity_prefix, parse_non_type,
-    parse_number, parse_subject, parse_target_count_range_prefix, parse_target_phrase,
-    parse_value_expr_words, source_reference_surface_for_span, source_reference_surface_for_words,
-    span_from_tokens, this_source_surface_for_words, token_index_for_word_index, trim_commas,
+    parse_counter_type_from_tokens, parse_greater_than_or_equal_quantity_prefix,
+    parse_greater_than_or_equal_quantity_prefix_words, parse_non_type, parse_number, parse_subject,
+    parse_target_count_range_prefix, parse_target_phrase, parse_value_expr_words,
+    source_reference_surface_for_span, source_reference_surface_for_words, span_from_tokens,
+    this_source_surface_for_words, token_index_for_word_index, trim_commas,
     word_is_cycling_keyword_marker, words,
 };
 #[allow(unused_imports)]

@@ -18,6 +18,7 @@ const ATTACHED_OBJECT_EXACT_PATTERN: ClauseShape<'static> = clause_shape!(
             &["enchanted", "permanent"],
             &["enchanted", "land"],
             &["enchanted", "artifact"],
+            &["enchanted", "equipment"],
             &["equipped", "creature"],
             &["equipped", "permanent"],
         ]
@@ -30,40 +31,35 @@ const ATTACHED_OBJECT_TYPE_TRANSFORM_PREFIX_PATTERN: ClauseShape<'static> = clau
             &["enchanted", "creature"],
             &["enchanted", "permanent"],
             &["enchanted", "artifact"],
+            &["enchanted", "equipment"],
             &["enchanted", "land"],
             &["equipped", "creature"],
             &["equipped", "permanent"],
         ]
 );
-const ATTACHED_IS_OR_ARE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["is"], &["are"]]);
-const ATTACHED_WITH_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["with"]);
-const ATTACHED_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
+const ATTACHED_IS_OR_ARE_WORDS: &[&str] = &["is", "are"];
+const ATTACHED_WITH_WORD: &str = "with";
+const ATTACHED_AND_WORD: &str = "and";
 const ATTACHED_REMOVE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["remove"]);
 const ATTACHED_PREVENT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["prevent"]);
 const ATTACHED_COUNTER_OR_COUNTERS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["counter"], &["counters"]]);
-const ATTACHED_COLORLESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["colorless"]);
-const ATTACHED_ARTICLE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["a"], &["an"]]);
+const ATTACHED_COLORLESS_WORD: &str = "colorless";
+const ATTACHED_ARTICLE_WORDS: &[&str] = &["a", "an"];
 const ATTACHED_ENCHANTED_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["enchanted"]);
 const ATTACHED_SNOW_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["snow"]);
 const ATTACHED_WHILE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["while"]);
-const ATTACHED_AND_OR_IT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["and"], &["it"]]);
-const ATTACHED_LOSE_OR_LOSES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["lose"], &["loses"]]);
-const ATTACHED_GET_OR_GETS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["get"], &["gets"]]);
-const ATTACHED_WHEN_OR_WHENEVER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["when"], &["whenever"]]);
-const ATTACHED_HAS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["has"]);
-const ATTACHED_IS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["is"]);
+const ATTACHED_AND_OR_IT_WORDS: &[&str] = &["and", "it"];
+const ATTACHED_LOSE_OR_LOSES_WORDS: &[&str] = &["lose", "loses"];
+const ATTACHED_GET_OR_GETS_WORDS: &[&str] = &["get", "gets"];
+const ATTACHED_WHEN_OR_WHENEVER_WORDS: &[&str] = &["when", "whenever"];
+const ATTACHED_HAS_WORD: &str = "has";
+const ATTACHED_IS_WORD: &str = "is";
 const ATTACHED_YOU_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["you", "control"]);
 const ATTACHED_EQUIPPED_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix_any & [&["equipped", "creature"], &["equipped", "permanent"]]);
-const ATTACHED_LEGENDARY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["legendary"]);
+const ATTACHED_LEGENDARY_WORD: &str = "legendary";
 const ATTACHED_ENCHANTED_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["enchanted"]);
 const ATTACHED_CANT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["cant"]);
@@ -137,31 +133,13 @@ const ATTACHED_NONCOMBAT_COUNTER_TAIL_PATTERN: ClauseShape<'static> = clause_sha
 const ATTACHED_IF_CREATURE_COMBAT_DAMAGE_TO_THIS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix
         & [
-            "if",
-            "a",
-            "creature",
-            "would",
-            "deal",
-            "combat",
-            "damage",
-            "to",
-            "this",
-            "creature",
+            "if", "a", "creature", "would", "deal", "combat", "damage", "to", "this", "creature",
         ]
 );
 const ATTACHED_COMBAT_COUNTER_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
-            "prevent",
-            "that",
-            "damage",
-            "and",
-            "put",
-            "a",
-            "+1/+1",
-            "counter",
-            "on",
-            "this",
+            "prevent", "that", "damage", "and", "put", "a", "+1/+1", "counter", "on", "this",
             "creature",
         ]
 );
@@ -171,20 +149,46 @@ const ATTACHED_PREVENT_ALL_COMBAT_DAMAGE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["prevent", "all", "combat", "damage"]);
 const ATTACHED_BY_ENCHANTED_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["by", "enchanted", "creature"]);
-const ATTACHED_PREVENT_ALL_DAMAGE_TO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["prevent", "all", "damage", "that", "would", "be", "dealt", "to"]);
+const ATTACHED_PREVENT_ALL_DAMAGE_TO_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
+    prefix
+        & [
+            "prevent", "all", "damage", "that", "would", "be", "dealt", "to"
+        ]
+);
 const ATTACHED_TO_ENCHANTED_CREATURE_TAIL_PATTERN: ClauseShape<'static> =
     clause_shape!(suffix & ["to", "enchanted", "creature"]);
 
-
-fn attached_find_prefix_shape_start(
-    words: &[&str],
-    shape: &ClauseShape<'static>,
-) -> Option<usize> {
-    (0..words.len()).find(|&idx| shape.matches_words(&words[idx..]))
+fn attached_shape_matches_words<'a>(words: &[&str], shape: ClauseShape<'a>) -> bool {
+    shape.matches_word_slice(words)
 }
 
+fn attached_word_is_any(word: &str, expected: &[&str]) -> bool {
+    expected.contains(&word)
+}
 
+fn attached_word_is(word: &str, expected: &str) -> bool {
+    attached_word_is_any(word, &[expected])
+}
+
+fn attached_word_at_is(words: &[&str], idx: usize, expected: &str) -> bool {
+    words
+        .get(idx)
+        .is_some_and(|word| attached_word_is(word, expected))
+}
+
+fn attached_token_word_is_any(token: &OwnedLexToken, expected: &[&str]) -> bool {
+    token
+        .as_word()
+        .is_some_and(|word| attached_word_is_any(word, expected))
+}
+
+fn attached_token_word_is(token: &OwnedLexToken, expected: &str) -> bool {
+    attached_token_word_is_any(token, &[expected])
+}
+
+fn attached_find_prefix_shape_start(words: &[&str], shape: &ClauseShape<'static>) -> Option<usize> {
+    (0..words.len()).find(|&idx| attached_shape_matches_words(&words[idx..], *shape))
+}
 
 pub(crate) fn annihilator_granted_ability(amount: u32) -> Ability {
     Ability {
@@ -209,7 +213,9 @@ fn parse_attached_with_base_power_toughness_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(i32, i32, bool)>, CardTextError> {
     let words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if words.len() < 5 || !ATTACHED_BASE_POWER_TOUGHNESS_PREFIX_PATTERN.matches_words(&words) {
+    if words.len() < 5
+        || !attached_shape_matches_words(&words, ATTACHED_BASE_POWER_TOUGHNESS_PREFIX_PATTERN)
+    {
         return Ok(None);
     }
 
@@ -221,7 +227,8 @@ fn parse_attached_with_base_power_toughness_clause(
     })?;
 
     let trailing = &words[5..];
-    let preserve_other_types = ATTACHED_PRESERVE_OTHER_TYPES_TAIL_PATTERN.matches_words(trailing);
+    let preserve_other_types =
+        attached_shape_matches_words(trailing, ATTACHED_PRESERVE_OTHER_TYPES_TAIL_PATTERN);
     if !trailing.is_empty() && !preserve_other_types {
         return Ok(None);
     }
@@ -492,7 +499,9 @@ pub(crate) fn parse_equipped_creature_has_line(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let words = crate::runtime_backend::lexer::token_word_refs(tokens);
     let clause_text = words.join(" ");
-    if words.len() < 4 || !ATTACHED_EQUIPPED_CREATURE_HAS_PREFIX_PATTERN.matches_words(&words) {
+    if words.len() < 4
+        || !attached_shape_matches_words(&words, ATTACHED_EQUIPPED_CREATURE_HAS_PREFIX_PATTERN)
+    {
         return Ok(None);
     }
 
@@ -558,7 +567,7 @@ pub(crate) fn parse_enchanted_creature_has_line(
     };
     if !line_words
         .get(2)
-        .is_some_and(|word| ATTACHED_HAS_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| attached_word_is(word, ATTACHED_HAS_WORD))
     {
         return Ok(None);
     }
@@ -667,18 +676,20 @@ pub(crate) fn parse_attached_has_and_loses_keywords_line(
         return Ok(None);
     }
 
-    let is_enchanted = ATTACHED_ENCHANTED_SUBJECT_PREFIX_PATTERN.matches_words(&line_words);
-    let is_equipped = ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&line_words);
+    let is_enchanted =
+        attached_shape_matches_words(&line_words, ATTACHED_ENCHANTED_SUBJECT_PREFIX_PATTERN);
+    let is_equipped =
+        attached_shape_matches_words(&line_words, ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN);
     if !is_enchanted && !is_equipped {
         return Ok(None);
     }
-    if !ATTACHED_HAS_WORD_PATTERN.matches_word_at(&line_words, 2) {
+    if !attached_word_at_is(&line_words, 2, ATTACHED_HAS_WORD) {
         return Ok(None);
     }
 
     let Some(and_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_AND_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_AND_WORD)
         })
     else {
         return Ok(None);
@@ -686,7 +697,7 @@ pub(crate) fn parse_attached_has_and_loses_keywords_line(
     if and_idx <= 3
         || !tokens
             .get(and_idx + 1)
-            .is_some_and(|token| ATTACHED_LOSE_OR_LOSES_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| attached_token_word_is_any(token, ATTACHED_LOSE_OR_LOSES_WORDS))
     {
         return Ok(None);
     }
@@ -750,16 +761,18 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
     }
 
     let is_enchanted_creature =
-        ATTACHED_ENCHANTED_CREATURE_PREFIX_PATTERN.matches_words(&normalized);
-    let is_enchanted_permanent = ATTACHED_ENCHANTED_PERMANENT_PREFIX_PATTERN.matches_words(&normalized);
-    let is_equipped_creature = ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&normalized);
+        attached_shape_matches_words(&normalized, ATTACHED_ENCHANTED_CREATURE_PREFIX_PATTERN);
+    let is_enchanted_permanent =
+        attached_shape_matches_words(&normalized, ATTACHED_ENCHANTED_PERMANENT_PREFIX_PATTERN);
+    let is_equipped_creature =
+        attached_shape_matches_words(&normalized, ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN);
     if !is_enchanted_creature && !is_enchanted_permanent && !is_equipped_creature {
         return Ok(None);
     }
 
     let subject_len = 2usize;
     let tail = &normalized[subject_len..];
-    if !ATTACHED_CANT_PREFIX_PATTERN.matches_words(tail) {
+    if !attached_shape_matches_words(tail, ATTACHED_CANT_PREFIX_PATTERN) {
         return Ok(None);
     }
 
@@ -771,17 +784,18 @@ pub(crate) fn parse_attached_cant_attack_or_block_line(
         "enchanted creature"
     };
 
-    let (restriction, display) = if ATTACHED_CANT_ATTACK_PATTERN.matches_words(tail) {
+    let (restriction, display) = if attached_shape_matches_words(tail, ATTACHED_CANT_ATTACK_PATTERN)
+    {
         (
             crate::effect::Restriction::attack(ObjectFilter::source()),
             format!("{subject} can't attack"),
         )
-    } else if ATTACHED_CANT_BLOCK_PATTERN.matches_words(tail) {
+    } else if attached_shape_matches_words(tail, ATTACHED_CANT_BLOCK_PATTERN) {
         (
             crate::effect::Restriction::block(ObjectFilter::source()),
             format!("{subject} can't block"),
         )
-    } else if ATTACHED_CANT_ATTACK_OR_BLOCK_PATTERN.matches_words(tail) {
+    } else if attached_shape_matches_words(tail, ATTACHED_CANT_ATTACK_OR_BLOCK_PATTERN) {
         (
             crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
             format!("{subject} can't attack or block"),
@@ -812,10 +826,13 @@ pub(crate) fn parse_attached_all_creatures_able_to_block_line(
         return Ok(None);
     }
 
-    if !ATTACHED_ALL_CREATURES_ABLE_TO_BLOCK_PREFIX_PATTERN.matches_words(&normalized) {
+    if !attached_shape_matches_words(
+        &normalized,
+        ATTACHED_ALL_CREATURES_ABLE_TO_BLOCK_PREFIX_PATTERN,
+    ) {
         return Ok(None);
     }
-    if !ATTACHED_DO_SO_TAIL_PATTERN.matches_words(&normalized) {
+    if !attached_shape_matches_words(&normalized, ATTACHED_DO_SO_TAIL_PATTERN) {
         return Ok(None);
     }
 
@@ -917,12 +934,14 @@ pub(crate) fn parse_you_control_attached_creature_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let line_words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if line_words.len() < 4 || !ATTACHED_YOU_CONTROL_PREFIX_PATTERN.matches_words(&line_words) {
+    if line_words.len() < 4
+        || !attached_shape_matches_words(&line_words, ATTACHED_YOU_CONTROL_PREFIX_PATTERN)
+    {
         return Ok(None);
     }
 
     let tail = &line_words[2..];
-    let is_attached_subject = ATTACHED_OBJECT_EXACT_PATTERN.matches_words(tail);
+    let is_attached_subject = attached_shape_matches_words(tail, ATTACHED_OBJECT_EXACT_PATTERN);
     if !is_attached_subject {
         return Ok(None);
     }
@@ -942,14 +961,14 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
 
     let Some(get_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_GET_OR_GETS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is_any(token, ATTACHED_GET_OR_GETS_WORDS)
         })
     else {
         return Ok(None);
     };
     let Some(and_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_AND_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_AND_WORD)
         })
     else {
         return Ok(None);
@@ -965,31 +984,42 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    let subject = if ATTACHED_ENCHANTED_PERMANENT_CONTAINS_PATTERN.matches_words(&line_words) {
-        "enchanted permanent"
-    } else if ATTACHED_ENCHANTED_CREATURE_CONTAINS_PATTERN.matches_words(&line_words) {
-        "enchanted creature"
-    } else if ATTACHED_EQUIPPED_PERMANENT_CONTAINS_PATTERN.matches_words(&line_words) {
-        "equipped permanent"
-    } else if ATTACHED_EQUIPPED_CREATURE_CONTAINS_PATTERN.matches_words(&line_words) {
-        "equipped creature"
-    } else {
-        return Ok(None);
-    };
+    let subject =
+        if attached_shape_matches_words(&line_words, ATTACHED_ENCHANTED_PERMANENT_CONTAINS_PATTERN)
+        {
+            "enchanted permanent"
+        } else if attached_shape_matches_words(
+            &line_words,
+            ATTACHED_ENCHANTED_CREATURE_CONTAINS_PATTERN,
+        ) {
+            "enchanted creature"
+        } else if attached_shape_matches_words(
+            &line_words,
+            ATTACHED_EQUIPPED_PERMANENT_CONTAINS_PATTERN,
+        ) {
+            "equipped permanent"
+        } else if attached_shape_matches_words(
+            &line_words,
+            ATTACHED_EQUIPPED_CREATURE_CONTAINS_PATTERN,
+        ) {
+            "equipped creature"
+        } else {
+            return Ok(None);
+        };
     let anthem = build_anthem_static_ability(&clause);
-    let granted = if ATTACHED_CANT_BLOCK_PATTERN.matches_words(&tail_words) {
+    let granted = if attached_shape_matches_words(&tail_words, ATTACHED_CANT_BLOCK_PATTERN) {
         StaticAbilityAst::AttachedStaticAbilityGrant {
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::cant_block())),
             display: format!("{subject} can't block"),
             condition: clause.condition.clone(),
         }
-    } else if ATTACHED_CANT_ATTACK_PATTERN.matches_words(&tail_words) {
+    } else if attached_shape_matches_words(&tail_words, ATTACHED_CANT_ATTACK_PATTERN) {
         StaticAbilityAst::AttachedStaticAbilityGrant {
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::cant_attack())),
             display: format!("{subject} can't attack"),
             condition: clause.condition.clone(),
         }
-    } else if ATTACHED_CANT_ATTACK_OR_BLOCK_PATTERN.matches_words(&tail_words) {
+    } else if attached_shape_matches_words(&tail_words, ATTACHED_CANT_ATTACK_OR_BLOCK_PATTERN) {
         StaticAbilityAst::AttachedStaticAbilityGrant {
             ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
                 crate::effect::Restriction::attack_or_block(ObjectFilter::source()),
@@ -998,57 +1028,57 @@ pub(crate) fn parse_attached_gets_and_cant_block_line(
             display: format!("{subject} can't attack or block"),
             condition: clause.condition.clone(),
         }
-    } else if ATTACHED_CANT_BE_BLOCKED_PATTERN.matches_words(&tail_words) {
+    } else if attached_shape_matches_words(&tail_words, ATTACHED_CANT_BE_BLOCKED_PATTERN) {
         return Ok(Some(vec![
             anthem.into(),
             grant_keyword_action_for_anthem_subject(&clause, KeywordAction::Unblockable),
         ]));
     } else if tail_words
         .first()
-        .is_some_and(|word| ATTACHED_LOSE_OR_LOSES_WORD_PATTERN.matches_words(&[*word]))
+        .is_some_and(|word| attached_word_is_any(word, ATTACHED_LOSE_OR_LOSES_WORDS))
     {
-            let ability_tokens = trim_commas(&tail_tokens[1..]);
-            if ability_tokens.is_empty() {
-                return Ok(None);
-            }
-            let Some(actions) = parse_ability_line(&ability_tokens) else {
-                return Ok(None);
-            };
-            reject_unimplemented_keyword_actions(&actions, &line_words.join(" "))?;
-            let removed = actions
-                .into_iter()
-                .filter_map(|action| keyword_action_to_static_ability(action))
-                .collect::<Vec<_>>();
-            if removed.is_empty() {
-                return Ok(None);
-            }
-            let mut out = vec![anthem.into()];
-            for ability in removed {
-                out.push(match &clause.subject {
-                    AnthemSubjectAst::Source => match &clause.condition {
-                        Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
-                            ability: Box::new(StaticAbilityAst::RemoveStaticAbility {
-                                filter: ObjectFilter::source(),
-                                ability: Box::new(StaticAbilityAst::Static(ability)),
-                            }),
-                            condition: condition.clone(),
-                        },
-                        None => StaticAbilityAst::RemoveStaticAbility {
-                            filter: ObjectFilter::source(),
-                            ability: Box::new(StaticAbilityAst::Static(ability)),
-                        },
-                    },
-                    AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
-                        filter: filter.clone(),
+        let ability_tokens = trim_commas(&tail_tokens[1..]);
+        if ability_tokens.is_empty() {
+            return Ok(None);
+        }
+        let Some(actions) = parse_ability_line(&ability_tokens) else {
+            return Ok(None);
+        };
+        reject_unimplemented_keyword_actions(&actions, &line_words.join(" "))?;
+        let removed = actions
+            .into_iter()
+            .filter_map(|action| keyword_action_to_static_ability(action))
+            .collect::<Vec<_>>();
+        if removed.is_empty() {
+            return Ok(None);
+        }
+        let mut out = vec![anthem.into()];
+        for ability in removed {
+            out.push(match &clause.subject {
+                AnthemSubjectAst::Source => match &clause.condition {
+                    Some(condition) => StaticAbilityAst::ConditionalStaticAbility {
                         ability: Box::new(StaticAbilityAst::RemoveStaticAbility {
                             filter: ObjectFilter::source(),
                             ability: Box::new(StaticAbilityAst::Static(ability)),
                         }),
-                        condition: clause.condition.clone(),
+                        condition: condition.clone(),
                     },
-                });
-            }
-            return Ok(Some(out));
+                    None => StaticAbilityAst::RemoveStaticAbility {
+                        filter: ObjectFilter::source(),
+                        ability: Box::new(StaticAbilityAst::Static(ability)),
+                    },
+                },
+                AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+                    filter: filter.clone(),
+                    ability: Box::new(StaticAbilityAst::RemoveStaticAbility {
+                        filter: ObjectFilter::source(),
+                        ability: Box::new(StaticAbilityAst::Static(ability)),
+                    }),
+                    condition: clause.condition.clone(),
+                },
+            });
+        }
+        return Ok(Some(out));
     } else {
         return Ok(None);
     };
@@ -1063,7 +1093,7 @@ pub(crate) fn parse_attached_type_transform_line(
         return Ok(None);
     }
 
-    if !ATTACHED_OBJECT_TYPE_TRANSFORM_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_OBJECT_TYPE_TRANSFORM_PREFIX_PATTERN) {
         return Ok(None);
     }
 
@@ -1091,7 +1121,7 @@ pub(crate) fn parse_attached_type_transform_line(
     let remainder_words = crate::runtime_backend::lexer::token_word_refs(&remainder);
     if !remainder_words
         .first()
-        .is_some_and(|word| ATTACHED_IS_OR_ARE_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| attached_word_is_any(word, ATTACHED_IS_OR_ARE_WORDS))
     {
         return Ok(None);
     }
@@ -1107,11 +1137,11 @@ pub(crate) fn parse_attached_type_transform_line(
         if in_quotes {
             continue;
         }
-        if with_idx.is_none() && ATTACHED_WITH_WORD_PATTERN.matches_token(token) {
+        if with_idx.is_none() && attached_token_word_is(token, ATTACHED_WITH_WORD) {
             with_idx = Some(idx);
             continue;
         }
-        if ATTACHED_LOSE_OR_LOSES_WORD_PATTERN.matches_token(token) {
+        if attached_token_word_is_any(token, ATTACHED_LOSE_OR_LOSES_WORDS) {
             lose_idx = Some(idx);
             break;
         }
@@ -1121,7 +1151,7 @@ pub(crate) fn parse_attached_type_transform_line(
     let mut descriptor_tokens = trim_commas(&remainder[1..descriptor_end]).to_vec();
     while descriptor_tokens
         .first()
-        .is_some_and(|token| ATTACHED_ARTICLE_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| attached_token_word_is_any(token, ATTACHED_ARTICLE_WORDS))
     {
         descriptor_tokens.remove(0);
     }
@@ -1135,10 +1165,10 @@ pub(crate) fn parse_attached_type_transform_line(
     let mut set_colors = ColorSet::new();
     let mut make_colorless = false;
     for word in descriptor_words {
-        if ATTACHED_AND_WORD_PATTERN.matches_word(word) {
+        if attached_word_is(word, ATTACHED_AND_WORD) {
             continue;
         }
-        if ATTACHED_COLORLESS_WORD_PATTERN.matches_word(word) {
+        if attached_word_is(word, ATTACHED_COLORLESS_WORD) {
             make_colorless = true;
             continue;
         }
@@ -1172,7 +1202,7 @@ pub(crate) fn parse_attached_type_transform_line(
         let mut ability_tokens = trim_commas(&remainder[with_idx + 1..ability_end]).to_vec();
         while ability_tokens
             .last()
-            .is_some_and(|token| ATTACHED_AND_OR_IT_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| attached_token_word_is_any(token, ATTACHED_AND_OR_IT_WORDS))
         {
             ability_tokens.pop();
         }
@@ -1277,8 +1307,10 @@ pub(crate) fn parse_attached_type_transform_line(
     if !add_subtypes.is_empty() {
         if !preserve_other_types
             && !descriptor_has_card_types
-            && add_subtypes.iter().all(crate::types::Subtype::is_creature_type)
-            && ATTACHED_ENCHANTED_CREATURE_PREFIX_PATTERN.matches_words(&line_words)
+            && add_subtypes
+                .iter()
+                .all(crate::types::Subtype::is_creature_type)
+            && attached_shape_matches_words(&line_words, ATTACHED_ENCHANTED_CREATURE_PREFIX_PATTERN)
         {
             out.push(StaticAbility::set_creature_subtypes(filter.clone(), add_subtypes).into());
         } else {
@@ -1324,18 +1356,17 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
         return Ok(None);
     }
 
-    if !ATTACHED_IF_DAMAGE_TO_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_IF_DAMAGE_TO_PREFIX_PATTERN) {
         return Ok(None);
     }
-    if !ATTACHED_THIS_SOURCE_PREFIX_PATTERN.matches_words(&line_words[6..]) {
+    if !attached_shape_matches_words(&line_words[6..], ATTACHED_THIS_SOURCE_PREFIX_PATTERN) {
         return Ok(None);
     }
-    if !ATTACHED_PREVENT_THAT_DAMAGE_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_PREVENT_THAT_DAMAGE_PATTERN) {
         return Ok(None);
     }
 
-    let Some(remove_word_idx) = ATTACHED_REMOVE_WORD_PATTERN.find_word(&line_words)
-    else {
+    let Some(remove_word_idx) = ATTACHED_REMOVE_WORD_PATTERN.find_word(&line_words) else {
         return Ok(None);
     };
     let Some(counter_word_idx) = ATTACHED_COUNTER_OR_COUNTERS_WORD_PATTERN
@@ -1366,7 +1397,7 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     descriptor_tokens = descriptor_tokens[used..].to_vec();
     while descriptor_tokens
         .first()
-        .is_some_and(|token| ATTACHED_ARTICLE_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| attached_token_word_is_any(token, ATTACHED_ARTICLE_WORDS))
     {
         descriptor_tokens.remove(0);
     }
@@ -1379,7 +1410,8 @@ pub(crate) fn parse_prevent_damage_to_source_remove_counter_line(
     })?;
 
     let after_counter_words = line_words.get(counter_word_idx + 1..).unwrap_or_default();
-    let valid_tail = ATTACHED_REMOVE_TAIL_PATTERN.matches_words(after_counter_words);
+    let valid_tail =
+        attached_shape_matches_words(after_counter_words, ATTACHED_REMOVE_TAIL_PATTERN);
     if !valid_tail {
         return Err(CardTextError::ParseError(format!(
             "unsupported prevent-damage remove tail (clause: '{}')",
@@ -1401,14 +1433,16 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         return Ok(None);
     }
 
-    if ATTACHED_IF_DAMAGE_TO_PREFIX_PATTERN.matches_words(&line_words) {
-        let source_words_used = if ATTACHED_THIS_SOURCE_PREFIX_PATTERN.matches_words(&line_words[6..]) {
+    if attached_shape_matches_words(&line_words, ATTACHED_IF_DAMAGE_TO_PREFIX_PATTERN) {
+        let source_words_used = if attached_shape_matches_words(
+            &line_words[6..],
+            ATTACHED_THIS_SOURCE_PREFIX_PATTERN,
+        ) {
             Some(2usize)
-        } else if ATTACHED_THIS_WORD_PATTERN.matches_words(&line_words[6..]) {
+        } else if attached_shape_matches_words(&line_words[6..], ATTACHED_THIS_WORD_PATTERN) {
             Some(1usize)
         } else {
-            let prevent_idx =
-                ATTACHED_PREVENT_WORD_PATTERN.find_word(&line_words[6..]);
+            let prevent_idx = ATTACHED_PREVENT_WORD_PATTERN.find_word(&line_words[6..]);
             let source_end = prevent_idx.map(|idx| {
                 ATTACHED_WHILE_WORD_PATTERN
                     .find_word(&line_words[6..6 + idx])
@@ -1447,9 +1481,7 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
             let mut condition = None;
 
             if ATTACHED_WHILE_WORD_PATTERN.matches_first_word(tail) {
-                let Some(prevent_word_idx) =
-                    ATTACHED_PREVENT_WORD_PATTERN.find_word(tail)
-                else {
+                let Some(prevent_word_idx) = ATTACHED_PREVENT_WORD_PATTERN.find_word(tail) else {
                     return Err(CardTextError::ParseError(format!(
                         "unsupported conditional prevent-damage tail (clause: '{}')",
                         line_words.join(" ")
@@ -1516,9 +1548,9 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         }
     }
 
-    if ATTACHED_IF_NONCOMBAT_DAMAGE_TO_PREFIX_PATTERN.matches_words(&line_words)
-        && ATTACHED_THIS_CREATURE_PREFIX_PATTERN.matches_words(&line_words[7..])
-        && ATTACHED_NONCOMBAT_COUNTER_TAIL_PATTERN.matches_words(&line_words[9..])
+    if attached_shape_matches_words(&line_words, ATTACHED_IF_NONCOMBAT_DAMAGE_TO_PREFIX_PATTERN)
+        && attached_shape_matches_words(&line_words[7..], ATTACHED_THIS_CREATURE_PREFIX_PATTERN)
+        && attached_shape_matches_words(&line_words[9..], ATTACHED_NONCOMBAT_COUNTER_TAIL_PATTERN)
     {
         return Ok(Some(StaticAbilityAst::Static(
             StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
@@ -1530,8 +1562,10 @@ pub(crate) fn parse_prevent_damage_to_source_put_counters_line(
         )));
     }
 
-    if ATTACHED_IF_CREATURE_COMBAT_DAMAGE_TO_THIS_PREFIX_PATTERN.matches_words(&line_words)
-        && ATTACHED_COMBAT_COUNTER_TAIL_PATTERN.matches_words(&line_words[10..])
+    if attached_shape_matches_words(
+        &line_words,
+        ATTACHED_IF_CREATURE_COMBAT_DAMAGE_TO_THIS_PREFIX_PATTERN,
+    ) && attached_shape_matches_words(&line_words[10..], ATTACHED_COMBAT_COUNTER_TAIL_PATTERN)
     {
         return Ok(Some(StaticAbilityAst::Static(
             StaticAbility::prevent_constrained_damage_to_self_put_counters_instead(
@@ -1555,10 +1589,10 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_by_attached_line(
     }
 
     // "Prevent all damage that would be dealt by enchanted creature."
-    if !ATTACHED_PREVENT_ALL_DAMAGE_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_PREVENT_ALL_DAMAGE_PREFIX_PATTERN) {
         return Ok(None);
     }
-    if !ATTACHED_BY_ENCHANTED_CREATURE_TAIL_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_BY_ENCHANTED_CREATURE_TAIL_PATTERN) {
         return Ok(None);
     }
 
@@ -1581,10 +1615,13 @@ pub(crate) fn parse_attached_prevent_all_combat_damage_dealt_by_attached_line(
     }
 
     // "Prevent all combat damage that would be dealt by enchanted creature."
-    if !ATTACHED_PREVENT_ALL_COMBAT_DAMAGE_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(
+        &line_words,
+        ATTACHED_PREVENT_ALL_COMBAT_DAMAGE_PREFIX_PATTERN,
+    ) {
         return Ok(None);
     }
-    if !ATTACHED_BY_ENCHANTED_CREATURE_TAIL_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_BY_ENCHANTED_CREATURE_TAIL_PATTERN) {
         return Ok(None);
     }
 
@@ -1607,10 +1644,10 @@ pub(crate) fn parse_attached_prevent_all_damage_dealt_to_attached_line(
     }
 
     // "Prevent all damage that would be dealt to enchanted creature."
-    if !ATTACHED_PREVENT_ALL_DAMAGE_TO_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_PREVENT_ALL_DAMAGE_TO_PREFIX_PATTERN) {
         return Ok(None);
     }
-    if !ATTACHED_TO_ENCHANTED_CREATURE_TAIL_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_TO_ENCHANTED_CREATURE_TAIL_PATTERN) {
         return Ok(None);
     }
 
@@ -1632,14 +1669,15 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
         return Ok(None);
     }
 
-    if !ATTACHED_CREATURE_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_CREATURE_PREFIX_PATTERN) {
         return Ok(None);
     }
-    let is_equipped = ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&line_words);
+    let is_equipped =
+        attached_shape_matches_words(&line_words, ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN);
 
     let Some(has_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_HAS_WORD)
         })
     else {
         return Ok(None);
@@ -1655,7 +1693,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
 
     let Some(and_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(&ability_tokens, |token| {
-            ATTACHED_AND_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_AND_WORD)
         })
     else {
         return Ok(None);
@@ -1666,7 +1704,7 @@ pub(crate) fn parse_attached_has_keywords_and_triggered_ability_line(
 
     let trigger_starts = ability_tokens
         .get(and_idx + 1)
-        .is_some_and(|token| ATTACHED_WHEN_OR_WHENEVER_WORD_PATTERN.matches_token(token))
+        .is_some_and(|token| attached_token_word_is_any(token, ATTACHED_WHEN_OR_WHENEVER_WORDS))
         || is_at_trigger_intro(&ability_tokens, and_idx + 1);
     if !trigger_starts {
         return Ok(None);
@@ -1783,13 +1821,13 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
         return Ok(None);
     }
 
-    if !ATTACHED_CREATURE_PREFIX_PATTERN.matches_words(&line_words) {
+    if !attached_shape_matches_words(&line_words, ATTACHED_CREATURE_PREFIX_PATTERN) {
         return Ok(None);
     }
 
     let Some(is_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_IS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_IS_WORD)
         })
     else {
         return Ok(None);
@@ -1797,21 +1835,21 @@ pub(crate) fn parse_attached_is_legendary_gets_and_has_keywords_line(
     if is_idx < 2
         || !tokens
             .get(is_idx + 1)
-            .is_some_and(|token| ATTACHED_LEGENDARY_WORD_PATTERN.matches_token(token))
+            .is_some_and(|token| attached_token_word_is(token, ATTACHED_LEGENDARY_WORD))
     {
         return Ok(None);
     }
 
     let Some(get_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_GET_OR_GETS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is_any(token, ATTACHED_GET_OR_GETS_WORDS)
         })
     else {
         return Ok(None);
     };
     let Some(has_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_HAS_WORD)
         })
     else {
         return Ok(None);
@@ -1879,29 +1917,31 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
     if line_words.len() < 6 {
         return Ok(None);
     }
-    let is_enchanted = ATTACHED_ENCHANTED_SUBJECT_PREFIX_PATTERN.matches_words(&line_words);
-    let is_equipped = ATTACHED_EQUIPPED_SUBJECT_PREFIX_PATTERN.matches_words(&line_words);
+    let is_enchanted =
+        attached_shape_matches_words(&line_words, ATTACHED_ENCHANTED_SUBJECT_PREFIX_PATTERN);
+    let is_equipped =
+        attached_shape_matches_words(&line_words, ATTACHED_EQUIPPED_SUBJECT_PREFIX_PATTERN);
     if !is_enchanted && !is_equipped {
         return Ok(None);
     }
 
     let Some(get_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_GET_OR_GETS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is_any(token, ATTACHED_GET_OR_GETS_WORDS)
         })
     else {
         return Ok(None);
     };
     let Some(has_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_HAS_WORD)
         })
     else {
         return Ok(None);
     };
     let Some(and_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_AND_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_AND_WORD)
         })
     else {
         return Ok(None);
@@ -1939,9 +1979,7 @@ pub(crate) fn parse_attached_gets_and_has_ability_line(
     for and_idx in ability_tokens
         .iter()
         .enumerate()
-        .filter_map(|(idx, token)| {
-            ATTACHED_AND_WORD_PATTERN.matches_token(token).then_some(idx)
-        })
+        .filter_map(|(idx, token)| attached_token_word_is(token, ATTACHED_AND_WORD).then_some(idx))
         .rev()
     {
         let keyword_tokens = trim_edge_punctuation(&ability_tokens[..and_idx]);
@@ -2028,14 +2066,15 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     let line_words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if line_words.len() < 4 || !ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN.matches_words(&line_words)
+    if line_words.len() < 4
+        || !attached_shape_matches_words(&line_words, ATTACHED_EQUIPPED_CREATURE_PREFIX_PATTERN)
     {
         return Ok(None);
     }
 
     let Some(has_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_HAS_WORD)
         })
     else {
         return Ok(None);
@@ -2061,14 +2100,14 @@ pub(crate) fn parse_equipped_gets_and_has_activated_ability_line(
     let mut static_abilities = Vec::new();
     if let Some(get_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_GET_OR_GETS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is_any(token, ATTACHED_GET_OR_GETS_WORDS)
         })
         && get_idx < has_idx
     {
         let clause_tail_end = if has_idx > get_idx + 2
             && tokens
                 .get(has_idx - 1)
-                .is_some_and(|token| ATTACHED_AND_WORD_PATTERN.matches_token(token))
+                .is_some_and(|token| attached_token_word_is(token, ATTACHED_AND_WORD))
         {
             has_idx - 1
         } else {
@@ -2095,17 +2134,17 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
     let line_words = crate::runtime_backend::lexer::token_word_refs(tokens);
-    if !ATTACHED_ENCHANTED_PREFIX_PATTERN.matches_words(&line_words)
+    if !attached_shape_matches_words(&line_words, ATTACHED_ENCHANTED_PREFIX_PATTERN)
         || !line_words
             .iter()
-            .any(|word| ATTACHED_HAS_WORD_PATTERN.matches_word(word))
+            .any(|word| attached_word_is(word, ATTACHED_HAS_WORD))
     {
         return Ok(None);
     }
 
     let Some(has_idx) =
         crate::runtime_backend::grammar::primitives::find_token_index(tokens, |token| {
-            ATTACHED_HAS_WORD_PATTERN.matches_token(token)
+            attached_token_word_is(token, ATTACHED_HAS_WORD)
         })
     else {
         return Ok(None);

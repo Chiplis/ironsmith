@@ -6,7 +6,10 @@ use super::super::grammar::effects::{
 };
 use super::super::grammar::primitives as grammar;
 use super::super::grammar::values as shared_values;
-use super::super::lexer::OwnedLexToken;
+use super::super::lexer::{
+    OwnedLexToken, token_word_refs, word_slice_contains_any_phrase, word_slice_contains_phrase,
+    word_slice_eq, word_slice_eq_any, word_slice_starts_with,
+};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::token_primitives::{
     find_index, rfind_index, slice_contains, slice_ends_with, slice_starts_with,
@@ -20,7 +23,6 @@ use super::super::util::{
     span_from_tokens, token_index_for_word_index, trim_commas, words,
 };
 use super::super::value_helpers::parse_filter_comparison_tokens;
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::{parse_effect_chain, parse_effect_chain_inner, parse_effect_chain_lexed};
 #[allow(unused_imports)]
 use crate::cards::builders::{
@@ -33,27 +35,19 @@ use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
-const COUNTER_TARGET_SPELL_IF_KICKED_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["counter", "target", "spell", "if", "it", "was", "kicked"]);
-const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
-            ],
-            &[
-                "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this",
-                "turn",
-            ],
-        ]
-);
-const EXILE_TARGET_CREATURE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["exile", "target", "creature"]);
-const GREATEST_POWER_AMONG_CREATURES_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["greatest", "power", "among", "creatures"]]);
-const ON_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases & [&[&["on", "battlefield"], &["on", "the", "battlefield"],]]
-);
+const COUNTER_TARGET_SPELL_IF_KICKED_WORDS: &[&str] =
+    &["counter", "target", "spell", "if", "it", "was", "kicked"];
+const COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_WORDS: &[&[&str]] = &[
+    &[
+        "counter", "target", "spell", "thats", "second", "spell", "cast", "this", "turn",
+    ],
+    &[
+        "counter", "target", "spell", "thats", "the", "second", "spell", "cast", "this", "turn",
+    ],
+];
+const EXILE_TARGET_CREATURE_PREFIX: &[&str] = &["exile", "target", "creature"];
+const GREATEST_POWER_AMONG_CREATURES_PHRASE: &[&str] = &["greatest", "power", "among", "creatures"];
+const ON_BATTLEFIELD_PHRASES: &[&[&str]] = &[&["on", "battlefield"], &["on", "the", "battlefield"]];
 
 #[cfg(test)]
 pub(crate) fn parse_conditional_sentence_lexed(
@@ -163,8 +157,8 @@ fn parse_negated_who_this_way_predicate(
 pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !COUNTER_TARGET_SPELL_IF_KICKED_PATTERN.matches_words(&clause_words) {
+    let clause_words = token_word_refs(tokens);
+    if !word_slice_eq(&clause_words, COUNTER_TARGET_SPELL_IF_KICKED_WORDS) {
         return Ok(None);
     }
 
@@ -181,8 +175,11 @@ pub(crate) fn parse_sentence_counter_target_spell_if_it_was_kicked(
 pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_PATTERN.matches_words(&clause_words) {
+    let clause_words = token_word_refs(tokens);
+    if !word_slice_eq_any(
+        &clause_words,
+        COUNTER_TARGET_SECOND_SPELL_CAST_THIS_TURN_WORDS,
+    ) {
         return Ok(None);
     }
 
@@ -199,10 +196,10 @@ pub(crate) fn parse_sentence_counter_target_spell_thats_second_cast_this_turn(
 pub(crate) fn parse_sentence_exile_target_creature_with_greatest_power(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
-    if !EXILE_TARGET_CREATURE_PREFIX_PATTERN.matches_words(&clause_words)
-        || !GREATEST_POWER_AMONG_CREATURES_PATTERN.matches_words(&clause_words)
-        || !ON_BATTLEFIELD_PATTERN.matches_words(&clause_words)
+    let clause_words = token_word_refs(tokens);
+    if !word_slice_starts_with(&clause_words, EXILE_TARGET_CREATURE_PREFIX)
+        || !word_slice_contains_phrase(&clause_words, GREATEST_POWER_AMONG_CREATURES_PHRASE)
+        || !word_slice_contains_any_phrase(&clause_words, ON_BATTLEFIELD_PHRASES)
     {
         return Ok(None);
     }

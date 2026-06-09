@@ -872,13 +872,11 @@ impl Trigger {
         object_filter: ObjectFilter,
         source_controller: PlayerFilter,
     ) -> Self {
-        Self::new(
-            PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
-                player_filter,
-                object_filter,
-                source_controller,
-            ),
-        )
+        Self::new(PlayerOrObjectBecomesTargetedBySourceControllerTrigger::new(
+            player_filter,
+            object_filter,
+            source_controller,
+        ))
     }
 
     // === Card Triggers ===

@@ -15,7 +15,7 @@ use crate::zone::Zone;
 
 use super::super::activation_and_restrictions::parse_devotion_value_from_add_clause;
 use super::super::activation_helpers::parse_add_mana;
-use super::super::grammar::primitives::{self as grammar, TokenWordView};
+use super::super::grammar::primitives::{self as grammar, TokenWordView, contains_word};
 use super::super::grammar::structure::{
     parse_trailing_if_predicate_lexed, parse_trailing_instead_if_predicate_lexed,
     parse_who_player_predicate_lexed, split_trailing_if_clause_lexed,
@@ -25,13 +25,14 @@ use super::super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_dynamic_cost_modifier_value,
     parse_value_binding_clause,
 };
+use super::super::lex_patterns::{LexCaptureKind, LexPattern};
 use super::super::lexer::{
-    token_slice_at_is, token_slice_at_is_any, token_slice_first_is, token_slice_first_is_any,
-    token_slice_starts_with, word_slice_all_words_are_any, word_slice_at_is, word_slice_at_is_any,
-    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_eq, word_slice_eq_any, word_slice_find_phrase_start_or_zero, word_slice_find_word,
-    word_slice_first_is, word_slice_first_is_any, word_slice_starts_with,
-    word_slice_starts_with_any, word_slice_starts_with_at, word_slice_strip_prefix_value,
+    LexedClause, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
+    token_slice_first_is_any, token_slice_starts_with, word_slice_contains_any_phrase,
+    word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
+    word_slice_ends_with_any, word_slice_eq,
+    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
+    word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};
@@ -50,7 +51,7 @@ use super::super::value_helpers::{
     parse_equal_to_number_of_filter_plus_or_minus_fixed_value,
     parse_equal_to_number_of_filter_value, parse_equal_to_number_of_opponents_you_have_value,
 };
-use super::clause_pattern_helpers::{ClauseShape, clause_shape, extract_subject_player};
+use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
 use super::subject_verb_primitives::{SubjectVerbPrimitiveClause, try_build_unless};
@@ -58,7 +59,7 @@ use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_trans
 use super::zone_handlers::{
     DelayedReturnTimingAst, parse_become, parse_delayed_return_timing_words, parse_destroy,
     parse_discard, parse_end, parse_exchange, parse_exile, parse_flip, parse_get,
-    parse_graveyard_owner_prefix, parse_mill, parse_pay, parse_regenerate, parse_remove,
+    parse_graveyard_owner_prefix_lexed, parse_mill, parse_pay, parse_regenerate, parse_remove,
     parse_return, parse_roll, parse_sacrifice, parse_scry, parse_skip, parse_surveil, parse_switch,
     parse_tap, parse_untap, wrap_return_with_delayed_timing,
 };

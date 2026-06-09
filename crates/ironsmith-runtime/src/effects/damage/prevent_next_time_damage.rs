@@ -332,11 +332,10 @@ mod tests {
                 .card_types(vec![CardType::Creature])
                 .power_toughness(PowerToughness::fixed(2, 2))
                 .build();
-        let other_source_def =
-            CardDefinitionBuilder::new(CardId::from_raw(91_404), "Other Source")
-                .card_types(vec![CardType::Creature])
-                .power_toughness(PowerToughness::fixed(2, 2))
-                .build();
+        let other_source_def = CardDefinitionBuilder::new(CardId::from_raw(91_404), "Other Source")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
 
         let chosen_source =
             game.create_object_from_definition(&chosen_source_def, bob, Zone::Battlefield);

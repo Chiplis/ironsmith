@@ -8,9 +8,11 @@ use crate::target::{ChooseSpec, PlayerFilter};
 use crate::triggers::{Trigger, TriggerKind};
 use crate::zone::Zone;
 
-use super::effect_sentences::clause_pattern_helpers::ClauseShape;
 use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
-use super::lexer::{LexedClause, lex_line, parser_token_word_refs};
+use super::lexer::{
+    LexedClause, lex_line, parser_token_word_refs, token_word_refs, word_slice_contains_any_phrase,
+    word_slice_contains_phrase,
+};
 
 const BACKUP_PLACEHOLDER_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("backup"),
@@ -219,16 +221,6 @@ const NEXT_TURNS_END_STEP_PHRASE: &[&str] = &["next", "turns", "end", "step"];
 const NEXT_END_STEP_PHRASES: &[&[&str]] = &[NEXT_END_STEP_PHRASE, NEXT_TURNS_END_STEP_PHRASE];
 const YOUR_NEXT_UPKEEP_PHRASE: &[&str] = &["your", "next", "upkeep"];
 const YOUR_NEXT_DRAW_STEP_PHRASE: &[&str] = &["your", "next", "draw", "step"];
-const NEXT_UPKEEP_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[NEXT_UPKEEP_PHRASES]);
-const THAT_TURN_DELAYED_STEP_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[THAT_TURN_DELAYED_STEP_PHRASES]);
-const NEXT_END_STEP_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_any_phrases(&[NEXT_END_STEP_PHRASES]);
-const YOUR_NEXT_UPKEEP_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[YOUR_NEXT_UPKEEP_PHRASE]);
-const YOUR_NEXT_DRAW_STEP_PATTERN: ClauseShape<'static> =
-    ClauseShape::new().contains_phrases(&[YOUR_NEXT_DRAW_STEP_PHRASE]);
 
 fn is_upkeep_or_end_step_trigger(trigger: &Trigger) -> bool {
     matches!(
@@ -246,15 +238,15 @@ fn spell_battlefield_trigger_text_implies_delayed_schedule(
     }
 
     let tokens = lex_line(ability_text, 0).ok()?;
-    let words = parser_token_word_refs(&tokens);
+    let words = token_word_refs(&tokens);
 
-    if NEXT_UPKEEP_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, NEXT_UPKEEP_PHRASES) {
         return Some(true);
     }
-    if THAT_TURN_DELAYED_STEP_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, THAT_TURN_DELAYED_STEP_PHRASES) {
         return Some(true);
     }
-    if NEXT_END_STEP_PATTERN.matches_words(&words) {
+    if word_slice_contains_any_phrase(&words, NEXT_END_STEP_PHRASES) {
         return Some(false);
     }
 
@@ -305,11 +297,11 @@ fn delayed_trigger_spec_from_trigger(
     let ability_tokens = ability_text
         .and_then(|text| lex_line(text, 0).ok())
         .unwrap_or_default();
-    let ability_words = parser_token_word_refs(&ability_tokens);
+    let ability_words = token_word_refs(&ability_tokens);
 
     match trigger.kind {
         TriggerKind::BeginningOfUpkeep { .. } => {
-            let player = if YOUR_NEXT_UPKEEP_PATTERN.matches_words(&ability_words) {
+            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_UPKEEP_PHRASE) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any
@@ -319,7 +311,7 @@ fn delayed_trigger_spec_from_trigger(
             ))
         }
         TriggerKind::BeginningOfDrawStep { .. } => {
-            let player = if YOUR_NEXT_DRAW_STEP_PATTERN.matches_words(&ability_words) {
+            let player = if word_slice_contains_phrase(&ability_words, YOUR_NEXT_DRAW_STEP_PHRASE) {
                 PlayerFilter::You
             } else {
                 PlayerFilter::Any

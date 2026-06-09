@@ -1,55 +1,52 @@
+use super::super::lex_patterns::LexPattern;
+use super::super::lexer::LexedClause;
 use super::super::token_primitives::str_ends_with_any_char;
 use super::line_dispatch::{LineDispatchContext, LineDispatchResult};
 use super::*;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
 const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
 const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
-const DRAFT_RULE_LINE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["draft", "this", "card", "face", "up"]);
-const DRAFT_RULE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["reveal", "this", "card", "as", "you", "draft", "it"],
-            &["as", "you", "draft"],
-            &["during", "the", "draft"],
-            &["immediately", "after", "the", "draft"],
-        ]
-);
-const DRAFT_BOOSTER_PASS_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["each", "player", "passes"];
-    contains_phrases & [&["booster", "pack"]]
-);
-const CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["this", "creature", "can", "block"]);
-const ADDITIONAL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["additional"]);
-const CREATURE_OR_CREATURES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["creature", "creatures"]]);
-const BLOCK_DURATION_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix_any & [&["each", "combat"], &["this", "turn"]]);
-const LINKED_EXILED_CARD_COST_MORE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [
-            &[
-                "for", "as", "long", "as", "that", "card", "remains", "exiled",
-            ],
-            &["more", "to", "cast"],
-        ]
-);
-const LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_phrases
-        & [
-            &["chooses", "two", "of", "those", "cards"],
-            &["shuffle", "the", "chosen", "cards"],
-            &["put", "the", "rest", "onto", "the", "battlefield"],
-        ]
-);
-const START_YOUR_ENGINES_LINE_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["start", "your", "engines"]);
-const LEARN_LINE_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["learn"]);
-const STATION_LINE_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["station"]);
+const DRAFT_RULE_LINE: &[&str] = &["draft", "this", "card", "face", "up"];
+const DRAFT_RULE_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &["reveal", "this", "card", "as", "you", "draft", "it"],
+        &["as", "you", "draft"],
+        &["during", "the", "draft"],
+        &["immediately", "after", "the", "draft"],
+    ])]);
+const DRAFT_BOOSTER_PASS_PREFIX: &[&str] = &["each", "player", "passes"];
+const BOOSTER_PACK_PHRASE: &[&str] = &["booster", "pack"];
+const CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["this", "creature", "can", "block"])]);
+const BLOCK_DURATION_TAILS: &[&[&str]] = &[&["each", "combat"], &["this", "turn"]];
+const TOKEN_CREATION_REPLACEMENT_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["if", "you", "would", "create", "one", "or", "more"]),
+]);
+const FIRST_EQUIP_COST_ALTERNATIVE_PREFIX: &[&str] = &["you", "may", "pay"];
+const FIRST_EQUIP_COST_ALTERNATIVE_PHRASE: &[&str] = &[
+    "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip", "ability",
+    "you", "activate",
+];
+const FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES: &[&[&str]] = &[
+    &["each", "turn"],
+    &["during", "each", "of", "your", "turns"],
+];
+const LINKED_EXILED_CARD_COST_MORE_PHRASES: &[&[&str]] = &[
+    &[
+        "for", "as", "long", "as", "that", "card", "remains", "exiled",
+    ],
+    &["more", "to", "cast"],
+];
+const LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES: &[&[&str]] = &[
+    &["chooses", "two", "of", "those", "cards"],
+    &["shuffle", "the", "chosen", "cards"],
+    &["put", "the", "rest", "onto", "the", "battlefield"],
+];
+const START_YOUR_ENGINES_LINE: &[&str] = &["start", "your", "engines"];
+const LEARN_LINE: &[&str] = &["learn"];
+const STATION_LINE_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["station"])]);
 const ARTIFACT_CREATURE_AT_PREFIX: &[&str] = &["artifact", "creature", "at"];
 const CHAMPIONED_WITH_THIS_PHRASE: &[&str] = &["is", "championed", "with", "this"];
 const MAX_SPEED_PREFIX: &[&str] = &["max", "speed"];
@@ -88,9 +85,6 @@ const PARTNER_WITH_PREFIX: &[&str] = &["partner", "with"];
 const ESCAPES_WITH_PHRASE: &[&str] = &["escapes", "with"];
 const CREATURES_YOU_CONTROL_GET_PREFIX: &[&str] = &["creatures", "you", "control", "get"];
 const CHARACTER_SELECT_PREFIX: &[&str] = &["character", "select"];
-const PARTNER_WITH_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix PARTNER_WITH_PREFIX);
-const CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix CREATURES_YOU_CONTROL_GET_PREFIX);
 const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
     "if",
     "it's",
@@ -101,12 +95,7 @@ const NON_TURN_UNTAP_SUFFIX: &[&str] = &[
     "those",
     "creatures",
 ];
-const NON_TURN_UNTAP_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix NON_TURN_UNTAP_SUFFIX);
-const INDEFINITE_ARTICLE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["a"], &["an"]]);
-const TRIGGER_INTRO_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["when"], &["whenever"], &["at"]]);
+const NON_TURN_UNTAP_SUFFIX_PATTERN: &[&[&str]] = &[NON_TURN_UNTAP_SUFFIX];
 const SPLIT_TOP_AND_FACE_DOWN_LOOK_LINE: &[&str] = &[
     "you",
     "may",
@@ -185,32 +174,51 @@ const ADDITIONAL_COMBAT_AFTER_THIS_MAIN_PHASE_LINE: &[&str] = &[
     "phase",
 ];
 
+
+fn line_family_words_start_with_pattern<'a>(words: &[&str], pattern: LexPattern<'a>) -> bool {
+    pattern.match_prefix_word_refs(words).is_some()
+}
+
+fn line_family_words_start_with_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    words.starts_with(phrase)
+}
+
+fn line_family_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
+}
+
+fn line_family_words_contain_all_phrases(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .all(|phrase| line_family_words_contain_phrase(words, phrase))
+}
+
+fn line_family_words_end_with_any(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases.iter().any(|phrase| words.ends_with(phrase))
+}
+
 fn line_starts_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    ClauseShape::new()
-        .prefix(words)
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+    let atoms = [LexPattern::phrase(words)];
+    LexPattern::new(&atoms).matches_prefix(LexedClause::new(&line.tokens))
 }
 
 fn line_contains_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    ClauseShape::new()
-        .contains_phrases(&[words])
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+    let atoms = [LexPattern::phrase(words)];
+    LexPattern::new(&atoms)
+        .find_in_clause(LexedClause::new(&line.tokens))
+        .is_some()
 }
 
 fn line_ends_with_words(line: &PreprocessedLine, words: &[&str]) -> bool {
-    ClauseShape::new()
-        .suffix(words)
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+    LexedClause::new(&line.tokens).ends_with(words)
 }
 
 fn keyword_body_tokens_before_reminder<'a>(
     line: &'a PreprocessedLine,
     prefix: &[&str],
 ) -> Option<&'a [OwnedLexToken]> {
-    if !ClauseShape::new()
-        .prefix(prefix)
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
-    {
+    let atoms = [LexPattern::phrase(prefix)];
+    if !LexPattern::new(&atoms).matches_prefix(LexedClause::new(&line.tokens)) {
         return None;
     }
     let body_start = prefix.len();
@@ -223,8 +231,10 @@ fn keyword_body_tokens_before_reminder<'a>(
 }
 
 fn strip_indefinite_article_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    if INDEFINITE_ARTICLE_PREFIX_PATTERN
-        .matches_words(&crate::runtime_backend::token_word_refs(tokens))
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words
+        .first()
+        .is_some_and(|word| matches!(*word, "a" | "an"))
     {
         &tokens[1..]
     } else {
@@ -254,8 +264,9 @@ fn render_keyword_cost_tokens(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn line_starts_with_trigger_intro(line: &PreprocessedLine) -> bool {
-    TRIGGER_INTRO_PREFIX_PATTERN
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+    crate::runtime_backend::token_word_refs(&line.tokens)
+        .first()
+        .is_some_and(|word| matches!(*word, "when" | "whenever" | "at"))
 }
 
 pub(super) fn run_trailing_keyword_activation_line_family(
@@ -490,7 +501,7 @@ pub(super) fn run_start_your_engines_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if !START_YOUR_ENGINES_LINE_PATTERN.matches_words(&words) {
+    if words.as_slice() != START_YOUR_ENGINES_LINE {
         return Ok(None);
     }
 
@@ -528,16 +539,17 @@ pub(super) fn run_draft_rule_line_family(
 
 fn is_draft_rule_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
-    DRAFT_RULE_LINE_PATTERN.matches_words(&words)
-        || DRAFT_RULE_PREFIX_PATTERN.matches_words(&words)
-        || DRAFT_BOOSTER_PASS_PATTERN.matches_words(&words)
+    words.as_slice() == DRAFT_RULE_LINE
+        || line_family_words_start_with_pattern(&words, DRAFT_RULE_PREFIX_PATTERN)
+        || (line_family_words_start_with_phrase(&words, DRAFT_BOOSTER_PASS_PREFIX)
+            && line_family_words_contain_phrase(&words, BOOSTER_PACK_PHRASE))
 }
 
 pub(super) fn run_learn_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if !LEARN_LINE_PATTERN.matches_words(&words) {
+    if words.as_slice() != LEARN_LINE {
         return Ok(None);
     }
 
@@ -758,7 +770,7 @@ pub(super) fn run_station_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
     let words = crate::runtime_backend::lexer::parser_token_word_refs(&ctx.line.tokens);
-    if !STATION_LINE_PATTERN.matches_words(&words) {
+    if !line_family_words_start_with_pattern(&words, STATION_LINE_PATTERN) {
         return Ok(None);
     }
 
@@ -1189,6 +1201,20 @@ pub(super) fn run_freerunning_line_family(
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if matches!(
+        parse_ability_line_lexed(&ctx.line.tokens).as_deref(),
+        Some([crate::cards::builders::KeywordAction::CumulativeUpkeep { .. }])
+    ) {
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(StaticLineCst {
+                info: ctx.line.info.clone(),
+                text: ctx.line.info.normalized.normalized.clone(),
+                parse_tokens: ctx.line.tokens.clone(),
+                chosen_option_label: None,
+            }),
+            ctx.idx + 1,
+        )));
+    }
     Ok(parse_keyword_line_cst(ctx.line)?.map(|keyword_line| {
         LineDispatchResult::single(RewriteLineCst::Keyword(keyword_line), ctx.idx + 1)
     }))
@@ -1431,8 +1457,10 @@ mod tests {
 
 fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
     let tokens = &line.tokens;
-    if !PARTNER_WITH_PREFIX_PATTERN.matches_words(&crate::runtime_backend::token_word_refs(tokens))
-    {
+    if !line_family_words_start_with_phrase(
+        &crate::runtime_backend::token_word_refs(tokens),
+        PARTNER_WITH_PREFIX,
+    ) {
         return None;
     }
 
@@ -1493,8 +1521,9 @@ pub(super) fn run_non_turn_conditional_untap_line_family(
     else {
         return Ok(None);
     };
-    if !CREATURES_YOU_CONTROL_GET_PREFIX_PATTERN.matches_words(
+    if !line_family_words_start_with_phrase(
         &crate::runtime_backend::token_word_refs(first_sentence_tokens),
+        CREATURES_YOU_CONTROL_GET_PREFIX,
     ) {
         return Ok(None);
     }
@@ -1528,7 +1557,8 @@ fn non_turn_conditional_untap_first_sentence_tokens(
 ) -> Option<&[OwnedLexToken]> {
     let words = TokenWordView::new(&line.tokens);
     if !NON_TURN_UNTAP_SUFFIX_PATTERN
-        .matches_words(&crate::runtime_backend::token_word_refs(&line.tokens))
+        .iter()
+        .any(|suffix| crate::runtime_backend::token_word_refs(&line.tokens).ends_with(suffix))
     {
         return None;
     }
@@ -1544,8 +1574,26 @@ fn non_turn_conditional_untap_first_sentence_tokens(
 
 fn statement_probe_shape_prefers_statement(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PATTERN.matches_words(&words)
-        || LINKED_EXILED_CARD_COST_MORE_PATTERN.matches_words(&words)
+    line_family_words_contain_all_phrases(
+        &words,
+        LINKED_CHOOSE_TWO_SHUFFLE_REST_BATTLEFIELD_PHRASES,
+    ) || line_family_words_contain_all_phrases(&words, LINKED_EXILED_CARD_COST_MORE_PHRASES)
+}
+
+fn is_keyword_action_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
+    parse_static_ability_ast_line_lexed(tokens)
+        .ok()
+        .flatten()
+        .is_some_and(|abilities| {
+            abilities.iter().any(|ability| {
+                matches!(
+                    ability,
+                    crate::cards::builders::StaticAbilityAst::Static(static_ability)
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::KeywordActionReplacement
+                )
+            })
+        })
 }
 
 pub(super) fn run_statement_probe_line_family(
@@ -1558,6 +1606,15 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
+    if should_prefer_statement_before_static_for_nonpermanent_spell(
+        ctx.preprocessed,
+        &ctx.line.tokens,
+    ) && let Some(split_result) =
+        parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
+    {
+        return Ok(Some(split_result));
+    }
+
     if (matches!(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens
@@ -1574,7 +1631,10 @@ pub(super) fn run_statement_probe_line_family(
             &ctx.line.tokens,
         ))
         && !is_can_block_additional_creatures_static_line(&ctx.line.tokens)
-        && !is_draw_replacement_reveal_top_static_line(&ctx.line.tokens)
+        && !is_draw_replacement_static_line(&ctx.line.tokens)
+        && !is_token_creation_replacement_static_line(&ctx.line.tokens)
+        && !is_first_equip_cost_alternative_static_line(&ctx.line.tokens)
+        && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
         && let Some(statement_line) = parse_statement_line_cst(ctx.line)?
     {
         let (statement_line, next_idx) = extend_statement_line_with_result_followups(
@@ -1590,26 +1650,41 @@ pub(super) fn run_statement_probe_line_family(
     Ok(None)
 }
 
-fn is_draw_replacement_reveal_top_static_line(tokens: &[OwnedLexToken]) -> bool {
+fn is_draw_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    words.starts_with(&[
-        "if", "you", "would", "draw", "a", "card", "instead", "reveal", "the", "top",
-    ])
+    words.starts_with(&["if", "you", "would", "draw", "a", "card"]) && words.contains(&"instead")
+}
+
+fn is_token_creation_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    line_family_words_start_with_pattern(&words, TOKEN_CREATION_REPLACEMENT_PREFIX_PATTERN)
+        && words.contains(&"additional")
+        && words.iter().any(|word| matches!(*word, "token" | "tokens"))
+        && words.contains(&"instead")
+}
+
+fn is_first_equip_cost_alternative_static_line(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    line_family_words_start_with_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PREFIX)
+        && line_family_words_contain_phrase(&words, FIRST_EQUIP_COST_ALTERNATIVE_PHRASE)
+        && line_family_words_end_with_any(&words, FIRST_EQUIP_COST_ALTERNATIVE_SUFFIXES)
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
-    if !CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN.matches_words(&words) {
+    if !line_family_words_start_with_pattern(&words, CAN_BLOCK_ADDITIONAL_PREFIX_PATTERN) {
         return false;
     }
 
-    let has_additional = ADDITIONAL_WORD_PATTERN.matches_words(&words);
-    let has_creature_noun = CREATURE_OR_CREATURES_WORD_PATTERN.matches_words(&words);
+    let has_additional = words.contains(&"additional");
+    let has_creature_noun = words
+        .iter()
+        .any(|word| matches!(*word, "creature" | "creatures"));
     if !has_additional || !has_creature_noun {
         return false;
     }
 
-    BLOCK_DURATION_TAIL_PATTERN.matches_words(&words)
+    line_family_words_end_with_any(&words, BLOCK_DURATION_TAILS)
 }
 
 pub(super) fn run_static_line_family(
@@ -1640,6 +1715,33 @@ pub(super) fn run_statement_line_family(
         );
         LineDispatchResult::single(RewriteLineCst::Statement(statement_line), next_idx)
     }))
+}
+
+pub(super) fn run_leading_unless_statement_line_family(
+    ctx: &LineDispatchContext<'_>,
+) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if !line_starts_with_words(ctx.line, &["unless"]) {
+        return Ok(None);
+    }
+    let Some((unless_tokens, effect_tokens)) = split_once_on_comma_tokens(&ctx.line.tokens) else {
+        return Ok(None);
+    };
+    if unless_tokens.len() < 2 || effect_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let parse_tokens = ctx.line.tokens.clone();
+    let parse_groups = vec![parse_tokens.clone()];
+    let statement_line = StatementLineCst {
+        info: ctx.line.info.clone(),
+        text: ctx.line.info.normalized.normalized.clone(),
+        parse_tokens,
+        parse_groups,
+    };
+    Ok(Some(LineDispatchResult::single(
+        RewriteLineCst::Statement(statement_line),
+        ctx.idx + 1,
+    )))
 }
 
 pub(super) fn run_colon_nonactivation_statement_line_family(

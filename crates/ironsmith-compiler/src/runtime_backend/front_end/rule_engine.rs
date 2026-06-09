@@ -38,7 +38,7 @@ impl<'a> ClauseView<'a> {
     pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
         let words = token_word_refs(tokens);
         let head = words.first().copied().unwrap_or("");
-        let shape = clause_shape(tokens, &words);
+        let shape = compute_clause_rule_shape(tokens, &words);
         Self {
             raw: None,
             tokens,
@@ -88,7 +88,7 @@ pub(crate) struct LexClauseView<'a> {
 impl<'a> LexClauseView<'a> {
     pub(crate) fn from_tokens(tokens: &'a [OwnedLexToken]) -> Self {
         let words = LexClauseWords::new(tokens);
-        let shape = clause_shape_lexed(tokens, &words);
+        let shape = compute_lex_clause_rule_shape(tokens, &words);
         Self {
             raw: None,
             tokens,
@@ -131,7 +131,7 @@ pub(crate) fn unsupported_rule_error_for_view(
     unsupported_rule_error(rule_id, message, subject_label, &text)
 }
 
-fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
+fn compute_clause_rule_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
     let mut shape = 0u32;
     if contains_token_kind(tokens, TokenKind::Colon) {
         shape |= RULE_SHAPE_HAS_COLON;
@@ -153,7 +153,7 @@ fn clause_shape(tokens: &[OwnedLexToken], words: &[&str]) -> u32 {
     shape
 }
 
-fn clause_shape_lexed(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
+fn compute_lex_clause_rule_shape(tokens: &[OwnedLexToken], words: &LexClauseWords) -> u32 {
     let mut shape = 0u32;
     if contains_token_kind(tokens, TokenKind::Colon) {
         shape |= RULE_SHAPE_HAS_COLON;

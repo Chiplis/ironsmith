@@ -649,11 +649,6 @@ pub(crate) fn split_lexed_once_on_period(
     split_lexed_once_on_delimiter(tokens, TokenKind::Period)
 }
 
-pub(crate) fn parse_i32_word_token<'a>(input: &mut LexedInput<'a>) -> WResult<i32> {
-    let word = parse_word_token.parse_next(input)?;
-    word.parse::<i32>()
-        .map_err(|_| grammar::backtrack_err("integer word", "integer"))
-}
 
 fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<TurnDurationPhrase> {
     dispatch! {peek(grammar::word_parser_text);

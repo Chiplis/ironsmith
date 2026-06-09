@@ -331,6 +331,17 @@ pub(crate) fn resolve_it_tag(
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
     let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
+    if !refs.snapshot_tag_aliases.is_empty() {
+        for constraint in &mut resolved.tagged_constraints {
+            if let Some((_, concrete)) = refs
+                .snapshot_tag_aliases
+                .iter()
+                .find(|(alias, _)| alias == constraint.tag.as_str())
+            {
+                constraint.tag = TagKey::from(concrete.as_str());
+            }
+        }
+    }
     if let Some(tag) = refs.known_last_object_tag()
         && tag.as_str() != crate::tag::SOURCE_EXILED_TAG
         && tag.as_str() != "triggering"
@@ -411,6 +422,13 @@ pub(crate) fn resolve_it_tag_key(
     tag: &TagKey,
     refs: &ReferenceEnv,
 ) -> Result<TagKey, CardTextError> {
+    if let Some((_, concrete)) = refs
+        .snapshot_tag_aliases
+        .iter()
+        .find(|(alias, _)| alias == tag.as_str())
+    {
+        return Ok(TagKey::from(concrete.as_str()));
+    }
     if tag.as_str() != IT_TAG {
         return Ok(tag.clone());
     }

@@ -1,4 +1,7 @@
-use super::super::lexer::{LexedClause, OwnedLexToken};
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, word_slice_contains_all_words, word_slice_contains_phrase,
+    word_slice_eq_any, word_slice_first_is, word_slice_starts_with, word_slice_starts_with_any,
+};
 use super::super::object_filters::is_comparison_or_delimiter;
 use super::super::token_primitives::parse_leading_may_action_lexed;
 use super::super::util::{
@@ -8,7 +11,6 @@ use super::super::util::{
 use super::super::value_helpers::{
     parse_value_from_lexed, parse_where_x_greatest_commander_mana_value,
 };
-use super::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::dispatch_entry::{find_from_among_looked_cards_phrase, leading_may_actor_to_player};
 use super::search_library::{
     normalize_search_library_filter, parse_search_library_disjunction_filter,
@@ -25,107 +27,98 @@ use ironsmith_core::{EffectMetric, EffectMetricSource, ValueSurfaceHint};
 
 const CHOSEN_NAME_TAG: &str = "__chosen_name__";
 
-const LOOKED_NUMBER_OF_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["number", "of"]);
-const LOOKED_THIS_WAY_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["this", "way"]]);
-const LOOKED_PUT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["put"]);
-const LOOKED_THIS_SPELL_WAS_KICKED_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["if", "this", "spell", "was", "kicked"]);
-const LOOKED_THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const LOOKED_OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const LOOKED_THEM_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["them"]);
-const LOOKED_THOSE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["those"]);
-const LOOKED_CARD_OF_YOUR_LIBRARY_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["card", "of", "your", "library"],
-            &["cards", "of", "your", "library"]
-        ]
-);
-const LOOKED_WHERE_X_IS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["where", "x", "is"]);
-const LOOKED_GREATEST_MANA_VALUE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["the", "greatest", "mana", "value", "of"],
-            &["greatest", "mana", "value", "of"],
-        ]
-);
-const LOOKED_INTO_HAND_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["into"]; contains_words & ["hand"]);
-const LOOKED_INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const LOOKED_IF_DONT_PUT_AMONG_INTO_HAND_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &[
-                "if", "you", "dont", "put", "card", "from", "among", "them", "into", "your",
-                "hand",
-            ],
-            &[
-                "if", "you", "don't", "put", "card", "from", "among", "them", "into", "your",
-                "hand",
-            ],
-            &[
-                "if", "you", "do", "not", "put", "card", "from", "among", "them", "into", "your",
-                "hand",
-            ],
-            &[
-                "if", "you", "dont", "put", "card", "from", "among", "those", "cards", "into",
-                "your", "hand",
-            ],
-            &[
-                "if", "you", "don't", "put", "card", "from", "among", "those", "cards", "into",
-                "your", "hand",
-            ],
-            &[
-                "if", "you", "do", "not", "put", "card", "from", "among", "those", "cards", "into",
-                "your", "hand",
-            ],
-        ]
-);
-const LOOKED_REST_BOTTOM_LIBRARY_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["rest", "bottom", "library"]);
-const LOOKED_PUT_OR_PUTS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["put"], &["puts"]]);
-const LOOKED_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const LOOKED_AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const LOOKED_SAME_NAME_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    suffix_any
-        & [
-            &["with", "that", "name"],
-            &["with", "the", "chosen", "name"],
-            &["with", "chosen", "name"],
-        ]
-);
-const LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(suffix & ["with", "the", "chosen", "name"]);
-const LOOKED_CHOSEN_CARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["chosen", "card"], &["chosen", "cards"]]);
-const LOOKED_CARD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
+const LOOKED_NUMBER_OF_PREFIX: &[&str] = &["number", "of"];
+const LOOKED_THIS_WAY_PHRASE: &[&str] = &["this", "way"];
+const LOOKED_PUT_WORD: &str = "put";
+const LOOKED_THIS_SPELL_WAS_KICKED_PREFIX: &[&str] = &["if", "this", "spell", "was", "kicked"];
+const LOOKED_THE_WORD: &str = "the";
+const LOOKED_OF_WORD: &str = "of";
+const LOOKED_THEM_WORD: &str = "them";
+const LOOKED_THOSE_WORD: &str = "those";
+const LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES: &[&[&str]] = &[
+    &["card", "of", "your", "library"],
+    &["cards", "of", "your", "library"],
+];
+const LOOKED_WHERE_X_IS_PREFIX: &[&str] = &["where", "x", "is"];
+const LOOKED_GREATEST_MANA_VALUE_PREFIXES: &[&[&str]] = &[
+    &["the", "greatest", "mana", "value", "of"],
+    &["greatest", "mana", "value", "of"],
+];
+const LOOKED_INTO_HAND_PREFIX: &[&str] = &["into"];
+const LOOKED_INTO_HAND_REQUIRED_WORDS: &[&str] = &["hand"];
+const LOOKED_INSTEAD_WORD: &str = "instead";
+const LOOKED_IF_DONT_PUT_AMONG_INTO_HAND_PHRASES: &[&[&str]] = &[
+    &[
+        "if", "you", "dont", "put", "card", "from", "among", "them", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "don't", "put", "card", "from", "among", "them", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "do", "not", "put", "card", "from", "among", "them", "into", "your", "hand",
+    ],
+    &[
+        "if", "you", "dont", "put", "card", "from", "among", "those", "cards", "into", "your",
+        "hand",
+    ],
+    &[
+        "if", "you", "don't", "put", "card", "from", "among", "those", "cards", "into", "your",
+        "hand",
+    ],
+    &[
+        "if", "you", "do", "not", "put", "card", "from", "among", "those", "cards", "into", "your",
+        "hand",
+    ],
+];
+const LOOKED_REST_BOTTOM_LIBRARY_REQUIRED_WORDS: &[&str] = &["rest", "bottom", "library"];
+const LOOKED_PUT_OR_PUTS_WORDS: &[&str] = &["put", "puts"];
+const LOOKED_OR_WORD: &str = "or";
+const LOOKED_AND_WORD: &str = "and";
+const LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX: &[&str] = &["with", "the", "chosen", "name"];
+const LOOKED_SAME_NAME_SUFFIXES: &[&[&str]] = &[
+    &["with", "that", "name"],
+    LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX,
+    &["with", "chosen", "name"],
+];
+const LOOKED_CHOSEN_CARD_PHRASES: &[&[&str]] = &[&["chosen", "card"], &["chosen", "cards"]];
+const LOOKED_CARD_WORDS: &[&str] = &["card", "cards"];
 
-fn looked_clause_first_matches(clause: LexedClause<'_>, shape: &ClauseShape<'static>) -> bool {
-    clause
-        .word_refs()
-        .first()
-        .is_some_and(|word| shape.matches_word(word))
+fn looked_clause_first_is(clause: LexedClause<'_>, expected: &str) -> bool {
+    word_slice_first_is(&clause.word_refs(), expected)
+}
+
+fn looked_words_start_into_hand(words: &[&str]) -> bool {
+    word_slice_starts_with(words, LOOKED_INTO_HAND_PREFIX)
+        && word_slice_contains_all_words(words, LOOKED_INTO_HAND_REQUIRED_WORDS)
+}
+
+fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
+    token.as_word() == Some(expected)
+}
+
+fn token_words_non_article_eq_any(tokens: &[OwnedLexToken], expected: &[&[&str]]) -> bool {
+    let words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
+    word_slice_eq_any(words.as_slice(), expected)
 }
 
 fn parse_prior_effect_number_value(tokens: &[OwnedLexToken]) -> Option<Value> {
     let clause = LexedClause::new(tokens).trimmed();
     let words = clause.word_refs();
     let mut idx = 0usize;
-    if LOOKED_THE_WORD_PATTERN.matches_word_at(&words, idx) {
+    if words.get(idx) == Some(&LOOKED_THE_WORD) {
         idx += 1;
     }
-    if !LOOKED_NUMBER_OF_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    if !clause
+        .from_word(idx)
+        .is_some_and(|tail| word_slice_starts_with(&tail.word_refs(), LOOKED_NUMBER_OF_PREFIX))
+    {
         return None;
     }
     let object_clause = clause
         .after_words(idx + 2)
         .unwrap_or_else(|| clause.from(clause.len()));
-    let references_this_way = LOOKED_THIS_WAY_MARKER_PATTERN.matches(object_clause);
+    let references_this_way =
+        word_slice_contains_phrase(&object_clause.word_refs(), LOOKED_THIS_WAY_PHRASE);
     let references_memory_action = object_clause.contains_any_word(&[
         "chosen",
         "destroyed",
@@ -163,7 +156,7 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     let (count, used) = parse_number_or_x_value_lexed(count_clause.tokens())?;
     let tail_clause = count_clause.from(used).trimmed();
     let tail_words = tail_clause.word_refs();
-    if !LOOKED_CARD_OF_YOUR_LIBRARY_PREFIX_PATTERN.matches_words(&tail_words) {
+    if !word_slice_starts_with_any(&tail_clause.word_refs(), LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES) {
         return None;
     }
 
@@ -172,7 +165,9 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     }
 
     if count == crate::effect::Value::X
-        && LOOKED_WHERE_X_IS_PREFIX_PATTERN.matches_words(&tail_words[4..])
+        && tail_clause.from_word(4).is_some_and(|where_tail| {
+            word_slice_starts_with(&where_tail.word_refs(), LOOKED_WHERE_X_IS_PREFIX)
+        })
     {
         let value_clause = tail_clause.after_words(7)?.trimmed();
         if let Some(resolved) = parse_prior_effect_number_value(value_clause.tokens()) {
@@ -190,14 +185,13 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
             ));
         }
         let value_word_refs = value_clause.word_refs();
-        let commander_start = if LOOKED_GREATEST_MANA_VALUE_PREFIX_PATTERN
-            .matches_words(&value_word_refs)
-            && value_word_refs
-                .first()
-                .is_some_and(|word| LOOKED_THE_WORD_PATTERN.matches_word(word))
+        let has_greatest_mana_value_prefix =
+            word_slice_starts_with_any(&value_word_refs, LOOKED_GREATEST_MANA_VALUE_PREFIXES);
+        let commander_start = if has_greatest_mana_value_prefix
+            && word_slice_first_is(&value_word_refs, LOOKED_THE_WORD)
         {
             Some(5usize)
-        } else if LOOKED_GREATEST_MANA_VALUE_PREFIX_PATTERN.matches_words(&value_word_refs) {
+        } else if has_greatest_mana_value_prefix {
             Some(4usize)
         } else {
             None
@@ -258,34 +252,41 @@ pub(crate) fn parse_counted_looked_cards_into_your_hand_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<u32> {
     let clause = LexedClause::new(tokens).trimmed();
-    if !looked_clause_first_matches(clause, &LOOKED_PUT_WORD_PATTERN) {
+    if !looked_clause_first_is(clause, LOOKED_PUT_WORD) {
         return None;
     }
     let count_clause = clause.after_words(1)?;
     let (count, used) = parse_number(count_clause.tokens())?;
     let tail_words = count_clause.from(used).word_refs();
+    let tail_clause = count_clause.from(used);
     let mut idx = 0usize;
-    if LOOKED_OF_WORD_PATTERN.matches_word_at(&tail_words, idx) {
+    if tail_words.get(idx) == Some(&LOOKED_OF_WORD) {
         idx += 1;
     }
     match tail_words.get(idx).copied() {
-        Some(word) if LOOKED_THEM_WORD_PATTERN.matches_word(word) => idx += 1,
-        Some(word) if LOOKED_THOSE_WORD_PATTERN.matches_word(word) => {
+        Some(word) if word == LOOKED_THEM_WORD => idx += 1,
+        Some(word) if word == LOOKED_THOSE_WORD => {
             idx += 1;
-            if LOOKED_CARD_PATTERN.matches_word_at(&tail_words, idx) {
+            if tail_words
+                .get(idx)
+                .is_some_and(|word| LOOKED_CARD_WORDS.contains(word))
+            {
                 idx += 1;
             }
         }
         _ => return None,
     }
-    if !LOOKED_INTO_HAND_PATTERN.matches_words(&tail_words[idx..]) {
+    if !tail_clause
+        .from_word(idx)
+        .is_some_and(|tail| looked_words_start_into_hand(&tail.word_refs()))
+    {
         return None;
     }
     idx += 3;
     if idx == tail_words.len() {
         return Some(count);
     }
-    if idx + 1 == tail_words.len() && LOOKED_INSTEAD_WORD_PATTERN.matches_word(tail_words[idx]) {
+    if idx + 1 == tail_words.len() && tail_words[idx] == LOOKED_INSTEAD_WORD {
         return Some(count);
     }
     None
@@ -295,7 +296,7 @@ pub(crate) fn parse_if_this_spell_was_kicked_counted_looked_cards_into_hand(
     tokens: &[OwnedLexToken],
 ) -> Option<u32> {
     let clause = LexedClause::new(tokens).trimmed();
-    if !LOOKED_THIS_SPELL_WAS_KICKED_PREFIX_PATTERN.matches(clause) {
+    if !word_slice_starts_with(&clause.word_refs(), LOOKED_THIS_SPELL_WAS_KICKED_PREFIX) {
         return None;
     }
     let tail = clause.after_words(5)?.trimmed();
@@ -346,7 +347,6 @@ fn parse_filtered_looked_card_into_hand_clause(tokens: &[OwnedLexToken]) -> Opti
         return None;
     }
     let action_words = action_clause.words();
-    let action_word_refs = action_words.word_refs();
     let Some((from_among_word_idx, from_among_len)) =
         find_from_among_looked_cards_phrase(&action_words)
     else {
@@ -356,8 +356,9 @@ fn parse_filtered_looked_card_into_hand_clause(tokens: &[OwnedLexToken]) -> Opti
         .before_word(from_among_word_idx)
         .unwrap_or_else(|| action_clause.before(action_clause.len()));
     let filter = parse_looked_card_choice_filter(filter_clause.tokens())?;
-    let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
-    let moves_into_hand = LOOKED_INTO_HAND_PATTERN.matches_words(after_from_words);
+    let moves_into_hand = action_clause
+        .from_word(from_among_word_idx + from_among_len)
+        .is_some_and(|tail| looked_words_start_into_hand(&tail.word_refs()));
     if !moves_into_hand {
         return None;
     }
@@ -422,16 +423,18 @@ pub(crate) fn parse_if_you_dont_put_card_from_among_them_into_your_hand(
     tokens: &[OwnedLexToken],
 ) -> bool {
     let trimmed = LexedClause::new(tokens).trimmed();
-    let words = crate::runtime_backend::util::non_article_token_word_refs(trimmed.tokens());
-    LOOKED_IF_DONT_PUT_AMONG_INTO_HAND_PATTERN.matches_words(&words)
+    token_words_non_article_eq_any(trimmed.tokens(), LOOKED_IF_DONT_PUT_AMONG_INTO_HAND_PHRASES)
 }
 
 pub(crate) fn is_put_rest_on_bottom_of_library_sentence(tokens: &[OwnedLexToken]) -> bool {
     let clause = LexedClause::new(tokens).trimmed();
     clause
         .first_word()
-        .is_some_and(|word| LOOKED_PUT_OR_PUTS_WORD_PATTERN.matches_word(word))
-        && LOOKED_REST_BOTTOM_LIBRARY_PATTERN.matches(clause)
+        .is_some_and(|word| LOOKED_PUT_OR_PUTS_WORDS.contains(&word))
+        && word_slice_contains_all_words(
+            &clause.word_refs(),
+            LOOKED_REST_BOTTOM_LIBRARY_REQUIRED_WORDS,
+        )
 }
 
 fn title_case_words(words: &[&str]) -> String {
@@ -456,7 +459,7 @@ fn parse_named_card_filter_segment(tokens: &[OwnedLexToken]) -> Option<ObjectFil
     let mut segment_words = strip_leading_article_word_refs(&all_segment_words).to_vec();
     if segment_words
         .last()
-        .is_some_and(|word| LOOKED_CARD_PATTERN.matches_word(word))
+        .is_some_and(|word| LOOKED_CARD_WORDS.contains(word))
     {
         segment_words.pop();
     }
@@ -472,16 +475,16 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
     let mut segments = Vec::new();
     let mut current: Vec<OwnedLexToken> = Vec::new();
     let has_noncomparison_or = tokens.iter().enumerate().any(|(idx, token)| {
-        LOOKED_OR_WORD_PATTERN.matches_token(token) && !is_comparison_or_delimiter(tokens, idx)
+        token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(tokens, idx)
     });
     for (idx, token) in tokens.iter().enumerate() {
-        let is_separator = (LOOKED_OR_WORD_PATTERN.matches_token(token)
+        let is_separator = (token_is_word(token, LOOKED_OR_WORD)
             && !is_comparison_or_delimiter(tokens, idx))
             || (has_noncomparison_or && token.is_comma());
         if is_separator {
             while current
                 .last()
-                .is_some_and(|entry| LOOKED_AND_WORD_PATTERN.matches_token(entry))
+                .is_some_and(|entry| token_is_word(entry, LOOKED_AND_WORD))
             {
                 current.pop();
             }
@@ -496,7 +499,7 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
     }
     while current
         .last()
-        .is_some_and(|entry| LOOKED_AND_WORD_PATTERN.matches_token(entry))
+        .is_some_and(|entry| token_is_word(entry, LOOKED_AND_WORD))
     {
         current.pop();
     }
@@ -510,23 +513,20 @@ fn split_reveal_filter_segments(tokens: &[OwnedLexToken]) -> Vec<Vec<OwnedLexTok
 pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let raw_clause = LexedClause::new(tokens).trimmed();
     let raw_word_refs = raw_clause.word_refs();
-    let same_name_suffix_len = if raw_word_refs.len() >= 4
-        && LOOKED_SAME_NAME_SUFFIX_PATTERN.matches_words(&raw_word_refs)
-        && LOOKED_WITH_THE_CHOSEN_NAME_SUFFIX_PATTERN.matches_words(&raw_word_refs)
-    {
-        Some(4usize)
-    } else if raw_word_refs.len() >= 3
-        && LOOKED_SAME_NAME_SUFFIX_PATTERN.matches_words(&raw_word_refs)
-    {
-        Some(3usize)
-    } else {
-        None
+    let same_name_suffix = {
+        LOOKED_SAME_NAME_SUFFIXES
+            .iter()
+            .any(|suffix| raw_word_refs.ends_with(suffix))
     };
-    let filter_tokens = if let Some(suffix_len) = same_name_suffix_len {
-        let keep_word_count = raw_word_refs.len().saturating_sub(suffix_len);
+    let filter_tokens = if same_name_suffix {
+        let suffix_len = LOOKED_SAME_NAME_SUFFIXES
+            .iter()
+            .find(|suffix| raw_word_refs.ends_with(suffix))
+            .map(|suffix| suffix.len())
+            .unwrap_or(0);
         raw_clause
-            .before_word(keep_word_count)
-            .unwrap_or_else(|| raw_clause.before(raw_clause.len()))
+            .before_word(raw_word_refs.len() - suffix_len)
+            .unwrap_or(raw_clause)
             .trim()
     } else {
         raw_clause.trim()
@@ -535,7 +535,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     let filter_clause = LexedClause::new(&filter_tokens);
     let words_all_refs = filter_clause.word_refs();
     let non_article_words = crate::runtime_backend::util::non_article_word_refs(&words_all_refs);
-    if LOOKED_CHOSEN_CARD_PATTERN.matches_words(&non_article_words) {
+    if token_words_non_article_eq_any(&filter_tokens, LOOKED_CHOSEN_CARD_PHRASES) {
         let mut filter = ObjectFilter::default();
         filter = filter.match_tagged(
             TagKey::from(CHOSEN_NAME_TAG),
@@ -543,9 +543,13 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         );
         return Some(filter);
     }
-    if LOOKED_CARD_PATTERN.matches_words(&non_article_words) {
+    if crate::runtime_backend::util::non_article_token_word_refs(&filter_tokens)
+        .iter()
+        .all(|word| LOOKED_CARD_WORDS.contains(word))
+        && crate::runtime_backend::util::non_article_token_word_refs(&filter_tokens).len() == 1
+    {
         let mut filter = ObjectFilter::default();
-        if same_name_suffix_len.is_some() {
+        if same_name_suffix {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),
                 TaggedOpbjectRelation::SameNameAsTagged,
@@ -562,7 +566,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     ) {
         let mut filter = ObjectFilter::default();
         filter.chosen_creature_type = true;
-        if same_name_suffix_len.is_some() {
+        if same_name_suffix {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),
                 TaggedOpbjectRelation::SameNameAsTagged,
@@ -575,7 +579,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         ["permanent", "card"] | ["permanent", "cards"]
     ) {
         let mut filter = ObjectFilter::permanent_card();
-        if same_name_suffix_len.is_some() {
+        if same_name_suffix {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),
                 TaggedOpbjectRelation::SameNameAsTagged,
@@ -589,7 +593,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     ) {
         let mut filter = ObjectFilter::permanent_card();
         filter.excluded_card_types.push(CardType::Land);
-        if same_name_suffix_len.is_some() {
+        if same_name_suffix {
             filter = filter.match_tagged(
                 TagKey::from(CHOSEN_NAME_TAG),
                 TaggedOpbjectRelation::SameNameAsTagged,
@@ -599,13 +603,12 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
     }
 
     let has_noncomparison_or = filter_tokens.iter().enumerate().any(|(idx, token)| {
-        LOOKED_OR_WORD_PATTERN.matches_token(token)
-            && !is_comparison_or_delimiter(&filter_tokens, idx)
+        token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(&filter_tokens, idx)
     });
     if has_noncomparison_or {
         let shared_card_suffix = words_all_refs
             .last()
-            .is_some_and(|word| LOOKED_CARD_PATTERN.matches_word(word));
+            .is_some_and(|word| LOOKED_CARD_WORDS.contains(word));
         let segments = split_reveal_filter_segments(&filter_tokens);
         if segments.len() >= 2 {
             let mut branches = Vec::new();
@@ -613,7 +616,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
                 if shared_card_suffix
                     && !matches!(
                         segment.last().and_then(OwnedLexToken::as_word),
-                        Some(word) if LOOKED_CARD_PATTERN.matches_word(word)
+                        Some(word) if LOOKED_CARD_WORDS.contains(&word)
                     )
                 {
                     segment.push(OwnedLexToken::word(
@@ -632,7 +635,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
             }
             let mut filter = ObjectFilter::default();
             filter.any_of = branches;
-            if same_name_suffix_len.is_some() {
+            if same_name_suffix {
                 filter = filter.match_tagged(
                     TagKey::from(CHOSEN_NAME_TAG),
                     TaggedOpbjectRelation::SameNameAsTagged,
@@ -644,7 +647,7 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
 
     let mut filter = parse_search_library_disjunction_filter(&filter_tokens)
         .or_else(|| parse_object_filter_lexed(&filter_tokens, false).ok())?;
-    if same_name_suffix_len.is_some() {
+    if same_name_suffix {
         filter = filter.match_tagged(
             TagKey::from(CHOSEN_NAME_TAG),
             TaggedOpbjectRelation::SameNameAsTagged,

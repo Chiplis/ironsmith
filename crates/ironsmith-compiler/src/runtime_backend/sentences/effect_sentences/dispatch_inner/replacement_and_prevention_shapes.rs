@@ -1,8 +1,3 @@
-const REPLACE_EXCEPT_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["except"]);
-const REPLACE_EXILE_UNTIL_LEAVES_BATTLEFIELD_PATTERN: ClauseShape<'static> =
-    ClauseShape::new()
-        .contains_words(&["until"])
-        .suffix(&["leaves", "the", "battlefield"]);
 const REPLACE_EXILE_ALL_CARDS_FROM_ZONES_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action("verb", LexCaptureKind::OneOf(&["exile"])),
     LexPattern::phrase(&["all", "cards", "from"]),
@@ -16,7 +11,10 @@ const REPLACE_ZONE_LIST_PATTERN: LexPattern<'static> = LexPattern::new(&[
 const REPLACE_HAND_ZONE_PHRASES: &[&[&str]] = &[&["hand"], &["hands"]];
 const REPLACE_GRAVEYARD_ZONE_PHRASES: &[&[&str]] = &[&["graveyard"], &["graveyards"]];
 const REPLACE_HAND_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::capture("owner", LexCaptureKind::UntilAnyPhrase(REPLACE_HAND_ZONE_PHRASES)),
+    LexPattern::capture(
+        "owner",
+        LexCaptureKind::UntilAnyPhrase(REPLACE_HAND_ZONE_PHRASES),
+    ),
     LexPattern::any_phrase(REPLACE_HAND_ZONE_PHRASES),
 ]);
 const REPLACE_GRAVEYARD_ZONE_PATTERN: LexPattern<'static> = LexPattern::new(&[
@@ -30,8 +28,8 @@ const REPLACE_VOTED_WITH_YOU_SCRY_PATTERN: LexPattern<'static> = LexPattern::new
     LexPattern::subject(
         "voters",
         LexCaptureKind::OneOfPhrase(&[&[
-            "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you",
-            "voted", "for",
+            "you", "and", "each", "opponent", "who", "voted", "for", "a", "choice", "you", "voted",
+            "for",
         ]]),
     ),
     LexPattern::capture("may", LexCaptureKind::OneOf(&["may"])),
@@ -49,7 +47,6 @@ const REPLACE_TOKEN_END_COMBAT_OBJECT_PHRASES: &[&[&str]] = &[
 ];
 const REPLACE_TOKEN_END_COMBAT_TIMING_PHRASES: &[&[&str]] =
     &[&["end", "of", "combat"], &["the", "end", "of", "combat"]];
-const REPLACE_TARGET_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["target"]);
 const REPLACE_LOOK_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(&["look", "at"]),
     LexPattern::object("player", LexCaptureKind::UntilPhrase(&["hand"])),
@@ -62,30 +59,26 @@ const REPLACE_LOOK_HAND_TARGET_OPPONENT_PHRASES: &[&[&str]] =
     &[&["target", "opponent"], &["target", "opponents"]];
 const REPLACE_LOOK_HAND_OPPONENT_PHRASES: &[&[&str]] = &[&["an", "opponents"], &["opponents"]];
 const REPLACE_LOOK_HAND_ITERATED_PLAYER_PHRASES: &[&[&str]] = &[&["that", "players"]];
-const REPLACE_LOOK_HAND_TARGET_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
+const REPLACE_LOOK_HAND_TARGET_PLAYER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
         "player",
         LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_TARGET_PLAYER_PHRASES),
-    ),
-]);
-const REPLACE_LOOK_HAND_TARGET_OPPONENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
+    )]);
+const REPLACE_LOOK_HAND_TARGET_OPPONENT_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
         "player",
         LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_TARGET_OPPONENT_PHRASES),
-    ),
-]);
-const REPLACE_LOOK_HAND_OPPONENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
+    )]);
+const REPLACE_LOOK_HAND_OPPONENT_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
         "player",
         LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_OPPONENT_PHRASES),
-    ),
-]);
-const REPLACE_LOOK_HAND_ITERATED_PLAYER_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object(
+    )]);
+const REPLACE_LOOK_HAND_ITERATED_PLAYER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
         "player",
         LexCaptureKind::OneOfPhrase(REPLACE_LOOK_HAND_ITERATED_PLAYER_PHRASES),
-    ),
-]);
+    )]);
 const REPLACE_LOOK_HAND_CHOOSE_NAME_OBJECT_PHRASES: &[&[&str]] = &[&["any", "card", "name"]];
 const REPLACE_LOOK_HAND_CHOOSE_NAME_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::word("then"),
@@ -123,8 +116,9 @@ const REPLACE_LOOK_TOP_EXILE_LOOKED_SEQUENCE: &[LexPatternAtom<'static>] =
     &[LexPattern::phrase(&["exile", "one", "of", "them"])];
 const REPLACE_LOOK_TOP_EXILE_THOSE_SEQUENCE: &[LexPatternAtom<'static>] =
     &[LexPattern::phrase(&["exile", "one", "of", "those"])];
-const REPLACE_LOOK_TOP_EXILE_THOSE_CARDS_SEQUENCE: &[LexPatternAtom<'static>] =
-    &[LexPattern::phrase(&["exile", "one", "of", "those", "cards"])];
+const REPLACE_LOOK_TOP_EXILE_THOSE_CARDS_SEQUENCE: &[LexPatternAtom<'static>] = &[
+    LexPattern::phrase(&["exile", "one", "of", "those", "cards"]),
+];
 const REPLACE_LOOK_TOP_EXILE_SEQUENCES: &[&[LexPatternAtom<'static>]] = &[
     REPLACE_LOOK_TOP_EXILE_THOSE_CARDS_SEQUENCE,
     REPLACE_LOOK_TOP_EXILE_THOSE_SEQUENCE,
@@ -149,10 +143,7 @@ const REPLACE_EXILE_THEN_RETURN_SAME_OBJECT_PATTERN: LexPattern<'static> = LexPa
     LexPattern::tail("return_clause", LexCaptureKind::OneOrMoreWords),
 ]);
 const REPLACE_RETURN_WITH_COUNTER_ON_OBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::action(
-        "return_clause",
-        LexCaptureKind::UntilLastPhrase(&["with"]),
-    ),
+    LexPattern::action("return_clause", LexCaptureKind::UntilLastPhrase(&["with"])),
     LexPattern::word("with"),
     LexPattern::modifier("counter", LexCaptureKind::UntilLastPhrase(&["on"])),
     LexPattern::word("on"),
@@ -186,10 +177,7 @@ const REPLACE_SACRIFICE_TOKEN_END_COMBAT_PATTERN: LexPattern<'static> = LexPatte
 const REPLACE_TAKE_EXTRA_TURN_YOU_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action("take", LexCaptureKind::OneOf(&["take"])),
     LexPattern::phrase(&["an", "extra", "turn"]),
-    LexPattern::modifier(
-        "anchor",
-        LexCaptureKind::OneOfPhrase(&[&["after", "this", "one"]]),
-    ),
+    LexPattern::modifier("anchor", LexCaptureKind::OneOfPhrase(&[&["after", "this", "one"]])),
 ]);
 const REPLACE_TAKE_EXTRA_TURN_CHOSEN_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::subject(
@@ -205,8 +193,14 @@ const REPLACE_TAKE_EXTRA_TURN_CHOSEN_PATTERN: LexPattern<'static> = LexPattern::
 ]);
 const REPLACE_TAKE_EXTRA_TURN_THAT_AFTER_REFERENCED_PATTERN: LexPattern<'static> =
     LexPattern::new(&[
-        LexPattern::modifier("anchor", LexCaptureKind::OneOfPhrase(&[&["after", "that", "turn"]])),
-        LexPattern::subject("player", LexCaptureKind::OneOfPhrase(&[&["that", "player"]])),
+        LexPattern::modifier(
+            "anchor",
+            LexCaptureKind::OneOfPhrase(&[&["after", "that", "turn"]]),
+        ),
+        LexPattern::subject(
+            "player",
+            LexCaptureKind::OneOfPhrase(&[&["that", "player"]]),
+        ),
         LexPattern::action("take", LexCaptureKind::OneOf(&["takes"])),
         LexPattern::phrase(&["an", "extra", "turn"]),
     ]);
@@ -272,12 +266,11 @@ const REPLACE_ADDITIONAL_PHASE_AFTER_THIS_COMBAT_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::phrase(&["after", "this", "combat", "phase"])]);
 const REPLACE_ADDITIONAL_PHASE_AFTER_THIS_MAIN_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::phrase(&["after", "this", "main", "phase"])]);
-const REPLACE_ADDITIONAL_PHASE_IF_MAIN_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::any_phrase(&[
+const REPLACE_ADDITIONAL_PHASE_IF_MAIN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
         &["if", "it", "your", "main", "phase"],
         &["if", "its", "your", "main", "phase"],
-    ]),
-]);
+    ])]);
 const REPLACE_ADDITIONAL_PHASE_FOLLOWED_BY_MAIN_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(&["followed", "by", "an", "additional", "main", "phase"]),
 ]);
@@ -615,14 +608,17 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
 }
 
 fn destroy_exile_split_has_exception(clause: LexedClause<'_>) -> bool {
-    REPLACE_EXCEPT_MARKER_PATTERN.matches(clause)
+    word_slice_contains_word(&clause.word_refs(), "except")
 }
 
 fn destroy_exile_split_is_temporary_exile_until_leaves_battlefield(
     clause: LexedClause<'_>,
     verb: Verb,
 ) -> bool {
-    matches!(verb, Verb::Exile) && REPLACE_EXILE_UNTIL_LEAVES_BATTLEFIELD_PATTERN.matches(clause)
+    let words = clause.word_refs();
+    matches!(verb, Verb::Exile)
+        && word_slice_contains_word(&words, "until")
+        && word_slice_ends_with(&words, &["leaves", "the", "battlefield"])
 }
 
 fn destroy_exile_split_is_multi_zone_card_exile(clause: LexedClause<'_>) -> bool {
@@ -692,8 +688,7 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         grammar::strip_lexed_suffix_phrase(
             &first_clause_tokens,
             &["at", "the", "end", "of", "combat"],
-        )
-    {
+        ) {
         (before, true)
     } else if let Some(before) =
         grammar::strip_lexed_suffix_phrase(&first_clause_tokens, &["at", "end", "of", "combat"])
@@ -704,33 +699,27 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
     };
 
     let mut first_effects = parse_effect_chain_inner(first_clause)?;
-    if !first_effects
-        .iter()
-        .any(|effect| {
-            matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::Exile { .. },
-                    ..
-                })
-            )
-        })
-    {
+    if !first_effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. },
+                ..
+            })
+        )
+    }) {
         return Ok(None);
     }
 
     // Preserve return follow-up clauses (for example "with a +1/+1 counter on it")
     // while still rewriting the "it" return target to the tagged exiled object.
-    let mut second_effects =
-        if let Some(effects) =
-            parse_sentence_return_with_counters_on_it(super::SubjectVerbPrimitiveClause::new(
-                &second_clause_tokens,
-            ))?
-        {
-            effects
-        } else {
-            parse_effect_chain_inner(&second_clause_tokens)?
-        };
+    let mut second_effects = if let Some(effects) = parse_sentence_return_with_counters_on_it(
+        super::SubjectVerbPrimitiveClause::new(&second_clause_tokens),
+    )? {
+        effects
+    } else {
+        parse_effect_chain_inner(&second_clause_tokens)?
+    };
     let has_counter_followup = second_effects.iter().any(|effect| {
         matches!(
             effect,
@@ -824,9 +813,7 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
     let target_positions: Vec<usize> = target_tokens
         .iter()
         .enumerate()
-        .filter_map(|(idx, token)| {
-            REPLACE_TARGET_WORD_PATTERN.matches_token(token).then_some(idx)
-        })
+        .filter_map(|(idx, token)| token.is_word("target").then_some(idx))
         .collect();
     if target_positions.len() < 2 {
         return Ok(None);
@@ -880,7 +867,10 @@ pub(crate) fn parse_exile_up_to_one_each_target_type_sentence(
             tag: tag.clone(),
         })
         .collect();
-    effects.push(EffectAst::subject_verb_exile(TargetAst::Tagged(tag, None), false));
+    effects.push(EffectAst::subject_verb_exile(
+        TargetAst::Tagged(tag, None),
+        false,
+    ));
 
     Ok(Some(effects))
 }
@@ -892,12 +882,10 @@ pub(crate) fn parse_look_at_hand_sentence(
     let Some(matched) = REPLACE_LOOK_HAND_PATTERN.match_clause(clause) else {
         return Ok(None);
     };
-    let Some(player_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause)
-    else {
+    let Some(player_clause) = matched.capture_clause_by_role(LexCaptureRole::Object, clause) else {
         return Ok(None);
     };
-    let Some(followup_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause)
-    else {
+    let Some(followup_clause) = matched.capture_clause_by_role(LexCaptureRole::Tail, clause) else {
         return Ok(None);
     };
     let player_clause = player_clause.trimmed();
@@ -1077,9 +1065,7 @@ mod replacement_and_prevention_shape_tests {
             crate::runtime_backend::lex_line("Exile those tokens at end of combat.", 0)
                 .expect("exile token end-combat text should lex");
         assert!(is_exile_that_token_at_end_of_combat(&exile_tokens));
-        assert!(!is_sacrifice_that_token_at_end_of_combat(
-            &exile_tokens
-        ));
+        assert!(!is_sacrifice_that_token_at_end_of_combat(&exile_tokens));
 
         let sacrifice_tokens =
             crate::runtime_backend::lex_line("Sacrifice it at the end of combat.", 0)
@@ -1101,11 +1087,9 @@ mod replacement_and_prevention_shape_tests {
             0,
         )
         .expect("chosen-player extra-turn text should lex");
-        let that_tokens = crate::runtime_backend::lex_line(
-            "After that turn that player takes an extra turn.",
-            0,
-        )
-        .expect("that-player referenced-turn text should lex");
+        let that_tokens =
+            crate::runtime_backend::lex_line("After that turn that player takes an extra turn.", 0)
+                .expect("that-player referenced-turn text should lex");
 
         let you_effect = parse_take_extra_turn_sentence(&you_tokens)
             .expect("you extra-turn parser should not error")
@@ -1164,12 +1148,13 @@ mod replacement_and_prevention_shape_tests {
         let target_player_tokens =
             crate::runtime_backend::lex_line("Look at target player's hand.", 0)
                 .expect("target-player hand text should lex");
-        let opponent_choose_tokens =
-            crate::runtime_backend::lex_line("Look at an opponent's hand, then choose any card name.", 0)
-                .expect("opponent choose-name hand text should lex");
-        let iterated_tokens =
-            crate::runtime_backend::lex_line("Look at that player's hand.", 0)
-                .expect("iterated-player hand text should lex");
+        let opponent_choose_tokens = crate::runtime_backend::lex_line(
+            "Look at an opponent's hand, then choose any card name.",
+            0,
+        )
+        .expect("opponent choose-name hand text should lex");
+        let iterated_tokens = crate::runtime_backend::lex_line("Look at that player's hand.", 0)
+            .expect("iterated-player hand text should lex");
 
         let target_player = parse_look_at_hand_sentence(&target_player_tokens)
             .expect("target-player hand parser should not error")
@@ -1230,9 +1215,8 @@ mod replacement_and_prevention_shape_tests {
 
     #[test]
     fn destroy_all_split_uses_captured_verb_and_object_tail() {
-        let tokens =
-            crate::runtime_backend::lex_line("Destroy all artifacts and enchantments.", 0)
-                .expect("destroy-all split text should lex");
+        let tokens = crate::runtime_backend::lex_line("Destroy all artifacts and enchantments.", 0)
+            .expect("destroy-all split text should lex");
 
         let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
             .expect("destroy-all split parser should not error")
@@ -1280,9 +1264,8 @@ mod replacement_and_prevention_shape_tests {
 
     #[test]
     fn monstrosity_uses_captured_amount() {
-        let tokens =
-            crate::runtime_backend::lex_line("Monstrosity 3.", 0)
-                .expect("monstrosity text should lex");
+        let tokens = crate::runtime_backend::lex_line("Monstrosity 3.", 0)
+            .expect("monstrosity text should lex");
 
         let effect = parse_monstrosity_sentence(&tokens)
             .expect("monstrosity parser should not error")

@@ -4,7 +4,10 @@ use super::super::grammar::effects::{
     split_choose_new_targets_clause_lexed,
 };
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::{LexedClause, contains_token_word};
+use super::super::lexer::{
+    LexedClause, contains_token_word, word_slice_contains_any_word, word_slice_eq,
+    word_slice_eq_any, word_slice_starts_with_any,
+};
 use super::super::lowering_support::rewrite_parsed_triggered_ability as parsed_triggered_ability;
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::{
@@ -26,7 +29,6 @@ use crate::cards::builders::{
 };
 use crate::effect::{ChoiceCount, Value};
 use crate::mana::ManaSymbol;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
@@ -144,60 +146,37 @@ const UNTIL_DURATION_TRIGGER_PREFIXES: &[&[&str]] = &[
 const AT_THE_PREFIXES: &[&[&str]] = &[&["at", "the"]];
 const EACH_OF_PREFIXES: &[&[&str]] = &[&["each", "of"]];
 const DAMAGE_TO_PREFIXES: &[&[&str]] = &[&["damage", "to"]];
-const COPY_TARGETS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["the", "copy", "targets"],
-            &["that", "copy", "targets"],
-            &["copy", "targets"],
-        ]
-);
-const PAYS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["pays"]);
-const ABILITY_OR_ABILITIES_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["ability", "abilities"]]);
-const SPELL_OR_SPELLS_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["spell", "spells"]]);
-const ANY_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["any"]);
-const POWER_REF_TWO_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["its", "power"], &["that", "power"]]);
-const POWER_REF_THREE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["this", "source", "power"],
-            &["this", "creature", "power"],
-            &["that", "creature", "power"],
-            &["that", "objects", "power"],
-        ]
-);
-const DAMAGE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["damage"]);
+const COPY_TARGETS_PREFIXES: &[&[&str]] = &[
+    &["the", "copy", "targets"],
+    &["that", "copy", "targets"],
+    &["copy", "targets"],
+];
+const ABILITY_OR_ABILITIES_WORDS: &[&str] = &["ability", "abilities"];
+const SPELL_OR_SPELLS_WORDS: &[&str] = &["spell", "spells"];
+const POWER_REF_TWO_WORD_PREFIXES: &[&[&str]] = &[&["its", "power"], &["that", "power"]];
+const POWER_REF_THREE_WORD_PREFIXES: &[&[&str]] = &[
+    &["this", "source", "power"],
+    &["this", "creature", "power"],
+    &["that", "creature", "power"],
+    &["that", "objects", "power"],
+];
 const TO_PREFIX: &[&str] = &["to"];
 const WITH_PREFIX: &[&str] = &["with"];
 const EQUAL_TO_PHRASE: &[&str] = &["equal", "to"];
-const EACH_PLAYER_TARGET_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["each", "player"], &["each", "players"]]);
-const EACH_OPPONENT_TARGET_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["each", "opponent"],
-            &["each", "opponents"],
-            &["each", "other", "player"],
-            &["each", "other", "players"],
-        ]
-);
-const ITSELF_OR_IT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["itself"], &["it"]]);
-const FIGHT_TAGGED_OTHER_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["each", "other"], &["one", "another"]]);
-const THEN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["then"]);
-const TRIGGER_INTRO_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["when"], &["whenever"]]);
-const CLASH_OR_CLASHES_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["clash"], &["clashes"]]);
-const CLASH_OPPONENT_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["opponent"]);
-const CLASH_TARGET_OPPONENT_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["target", "opponent"]);
-const CLASH_DEFENDING_PLAYER_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["defending", "player"]);
+const EACH_PLAYER_TARGET_CLAUSES: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
+const EACH_OPPONENT_TARGET_CLAUSES: &[&[&str]] = &[
+    &["each", "opponent"],
+    &["each", "opponents"],
+    &["each", "other", "player"],
+    &["each", "other", "players"],
+];
+const ITSELF_OR_IT_CLAUSES: &[&[&str]] = &[&["itself"], &["it"]];
+const FIGHT_TAGGED_OTHER_CLAUSES: &[&[&str]] = &[&["each", "other"], &["one", "another"]];
+const TRIGGER_INTRO_WORDS: &[&str] = &["when", "whenever"];
+const CLASH_OR_CLASHES_WORDS: &[&str] = &["clash", "clashes"];
+const CLASH_OPPONENT_WORDS: &[&str] = &["opponent"];
+const CLASH_TARGET_OPPONENT_WORDS: &[&str] = &["target", "opponent"];
+const CLASH_DEFENDING_PLAYER_WORDS: &[&str] = &["defending", "player"];
 
 pub(crate) fn parse_retarget_clause(
     tokens: &[OwnedLexToken],
@@ -216,7 +195,11 @@ pub(crate) fn parse_copy_targets_clause(
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
-    let Some(targets_prefix_len) = COPY_TARGETS_PREFIX_PATTERN.matched_prefix_len(&words) else {
+    let Some(targets_prefix_len) = COPY_TARGETS_PREFIXES
+        .iter()
+        .find(|prefix| words.starts_with(prefix))
+        .map(|prefix| prefix.len())
+    else {
         return Ok(None);
     };
     let targets_idx = targets_prefix_len - 1;
@@ -417,7 +400,7 @@ pub(crate) fn parse_unless_pays_clause(
 
     let mut payment_tokens = pays_clause.tokens().to_vec();
     if let Some(first) = payment_tokens.first_mut()
-        && PAYS_WORD_PATTERN.matches_token(first)
+        && first.as_word().is_some_and(|word| word == "pays")
     {
         first.replace_word("pay");
     }
@@ -438,8 +421,8 @@ pub(crate) fn parse_stack_retarget_filter(
 ) -> Result<ObjectFilter, CardTextError> {
     let clause = LexedClause::new(tokens);
     let words = clause.word_refs();
-    let has_ability = ABILITY_OR_ABILITIES_MARKER_PATTERN.matches_words(&words);
-    let has_spell = SPELL_OR_SPELLS_MARKER_PATTERN.matches_words(&words);
+    let has_ability = word_slice_contains_any_word(&words, ABILITY_OR_ABILITIES_WORDS);
+    let has_spell = word_slice_contains_any_word(&words, SPELL_OR_SPELLS_WORDS);
     let has_activated = clause.contains_word("activated");
     let has_instant = clause.contains_word("instant");
     let has_sorcery = clause.contains_word("sorcery");
@@ -612,16 +595,17 @@ pub(crate) fn parse_choose_card_name_clause(
 
     let filter_words =
         crate::runtime_backend::util::non_article_token_word_refs(filter_clause.tokens());
-    let filter = if filter_words.is_empty() || ANY_WORD_PATTERN.matches_words(&filter_words) {
+    let filter = if filter_words.is_empty() || word_slice_eq(&filter_words, &["any"]) {
         None
     } else {
-        let normalized_tokens = crate::runtime_backend::lexer::synthetic_word_tokens(&filter_words);
-        Some(parse_object_filter(&normalized_tokens, false).map_err(|_| {
-            CardTextError::ParseError(format!(
-                "unsupported choose-card-name filter (clause: '{}')",
-                clause.text()
-            ))
-        })?)
+        Some(
+            parse_object_filter(filter_clause.tokens(), false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported choose-card-name filter (clause: '{}')",
+                    clause.text()
+                ))
+            })?,
+        )
     };
 
     Ok(Some(EffectAst::subject_verb_choose_card_name(
@@ -953,7 +937,7 @@ pub(crate) fn parse_until_duration_triggered_clause(
     let trigger_words = trigger_clause.word_refs();
     let looks_like_trigger = trigger_clause
         .first_word()
-        .is_some_and(|word| TRIGGER_INTRO_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| TRIGGER_INTRO_WORDS.contains(&word))
         || trigger_clause
             .strip_any_prefix_clause(AT_THE_PREFIXES)
             .is_some();
@@ -1001,10 +985,10 @@ pub(crate) fn parse_until_duration_triggered_clause(
 }
 
 pub(crate) fn parse_power_reference_word_count(words: &[&str]) -> Option<usize> {
-    if POWER_REF_TWO_WORD_PATTERN.matches_words(words) {
+    if word_slice_starts_with_any(words, POWER_REF_TWO_WORD_PREFIXES) {
         return Some(2);
     }
-    if POWER_REF_THREE_WORD_PATTERN.matches_words(words) {
+    if word_slice_starts_with_any(words, POWER_REF_THREE_WORD_PREFIXES) {
         return Some(3);
     }
     None
@@ -1044,7 +1028,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     let source_clause = source_clause.trimmed();
 
     let rest_clause = rest_clause.trimmed();
-    if rest_clause.is_empty() || !DAMAGE_WORD_PATTERN.matches_first_word(&rest_clause.word_refs()) {
+    if rest_clause.is_empty() || rest_clause.first_word() != Some("damage") {
         return Ok(None);
     }
 
@@ -1090,9 +1074,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         .after_words(power_ref_len)
         .unwrap_or_else(|| power_ref_clause.from(power_ref_clause.tokens().len()))
         .trimmed();
-    let pre_equal_words = pre_equal_clause.word_refs();
-
-    let target = if DAMAGE_WORD_PATTERN.matches_words(&pre_equal_words) {
+    let target = if word_slice_eq(&pre_equal_clause.word_refs(), &["damage"]) {
         let target_clause = tail_after_power_clause
             .strip_prefix_clause(TO_PREFIX)
             .unwrap_or(tail_after_power_clause)
@@ -1109,8 +1091,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 normalized_target_clause = each_of_clause;
             }
         }
-        let normalized_target_words = normalized_target_clause.word_refs();
-        if EACH_PLAYER_TARGET_PATTERN.matches_words(&normalized_target_words) {
+        if word_slice_eq_any(
+            &normalized_target_clause.word_refs(),
+            EACH_PLAYER_TARGET_CLAUSES,
+        ) {
             return Ok(Some(EffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
@@ -1119,7 +1103,10 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if EACH_OPPONENT_TARGET_PATTERN.matches_words(&normalized_target_words) {
+        if word_slice_eq_any(
+            &normalized_target_clause.word_refs(),
+            EACH_OPPONENT_TARGET_CLAUSES,
+        ) {
             return Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
@@ -1138,8 +1125,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             .map(|(_, target_clause)| target_clause)
             .unwrap_or(pre_equal_clause)
             .trimmed();
-        let target_words = target_clause.word_refs();
-        if EACH_PLAYER_TARGET_PATTERN.matches_words(&target_words) {
+        if word_slice_eq_any(&target_clause.word_refs(), EACH_PLAYER_TARGET_CLAUSES) {
             return Ok(Some(EffectAst::ForEachPlayer {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
@@ -1148,7 +1134,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if EACH_OPPONENT_TARGET_PATTERN.matches_words(&target_words) {
+        if word_slice_eq_any(&target_clause.word_refs(), EACH_OPPONENT_TARGET_CLAUSES) {
             return Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source.clone(),
@@ -1157,7 +1143,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 )],
             }));
         }
-        if ITSELF_OR_IT_PATTERN.matches_words(&target_words) {
+        if word_slice_eq_any(&target_clause.word_refs(), ITSELF_OR_IT_CLAUSES) {
             if !tail_after_power_clause.is_empty() {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported trailing target after self-damage power clause (clause: '{}')",
@@ -1229,8 +1215,7 @@ pub(crate) fn parse_fight_clause(
         }
         parse_target_phrase(left_clause.tokens())?
     };
-    let right_words = right_clause.word_refs();
-    let creature2 = if FIGHT_TAGGED_OTHER_PATTERN.matches_words(&right_words) {
+    let creature2 = if word_slice_eq_any(&right_clause.word_refs(), FIGHT_TAGGED_OTHER_CLAUSES) {
         TargetAst::Tagged(TagKey::from(IT_TAG), right_clause.span())
     } else {
         parse_target_phrase(right_clause.tokens())?
@@ -1257,7 +1242,7 @@ pub(crate) fn parse_clash_clause(
     let clause = LexedClause::new(tokens);
     if !clause
         .first_word()
-        .is_some_and(|word| CLASH_OR_CLASHES_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| CLASH_OR_CLASHES_WORDS.contains(&word))
     {
         return Ok(None);
     }
@@ -1269,7 +1254,7 @@ pub(crate) fn parse_clash_clause(
         .unwrap_or_else(|| clause.from(1).trimmed())
         .trimmed()
         .take_until_token_matching(|token| {
-            THEN_WORD_PATTERN.matches_token(token) || token.is_comma()
+            token.as_word().is_some_and(|word| word == "then") || token.is_comma()
         })
         .trimmed();
     if tail_clause.is_empty() {
@@ -1281,11 +1266,11 @@ pub(crate) fn parse_clash_clause(
 
     let tail_words =
         crate::runtime_backend::util::non_article_token_word_refs(tail_clause.tokens());
-    let opponent = if CLASH_OPPONENT_PATTERN.matches_words(&tail_words) {
+    let opponent = if word_slice_eq(&tail_words, CLASH_OPPONENT_WORDS) {
         ClashOpponentAst::Opponent
-    } else if CLASH_TARGET_OPPONENT_PATTERN.matches_words(&tail_words) {
+    } else if word_slice_eq(&tail_words, CLASH_TARGET_OPPONENT_WORDS) {
         ClashOpponentAst::TargetOpponent
-    } else if CLASH_DEFENDING_PLAYER_PATTERN.matches_words(&tail_words) {
+    } else if word_slice_eq(&tail_words, CLASH_DEFENDING_PLAYER_WORDS) {
         ClashOpponentAst::DefendingPlayer
     } else {
         return Err(CardTextError::ParseError(format!(

@@ -63,9 +63,6 @@ pub(crate) fn try_merge_modal_into_remove_mode(
     true
 }
 
-const MODAL_POINT_COST_HEADER_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["worth", "of", "modes"]]);
-
 fn header_mentions_modal_point_cost(text: &str) -> bool {
     lex_line(text, 0)
         .ok()
@@ -77,9 +74,7 @@ fn header_mentions_modal_point_cost_lexed(tokens: &[OwnedLexToken]) -> bool {
         .iter()
         .any(|token| pawprint_modal_label_count(token).is_some());
     has_pawprint_cost
-        && MODAL_POINT_COST_HEADER_TAIL_PATTERN.matches_words(
-            &crate::runtime_backend::lexer::parser_token_word_refs(tokens),
-        )
+        && word_slice_contains_phrase(&token_word_refs(tokens), &["worth", "of", "modes"])
 }
 
 fn parse_leading_modal_point_cost(text: &str) -> Option<u32> {

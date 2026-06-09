@@ -1,9 +1,9 @@
-use super::super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::super::grammar::abilities as ability_grammar;
 use super::super::grammar::filters::spell_filters::parse_spell_filter_with_grammar_entrypoint;
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::keyword_static::parse_cost_modifier_mana_cost;
-use super::super::lexer::OwnedLexToken;
+use super::super::lex_patterns::LexPattern;
+use super::super::lexer::{LexedClause, OwnedLexToken};
 use super::super::token_primitives::find_index;
 use super::{joined_activation_clause_text, merge_mana_activation_conditions};
 use crate::ability::ActivationTiming;
@@ -29,24 +29,46 @@ enum ActivatedSentenceModifier {
 
 const THIS_ABILITY_COSTS_PREFIXES: &[&[&str]] = &[&["this", "ability", "costs"]];
 const THE_NEXT_PREFIXES: &[&[&str]] = &[&["the", "next"]];
-const SPELL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["spell"]);
-const COSTS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["costs"]);
-const LESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["less"]);
-const LESS_TO_ACTIVATE_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["less", "to", "activate"]]);
-const NEXT_SPELL_COST_REDUCTION_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_words & ["spell", "costs", "less", "cast"]);
-const NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["spell", "you", "cast", "this", "turn"]);
-const LESS_TO_CAST_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["less", "to", "cast"]);
-const ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["activate", "only", "once", "each", "turn"]);
-const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["activate", "only", "once", "each", "turn", "and"]);
-const AND_ONLY_ONCE_EACH_TURN_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["and", "only", "once", "each", "turn"]);
-const EXHAUST_ONCE_RESTRICTION_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["activate", "each", "exhaust", "ability", "only", "once"]);
+const NEXT_SPELL_COST_REDUCTION_MARKER_WORDS: &[&str] = &["spell", "costs", "less", "cast"];
+const LESS_TO_ACTIVATE_MARKER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["less", "to", "activate"])]);
+const NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["spell", "you", "cast", "this", "turn"]),
+]);
+const LESS_TO_CAST_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["less", "to", "cast"])]);
+const ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["activate", "only", "once", "each", "turn"]),
+]);
+const ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["activate", "only", "once", "each", "turn", "and"]),
+]);
+const AND_ONLY_ONCE_EACH_TURN_WORDS: &[&str] = &["and", "only", "once", "each", "turn"];
+const EXHAUST_ONCE_RESTRICTION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["activate", "each", "exhaust", "ability", "only", "once"]),
+]);
+
+fn activated_sentence_tokens_match_pattern<'a>(
+    tokens: &[OwnedLexToken],
+    pattern: LexPattern<'a>,
+) -> bool {
+    pattern.matches(LexedClause::new(tokens))
+}
+
+fn activated_sentence_words_start_with_at(
+    words: &[String],
+    index: usize,
+    expected: &[&str],
+) -> bool {
+    words
+        .get(index..index.saturating_add(expected.len()))
+        .is_some_and(|window| {
+            window
+                .iter()
+                .zip(expected.iter())
+                .all(|(word, expected_word)| word.as_str() == *expected_word)
+        })
+}
 
 pub(super) struct ActivatedSentenceScan<'a> {
     pub(super) kept_sentences: Vec<&'a [OwnedLexToken]>,
@@ -81,11 +103,16 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
         return None;
     }
 
-    let spell_idx = find_index(&clause_words, |word| SPELL_WORD_PATTERN.matches_word(word))?;
-    let costs_idx = find_index(&clause_words, |word| COSTS_WORD_PATTERN.matches_word(word))?;
-    let less_idx = find_index(&clause_words, |word| LESS_WORD_PATTERN.matches_word(word))?;
-    if !NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN.matches_words(&clause_words[spell_idx..])
-        || !LESS_TO_CAST_PATTERN.matches_words(&clause_words[less_idx..])
+    let spell_idx = find_index(&clause_words, |word| *word == "spell")?;
+    let costs_idx = find_index(&clause_words, |word| *word == "costs")?;
+    let less_idx = find_index(&clause_words, |word| *word == "less")?;
+    let clause = LexedClause::new(tokens);
+    if !clause
+        .from_word(spell_idx)
+        .is_some_and(|tail| NEXT_SPELL_YOU_CAST_THIS_TURN_TAIL_PATTERN.matches_prefix(tail))
+        || !clause
+            .from_word(less_idx)
+            .is_some_and(|tail| LESS_TO_CAST_PATTERN.matches_prefix(tail))
         || costs_idx <= spell_idx
     {
         return None;
@@ -112,15 +139,19 @@ fn parse_next_spell_cost_reduction_sentence(tokens: &[OwnedLexToken]) -> Option<
 }
 
 fn is_inline_activated_text_modifier_sentence(tokens: &[OwnedLexToken]) -> bool {
-    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let clause = LexedClause::new(tokens);
     if grammar::words_match_any_prefix(tokens, THIS_ABILITY_COSTS_PREFIXES).is_some()
-        && LESS_TO_ACTIVATE_MARKER_PATTERN.matches_words(&clause_words)
+        && LESS_TO_ACTIVATE_MARKER_PATTERN
+            .find_in_clause(clause)
+            .is_some()
     {
         return true;
     }
 
     grammar::words_match_any_prefix(tokens, THE_NEXT_PREFIXES).is_some()
-        && NEXT_SPELL_COST_REDUCTION_MARKER_PATTERN.matches_words(&clause_words)
+        && NEXT_SPELL_COST_REDUCTION_MARKER_WORDS
+            .iter()
+            .all(|word| clause.contains_word(word))
 }
 
 fn parse_activated_sentence_modifier_lexed(
@@ -230,8 +261,7 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
 }
 
 pub(super) fn tokens_are_exhaust_once_restriction(tokens: &[OwnedLexToken]) -> bool {
-    let words = TokenWordView::new(tokens).to_word_refs();
-    EXHAUST_ONCE_RESTRICTION_PATTERN.matches_words(&words)
+    EXHAUST_ONCE_RESTRICTION_PATTERN.matches(LexedClause::new(tokens))
 }
 
 pub(crate) fn parse_activate_only_timing_lexed(
@@ -255,21 +285,19 @@ pub(crate) fn normalize_activate_only_restriction(
     if words.is_empty() {
         return None;
     }
-    let word_refs = words.iter().map(String::as_str).collect::<Vec<_>>();
-    if ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN.matches_words(&word_refs) {
+    if activated_sentence_tokens_match_pattern(tokens, ACTIVATE_ONLY_ONCE_EACH_TURN_PATTERN) {
         return None;
     }
-    if ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN.matches_words(&word_refs) {
+    if activated_sentence_tokens_match_pattern(
+        tokens,
+        ACTIVATE_ONLY_ONCE_EACH_TURN_AND_PREFIX_PATTERN,
+    ) {
         words.drain(0..6);
     }
     let mut index = 0usize;
-    while index + 5 <= words.len() {
-        let tail_refs = words[index..]
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        if AND_ONLY_ONCE_EACH_TURN_PATTERN.matches_words(&tail_refs) {
-            words.drain(index..index + 5);
+    while index + AND_ONLY_ONCE_EACH_TURN_WORDS.len() <= words.len() {
+        if activated_sentence_words_start_with_at(&words, index, AND_ONLY_ONCE_EACH_TURN_WORDS) {
+            words.drain(index..index + AND_ONLY_ONCE_EACH_TURN_WORDS.len());
         } else {
             index += 1;
         }

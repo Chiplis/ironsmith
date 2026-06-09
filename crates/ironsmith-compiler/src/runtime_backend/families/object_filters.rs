@@ -10,12 +10,13 @@ use crate::{
     TaggedObjectConstraint, TaggedOpbjectRelation, Zone,
 };
 
-use super::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 use super::grammar::primitives::{self as grammar_primitives, split_lexed_slices_on_or};
 use super::keyword_static::parse_pt_modifier;
+use super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 use super::lexer::{
     OwnedLexToken, TokenWordView, find_token_word, parser_token_word_refs, token_slice_at_is,
-    word_slice_contains_any_phrase, word_slice_find_phrase_start,
+    word_slice_contains_any_phrase, word_slice_contains_phrase, word_slice_eq, word_slice_eq_any,
+    word_slice_find_phrase_start, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::util::{
     apply_filter_keyword_constraint, is_article, is_demonstrative_object_head, is_non_outlaw_word,
@@ -34,141 +35,78 @@ type WordInput<'a> = WordSliceInput<'a>;
 
 #[cfg(test)]
 const OBJECT_FILTER_ENCHANTED_TAG: &str = "enchanted";
-const OBJECT_FILTER_ODD_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases & [&[&["odd", "mana", "value"], &["odd", "mana", "values"]]]
-);
-const OBJECT_FILTER_NO_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["no"]);
-const OBJECT_FILTER_EVEN_MANA_VALUE_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases & [&[&["even", "mana", "value"], &["even", "mana", "values"]]]
-);
-const OBJECT_FILTER_ODD_POWER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["odd", "power"]]);
-const OBJECT_FILTER_EVEN_POWER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["even", "power"]]);
-const OBJECT_FILTER_CHOSEN_POWER_QUALITY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["power", "of", "chosen", "quality"],
-            &["power", "of", "that", "quality"],
-            &["power", "of", "the", "chosen", "quality"],
-        ]]
-);
-const OBJECT_FILTER_CHOSEN_MANA_VALUE_QUALITY_PATTERN: ClauseShape<'static> = clause_shape!(
-    contains_any_phrases
-        & [&[
-            &["mana", "value", "of", "chosen", "quality"],
-            &["mana", "value", "of", "that", "quality"],
-            &["mana", "values", "of", "chosen", "quality"],
-            &["mana", "values", "of", "that", "quality"],
-            &["mana", "value", "of", "the", "chosen", "quality"],
-            &["mana", "values", "of", "the", "chosen", "quality"],
-        ]]
-);
-const OBJECT_FILTER_INSTEAD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["instead"]);
-const OBJECT_FILTER_SIMPLE_REJECT_WORD_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["target"],
-            &["targets"],
-            &["that"],
-            &["which"],
-            &["whose"],
-            &["where"],
-            &["there"],
-            &["shares"],
-            &["share"],
-            &["dealt"],
-            &["entered"],
-            &["put"],
-            &["this"],
-            &["way"],
-        ]
-);
-const OBJECT_FILTER_OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const OBJECT_FILTER_OTHER_OR_ANOTHER_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["other"], &["another"]]);
-const OBJECT_FILTER_TOKEN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["token"], &["tokens"]]);
-const OBJECT_FILTER_NONTOKEN_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["nontoken"]);
-const OBJECT_FILTER_HISTORIC_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["historic"]);
-const OBJECT_FILTER_NONHISTORIC_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["nonhistoric"]);
-const OBJECT_FILTER_MODIFIED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["modified"]);
-const OBJECT_FILTER_COLORLESS_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["colorless"]);
-const OBJECT_FILTER_COMPARISON_OR_TAIL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["less"], &["greater"], &["more"], &["fewer"]]);
-const OBJECT_FILTER_THAN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["than"]);
-const OBJECT_FILTER_EQUAL_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["equal"]);
-const OBJECT_FILTER_MULTICOLORED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["multicolored"]);
-const OBJECT_FILTER_MONOCOLORED_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["monocolored"]);
-const OBJECT_FILTER_CARD_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
-const OBJECT_FILTER_PERMANENT_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["permanent"], &["permanents"]]);
-const OBJECT_FILTER_SPELL_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["spell"], &["spells"]]);
-const OBJECT_FILTER_UNSUPPORTED_RELATION_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["of"], &["from"], &["in"]]);
-const OBJECT_FILTER_ATTACHED_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["enchanted"], &["equipped"]]);
-const OBJECT_FILTER_FACE_DOWN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["face-down"], &["facedown"], &["face", "down"]]);
-const OBJECT_FILTER_FACE_UP_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["face-up"], &["faceup"], &["face", "up"]]);
-const OBJECT_FILTER_CHOSEN_COLOR_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["chosen", "color"]);
-const OBJECT_FILTER_CHOSEN_TYPE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["chosen", "type"]);
-const OBJECT_FILTER_NONCHOSEN_TYPE_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["nonchosen", "type"]);
-const OBJECT_FILTER_YOU_CONTROL_BUT_DONT_OWN_SUFFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["you", "control", "but", "dont", "own"],
-            &["you", "control", "but", "don't", "own"],
-        ]
-);
-const OBJECT_FILTER_YOU_CONTROL_BUT_DO_NOT_OWN_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "control", "but", "do", "not", "own"]);
-const OBJECT_FILTER_YOU_CONTROL_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "control"]);
-const OBJECT_FILTER_YOU_DONT_CONTROL_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["you", "dont", "control"], &["you", "don't", "control"]]);
-const OBJECT_FILTER_YOU_DO_NOT_CONTROL_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "do", "not", "control"]);
-const OBJECT_FILTER_OPPONENT_CONTROLS_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["opponents", "control"], &["opponent", "controls"]]);
-const OBJECT_FILTER_YOU_OWN_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact & ["you", "own"]);
-const OBJECT_FILTER_YOUR_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "your", "graveyard"], &["from", "your", "graveyard"]]);
-const OBJECT_FILTER_YOUR_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "your", "hand"], &["from", "your", "hand"]]);
-const OBJECT_FILTER_YOUR_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "your", "library"], &["from", "your", "library"]]);
-const OBJECT_FILTER_GRAVEYARD_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "graveyard"], &["from", "graveyard"]]);
-const OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "all", "graveyards"], &["from", "all", "graveyards"]]);
-const OBJECT_FILTER_HAND_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "hand"], &["from", "hand"]]);
-const OBJECT_FILTER_LIBRARY_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "library"], &["from", "library"]]);
-const OBJECT_FILTER_EXILE_SUFFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["in", "exile"], &["from", "exile"]]);
-const OBJECT_FILTER_DIFFERENT_NAMES_CLAUSE_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["with", "different", "names"],
-            &["that", "have", "different", "names"]
-        ]
-);
+const OBJECT_FILTER_ODD_MANA_VALUE_PHRASES: &[&[&str]] =
+    &[&["odd", "mana", "value"], &["odd", "mana", "values"]];
+const OBJECT_FILTER_EVEN_MANA_VALUE_PHRASES: &[&[&str]] =
+    &[&["even", "mana", "value"], &["even", "mana", "values"]];
+const OBJECT_FILTER_CHOSEN_POWER_QUALITY_PHRASES: &[&[&str]] = &[
+    &["power", "of", "chosen", "quality"],
+    &["power", "of", "that", "quality"],
+    &["power", "of", "the", "chosen", "quality"],
+];
+const OBJECT_FILTER_CHOSEN_MANA_VALUE_QUALITY_PHRASES: &[&[&str]] = &[
+    &["mana", "value", "of", "chosen", "quality"],
+    &["mana", "value", "of", "that", "quality"],
+    &["mana", "values", "of", "chosen", "quality"],
+    &["mana", "values", "of", "that", "quality"],
+    &["mana", "value", "of", "the", "chosen", "quality"],
+    &["mana", "values", "of", "the", "chosen", "quality"],
+];
+const OBJECT_FILTER_SIMPLE_REJECT_WORDS: &[&str] = &[
+    "target", "targets", "that", "which", "whose", "where", "there", "shares", "share", "dealt",
+    "entered", "put", "this", "way",
+];
+const OBJECT_FILTER_FACE_DOWN_PREFIXES: &[&[&str]] =
+    &[&["face-down"], &["facedown"], &["face", "down"]];
+const OBJECT_FILTER_FACE_UP_PREFIXES: &[&[&str]] = &[&["face-up"], &["faceup"], &["face", "up"]];
+const OBJECT_FILTER_CONTROL_ACTION_PHRASES: &[&[&str]] = &[&["control"], &["controls"]];
+const OBJECT_FILTER_CONTROL_ACTION_WORDS: &[&str] = &["control", "controls"];
+const OBJECT_FILTER_CONTROL_NEGATION_PHRASES: &[&[&str]] = &[&["dont"], &["don't"], &["do", "not"]];
+const OBJECT_FILTER_OWN_ACTION_PHRASES: &[&[&str]] = &[&["own"], &["owns"]];
+const OBJECT_FILTER_OWN_ACTION_WORDS: &[&str] = &["own", "owns"];
+const OBJECT_FILTER_LOCATION_PREPOSITION_WORDS: &[&str] = &["in", "from"];
+const OBJECT_FILTER_DIFFERENT_NAMES_CLAUSES: &[&[&str]] = &[
+    &["with", "different", "names"],
+    &["that", "have", "different", "names"],
+];
+
+fn object_filter_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    word_slice_contains_phrase(words, phrase)
+}
+
+fn object_filter_words_contain_any_phrase(words: &[&str], phrases: &[&[&str]]) -> bool {
+    phrases
+        .iter()
+        .any(|phrase| object_filter_words_contain_phrase(words, phrase))
+}
+
+fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
+    candidates.iter().any(|candidate| word == *candidate)
+}
+
+fn object_filter_words_equal(words: &[&str], expected: &[&str]) -> bool {
+    word_slice_eq(words, expected)
+}
+
+fn object_filter_words_equal_any(words: &[&str], expected: &[&[&str]]) -> bool {
+    word_slice_eq_any(words, expected)
+}
+
+fn object_filter_words_start_with_any(words: &[&str], prefixes: &[&[&str]]) -> bool {
+    word_slice_starts_with_any(words, prefixes)
+}
+
+fn object_filter_word_is_instead(word: &str) -> bool {
+    word == "instead"
+}
+
+fn object_filter_word_is_simple_reject(word: &str) -> bool {
+    object_filter_word_is_any(word, OBJECT_FILTER_SIMPLE_REJECT_WORDS)
+}
+
+fn object_filter_word_is_other_or_another(word: &str) -> bool {
+    object_filter_word_is_any(word, &["other", "another"])
+}
 
 fn word_slice_match<'a>(
     expected: &str,
@@ -240,6 +178,30 @@ enum SimpleObjectFilterSuffix {
     Zone(Zone),
 }
 
+fn apply_simple_object_filter_suffix(filter: &mut ObjectFilter, suffix: SimpleObjectFilterSuffix) {
+    match suffix {
+        SimpleObjectFilterSuffix::Controller(controller) => {
+            filter.controller = Some(controller);
+            filter.zone = Some(Zone::Battlefield);
+        }
+        SimpleObjectFilterSuffix::Owner(owner) => {
+            filter.owner = Some(owner);
+        }
+        SimpleObjectFilterSuffix::ControllerOwner(controller, owner) => {
+            filter.controller = Some(controller);
+            filter.owner = Some(owner);
+            filter.zone = Some(Zone::Battlefield);
+        }
+        SimpleObjectFilterSuffix::OwnerZone(owner, zone) => {
+            filter.owner = Some(owner);
+            filter.zone = Some(zone);
+        }
+        SimpleObjectFilterSuffix::Zone(zone) => {
+            filter.zone = Some(zone);
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum NamedObjectFilterWordAtom {
     ChosenColor,
@@ -248,122 +210,332 @@ enum NamedObjectFilterWordAtom {
 }
 
 pub(super) fn parse_filter_face_state_words(words: &[&str]) -> Option<(bool, usize)> {
-    if let Some(used) = OBJECT_FILTER_FACE_DOWN_PREFIX_PATTERN.matched_prefix_len(words) {
-        Some((true, used))
-    } else {
-        OBJECT_FILTER_FACE_UP_PREFIX_PATTERN
-            .matched_prefix_len(words)
-            .map(|used| (false, used))
+    if let Some(prefix) = OBJECT_FILTER_FACE_DOWN_PREFIXES
+        .iter()
+        .find(|prefix| object_filter_words_start_with_any(words, &[*prefix]))
+    {
+        return Some((true, prefix.len()));
     }
+    OBJECT_FILTER_FACE_UP_PREFIXES
+        .iter()
+        .find(|prefix| object_filter_words_start_with_any(words, &[*prefix]))
+        .map(|prefix| (false, prefix.len()))
 }
 
 fn parse_named_object_filter_word_atom(
     words: &[&str],
 ) -> Option<(NamedObjectFilterWordAtom, usize)> {
-    if let Some(used) = OBJECT_FILTER_CHOSEN_COLOR_PREFIX_PATTERN.matched_prefix_len(words) {
-        Some((NamedObjectFilterWordAtom::ChosenColor, used))
-    } else if let Some(used) = OBJECT_FILTER_CHOSEN_TYPE_PREFIX_PATTERN.matched_prefix_len(words) {
-        Some((NamedObjectFilterWordAtom::ChosenType, used))
+    if word_slice_starts_with(words, &["chosen", "color"]) {
+        Some((NamedObjectFilterWordAtom::ChosenColor, 2))
+    } else if word_slice_starts_with(words, &["chosen", "type"]) {
+        Some((NamedObjectFilterWordAtom::ChosenType, 2))
+    } else if word_slice_starts_with(words, &["nonchosen", "type"]) {
+        Some((NamedObjectFilterWordAtom::NonChosenType, 2))
     } else {
-        OBJECT_FILTER_NONCHOSEN_TYPE_PREFIX_PATTERN
-            .matched_prefix_len(words)
-            .map(|used| (NamedObjectFilterWordAtom::NonChosenType, used))
+        None
+    }
+}
+
+fn apply_excluded_object_filter_word_list(filter: &mut ObjectFilter, words: &[&str]) -> Option<()> {
+    let mut idx = 0usize;
+    let mut saw_exclusion = false;
+    while idx < words.len() {
+        let word = words[idx];
+        if is_article(word) || object_filter_word_is_any(word, &["and", "or"]) {
+            idx += 1;
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(word) {
+            push_unique(&mut filter.excluded_card_types, card_type);
+            saw_exclusion = true;
+            idx += 1;
+            continue;
+        }
+        if let Some(subtype) = parse_subtype_flexible(word) {
+            push_unique(&mut filter.excluded_subtypes, subtype);
+            saw_exclusion = true;
+            idx += 1;
+            continue;
+        }
+        if let Some(supertype) = parse_supertype_word(word) {
+            push_unique(&mut filter.excluded_supertypes, supertype);
+            saw_exclusion = true;
+            idx += 1;
+            continue;
+        }
+        if let Some(color) = parse_color(word) {
+            filter.excluded_colors = filter.excluded_colors.union(color);
+            saw_exclusion = true;
+            idx += 1;
+            continue;
+        }
+        if is_outlaw_word(word) {
+            push_outlaw_subtypes(&mut filter.excluded_subtypes);
+            saw_exclusion = true;
+            idx += 1;
+            continue;
+        }
+        return None;
+    }
+    saw_exclusion.then_some(())
+}
+
+fn parse_other_than_object_filter_words(words: &[&str], other: bool) -> Option<ObjectFilter> {
+    let other_than_idx = word_slice_find_phrase_start(words, &["other", "than"])?;
+    if other_than_idx == 0 {
+        return None;
+    }
+    let base_words = &words[..other_than_idx];
+    let excluded_words = &words[other_than_idx + 2..];
+    if excluded_words.is_empty() {
+        return None;
+    }
+    let mut filter = parse_simple_object_filter_words(base_words, other)?;
+    apply_excluded_object_filter_word_list(&mut filter, excluded_words)?;
+    Some(filter)
+}
+
+fn parse_controller_suffix_words(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in (2..=3).rev() {
+        if words.len() < suffix_len {
+            continue;
+        }
+        let tail = &words[words.len() - suffix_len..];
+        if let Some(controller) = parse_controller_suffix_tail(tail) {
+            return Some((SimpleObjectFilterSuffix::Controller(controller), suffix_len));
+        }
+    }
+    None
+}
+
+fn parse_controller_owner_suffix_words(
+    words: &[&str],
+) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in (5..=6).rev() {
+        if words.len() < suffix_len {
+            continue;
+        }
+        let tail = &words[words.len() - suffix_len..];
+        if let Some((controller, owner)) = parse_controller_owner_suffix_tail(tail) {
+            return Some((
+                SimpleObjectFilterSuffix::ControllerOwner(controller, owner),
+                suffix_len,
+            ));
+        }
+    }
+    None
+}
+
+fn parse_controller_owner_suffix_tail(words: &[&str]) -> Option<(PlayerFilter, PlayerFilter)> {
+    let atoms = [
+        LexPattern::subject(
+            "controller",
+            LexCaptureKind::UntilAnyPhrase(OBJECT_FILTER_CONTROL_ACTION_PHRASES),
+        ),
+        LexPattern::action(
+            "control_action",
+            LexCaptureKind::OneOf(OBJECT_FILTER_CONTROL_ACTION_WORDS),
+        ),
+        LexPattern::word("but"),
+        LexPattern::modifier(
+            "owner_negation",
+            LexCaptureKind::OneOfPhrase(OBJECT_FILTER_CONTROL_NEGATION_PHRASES),
+        ),
+        LexPattern::action(
+            "own_action",
+            LexCaptureKind::OneOf(OBJECT_FILTER_OWN_ACTION_WORDS),
+        ),
+    ];
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let controller_range = matched
+        .capture_by_role(LexCaptureRole::Subject)?
+        .word_range
+        .clone();
+    let controller = controller_player_filter_words(&words[controller_range])?;
+    let owner = negated_owner_filter_for_controller(&controller)?;
+    Some((controller, owner))
+}
+
+fn parse_controller_suffix_tail(words: &[&str]) -> Option<PlayerFilter> {
+    let atoms = [
+        LexPattern::subject(
+            "controller",
+            LexCaptureKind::UntilAnyPhrase(OBJECT_FILTER_CONTROL_ACTION_PHRASES),
+        ),
+        LexPattern::action(
+            "control_action",
+            LexCaptureKind::OneOf(OBJECT_FILTER_CONTROL_ACTION_WORDS),
+        ),
+    ];
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let controller_range = matched
+        .capture_by_role(LexCaptureRole::Subject)?
+        .word_range
+        .clone();
+    controller_player_filter_words(&words[controller_range])
+}
+
+fn parse_owner_suffix_words(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in (2..=3).rev() {
+        if words.len() < suffix_len {
+            continue;
+        }
+        let tail = &words[words.len() - suffix_len..];
+        if let Some(owner) = parse_owner_suffix_tail(tail) {
+            return Some((SimpleObjectFilterSuffix::Owner(owner), suffix_len));
+        }
+    }
+    None
+}
+
+fn parse_owner_suffix_tail(words: &[&str]) -> Option<PlayerFilter> {
+    let atoms = [
+        LexPattern::subject(
+            "owner",
+            LexCaptureKind::UntilAnyPhrase(OBJECT_FILTER_OWN_ACTION_PHRASES),
+        ),
+        LexPattern::action(
+            "own_action",
+            LexCaptureKind::OneOf(OBJECT_FILTER_OWN_ACTION_WORDS),
+        ),
+    ];
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let owner_range = matched
+        .capture_by_role(LexCaptureRole::Subject)?
+        .word_range
+        .clone();
+    owner_player_filter_words(&words[owner_range])
+}
+
+fn parse_negated_controller_suffix_words(
+    words: &[&str],
+) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in (3..=4).rev() {
+        if words.len() < suffix_len {
+            continue;
+        }
+        let tail = &words[words.len() - suffix_len..];
+        if parse_negated_controller_suffix_tail(tail) == Some(PlayerFilter::You) {
+            return Some((
+                SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou),
+                suffix_len,
+            ));
+        }
+    }
+    None
+}
+
+fn parse_negated_controller_suffix_tail(words: &[&str]) -> Option<PlayerFilter> {
+    let atoms = [
+        LexPattern::subject(
+            "controller",
+            LexCaptureKind::UntilAnyPhrase(OBJECT_FILTER_CONTROL_NEGATION_PHRASES),
+        ),
+        LexPattern::modifier(
+            "negation",
+            LexCaptureKind::OneOfPhrase(OBJECT_FILTER_CONTROL_NEGATION_PHRASES),
+        ),
+        LexPattern::action(
+            "control_action",
+            LexCaptureKind::OneOf(OBJECT_FILTER_CONTROL_ACTION_WORDS),
+        ),
+    ];
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let controller_range = matched
+        .capture_by_role(LexCaptureRole::Subject)?
+        .word_range
+        .clone();
+    controller_player_filter_words(&words[controller_range])
+}
+
+fn controller_player_filter_words(words: &[&str]) -> Option<PlayerFilter> {
+    match words {
+        ["you"] => Some(PlayerFilter::You),
+        ["that", "player"] => Some(PlayerFilter::IteratedPlayer),
+        ["target", "player"] => Some(PlayerFilter::target_player()),
+        ["target", "opponent"] => Some(PlayerFilter::target_opponent()),
+        ["opponent"] | ["opponents"] => Some(PlayerFilter::Opponent),
+        _ => None,
+    }
+}
+
+fn owner_player_filter_words(words: &[&str]) -> Option<PlayerFilter> {
+    match words {
+        ["you"] => Some(PlayerFilter::You),
+        _ => None,
+    }
+}
+
+fn negated_owner_filter_for_controller(controller: &PlayerFilter) -> Option<PlayerFilter> {
+    if matches!(controller, &PlayerFilter::You) {
+        Some(PlayerFilter::NotYou)
+    } else {
+        None
+    }
+}
+
+fn parse_location_suffix_words(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
+    for suffix_len in (2..=3).rev() {
+        if words.len() < suffix_len {
+            continue;
+        }
+        let tail = &words[words.len() - suffix_len..];
+        if let Some(suffix) = parse_location_suffix_tail(tail) {
+            return Some((suffix, suffix_len));
+        }
+    }
+    None
+}
+
+fn parse_location_suffix_tail(words: &[&str]) -> Option<SimpleObjectFilterSuffix> {
+    let atoms = [
+        LexPattern::action(
+            "preposition",
+            LexCaptureKind::OneOf(OBJECT_FILTER_LOCATION_PREPOSITION_WORDS),
+        ),
+        LexPattern::object("location", LexCaptureKind::OneOrMoreWords),
+    ];
+    let matched = LexPattern::new(&atoms).match_word_refs(words)?;
+    let location_range = matched
+        .capture_by_role(LexCaptureRole::Object)?
+        .word_range
+        .clone();
+    let location_words = &words[location_range];
+    let (owner, zone) = parse_location_suffix_location_words(location_words)?;
+    Some(match owner {
+        Some(owner) => SimpleObjectFilterSuffix::OwnerZone(owner, zone),
+        None => SimpleObjectFilterSuffix::Zone(zone),
+    })
+}
+
+fn parse_location_suffix_location_words(words: &[&str]) -> Option<(Option<PlayerFilter>, Zone)> {
+    match words {
+        ["your", "graveyard"] => Some((Some(PlayerFilter::You), Zone::Graveyard)),
+        ["your", "hand"] => Some((Some(PlayerFilter::You), Zone::Hand)),
+        ["your", "library"] => Some((Some(PlayerFilter::You), Zone::Library)),
+        ["graveyard"] | ["all", "graveyards"] => Some((None, Zone::Graveyard)),
+        ["hand"] => Some((None, Zone::Hand)),
+        ["library"] => Some((None, Zone::Library)),
+        ["exile"] => Some((None, Zone::Exile)),
+        _ => None,
     }
 }
 
 fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilterSuffix, usize)> {
-    fn tail<'a>(words: &'a [&'a str], len: usize) -> Option<&'a [&'a str]> {
-        words.get(words.len().checked_sub(len)?..)
+    if let Some(parsed) = parse_controller_owner_suffix_words(words) {
+        return Some(parsed);
     }
-
-    if tail(words, 6).is_some_and(|tail| {
-        OBJECT_FILTER_YOU_CONTROL_BUT_DO_NOT_OWN_SUFFIX_PATTERN.matches_words(tail)
-    }) {
-        return Some((
-            SimpleObjectFilterSuffix::ControllerOwner(PlayerFilter::You, PlayerFilter::NotYou),
-            6,
-        ));
+    if let Some(parsed) = parse_negated_controller_suffix_words(words) {
+        return Some(parsed);
     }
-    if tail(words, 5).is_some_and(|tail| {
-        OBJECT_FILTER_YOU_CONTROL_BUT_DONT_OWN_SUFFIX_PATTERN.matches_words(tail)
-    }) {
-        return Some((
-            SimpleObjectFilterSuffix::ControllerOwner(PlayerFilter::You, PlayerFilter::NotYou),
-            5,
-        ));
+    if let Some(parsed) = parse_location_suffix_words(words) {
+        return Some(parsed);
     }
-    if tail(words, 4)
-        .is_some_and(|tail| OBJECT_FILTER_YOU_DO_NOT_CONTROL_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou),
-            4,
-        ));
+    if let Some(parsed) = parse_controller_suffix_words(words) {
+        return Some(parsed);
     }
-    if tail(words, 3)
-        .is_some_and(|tail| OBJECT_FILTER_YOU_DONT_CONTROL_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::Controller(PlayerFilter::NotYou),
-            3,
-        ));
-    }
-    if tail(words, 3)
-        .is_some_and(|tail| OBJECT_FILTER_YOUR_GRAVEYARD_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::OwnerZone(PlayerFilter::You, Zone::Graveyard),
-            3,
-        ));
-    }
-    if tail(words, 3).is_some_and(|tail| OBJECT_FILTER_YOUR_HAND_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::OwnerZone(PlayerFilter::You, Zone::Hand),
-            3,
-        ));
-    }
-    if tail(words, 3)
-        .is_some_and(|tail| OBJECT_FILTER_YOUR_LIBRARY_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::OwnerZone(PlayerFilter::You, Zone::Library),
-            3,
-        ));
-    }
-    if tail(words, 2)
-        .is_some_and(|tail| OBJECT_FILTER_YOU_CONTROL_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((SimpleObjectFilterSuffix::Controller(PlayerFilter::You), 2));
-    }
-    if tail(words, 2)
-        .is_some_and(|tail| OBJECT_FILTER_OPPONENT_CONTROLS_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((
-            SimpleObjectFilterSuffix::Controller(PlayerFilter::Opponent),
-            2,
-        ));
-    }
-    if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_YOU_OWN_SUFFIX_PATTERN.matches_words(tail)) {
-        return Some((SimpleObjectFilterSuffix::Owner(PlayerFilter::You), 2));
-    }
-    if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_GRAVEYARD_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((SimpleObjectFilterSuffix::Zone(Zone::Graveyard), 2));
-    }
-    if tail(words, 3)
-        .is_some_and(|tail| OBJECT_FILTER_ALL_GRAVEYARDS_SUFFIX_PATTERN.matches_words(tail))
-    {
-        return Some((SimpleObjectFilterSuffix::Zone(Zone::Graveyard), 3));
-    }
-    if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_HAND_SUFFIX_PATTERN.matches_words(tail)) {
-        return Some((SimpleObjectFilterSuffix::Zone(Zone::Hand), 2));
-    }
-    if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_LIBRARY_SUFFIX_PATTERN.matches_words(tail)) {
-        return Some((SimpleObjectFilterSuffix::Zone(Zone::Library), 2));
-    }
-    if tail(words, 2).is_some_and(|tail| OBJECT_FILTER_EXILE_SUFFIX_PATTERN.matches_words(tail)) {
-        return Some((SimpleObjectFilterSuffix::Zone(Zone::Exile), 2));
+    if let Some(parsed) = parse_owner_suffix_words(words) {
+        return Some(parsed);
     }
 
     None
@@ -466,6 +638,24 @@ pub(super) fn trim_vote_winner_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLex
     (trim_commas(&tokens[..token_end]), true)
 }
 
+fn trim_vote_winner_suffix_words<'a>(words: &'a [&'a str]) -> (&'a [&'a str], bool) {
+    let suffixes = [
+        &[
+            "with", "the", "most", "votes", "or", "tied", "for", "most", "votes",
+        ][..],
+        &[
+            "with", "most", "votes", "or", "tied", "for", "most", "votes",
+        ][..],
+    ];
+    let Some(suffix_start) = suffixes.iter().find_map(|suffix| {
+        let suffix_start = words.len().checked_sub(suffix.len())?;
+        object_filter_words_equal(&words[suffix_start..], suffix).then_some(suffix_start)
+    }) else {
+        return (words, false);
+    };
+    (&words[..suffix_start], true)
+}
+
 fn strip_object_filter_different_names_clause(
     tokens: &[OwnedLexToken],
 ) -> (Vec<OwnedLexToken>, bool) {
@@ -473,8 +663,9 @@ fn strip_object_filter_different_names_clause(
     while cursor < tokens.len() {
         for pattern_len in [3usize, 4usize] {
             if cursor + pattern_len <= tokens.len()
-                && OBJECT_FILTER_DIFFERENT_NAMES_CLAUSE_PATTERN.matches_words(
+                && object_filter_words_equal_any(
                     &parser_token_word_refs(&tokens[cursor..cursor + pattern_len]),
+                    OBJECT_FILTER_DIFFERENT_NAMES_CLAUSES,
                 )
             {
                 let mut stripped = Vec::with_capacity(tokens.len() - pattern_len);
@@ -489,43 +680,85 @@ fn strip_object_filter_different_names_clause(
     (trim_commas(tokens), false)
 }
 
+fn strip_object_filter_different_names_clause_words<'a>(
+    words: &'a [&'a str],
+) -> (Vec<&'a str>, bool) {
+    let mut cursor = 0usize;
+    while cursor < words.len() {
+        for pattern_len in [3usize, 4usize] {
+            if cursor + pattern_len <= words.len()
+                && object_filter_words_equal_any(
+                    &words[cursor..cursor + pattern_len],
+                    OBJECT_FILTER_DIFFERENT_NAMES_CLAUSES,
+                )
+            {
+                let mut stripped = Vec::with_capacity(words.len() - pattern_len);
+                stripped.extend_from_slice(&words[..cursor]);
+                stripped.extend_from_slice(&words[cursor + pattern_len..]);
+                return (stripped, true);
+            }
+        }
+        cursor += 1;
+    }
+
+    (words.to_vec(), false)
+}
+
 pub(super) fn apply_parity_filter_phrases(words: &[&str], filter: &mut ObjectFilter) {
-    if OBJECT_FILTER_ODD_MANA_VALUE_PATTERN.matches_words(words) {
+    if object_filter_words_contain_any_phrase(words, OBJECT_FILTER_ODD_MANA_VALUE_PHRASES) {
         filter.mana_value_parity = Some(ParityRequirement::Odd);
     }
-    if OBJECT_FILTER_EVEN_MANA_VALUE_PATTERN.matches_words(words) {
+    if object_filter_words_contain_any_phrase(words, OBJECT_FILTER_EVEN_MANA_VALUE_PHRASES) {
         filter.mana_value_parity = Some(ParityRequirement::Even);
     }
 
-    if OBJECT_FILTER_ODD_POWER_PATTERN.matches_words(words) {
+    if object_filter_words_contain_phrase(words, &["odd", "power"]) {
         filter.power_parity = Some(ParityRequirement::Odd);
     }
-    if OBJECT_FILTER_EVEN_POWER_PATTERN.matches_words(words) {
+    if object_filter_words_contain_phrase(words, &["even", "power"]) {
         filter.power_parity = Some(ParityRequirement::Even);
     }
 
-    if OBJECT_FILTER_CHOSEN_POWER_QUALITY_PATTERN.matches_words(words) {
+    if object_filter_words_contain_any_phrase(words, OBJECT_FILTER_CHOSEN_POWER_QUALITY_PHRASES) {
         filter.power_parity = Some(ParityRequirement::Chosen);
     }
 
-    if OBJECT_FILTER_CHOSEN_MANA_VALUE_QUALITY_PATTERN.matches_words(words) {
+    if object_filter_words_contain_any_phrase(
+        words,
+        OBJECT_FILTER_CHOSEN_MANA_VALUE_QUALITY_PHRASES,
+    ) {
         filter.mana_value_parity = Some(ParityRequirement::Chosen);
     }
 }
 
-fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
-    let word_view = TokenWordView::new(tokens);
-    let mut words = non_article_word_refs(&word_view.to_word_refs());
-    words.retain(|word| !OBJECT_FILTER_INSTEAD_WORD_PATTERN.matches_word(word));
+pub(crate) fn parse_simple_object_filter_words(
+    input_words: &[&str],
+    other: bool,
+) -> Option<ObjectFilter> {
+    let mut words = non_article_word_refs(input_words);
+    words.retain(|word| !object_filter_word_is_instead(word));
     if words.is_empty() {
         return None;
     }
 
+    let parsed_suffix = parse_simple_object_filter_suffix(&words);
+    if let Some((_suffix, suffix_len)) = parsed_suffix.as_ref() {
+        let new_len = words.len().saturating_sub(*suffix_len);
+        words.truncate(new_len);
+    }
+
     if words
         .iter()
-        .any(|word| OBJECT_FILTER_SIMPLE_REJECT_WORD_PATTERN.matches_word(word))
+        .any(|word| object_filter_word_is_simple_reject(word))
     {
         return None;
+    }
+
+    if let Some(mut filter) = parse_other_than_object_filter_words(&words, other) {
+        if let Some((suffix, _suffix_len)) = parsed_suffix {
+            apply_simple_object_filter_suffix(&mut filter, suffix);
+        }
+        return Some(filter);
     }
 
     let mut filter = ObjectFilter::default();
@@ -538,42 +771,28 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
     let mut saw_card = false;
     let mut saw_permanent = false;
 
-    let trim_suffix = |words: &mut Vec<&str>, suffix_len: usize| {
-        let new_len = words.len().saturating_sub(suffix_len);
-        words.truncate(new_len);
-    };
-
-    if let Some((suffix, suffix_len)) = parse_simple_object_filter_suffix(&words) {
-        match suffix {
-            SimpleObjectFilterSuffix::Controller(controller) => {
-                filter.controller = Some(controller);
-                filter.zone = Some(Zone::Battlefield);
-            }
-            SimpleObjectFilterSuffix::Owner(owner) => {
-                filter.owner = Some(owner);
-            }
-            SimpleObjectFilterSuffix::ControllerOwner(controller, owner) => {
-                filter.controller = Some(controller);
-                filter.owner = Some(owner);
-                filter.zone = Some(Zone::Battlefield);
-            }
-            SimpleObjectFilterSuffix::OwnerZone(owner, zone) => {
-                filter.owner = Some(owner);
-                filter.zone = Some(zone);
-            }
-            SimpleObjectFilterSuffix::Zone(zone) => {
-                filter.zone = Some(zone);
-            }
-        }
-        trim_suffix(&mut words, suffix_len);
+    if let Some((suffix, _suffix_len)) = parsed_suffix {
+        apply_simple_object_filter_suffix(&mut filter, suffix);
     }
 
     let mut idx = 0usize;
     while idx < words.len() {
         let word = words[idx];
-        if OBJECT_FILTER_OR_WORD_PATTERN.matches_word(word) {
+        if word == "or" {
             idx += 1;
             continue;
+        }
+        if word == "of" {
+            let mut next_idx = idx + 1;
+            if words.get(next_idx).is_some_and(|word| is_article(word)) {
+                next_idx += 1;
+            }
+            if next_idx < words.len()
+                && parse_named_object_filter_word_atom(&words[next_idx..]).is_some()
+            {
+                idx = next_idx;
+                continue;
+            }
         }
         if let Some((kind, consumed)) = parse_alternative_cast_words(&words[idx..]) {
             filter.alternative_cast = Some(kind);
@@ -586,62 +805,62 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
             idx += consumed;
             continue;
         }
-        if OBJECT_FILTER_OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_other_or_another(word) {
             filter.other = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_TOKEN_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["token", "tokens"]) {
             filter.token = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_NONTOKEN_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["nontoken", "non-token"]) {
             filter.nontoken = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_HISTORIC_WORD_PATTERN.matches_word(word) {
+        if word == "historic" {
             filter.historic = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_NONHISTORIC_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["nonhistoric", "non-historic"]) {
             filter.nonhistoric = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_MODIFIED_WORD_PATTERN.matches_word(word) {
+        if word == "modified" {
             filter.modified = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_COLORLESS_WORD_PATTERN.matches_word(word) {
+        if word == "colorless" {
             filter.colorless = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_MULTICOLORED_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["multicolored", "multicolour", "multicoloured"]) {
             filter.multicolored = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_MONOCOLORED_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["monocolored", "monocolour", "monocoloured"]) {
             filter.monocolored = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_CARD_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["card", "cards"]) {
             saw_card = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_PERMANENT_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["permanent", "permanents"]) {
             saw_permanent = true;
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_SPELL_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["spell", "spells"]) {
             saw_spell = true;
             idx += 1;
             continue;
@@ -711,7 +930,7 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
             idx += 1;
             continue;
         }
-        if OBJECT_FILTER_UNSUPPORTED_RELATION_WORD_PATTERN.matches_word(word) {
+        if object_filter_word_is_any(word, &["attached", "equipped", "enchanted"]) {
             return None;
         }
         return None;
@@ -730,11 +949,34 @@ fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Op
         }
     }
     if saw_spell {
+        if filter.zone == Some(Zone::Battlefield) {
+            filter.zone = Some(Zone::Stack);
+        }
         filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
         filter.has_mana_cost = true;
     }
 
     Some(filter)
+}
+
+fn parse_simple_object_filter_lexed(tokens: &[OwnedLexToken], other: bool) -> Option<ObjectFilter> {
+    let word_view = TokenWordView::new(tokens);
+    parse_simple_object_filter_words(&word_view.to_word_refs(), other)
+}
+
+fn finish_word_object_filter(
+    mut filter: ObjectFilter,
+    distinct_names: bool,
+    vote_winners_only: bool,
+) -> ObjectFilter {
+    filter.distinct_names |= distinct_names;
+    if vote_winners_only {
+        filter = filter.match_tagged(
+            TagKey::from(VOTE_WINNERS_TAG),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    }
+    filter
 }
 
 pub(super) fn parse_attached_reference_or_another_disjunction(
@@ -750,22 +992,22 @@ pub(super) fn parse_attached_reference_or_another_disjunction(
     let second_word_view = TokenWordView::new(segments[1]);
     let second_words = non_article_word_refs(&second_word_view.to_word_refs());
 
-    let first_is_attached_reference = first_words
-        .first()
-        .is_some_and(|word| OBJECT_FILTER_ATTACHED_REFERENCE_WORD_PATTERN.matches_word(word));
+    let first_is_attached_reference = first_words.first().is_some_and(|word| {
+        object_filter_word_is_any(word, &["attached", "equipped", "enchanted"])
+    });
     let second_starts_with_other = second_words
         .first()
-        .is_some_and(|word| OBJECT_FILTER_OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word));
+        .is_some_and(|word| object_filter_word_is_other_or_another(word));
     if !first_is_attached_reference || !second_starts_with_other {
         return Ok(None);
     }
 
     let first_other = first_words
         .first()
-        .is_some_and(|word| OBJECT_FILTER_OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word));
+        .is_some_and(|word| object_filter_word_is_other_or_another(word));
     let second_other = second_words
         .first()
-        .is_some_and(|word| OBJECT_FILTER_OTHER_OR_ANOTHER_WORD_PATTERN.matches_word(word));
+        .is_some_and(|word| object_filter_word_is_other_or_another(word));
 
     let first_filter = parse_object_filter(segments[0], first_other)?;
     let second_filter = parse_object_filter(segments[1], second_other)?;
@@ -785,9 +1027,7 @@ pub(crate) fn parse_object_filter(
         let base_tokens = trim_commas(&tokens[..with_idx]);
         let tail_words = crate::runtime_backend::token_word_refs(&tokens[with_idx + 1..]);
         if !base_tokens.is_empty()
-            && tail_words
-                .first()
-                .is_some_and(|word| OBJECT_FILTER_NO_WORD_PATTERN.matches_words(&[*word]))
+            && tail_words.first().is_some_and(|word| *word == "no")
             && let Some((counter_constraint, consumed)) =
                 parse_filter_counter_constraint_words(&tail_words[1..])
             && consumed == tail_words.len().saturating_sub(1)
@@ -817,6 +1057,56 @@ pub(crate) fn parse_object_filter(
     };
     filter.distinct_names |= distinct_names;
     Ok(filter)
+}
+
+pub(crate) fn parse_object_filter_words(
+    word_refs: &[&str],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    let (trimmed_words, vote_winners_only) = trim_vote_winner_suffix_words(word_refs);
+    let (trimmed_words, distinct_names) =
+        strip_object_filter_different_names_clause_words(trimmed_words);
+    if let Some(filter) = parse_simple_object_filter_words(&trimmed_words, other) {
+        return Ok(finish_word_object_filter(
+            filter,
+            distinct_names,
+            vote_winners_only,
+        ));
+    }
+    if let Some(with_idx) = trimmed_words.iter().position(|word| *word == "with") {
+        let base_words = &trimmed_words[..with_idx];
+        let tail_words = &trimmed_words[with_idx + 1..];
+        if !base_words.is_empty()
+            && tail_words.first().is_some_and(|word| *word == "no")
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(&tail_words[1..])
+            && consumed == tail_words.len().saturating_sub(1)
+            && let Some(mut filter) = parse_simple_object_filter_words(base_words, other)
+        {
+            filter.without_counter = Some(counter_constraint);
+            return Ok(finish_word_object_filter(
+                filter,
+                distinct_names,
+                vote_winners_only,
+            ));
+        }
+        if !base_words.is_empty()
+            && let Some((counter_constraint, consumed)) =
+                parse_filter_counter_constraint_words(tail_words)
+            && consumed == tail_words.len()
+            && let Some(mut filter) = parse_simple_object_filter_words(base_words, other)
+        {
+            filter.with_counter = Some(counter_constraint);
+            return Ok(finish_word_object_filter(
+                filter,
+                distinct_names,
+                vote_winners_only,
+            ));
+        }
+    }
+
+    let tokens = super::lexer::synthetic_word_tokens(word_refs.iter().copied());
+    parse_object_filter_lexed(&tokens, other)
 }
 
 pub(crate) fn parse_object_filter_lexed(
@@ -1012,6 +1302,44 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_words_parses_target_and_iterated_controller_suffixes() {
+        let target_filter =
+            parse_simple_object_filter_words(&["artifact", "target", "player", "controls"], false)
+                .expect("target-player controller suffix should parse");
+        assert_eq!(
+            target_filter.controller,
+            Some(PlayerFilter::target_player())
+        );
+        assert_eq!(target_filter.zone, Some(Zone::Battlefield));
+        assert_eq!(target_filter.card_types, vec![CardType::Artifact]);
+
+        let iterated_filter =
+            parse_simple_object_filter_words(&["creature", "that", "player", "controls"], false)
+                .expect("that-player controller suffix should parse");
+        assert_eq!(
+            iterated_filter.controller,
+            Some(PlayerFilter::IteratedPlayer)
+        );
+        assert_eq!(iterated_filter.zone, Some(Zone::Battlefield));
+        assert_eq!(iterated_filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_parses_controlled_spells_on_stack() {
+        let tokens = tokenize_line("spells you control", 0);
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        );
+        assert!(filter.has_mana_cost);
+    }
+
+    #[test]
     fn parse_object_filter_lexed_parses_split_face_state_and_chosen_type_atoms() {
         let tokens = tokenize_line("face down chosen type creatures", 0);
 
@@ -1070,6 +1398,22 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_words_treats_other_than_types_as_exclusions_without_synthetic_tokens() {
+        let filter = parse_simple_object_filter_words(
+            &["creatures", "other", "than", "werewolves", "and", "wolves"],
+            false,
+        )
+        .expect("object filter should parse");
+
+        assert!(!filter.other);
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.excluded_subtypes,
+            vec![Subtype::Werewolf, Subtype::Wolf]
+        );
+    }
+
+    #[test]
     fn parse_object_filter_lexed_preserves_outer_controller_across_aggregate_scope() {
         let tokens = tokenize_line(
             "a creature an opponent controls with the greatest power among creatures that player controls",
@@ -1105,12 +1449,12 @@ pub(crate) fn is_comparison_or_delimiter(tokens: &[OwnedLexToken], idx: usize) -
     let previous_word = (0..idx).rev().find_map(|i| tokens[i].as_word());
     let next_word = tokens.get(idx + 1).and_then(OwnedLexToken::as_word);
     if next_word
-        .is_some_and(|word| OBJECT_FILTER_COMPARISON_OR_TAIL_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| object_filter_word_is_any(word, &["less", "greater", "more", "fewer"]))
     {
         return true;
     }
-    if previous_word.is_some_and(|word| OBJECT_FILTER_THAN_WORD_PATTERN.matches_word(word))
-        && next_word.is_some_and(|word| OBJECT_FILTER_EQUAL_WORD_PATTERN.matches_word(word))
+    if previous_word.is_some_and(|word| word == "than")
+        && next_word.is_some_and(|word| word == "equal")
     {
         return true;
     }

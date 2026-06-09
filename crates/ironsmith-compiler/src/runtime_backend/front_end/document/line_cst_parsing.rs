@@ -1,37 +1,57 @@
 use super::super::grammar::structure;
+use super::super::lex_patterns::LexPattern;
 use super::*;
 use crate::parse_trace;
-use crate::runtime_backend::effect_sentences::clause_pattern_helpers::{ClauseShape, clause_shape};
 
-const ADDITIONAL_LAND_PLAY_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "may", "play"]);
-const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "a", "deck", "can", "have", "any", "number", "of", "cards", "named"
-        ]
-);
+const ADDITIONAL_LAND_PLAY_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["you", "may", "play"])]);
+const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&[
+        "a", "deck", "can", "have", "any", "number", "of", "cards", "named",
+    ])]);
 const ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN: usize = 9;
-const FIRST_EQUIP_COST_ALTERNATIVE_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix & ["you", "may", "pay"];
-    suffix_any & [&["each", "turn"], &["during", "each", "of", "your", "turns"]];
-    contains_phrases & [&[
-        "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
-        "ability", "you", "activate"
-    ]]
-);
-const CAN_BLOCK_ADDITIONAL_CREATURES_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "this",
-            "creature",
-            "can",
-            "block",
-            "an",
-            "additional"
-        ];
-    suffix_any & [&["each", "combat"], &["this", "turn"]]
-);
+const FIRST_EQUIP_COST_ALTERNATIVE_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["you", "may", "pay"])]);
+const CAN_BLOCK_ADDITIONAL_CREATURES_PREFIX_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::phrase(&["this", "creature", "can", "block", "an", "additional"]),
+]);
+
+fn line_starts_with_effect_statement_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = structure::split_lexed_sentences(tokens)
+        .into_iter()
+        .filter(|sentence| !sentence.is_empty())
+        .collect::<Vec<_>>();
+    if sentences.len() <= 1 {
+        return false;
+    }
+    sentences
+        .first()
+        .and_then(|sentence| sentence.first())
+        .is_some_and(|token| {
+            token.is_word("add")
+                || token.is_word("choose")
+                || token.is_word("counter")
+                || token.is_word("create")
+                || token.is_word("deal")
+                || token.is_word("destroy")
+                || token.is_word("discard")
+                || token.is_word("draw")
+                || token.is_word("exchange")
+                || token.is_word("exile")
+                || token.is_word("gain")
+                || token.is_word("look")
+                || token.is_word("mill")
+                || token.is_word("put")
+                || token.is_word("return")
+                || token.is_word("reveal")
+                || token.is_word("sacrifice")
+                || token.is_word("search")
+                || token.is_word("shuffle")
+                || token.is_word("surveil")
+                || token.is_word("tap")
+                || token.is_word("untap")
+        })
+}
 
 fn strip_terminal_period_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if tokens
@@ -323,6 +343,9 @@ pub(super) fn parse_static_line_cst(
 ) -> Result<Option<StaticLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    if line_starts_with_effect_statement_sentence(&parse_tokens) {
+        return Ok(None);
+    }
     let make_static = |chosen_option_label: Option<String>| StaticLineCst {
         info: line.info.clone(),
         text: normalized.to_string(),
@@ -374,6 +397,12 @@ pub(super) fn parse_static_line_cst(
     if parse_if_this_spell_costs_less_to_cast_line_lexed(&lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
+    if parse_spell_cost_increase_per_target_beyond_first_line(&lexed)?.is_some() {
+        return Ok(Some(make_static(None)));
+    }
+    if parse_spell_and_player_activated_ability_cost_modifier_line(&lexed)?.is_some() {
+        return Ok(Some(make_static(None)));
+    }
     if parse_spells_cost_modifier_line(&lexed)?.is_some() {
         return Ok(Some(make_static(None)));
     }
@@ -386,18 +415,18 @@ pub(super) fn parse_static_line_cst(
         return Ok(Some(make_static(None)));
     }
 
-    if !should_skip_keyword_action_static_probe(&lexed)
-        && let Some(_actions) = parse_ability_line_lexed(&lexed)
-    {
-        return Ok(Some(make_static(None)));
-    }
-
     match parse_static_ability_ast_line_lexed(&lexed) {
         Ok(Some(_abilities)) => {
             return Ok(Some(make_static(None)));
         }
         Ok(None) => {}
         Err(err) => deferred_error = Some(err),
+    }
+
+    if !should_skip_keyword_action_static_probe(&lexed)
+        && let Some(_actions) = parse_ability_line_lexed(&lexed)
+    {
+        return Ok(Some(make_static(None)));
     }
 
     if parse_split_static_item_count(&lexed)?.is_some() {
@@ -413,19 +442,31 @@ pub(super) fn parse_static_line_cst(
 
 fn is_any_number_named_deck_construction_line(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN.matches_words(&words)
+    ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens))
         && words.len() > ANY_NUMBER_NAMED_DECK_CONSTRUCTION_PREFIX_LEN
 }
 
 /// Recognizes "you may pay {COST} rather than pay the equip cost of the first
 /// equip ability you activate each turn." and the variant "during each of your turns."
 fn is_first_equip_cost_alternative_line(tokens: &[OwnedLexToken]) -> bool {
-    FIRST_EQUIP_COST_ALTERNATIVE_PATTERN.matches_words(&token_word_refs(tokens))
+    let clause = LexedClause::new(tokens);
+    FIRST_EQUIP_COST_ALTERNATIVE_PREFIX_PATTERN.matches_prefix(clause)
+        && contains_token_word_sequence(
+            tokens,
+            &[
+                "rather", "than", "pay", "the", "equip", "cost", "of", "the", "first", "equip",
+                "ability", "you", "activate",
+            ],
+        )
+        && clause.ends_with_any(&[
+            &["each", "turn"],
+            &["during", "each", "of", "your", "turns"],
+        ])
 }
 
 fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    if !ADDITIONAL_LAND_PLAY_PREFIX_PATTERN.matches_words(&words) {
+    if !ADDITIONAL_LAND_PLAY_PREFIX_PATTERN.matches_prefix(LexedClause::new(tokens)) {
         return false;
     }
     let Some((_, used)) = ironsmith_core::parse_cardinal_words(&words[3..]) else {
@@ -446,7 +487,9 @@ fn is_additional_land_play_static_line(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn is_can_block_additional_creatures_static_line(tokens: &[OwnedLexToken]) -> bool {
-    CAN_BLOCK_ADDITIONAL_CREATURES_PATTERN.matches_words(&token_word_refs(tokens))
+    let clause = LexedClause::new(tokens);
+    CAN_BLOCK_ADDITIONAL_CREATURES_PREFIX_PATTERN.matches_prefix(clause)
+        && clause.ends_with_any(&[&["each", "combat"], &["this", "turn"]])
 }
 
 fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usize>, CardTextError> {
@@ -459,6 +502,16 @@ fn parse_split_static_item_count(tokens: &[OwnedLexToken]) -> Result<Option<usiz
     for sentence in sentences {
         if parse_if_this_spell_costs_less_to_cast_line_lexed(sentence)?.is_some() {
             item_count += 1;
+            continue;
+        }
+        if parse_spell_cost_increase_per_target_beyond_first_line(sentence)?.is_some() {
+            item_count += 1;
+            continue;
+        }
+        if let Some(abilities) =
+            parse_spell_and_player_activated_ability_cost_modifier_line(sentence)?
+        {
+            item_count += abilities.len();
             continue;
         }
         if parse_spells_cost_modifier_line(sentence)?.is_some() {

@@ -1,7 +1,5 @@
 use super::*;
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
+use crate::runtime_backend::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
 
 pub(super) type GrammarFilterNormalizedWords<'a> = TokenWordView<'a>;
 
@@ -29,135 +27,97 @@ pub(super) struct SegmentPhraseVariant {
     drain_start_offset: usize,
 }
 
-const POWER_AXIS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["power"]);
-const TOUGHNESS_AXIS_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["toughness"]);
-const MANA_VALUE_AXIS_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["mana", "value"]);
-const CAST_RELATION_VERB_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["cast"], &["casts"]]);
-const CONTROL_RELATION_VERB_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["control"], &["controls"]]);
-const OWN_RELATION_VERB_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["own"], &["owns"]]);
-const YOU_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you"]);
-const OPPONENT_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["opponent"], &["opponents"]]);
-const THEY_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["they"]);
-const YOUR_TEAM_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["your", "team"]);
-const YOUR_OPPONENTS_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["your", "opponents"]);
-const THAT_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["that", "player"]);
-const TARGET_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "player"]);
-const TARGET_OPPONENT_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["target", "opponent"]);
-const DEFENDING_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["defending", "player"]);
-const ATTACKING_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["attacking", "player"]);
-const TARGET_CONTROLLER_RELATION_SUBJECT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["its", "controller"],
-            &["its", "controllers"],
-            &["their", "controller"],
-            &["their", "controllers"],
-        ]
-);
-const DONT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+const RELATION_AXIS_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "axis",
+    LexCaptureKind::OneOfPhrase(&[&["power"], &["toughness"], &["mana", "value"]]),
+)]);
+const RELATION_VERB_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "verb",
+    LexCaptureKind::OneOf(&["cast", "casts", "control", "controls", "own", "owns"]),
+)]);
+const RELATION_SUBJECT_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::subject(
+    "player",
+    LexCaptureKind::OneOfPhrase(&[
+        &["you"],
+        &["opponent"],
+        &["opponents"],
+        &["they"],
+        &["your", "team"],
+        &["your", "opponents"],
+        &["that", "player"],
+        &["target", "player"],
+        &["target", "opponent"],
+        &["defending", "player"],
+        &["attacking", "player"],
+        &["its", "controller"],
+        &["its", "controllers"],
+        &["their", "controller"],
+        &["their", "controllers"],
+    ]),
+)]);
+const NEGATED_YOU_RELATION_PATTERN: LexPattern<'static> = LexPattern::new(&[
+    LexPattern::optional(&[LexPattern::subject(
+        "player",
+        LexCaptureKind::OneOf(&["you"]),
+    )]),
+    LexPattern::action(
+        "verb",
+        LexCaptureKind::OneOfPhrase(&[
             &["dont", "control"],
             &["dont", "controls"],
             &["don't", "control"],
             &["don't", "controls"],
-        ]
-);
-const DONT_OWN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+            &["do", "not", "control"],
+            &["do", "not", "controls"],
             &["dont", "own"],
             &["dont", "owns"],
             &["don't", "own"],
             &["don't", "owns"],
-        ]
-);
-const DO_NOT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["do", "not", "control"], &["do", "not", "controls"]]);
-const DO_NOT_OWN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["do", "not", "own"], &["do", "not", "owns"]]);
-const YOU_DONT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "dont", "control"],
-            &["you", "dont", "controls"],
-            &["you", "don't", "control"],
-            &["you", "don't", "controls"],
-        ]
-);
-const YOU_DONT_OWN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "dont", "own"],
-            &["you", "dont", "owns"],
-            &["you", "don't", "own"],
-            &["you", "don't", "owns"],
-        ]
-);
-const YOU_DO_NOT_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["you", "do", "not", "control"],
-            &["you", "do", "not", "controls"],
-        ]
-);
-const YOU_DO_NOT_OWN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix_any & [&["you", "do", "not", "own"], &["you", "do", "not", "owns"]]);
-const CHOSEN_PLAYER_GRAVEYARD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+            &["do", "not", "own"],
+            &["do", "not", "owns"],
+        ]),
+    ),
+]);
+const CHOSEN_PLAYER_GRAVEYARD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "zone",
+        LexCaptureKind::OneOfPhrase(&[
             &["chosen", "player", "graveyard"],
-            &["chosen", "players", "graveyard"]
-        ]
-);
-const THE_CHOSEN_PLAYER_GRAVEYARD_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+            &["chosen", "players", "graveyard"],
             &["the", "chosen", "player", "graveyard"],
             &["the", "chosen", "players", "graveyard"],
-        ]
-);
-const BOTH_OWN_AND_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["both", "own", "and", "control"],
-            &["both", "owns", "and", "control"],
-            &["both", "own", "and", "controls"],
-            &["both", "owns", "and", "controls"],
-            &["both", "control", "and", "own"],
-            &["both", "controls", "and", "own"],
-            &["both", "control", "and", "owns"],
-            &["both", "controls", "and", "owns"],
-        ]
-);
-const OWN_OR_CONTROL_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
-            &["own", "or", "control"],
-            &["owns", "or", "control"],
-            &["own", "or", "controls"],
-            &["owns", "or", "controls"],
-            &["control", "or", "own"],
-            &["controls", "or", "own"],
-            &["control", "or", "owns"],
-            &["controls", "or", "owns"],
-        ]
-);
-const PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+        ]),
+    )]);
+const JOINT_OWNER_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "relation",
+    LexCaptureKind::OneOfPhrase(&[
+        &["both", "own", "and", "control"],
+        &["both", "owns", "and", "control"],
+        &["both", "own", "and", "controls"],
+        &["both", "owns", "and", "controls"],
+        &["both", "control", "and", "own"],
+        &["both", "controls", "and", "own"],
+        &["both", "control", "and", "owns"],
+        &["both", "controls", "and", "owns"],
+    ]),
+)]);
+const OWNER_OR_CONTROLLER_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "relation",
+    LexCaptureKind::OneOfPhrase(&[
+        &["own", "or", "control"],
+        &["owns", "or", "control"],
+        &["own", "or", "controls"],
+        &["owns", "or", "controls"],
+        &["control", "or", "own"],
+        &["controls", "or", "own"],
+        &["control", "or", "owns"],
+        &["controls", "or", "owns"],
+    ]),
+)]);
+const PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action(
+        "event",
+        LexCaptureKind::OneOfPhrase(&[
             &[
                 "that",
                 "was",
@@ -166,7 +126,7 @@ const PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> 
                 "from",
                 "battlefield",
                 "this",
-                "turn"
+                "turn",
             ],
             &[
                 "that",
@@ -176,58 +136,54 @@ const PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> 
                 "from",
                 "battlefield",
                 "this",
-                "turn"
-            ]
-        ]
-);
-const PUT_THERE_FROM_ANYWHERE_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+                "turn",
+            ],
+        ]),
+    )]);
+const PUT_THERE_FROM_ANYWHERE_THIS_TURN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action(
+        "event",
+        LexCaptureKind::OneOfPhrase(&[
             &[
-                "that", "was", "put", "there", "from", "anywhere", "this", "turn"
+                "that", "was", "put", "there", "from", "anywhere", "this", "turn",
             ],
             &[
-                "that", "were", "put", "there", "from", "anywhere", "this", "turn"
-            ]
-        ]
-);
-const GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+                "that", "were", "put", "there", "from", "anywhere", "this", "turn",
+            ],
+        ]),
+    )]);
+const GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action(
+        "event",
+        LexCaptureKind::OneOfPhrase(&[
             &["graveyard", "from", "battlefield", "this", "turn"],
-            &["graveyards", "from", "battlefield", "this", "turn"]
-        ]
-);
-const ENTERED_YOUR_CONTROL_THIS_TURN_LONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "entered",
-            "the",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn",
-        ]
-);
-const ENTERED_YOUR_CONTROL_THIS_TURN_MID_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix
-        & [
-            "entered",
-            "battlefield",
-            "under",
-            "your",
-            "control",
-            "this",
-            "turn",
-        ]
-);
-const ENTERED_YOUR_CONTROL_THIS_TURN_SHORT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["entered", "under", "your", "control", "this", "turn"]);
-const ENTERED_OPPONENT_CONTROL_THIS_TURN_LONG_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
+            &["graveyards", "from", "battlefield", "this", "turn"],
+        ]),
+    )]);
+const ENTERED_BATTLEFIELD_THIS_TURN_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::action(
+        "event",
+        LexCaptureKind::OneOfPhrase(&[
+            &[
+                "entered",
+                "the",
+                "battlefield",
+                "under",
+                "your",
+                "control",
+                "this",
+                "turn",
+            ],
+            &[
+                "entered",
+                "battlefield",
+                "under",
+                "your",
+                "control",
+                "this",
+                "turn",
+            ],
+            &["entered", "under", "your", "control", "this", "turn"],
             &[
                 "entered",
                 "the",
@@ -248,11 +204,6 @@ const ENTERED_OPPONENT_CONTROL_THIS_TURN_LONG_PREFIX_PATTERN: ClauseShape<'stati
                 "this",
                 "turn",
             ],
-        ]
-);
-const ENTERED_OPPONENT_CONTROL_THIS_TURN_MID_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
             &[
                 "entered",
                 "battlefield",
@@ -271,35 +222,137 @@ const ENTERED_OPPONENT_CONTROL_THIS_TURN_MID_PREFIX_PATTERN: ClauseShape<'static
                 "this",
                 "turn",
             ],
-        ]
-);
-const ENTERED_OPPONENT_CONTROL_THIS_TURN_SHORT_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
-    prefix_any
-        & [
             &["entered", "under", "opponent", "control", "this", "turn"],
-            &["entered", "under", "opponents", "control", "this", "turn",],
-        ]
-);
-const ENTERED_THIS_TURN_LONG_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["entered", "the", "battlefield", "this", "turn"]);
-const ENTERED_THIS_TURN_MID_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["entered", "battlefield", "this", "turn"]);
-const ENTERED_THIS_TURN_SHORT_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["entered", "this", "turn"]);
-const DRAWN_THIS_TURN_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["drawn", "this", "turn"]);
-const OTHER_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["other"]);
-const LEADING_TAGGED_REFERENCE_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["that"], &["those"], &["chosen"]]);
-const IT_OR_THEM_WORD_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["it"], &["them"]]);
+            &["entered", "under", "opponents", "control", "this", "turn"],
+            &["entered", "the", "battlefield", "this", "turn"],
+            &["entered", "battlefield", "this", "turn"],
+            &["entered", "this", "turn"],
+        ]),
+    )]);
+const DRAWN_THIS_TURN_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::action(
+    "event",
+    LexCaptureKind::OneOfPhrase(&[&["drawn", "this", "turn"]]),
+)]);
+const LEADING_TAGGED_REFERENCE_WORDS: &[&str] = &["that", "those", "chosen"];
+const IT_OR_THEM_WORDS: &[&str] = &["it", "them"];
 
-fn shape_prefix_consumed(
+fn relation_captured_prefix(
     words: &[&str],
-    shape: &ClauseShape<'static>,
-    consumed: usize,
-) -> Option<usize> {
-    shape.matches_words(words).then_some(consumed)
+    pattern: LexPattern<'static>,
+    role: LexCaptureRole,
+) -> Option<(String, usize)> {
+    let matched = pattern.match_prefix_word_refs(words)?;
+    let capture = matched.capture_by_role(role)?;
+    let captured_words = words.get(capture.word_range.clone())?;
+    Some((captured_words.join(" "), matched.word_range.end))
+}
+
+fn parse_relation_axis_shape(words: &[&str]) -> Option<(SpellFilterComparisonAxis, usize)> {
+    let (axis, consumed) =
+        relation_captured_prefix(words, RELATION_AXIS_PATTERN, LexCaptureRole::Action)?;
+    match axis.as_str() {
+        "power" => Some((SpellFilterComparisonAxis::Power, consumed)),
+        "toughness" => Some((SpellFilterComparisonAxis::Toughness, consumed)),
+        "mana value" => Some((SpellFilterComparisonAxis::ManaValue, consumed)),
+        _ => None,
+    }
+}
+
+fn parse_relation_verb_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
+    let (verb, consumed) =
+        relation_captured_prefix(words, RELATION_VERB_PATTERN, LexCaptureRole::Action)?;
+    match verb.as_str() {
+        "cast" | "casts" => Some((PlayerRelationVerb::Cast, consumed)),
+        "control" | "controls" => Some((PlayerRelationVerb::Control, consumed)),
+        "own" | "owns" => Some((PlayerRelationVerb::Own, consumed)),
+        _ => None,
+    }
+}
+
+fn parse_relation_subject_shape(
+    words: &[&str],
+    pronoun_player_filter: &PlayerFilter,
+) -> Option<(PlayerFilter, usize)> {
+    let (subject, consumed) =
+        relation_captured_prefix(words, RELATION_SUBJECT_PATTERN, LexCaptureRole::Subject)?;
+    match subject.as_str() {
+        "you" | "your team" => Some((PlayerFilter::You, consumed)),
+        "opponent" | "opponents" | "your opponents" => Some((PlayerFilter::Opponent, consumed)),
+        "they" => Some((pronoun_player_filter.clone(), consumed)),
+        "that player" => Some((PlayerFilter::IteratedPlayer, consumed)),
+        "target player" => Some((PlayerFilter::target_player(), consumed)),
+        "target opponent" => Some((PlayerFilter::target_opponent(), consumed)),
+        "defending player" => Some((PlayerFilter::Defending, consumed)),
+        "attacking player" => Some((PlayerFilter::Attacking, consumed)),
+        "its controller" | "its controllers" | "their controller" | "their controllers" => Some((
+            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+            consumed,
+        )),
+        _ => None,
+    }
+}
+
+fn parse_negated_you_relation_shape(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
+    let (verb, consumed) =
+        relation_captured_prefix(words, NEGATED_YOU_RELATION_PATTERN, LexCaptureRole::Action)?;
+    let verb_tail = verb.split(' ').next_back();
+    if verb_tail == Some("control") || verb_tail == Some("controls") {
+        return Some((PlayerRelationVerb::Control, consumed));
+    }
+    if verb_tail == Some("own") || verb_tail == Some("owns") {
+        return Some((PlayerRelationVerb::Own, consumed));
+    }
+    None
+}
+
+fn parse_chosen_player_graveyard_shape(words: &[&str]) -> Option<usize> {
+    relation_captured_prefix(
+        words,
+        CHOSEN_PLAYER_GRAVEYARD_PATTERN,
+        LexCaptureRole::Object,
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn parse_joint_owner_controller_shape(words: &[&str]) -> Option<usize> {
+    relation_captured_prefix(
+        words,
+        JOINT_OWNER_CONTROLLER_PATTERN,
+        LexCaptureRole::Action,
+    )
+    .map(|(_, consumed)| consumed)
+}
+
+fn parse_owner_or_controller_shape(words: &[&str]) -> Option<usize> {
+    relation_captured_prefix(words, OWNER_OR_CONTROLLER_PATTERN, LexCaptureRole::Action)
+        .map(|(_, consumed)| consumed)
+}
+
+fn parse_relation_event_shape(words: &[&str], pattern: LexPattern<'static>) -> Option<usize> {
+    relation_captured_prefix(words, pattern, LexCaptureRole::Action).map(|(_, consumed)| consumed)
+}
+
+fn parse_entered_battlefield_this_turn_shape(
+    words: &[&str],
+) -> Option<(Option<PlayerFilter>, usize)> {
+    let (event, consumed) = relation_captured_prefix(
+        words,
+        ENTERED_BATTLEFIELD_THIS_TURN_PATTERN,
+        LexCaptureRole::Action,
+    )?;
+    let event_words: Vec<&str> = event.split(' ').collect();
+    let contains_phrase = |phrase: &[&str]| {
+        !phrase.is_empty() && event_words.windows(phrase.len()).any(|window| window == phrase)
+    };
+    if contains_phrase(&["under", "your", "control"]) {
+        return Some((Some(PlayerFilter::You), consumed));
+    }
+    if contains_phrase(&["under", "opponent", "control"])
+        || contains_phrase(&["under", "opponents", "control"])
+    {
+        return Some((Some(PlayerFilter::Opponent), consumed));
+    }
+    Some((None, consumed))
 }
 
 impl SpellFilterComparisonAxis {
@@ -323,91 +376,18 @@ impl SpellFilterComparisonAxis {
 pub(super) fn parse_spell_filter_comparison_axis_words(
     words: &[&str],
 ) -> Option<(SpellFilterComparisonAxis, usize)> {
-    shape_prefix_consumed(words, &POWER_AXIS_PREFIX_PATTERN, 1)
-        .map(|consumed| (SpellFilterComparisonAxis::Power, consumed))
-        .or_else(|| {
-            shape_prefix_consumed(words, &TOUGHNESS_AXIS_PREFIX_PATTERN, 1)
-                .map(|consumed| (SpellFilterComparisonAxis::Toughness, consumed))
-        })
-        .or_else(|| {
-            shape_prefix_consumed(words, &MANA_VALUE_AXIS_PREFIX_PATTERN, 2)
-                .map(|consumed| (SpellFilterComparisonAxis::ManaValue, consumed))
-        })
+    parse_relation_axis_shape(words)
 }
 
 pub(super) fn parse_player_relation_verb(words: &[&str]) -> Option<(PlayerRelationVerb, usize)> {
-    shape_prefix_consumed(words, &CAST_RELATION_VERB_PREFIX_PATTERN, 1)
-        .map(|consumed| (PlayerRelationVerb::Cast, consumed))
-        .or_else(|| {
-            shape_prefix_consumed(words, &CONTROL_RELATION_VERB_PREFIX_PATTERN, 1)
-                .map(|consumed| (PlayerRelationVerb::Control, consumed))
-        })
-        .or_else(|| {
-            shape_prefix_consumed(words, &OWN_RELATION_VERB_PREFIX_PATTERN, 1)
-                .map(|consumed| (PlayerRelationVerb::Own, consumed))
-        })
+    parse_relation_verb_shape(words)
 }
 
 pub(super) fn parse_player_relation_subject(
     words: &[&str],
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<(PlayerFilter, usize)> {
-    if let Some(consumed) = shape_prefix_consumed(words, &YOU_RELATION_SUBJECT_PREFIX_PATTERN, 1) {
-        return Some((PlayerFilter::You, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &OPPONENT_RELATION_SUBJECT_PREFIX_PATTERN, 1)
-    {
-        return Some((PlayerFilter::Opponent, consumed));
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &THEY_RELATION_SUBJECT_PREFIX_PATTERN, 1) {
-        return Some((pronoun_player_filter.clone(), consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &YOUR_TEAM_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::You, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &YOUR_OPPONENTS_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::Opponent, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &THAT_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::IteratedPlayer, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &TARGET_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::target_player(), consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &TARGET_OPPONENT_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::target_opponent(), consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &DEFENDING_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::Defending, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &ATTACKING_PLAYER_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((PlayerFilter::Attacking, consumed));
-    }
-    if let Some(consumed) =
-        shape_prefix_consumed(words, &TARGET_CONTROLLER_RELATION_SUBJECT_PREFIX_PATTERN, 2)
-    {
-        return Some((
-            PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
-            consumed,
-        ));
-    }
-
-    None
+    parse_relation_subject_shape(words, pronoun_player_filter)
 }
 
 pub(super) fn apply_player_relation(
@@ -449,48 +429,20 @@ pub(super) fn try_apply_negated_you_relation_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    if let Some(consumed) = shape_prefix_consumed(words, &DONT_CONTROL_PREFIX_PATTERN, 2) {
-        filter.controller = Some(PlayerFilter::NotYou);
-        return Some(consumed);
+    let (verb, consumed) = parse_negated_you_relation_shape(words)?;
+    match verb {
+        PlayerRelationVerb::Control => filter.controller = Some(PlayerFilter::NotYou),
+        PlayerRelationVerb::Own => filter.owner = Some(PlayerFilter::NotYou),
+        PlayerRelationVerb::Cast => return None,
     }
-    if let Some(consumed) = shape_prefix_consumed(words, &DONT_OWN_PREFIX_PATTERN, 2) {
-        filter.owner = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &DO_NOT_CONTROL_PREFIX_PATTERN, 3) {
-        filter.controller = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &DO_NOT_OWN_PREFIX_PATTERN, 3) {
-        filter.owner = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &YOU_DONT_CONTROL_PREFIX_PATTERN, 3) {
-        filter.controller = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &YOU_DONT_OWN_PREFIX_PATTERN, 3) {
-        filter.owner = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &YOU_DO_NOT_CONTROL_PREFIX_PATTERN, 4) {
-        filter.controller = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &YOU_DO_NOT_OWN_PREFIX_PATTERN, 4) {
-        filter.owner = Some(PlayerFilter::NotYou);
-        return Some(consumed);
-    }
-
-    None
+    Some(consumed)
 }
 
 pub(super) fn try_apply_chosen_player_graveyard_clause(
     filter: &mut ObjectFilter,
     words: &[&str],
 ) -> Option<usize> {
-    let consumed = shape_prefix_consumed(words, &CHOSEN_PLAYER_GRAVEYARD_PREFIX_PATTERN, 3)
-        .or_else(|| shape_prefix_consumed(words, &THE_CHOSEN_PLAYER_GRAVEYARD_PREFIX_PATTERN, 4))?;
+    let consumed = parse_chosen_player_graveyard_shape(words)?;
     filter.owner = Some(PlayerFilter::ChosenPlayer);
     filter.zone = Some(Zone::Graveyard);
     Some(consumed)
@@ -502,11 +454,7 @@ pub(super) fn try_apply_joint_owner_controller_clause(
     pronoun_player_filter: &PlayerFilter,
 ) -> Option<usize> {
     let (player, subject_consumed) = parse_player_relation_subject(words, pronoun_player_filter)?;
-    let consumed = shape_prefix_consumed(
-        &words[subject_consumed..],
-        &BOTH_OWN_AND_CONTROL_PREFIX_PATTERN,
-        4,
-    )?;
+    let consumed = parse_joint_owner_controller_shape(&words[subject_consumed..])?;
     filter.owner = Some(player.clone());
     filter.controller = Some(player);
     Some(subject_consumed + consumed)
@@ -523,11 +471,7 @@ pub(super) fn parse_owner_or_controller_disjunction_player(
     ) {
         return None;
     }
-    let consumed = shape_prefix_consumed(
-        &words[subject_consumed..],
-        &OWN_OR_CONTROL_PREFIX_PATTERN,
-        3,
-    )?;
+    let consumed = parse_owner_or_controller_shape(&words[subject_consumed..])?;
     Some((player, subject_consumed + consumed))
 }
 
@@ -569,72 +513,21 @@ pub(super) fn drain_segment_phrase_variants(
 }
 
 pub(super) fn parse_put_there_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
-    shape_prefix_consumed(
-        words,
-        &PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN,
-        8,
-    )
+    parse_relation_event_shape(words, PUT_THERE_FROM_BATTLEFIELD_THIS_TURN_PATTERN)
 }
 
 pub(super) fn parse_put_there_from_anywhere_this_turn_words(words: &[&str]) -> Option<usize> {
-    shape_prefix_consumed(words, &PUT_THERE_FROM_ANYWHERE_THIS_TURN_PREFIX_PATTERN, 8)
+    parse_relation_event_shape(words, PUT_THERE_FROM_ANYWHERE_THIS_TURN_PATTERN)
 }
 
 pub(super) fn parse_graveyard_from_battlefield_this_turn_words(words: &[&str]) -> Option<usize> {
-    shape_prefix_consumed(
-        words,
-        &GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PREFIX_PATTERN,
-        5,
-    )
+    parse_relation_event_shape(words, GRAVEYARD_FROM_BATTLEFIELD_THIS_TURN_PATTERN)
 }
 
 pub(super) fn parse_entered_battlefield_this_turn_words(
     words: &[&str],
 ) -> Option<(Option<PlayerFilter>, usize)> {
-    if let Some(consumed) = shape_prefix_consumed(
-        words,
-        &ENTERED_YOUR_CONTROL_THIS_TURN_LONG_PREFIX_PATTERN,
-        8,
-    )
-    .or_else(|| shape_prefix_consumed(words, &ENTERED_YOUR_CONTROL_THIS_TURN_MID_PREFIX_PATTERN, 7))
-    .or_else(|| {
-        shape_prefix_consumed(
-            words,
-            &ENTERED_YOUR_CONTROL_THIS_TURN_SHORT_PREFIX_PATTERN,
-            6,
-        )
-    }) {
-        return Some((Some(PlayerFilter::You), consumed));
-    }
-    if let Some(consumed) = shape_prefix_consumed(
-        words,
-        &ENTERED_OPPONENT_CONTROL_THIS_TURN_LONG_PREFIX_PATTERN,
-        8,
-    )
-    .or_else(|| {
-        shape_prefix_consumed(
-            words,
-            &ENTERED_OPPONENT_CONTROL_THIS_TURN_MID_PREFIX_PATTERN,
-            7,
-        )
-    })
-    .or_else(|| {
-        shape_prefix_consumed(
-            words,
-            &ENTERED_OPPONENT_CONTROL_THIS_TURN_SHORT_PREFIX_PATTERN,
-            6,
-        )
-    }) {
-        return Some((Some(PlayerFilter::Opponent), consumed));
-    }
-    if let Some(consumed) = shape_prefix_consumed(words, &ENTERED_THIS_TURN_LONG_PREFIX_PATTERN, 5)
-        .or_else(|| shape_prefix_consumed(words, &ENTERED_THIS_TURN_MID_PREFIX_PATTERN, 4))
-        .or_else(|| shape_prefix_consumed(words, &ENTERED_THIS_TURN_SHORT_PREFIX_PATTERN, 3))
-    {
-        return Some((None, consumed));
-    }
-
-    None
+    parse_entered_battlefield_this_turn_shape(words)
 }
 
 pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
@@ -908,7 +801,7 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
 }
 
 pub(super) fn parse_drawn_this_turn_words(words: &[&str]) -> Option<usize> {
-    shape_prefix_consumed(words, &DRAWN_THIS_TURN_PREFIX_PATTERN, 3)
+    parse_relation_event_shape(words, DRAWN_THIS_TURN_PATTERN)
 }
 
 pub(super) fn try_apply_drawn_this_turn_clause(
@@ -944,11 +837,8 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
 ) -> bool {
-    if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORD_PATTERN.matches_word(all_words[0]) {
-        let noun_idx = if all_words
-            .get(1)
-            .is_some_and(|word| OTHER_WORD_PATTERN.matches_word(word))
-        {
+    if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORDS.contains(&all_words[0]) {
+        let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
             2
         } else {
             1
@@ -965,7 +855,7 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
 
     if all_words
         .first()
-        .is_some_and(|word| IT_OR_THEM_WORD_PATTERN.matches_word(word))
+        .is_some_and(|word| IT_OR_THEM_WORDS.contains(word))
     {
         push_it_tagged_object_constraint(filter);
         all_words.remove(0);

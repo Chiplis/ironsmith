@@ -436,21 +436,6 @@ fn advance_reference_frame_for_effect(
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "retargeted"));
                     }
                 }
-                SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-                | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                    ..
-                } => {
-                    track_effect_player(subject_verb.subject.player, frame, true, true)?;
-                    frame.last_object_tag = Some(next_reference_tag(id_gen, "revealed"));
-                }
-                SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-                | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. } => {
-                    track_effect_player(subject_verb.subject.player, frame, true, true)?;
-                    frame.last_object_tag = Some(next_reference_tag(id_gen, "chosen"));
-                }
                 SubjectVerbActionAst::DealDamage { target, .. }
                 | SubjectVerbActionAst::DealDistributedDamage { target, .. }
                 | SubjectVerbActionAst::DealDamageEqualToPower { target, .. } => {
@@ -734,6 +719,9 @@ fn advance_reference_frame_for_effect(
                     track_target_player(object, frame);
                     track_target_player(target, frame);
                 }
+                SubjectVerbActionAst::Unattach { object } => {
+                    track_target_player(object, frame);
+                }
                 SubjectVerbActionAst::ExileWhenSourceLeaves { target }
                 | SubjectVerbActionAst::SacrificeSourceWhenLeaves { target } => {
                     track_target_player(target, frame);
@@ -992,6 +980,12 @@ fn advance_reference_frame_for_effect(
             player,
             ..
         }
+        | EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            tag,
+            player,
+            ..
+        }
         | EffectAst::ChooseObjectsBottomOfLibrary {
             filter,
             tag,
@@ -1204,6 +1198,23 @@ fn advance_reference_frame_for_effect(
             };
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, tagged_object)?;
         }
+        EffectAst::MoveTaggedGroupToZone { .. } => {
+            // Moves an existing tagged group; introduces no new references and
+            // keeps the iterated object internal to lowering.
+        }
+        EffectAst::SnapshotLastObjectTag { into } => {
+            // Bind the current looked-at pool to `into` so later composed
+            // effects can reference it even after a `ChooseObjects` clobbers
+            // `last_object_tag`. Emits no runtime effect.
+            if let Some(concrete) = frame.last_object_tag.clone() {
+                frame
+                    .snapshot_tag_aliases
+                    .retain(|(alias, _)| alias != into.as_str());
+                frame
+                    .snapshot_tag_aliases
+                    .push((into.as_str().to_string(), concrete));
+            }
+        }
         EffectAst::RepeatProcess { effects, .. } => {
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
@@ -1215,6 +1226,24 @@ fn advance_reference_frame_for_effect(
         }
         EffectAst::ManaRestricted { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
+        }
+        EffectAst::ChooseOneOf { modes } => {
+            // Modes are mutually-exclusive branches: resolve references within
+            // each in an isolated frame so one mode's bindings don't leak into
+            // the next or into following effects.
+            let saved = frame.clone();
+            for mode in modes {
+                let mut mode_frame = saved.clone();
+                advance_reference_frames(&mode.effects, id_gen, &mut mode_frame)?;
+            }
+            *frame = saved;
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            advance_reference_frame_for_effect(effect, id_gen, frame)?;
+            advance_reference_frames(otherwise, id_gen, frame)?;
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            advance_reference_frame_for_effect(effect, id_gen, frame)?;
         }
         EffectAst::RepeatThisProcess
         | EffectAst::SolveCase
@@ -1891,6 +1920,7 @@ fn advance_reference_env_for_effect(
                     &true_sequence.final_env.last_object_tag,
                     &false_sequence.final_env.last_object_tag,
                 ),
+                snapshot_tag_aliases: env.snapshot_tag_aliases.clone(),
                 last_it_choice_is_set: true_sequence.final_env.last_it_choice_is_set
                     && false_sequence.final_env.last_it_choice_is_set,
                 last_player_filter: RefState::join(
@@ -2015,8 +2045,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::Amass { .. }
             | SubjectVerbActionAst::LookAtObjects { .. }
             | SubjectVerbActionAst::LookAtTarget { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::Bolster { .. }
             | SubjectVerbActionAst::Support { .. }
             | SubjectVerbActionAst::Adapt { .. }
@@ -2148,14 +2176,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::PreventDamageToTargetPutCounters { amount: None, .. }
             | SubjectVerbActionAst::Meld { .. }
             | SubjectVerbActionAst::SearchLibrarySlotsToHand { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary { .. }
             | SubjectVerbActionAst::RetargetStackObject { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeControl { .. }
@@ -2163,6 +2183,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::DestroyAllAttachedTo { .. }
             | SubjectVerbActionAst::ExileAllAttachedTo { .. }
             | SubjectVerbActionAst::Attach { .. }
+            | SubjectVerbActionAst::Unattach { .. }
             | SubjectVerbActionAst::ExileWhenSourceLeaves { .. }
             | SubjectVerbActionAst::SacrificeSourceWhenLeaves { .. }
             | SubjectVerbActionAst::MayMoveToZone { .. }
@@ -2175,6 +2196,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ChooseSpellCastHistory { .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { .. }
             | SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { .. }
+            | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
             | SubjectVerbActionAst::CastTagged { .. }
             | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
             | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
@@ -2184,6 +2206,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
             | SubjectVerbActionAst::ExileUntilSourceLeaves { .. }
             | SubjectVerbActionAst::MoveToZone { .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { .. }
             | SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { .. }
             | SubjectVerbActionAst::TargetOnly { .. }
             | SubjectVerbActionAst::TagMatchingObjects { .. }
@@ -2768,9 +2791,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::PutIntoHand { object } => {
                 bind_unresolved_it_in_object_ref_ast(object, seed_tag)
             }
-            SubjectVerbActionAst::PutSomeIntoHandRestIntoGraveyard { .. }
-            | SubjectVerbActionAst::PutSomeIntoHandRestOnBottomOfLibrary { .. }
-            | SubjectVerbActionAst::PutRestOnBottomOfLibrary
+            SubjectVerbActionAst::PutRestOnBottomOfLibrary
             | SubjectVerbActionAst::DontLoseThisManaAsStepsAndPhasesEndThisTurn => 0,
             SubjectVerbActionAst::MayMoveToZone { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
@@ -2804,6 +2825,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::Attach { object, target } => {
                 bind_unresolved_it_in_target(object, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
+            }
+            SubjectVerbActionAst::Unattach { object } => {
+                bind_unresolved_it_in_target(object, seed_tag)
             }
             SubjectVerbActionAst::Enchant {
                 filter: crate::object::AuraAttachmentFilter::Object(filter),
@@ -2873,35 +2897,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
-            SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestIntoGraveyard {
-                filter, ..
-            }
-            | SubjectVerbActionAst::RevealTopPutMatchingIntoHandRestOnBottomOfLibrary {
-                filter,
-                ..
-            }
-            | SubjectVerbActionAst::ChooseFromLookedCardsIntoHandRestIntoGraveyard {
-                filter, ..
-            } => bind_unresolved_it_in_filter(filter, seed_tag),
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeAmongSpellsCastThisTurnIntoHandRestOnBottomOfLibrary {
-                spell_filter,
-                ..
-            } => bind_unresolved_it_in_filter(spell_filter, seed_tag),
-            SubjectVerbActionAst::ChooseFromLookedCardsForEachCardTypeIntoHandRestOnBottomOfLibrary {
-                ..
-            } => 0,
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldOrIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                ..
-            } => bind_unresolved_it_in_filter(battlefield_filter, seed_tag),
-            SubjectVerbActionAst::ChooseFromLookedCardsOntoBattlefieldAndIntoHandRestOnBottomOfLibrary {
-                battlefield_filter,
-                hand_filter,
-                ..
-            } => {
-                bind_unresolved_it_in_filter(battlefield_filter, seed_tag)
-                    + bind_unresolved_it_in_filter(hand_filter, seed_tag)
-            }
             SubjectVerbActionAst::RetargetStackObject { target, mode, .. } => {
                 let mut replacements = bind_unresolved_it_in_target(target, seed_tag);
                 if let RetargetModeAst::OneToFixed { target } = mode {
@@ -2919,7 +2914,6 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PreventAllCombatDamageToPlayers { .. }
             | SubjectVerbActionAst::PreventAllCombatDamageToYou { .. }
             | SubjectVerbActionAst::Meld { .. }
-            | SubjectVerbActionAst::RevealTopChooseCardTypePutToHandRestBottom { .. }
             | SubjectVerbActionAst::GrantAbilityToSource { .. }
             | SubjectVerbActionAst::ExchangeZones { .. } => 0,
             SubjectVerbActionAst::ExchangeControlHeterogeneous {
@@ -3037,6 +3031,12 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 }
                 replacements
             }
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag, keep_tagged, ..
+            } => {
+                bind_unresolved_it_in_tag(tag, seed_tag)
+                    + bind_unresolved_it_in_tag(keep_tagged, seed_tag)
+            }
             SubjectVerbActionAst::CastTagged { tag, .. } => {
                 bind_unresolved_it_in_tag(tag, seed_tag)
             }
@@ -3087,6 +3087,9 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                     replacements += bind_unresolved_it_in_target(attach, seed_tag);
                 }
                 replacements
+            }
+            SubjectVerbActionAst::PutOntoBattlefield { target, .. } => {
+                bind_unresolved_it_in_target(target, seed_tag)
             }
             SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. } => {
                 bind_unresolved_it_in_filter(filter, seed_tag)

@@ -2033,6 +2033,9 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
 
 pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    if normalized.eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
+        return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
+    }
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
@@ -10186,7 +10189,12 @@ pub(super) fn describe_attached_object_for_tag(tag: &str, spec: Option<&ChooseSp
         return default.to_string();
     }
 
-    let Some(ChooseSpec::Object(filter)) = spec else {
+    let spec = match spec {
+        Some(ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _)) => Some(inner.as_ref()),
+        other => other,
+    };
+
+    let Some(ChooseSpec::Object(filter) | ChooseSpec::All(filter)) = spec else {
         return default.to_string();
     };
     let references_tag = filter.tagged_constraints.iter().any(|constraint| {
@@ -10198,6 +10206,10 @@ pub(super) fn describe_attached_object_for_tag(tag: &str, spec: Option<&ChooseSp
     });
     if !references_tag {
         return default.to_string();
+    }
+
+    if filter.subtypes.contains(&Subtype::Equipment) {
+        return format!("{tag} equipment");
     }
 
     if filter.card_types.len() == 1 && filter.all_card_types.is_empty() {
@@ -10232,6 +10244,26 @@ pub(super) fn describe_tag_attached_then_tap_or_untap(
         return Some(format!("Untap {attached_object}"));
     }
     None
+}
+
+pub(super) fn describe_tag_attached_then_unattach(
+    tag_attached: &crate::effects::TagAttachedToSourceEffect,
+    next: &Effect,
+) -> Option<String> {
+    let tag = tag_attached.tag.as_str();
+    if !matches!(tag, "enchanted" | "equipped") {
+        return None;
+    }
+    let unattach = next.downcast_ref::<crate::effects::UnattachObjectsEffect>()?;
+    if !choose_spec_filter_references_tag(&unattach.objects, tag)
+        && !choose_spec_references_tag(&unattach.objects, tag)
+    {
+        return None;
+    }
+    Some(format!(
+        "Unattach {}",
+        describe_attached_object_for_tag(tag, Some(&unattach.objects))
+    ))
 }
 
 fn describe_gain_control_target_player_creatures(
@@ -10725,7 +10757,8 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", filter.description())
         }
         crate::effect::Restriction::BeTargetedFrom(filter, source_filter) => {
-            if let Some(source_description) = describe_spell_targeting_source_filter(source_filter) {
+            if let Some(source_description) = describe_spell_targeting_source_filter(source_filter)
+            {
                 return format!(
                     "{} can't be the target of {}",
                     filter.description(),
@@ -10783,8 +10816,7 @@ fn describe_spell_targeting_source_filter(source_filter: &ObjectFilter) -> Optio
     rest.zone = None;
     rest.stack_kind = None;
     if rest.subtypes == [crate::types::Subtype::Aura]
-        && (rest.card_types.is_empty()
-            || rest.card_types == [crate::types::CardType::Enchantment])
+        && (rest.card_types.is_empty() || rest.card_types == [crate::types::CardType::Enchantment])
     {
         rest.subtypes.clear();
         rest.card_types.clear();

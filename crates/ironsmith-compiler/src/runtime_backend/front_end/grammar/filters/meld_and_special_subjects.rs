@@ -1,38 +1,117 @@
+use super::super::super::lex_patterns::{LexCaptureKind, LexCaptureRole, LexPattern};
+use super::super::super::lexer::{LexedClause, OwnedLexToken};
 use super::*;
-use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
-    ClauseShape, clause_shape,
-};
+const THERE_ARE_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["there", "are"])]);
+const YOU_HAVE_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["you", "have"])]);
+const MANA_OF_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["mana", "of"])]);
+const SAME_COLOR_PREFIX_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::phrase(&["same", "color"])]);
+const MANA_SPENT_TAIL_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
+    &["mana", "was", "spent", "to", "cast", "this", "spell"],
+    &["mana", "were", "spent", "to", "cast", "this", "spell"],
+])]);
+const SAME_COLOR_MANA_SPENT_TAIL_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::any_phrase(&[
+        &["was", "spent", "to", "cast", "it"],
+        &["was", "spent", "to", "cast", "this", "spell"],
+    ])]);
 
-const THERE_ARE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["there", "are"]);
-const YOU_HAVE_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["you", "have"]);
-const IN_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["in"]);
-const TYPE_OR_TYPES_MARKER_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_any_words & [&["type", "types"]]);
-const AND_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["and"]);
-const OR_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["or"]);
-const CARD_OR_CARDS_PATTERN: ClauseShape<'static> =
-    clause_shape!(exact_any & [&["card"], &["cards"]]);
-const OF_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["of"]);
-const MANA_OF_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["mana", "of"]);
-const SAME_COLOR_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(prefix & ["same", "color"]);
-const THE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["the"]);
-const MANA_SPENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["mana", "was", "spent", "to", "cast", "this", "spell"],
-            &["mana", "were", "spent", "to", "cast", "this", "spell"],
-        ]
-);
-const SAME_COLOR_MANA_SPENT_TAIL_PATTERN: ClauseShape<'static> = clause_shape!(
-    exact_any
-        & [
-            &["was", "spent", "to", "cast", "it"],
-            &["was", "spent", "to", "cast", "this", "spell"],
-        ]
-);
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GraveyardThresholdPrefix {
+    Existential,
+    YouHave,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum GraveyardThresholdOwner {
+    You,
+    ThatPlayer,
+    TargetPlayer,
+    TargetOpponent,
+    Opponent,
+}
+
+const GRAVEYARD_THRESHOLD_OWNER_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::capture(
+        "owner",
+        LexCaptureKind::OneOfPhrase(&[
+            &["your", "graveyard"],
+            &["that", "player", "graveyard"],
+            &["that", "players", "graveyard"],
+            &["target", "player", "graveyard"],
+            &["target", "players", "graveyard"],
+            &["target", "opponent", "graveyard"],
+            &["target", "opponents", "graveyard"],
+            &["opponent", "graveyard"],
+            &["opponents", "graveyard"],
+        ]),
+    )]);
+
+fn parse_graveyard_threshold_prefix(prefix: LexedClause<'_>) -> Option<GraveyardThresholdPrefix> {
+    if THERE_ARE_PREFIX_PATTERN.matches_clause(prefix) {
+        Some(GraveyardThresholdPrefix::Existential)
+    } else if YOU_HAVE_PREFIX_PATTERN.matches_clause(prefix) {
+        Some(GraveyardThresholdPrefix::YouHave)
+    } else {
+        None
+    }
+}
+
+fn parse_graveyard_threshold_owner_shape(
+    owner: LexedClause<'_>,
+) -> Option<GraveyardThresholdOwner> {
+    GRAVEYARD_THRESHOLD_OWNER_PATTERN.match_clause(owner)?;
+    match owner.word_refs().as_slice() {
+        ["your", "graveyard"] => Some(GraveyardThresholdOwner::You),
+        ["that", "player" | "players", "graveyard"] => Some(GraveyardThresholdOwner::ThatPlayer),
+        ["target", "player" | "players", "graveyard"] => {
+            Some(GraveyardThresholdOwner::TargetPlayer)
+        }
+        ["target", "opponent" | "opponents", "graveyard"] => {
+            Some(GraveyardThresholdOwner::TargetOpponent)
+        }
+        ["opponent" | "opponents", "graveyard"] => Some(GraveyardThresholdOwner::Opponent),
+        _ => None,
+    }
+}
+
+fn graveyard_threshold_owner_player(owner: LexedClause<'_>) -> Option<PlayerAst> {
+    match parse_graveyard_threshold_owner_shape(owner)? {
+        GraveyardThresholdOwner::You => Some(PlayerAst::You),
+        GraveyardThresholdOwner::ThatPlayer => Some(PlayerAst::That),
+        GraveyardThresholdOwner::TargetPlayer => Some(PlayerAst::Target),
+        GraveyardThresholdOwner::TargetOpponent => Some(PlayerAst::TargetOpponent),
+        GraveyardThresholdOwner::Opponent => Some(PlayerAst::Opponent),
+    }
+}
+
+fn tokens_contain_type_marker(tokens: &[OwnedLexToken]) -> bool {
+    tokens
+        .iter()
+        .any(|token| token.is_any_word(&["type", "types"]))
+}
+
+fn non_article_tokens_are_card_or_cards(tokens: &[OwnedLexToken]) -> bool {
+    let mut words = tokens
+        .iter()
+        .filter(|token| {
+            token
+                .as_word()
+                .is_some_and(|_| !is_article(token.parser_text()))
+        })
+        .map(OwnedLexToken::parser_text);
+
+    let Some(first) = words.next() else {
+        return false;
+    };
+    words.next().is_none() && matches!(first, "card" | "cards")
+}
 
 pub(super) fn parse_graveyard_threshold_predicate(
-    filtered: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     fn player_filter_for_graveyard_threshold(player: &PlayerAst) -> Option<PlayerFilter> {
         match player {
@@ -45,78 +124,78 @@ pub(super) fn parse_graveyard_threshold_predicate(
         }
     }
 
-    fn parse_at_least_quantity_prefix(words: &[&str]) -> Option<(u32, usize)> {
-        let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
+    fn parse_at_least_quantity_prefix(tokens: &[OwnedLexToken]) -> Option<(u32, usize)> {
         let (comparison, used) =
-            parse_quantity_comparison_prefix(&tokens, false, false, "graveyard threshold").ok()?;
+            parse_quantity_comparison_prefix(tokens, false, false, "graveyard threshold").ok()?;
         let count = comparison_to_strict_at_least_threshold(&comparison)?;
         Some((count, used))
     }
 
-    let (count, tail_start, constrained_player) =
-        if filtered.len() >= 5 && THERE_ARE_PREFIX_PATTERN.matches_words(filtered) {
-            let Some((count, used)) = parse_at_least_quantity_prefix(&filtered[2..]) else {
-                return Ok(None);
-            };
-            (count, 2 + used, None)
-        } else if filtered.len() >= 5 && YOU_HAVE_PREFIX_PATTERN.matches_words(filtered) {
-            let Some((count, used)) = parse_at_least_quantity_prefix(&filtered[2..]) else {
-                return Ok(None);
-            };
-            (count, 2 + used, Some(PlayerAst::You))
-        } else {
-            return Ok(None);
-        };
-
-    let tail = &filtered[tail_start..];
-    let Some(in_idx) = rfind_index(tail, |word| IN_WORD_PATTERN.matches_word(word)) else {
+    let clause = LexedClause::new(tokens);
+    let atoms = [
+        LexPattern::subject("prefix", LexCaptureKind::WordCount(2)),
+        LexPattern::object("body", LexCaptureKind::UntilLastPhrase(&["in"])),
+        LexPattern::word("in"),
+        LexPattern::modifier("graveyard_owner", LexCaptureKind::Rest),
+    ];
+    let Some(matched) = LexPattern::new(&atoms).match_clause(clause) else {
         return Ok(None);
     };
-    if in_idx == 0 || in_idx + 1 >= tail.len() {
+    let prefix = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing prefix in graveyard threshold".to_string())
+        })?;
+    let constrained_player = match parse_graveyard_threshold_prefix(prefix) {
+        Some(GraveyardThresholdPrefix::Existential) => None,
+        Some(GraveyardThresholdPrefix::YouHave) => Some(PlayerAst::You),
+        None => return Ok(None),
+    };
+
+    let body = matched
+        .capture_clause_by_role(LexCaptureRole::Object, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing body in graveyard threshold".to_string())
+        })?;
+    let Some((count, used)) = parse_at_least_quantity_prefix(body.tokens()) else {
+        return Ok(None);
+    };
+    let raw_filter_tokens = body.tokens().get(used..).unwrap_or_default();
+    if raw_filter_tokens.is_empty() || tokens_contain_type_marker(raw_filter_tokens) {
         return Ok(None);
     }
 
-    let graveyard_owner_words = &tail[in_idx + 1..];
-    let player = match graveyard_owner_words {
-        ["your", "graveyard"] => PlayerAst::You,
-        ["that", "player", "graveyard"] | ["that", "players", "graveyard"] => PlayerAst::That,
-        ["target", "player", "graveyard"] | ["target", "players", "graveyard"] => PlayerAst::Target,
-        ["target", "opponent", "graveyard"] | ["target", "opponents", "graveyard"] => {
-            PlayerAst::TargetOpponent
-        }
-        ["opponent", "graveyard"] | ["opponents", "graveyard"] => PlayerAst::Opponent,
-        _ => return Ok(None),
+    let owner = matched
+        .capture_clause_by_role(LexCaptureRole::Modifier, clause)
+        .ok_or_else(|| {
+            CardTextError::ParseError("missing graveyard owner in graveyard threshold".to_string())
+        })?;
+    let Some(player) = graveyard_threshold_owner_player(owner) else {
+        return Ok(None);
     };
     if constrained_player.is_some_and(|expected| expected != player) {
         return Ok(None);
     }
 
-    let raw_filter_words = &tail[..in_idx];
-    if raw_filter_words.is_empty() || TYPE_OR_TYPES_MARKER_PATTERN.matches_words(raw_filter_words) {
-        return Ok(None);
-    }
-
-    let mut normalized_filter_words = Vec::with_capacity(raw_filter_words.len());
-    for (idx, word) in raw_filter_words.iter().enumerate() {
-        if AND_WORD_PATTERN.matches_word(word)
-            && raw_filter_words
+    let mut normalized_filter_tokens = Vec::with_capacity(raw_filter_tokens.len());
+    for (idx, token) in raw_filter_tokens.iter().enumerate() {
+        if token.is_word("and")
+            && raw_filter_tokens
                 .get(idx + 1)
-                .is_some_and(|next| OR_WORD_PATTERN.matches_word(next))
+                .is_some_and(|next| next.is_word("or"))
         {
             continue;
         }
-        normalized_filter_words.push(*word);
+        normalized_filter_tokens.push(token.clone());
     }
-    if normalized_filter_words.is_empty() {
+    if normalized_filter_tokens.is_empty() {
         return Ok(None);
     }
 
-    let mut filter = if CARD_OR_CARDS_PATTERN.matches_words(&normalized_filter_words) {
+    let mut filter = if non_article_tokens_are_card_or_cards(&normalized_filter_tokens) {
         ObjectFilter::default()
     } else {
-        let filter_tokens =
-            crate::runtime_backend::lexer::synthetic_word_tokens(normalized_filter_words);
-        let Ok(filter) = parse_object_filter(&filter_tokens, false) else {
+        let Ok(filter) = parse_object_filter(&normalized_filter_tokens, false) else {
             return Ok(None);
         };
         filter
@@ -144,28 +223,24 @@ pub(super) fn parse_graveyard_threshold_predicate(
 }
 
 pub(super) fn parse_mana_spent_to_cast_predicate(
-    words: &[&str],
+    tokens: &[OwnedLexToken],
 ) -> Option<(u32, Option<ManaSymbol>)> {
-    if words.len() < 10 {
+    if tokens.len() < 10 {
         return None;
     }
 
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let (amount, used) =
-        parse_greater_than_or_equal_quantity_prefix(&tokens, false, false, "mana spent predicate")
+        parse_greater_than_or_equal_quantity_prefix(tokens, false, false, "mana spent predicate")
             .ok()
             .flatten()?;
 
     let mut idx = used;
-    if words
-        .get(idx)
-        .is_some_and(|word| OF_WORD_PATTERN.matches_word(word))
-    {
+    if tokens.get(idx).is_some_and(|token| token.is_word("of")) {
         idx += 1;
     }
 
-    let symbol = if let Some(word) = words.get(idx).copied() {
-        if let Some(parsed) = parse_mana_symbol_word(word) {
+    let symbol = if let Some(token) = tokens.get(idx) {
+        if let Some(parsed) = parse_mana_symbol_word(token.parser_text()) {
             idx += 1;
             Some(parsed)
         } else {
@@ -175,21 +250,22 @@ pub(super) fn parse_mana_spent_to_cast_predicate(
         None
     };
 
-    if MANA_SPENT_TAIL_PATTERN.matches_words(&words[idx..]) {
+    if MANA_SPENT_TAIL_PATTERN.matches_clause(LexedClause::new(&tokens[idx..])) {
         return Some((amount, symbol));
     }
 
     None
 }
 
-pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> Option<u32> {
-    if words.len() < 12 {
+pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<u32> {
+    if tokens.len() < 12 {
         return None;
     }
 
-    let tokens = crate::runtime_backend::lexer::synthetic_word_tokens(words);
     let (amount, used) = parse_greater_than_or_equal_quantity_prefix(
-        &tokens,
+        tokens,
         false,
         false,
         "same-color mana spent predicate",
@@ -198,22 +274,19 @@ pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> O
     .flatten()?;
 
     let mut idx = used;
-    if !MANA_OF_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    if !MANA_OF_PREFIX_PATTERN.matches_prefix(LexedClause::new(&tokens[idx..])) {
         return None;
     }
     idx += 2;
-    if words
-        .get(idx)
-        .is_some_and(|word| THE_WORD_PATTERN.matches_word(word))
-    {
+    if tokens.get(idx).is_some_and(|token| token.is_word("the")) {
         idx += 1;
     }
-    if !SAME_COLOR_PREFIX_PATTERN.matches_words(&words[idx..]) {
+    if !SAME_COLOR_PREFIX_PATTERN.matches_prefix(LexedClause::new(&tokens[idx..])) {
         return None;
     }
     idx += 2;
 
-    if SAME_COLOR_MANA_SPENT_TAIL_PATTERN.matches_words(&words[idx..]) {
+    if SAME_COLOR_MANA_SPENT_TAIL_PATTERN.matches_clause(LexedClause::new(&tokens[idx..])) {
         return Some(amount);
     }
 
@@ -222,6 +295,16 @@ pub(crate) fn parse_same_color_mana_spent_to_cast_predicate(words: &[&str]) -> O
 
 pub(super) fn parse_mana_symbol_word(word: &str) -> Option<ManaSymbol> {
     parse_mana_symbol_word_flexible(word)
+}
+
+/// Token-backed view of a captured mana-symbol clause.
+///
+/// Hosts the `word_refs` derivation for mana-spent symbol parsing so the
+/// predicate-side parser can validate symbol words and parse each symbol from
+/// its token text without rebuilding the word slice locally.
+pub(super) fn mana_spent_symbol_clause_words<'a>(symbol_clause: LexedClause<'a>) -> Vec<&'a str> {
+    let symbol_words = symbol_clause.word_refs();
+    symbol_words
 }
 
 #[cfg(test)]

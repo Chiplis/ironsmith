@@ -84,8 +84,9 @@ pub(crate) fn replace_whole_word_case_insensitive(
 pub(crate) use crate::runtime_backend::lexer::OwnedLexToken;
 
 pub(crate) use crate::runtime_backend::ast::{
-    EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst, TriggerSpec,
+    ChooseOneModeAst, EffectAst, PredicateAst, ReturnAsAuraAst, StaticAbilityAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, SubjectVerbSubjectAst,
+    TriggerSpec,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

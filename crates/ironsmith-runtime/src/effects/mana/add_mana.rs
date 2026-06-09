@@ -34,7 +34,8 @@ impl EffectExecutor for AddManaEffect {
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_filter(game, &self.player, ctx)?;
 
-        let mana = credit_mana_symbols_from_context(game, player_id, self.mana.iter().copied(), ctx);
+        let mana =
+            credit_mana_symbols_from_context(game, player_id, self.mana.iter().copied(), ctx);
 
         Ok(mana_added_value_outcome(ctx, player_id, mana))
     }

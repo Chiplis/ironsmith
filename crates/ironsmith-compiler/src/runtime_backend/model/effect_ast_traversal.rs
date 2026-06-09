@@ -135,7 +135,11 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::SelfReplacement { .. } => {}
         EffectAst::ChooseObjects { .. } => {}
         EffectAst::ChooseObjectsBottomOfLibrary { .. } => {}
+        EffectAst::ChooseTaggedObjectsInZone { .. } => {}
         EffectAst::ChooseObjectsAcrossZones { .. } => {}
+        EffectAst::ChooseOneOf { .. } => {}
+        EffectAst::IfEffectDidNotHappen { .. } => {}
+        EffectAst::TagAffected { .. } => {}
         EffectAst::DirectionalAdjacentPlayerControl { .. } => {}
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::RepeatThisProcess => {}
@@ -154,6 +158,8 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::ForEachTargetPlayers { .. } => {}
         EffectAst::ForEachObject { .. } => {}
         EffectAst::ForEachTagged { .. } => {}
+        EffectAst::MoveTaggedGroupToZone { .. } => {}
+        EffectAst::SnapshotLastObjectTag { .. } => {}
         EffectAst::ForEachOpponentDoesNot { .. } => {}
         EffectAst::ForEachPlayerDoesNot { .. } => {}
         EffectAst::ForEachOpponentDid { .. } => {}
@@ -186,6 +192,18 @@ pub(crate) fn for_each_nested_effects(
         } => {
             visit(if_true);
             visit(if_false);
+        }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mode.effects);
+            }
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            visit(std::slice::from_ref(effect.as_ref()));
+            visit(otherwise);
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            visit(std::slice::from_ref(effect.as_ref()));
         }
         nested_effects_variants!(effects) => {
             visit(effects);
@@ -220,6 +238,18 @@ pub(crate) fn for_each_nested_effects_mut(
             visit(if_true);
             visit(if_false);
         }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mut mode.effects);
+            }
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            visit(std::slice::from_mut(effect.as_mut()));
+            visit(otherwise);
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            visit(std::slice::from_mut(effect.as_mut()));
+        }
         nested_effects_variants!(effects) => {
             visit(effects);
         }
@@ -252,6 +282,18 @@ pub(crate) fn try_for_each_nested_effects_mut<E>(
         } => {
             visit(if_true)?;
             visit(if_false)?;
+        }
+        EffectAst::ChooseOneOf { modes } => {
+            for mode in modes {
+                visit(&mut mode.effects)?;
+            }
+        }
+        EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+            visit(std::slice::from_mut(effect.as_mut()))?;
+            visit(otherwise)?;
+        }
+        EffectAst::TagAffected { effect, .. } => {
+            visit(std::slice::from_mut(effect.as_mut()))?;
         }
         nested_effects_variants!(effects) => {
             visit(effects)?;
