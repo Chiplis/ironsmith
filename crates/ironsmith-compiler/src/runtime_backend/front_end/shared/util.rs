@@ -3835,7 +3835,33 @@ pub(crate) fn parse_target_count_range_prefix(
     let (first, first_used) = parse_number(tokens)?;
     let or_idx = first_used;
     if !token_slice_at_is(tokens, or_idx, "or") {
-        return None;
+        if !tokens.get(or_idx).is_some_and(OwnedLexToken::is_comma) {
+            return None;
+        }
+        let (second, second_used) = parse_number(tokens.get(or_idx + 1..)?)?;
+        let second_end = or_idx + 1 + second_used;
+        let or_idx = if tokens.get(second_end).is_some_and(OwnedLexToken::is_comma) {
+            second_end + 1
+        } else {
+            second_end
+        };
+        if !token_slice_at_is(tokens, or_idx, "or") {
+            return None;
+        }
+        let (third, third_used) = parse_number(tokens.get(or_idx + 1..)?)?;
+        if second <= first || third < second {
+            return None;
+        }
+        return Some((
+            ChoiceCount {
+                min: first as usize,
+                max: Some(third as usize),
+                dynamic_x: false,
+                up_to_x: false,
+                random: false,
+            },
+            or_idx + 1 + third_used,
+        ));
     }
     let (second, second_used) = parse_number(&tokens[or_idx + 1..])?;
     if second < first {

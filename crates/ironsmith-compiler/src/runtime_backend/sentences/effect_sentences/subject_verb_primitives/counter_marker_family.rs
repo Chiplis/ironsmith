@@ -87,6 +87,8 @@ pub(crate) const IF_ENTERS_WITH_ADDITIONAL_COUNTER_PATTERN_ATOMS: &[LexPatternAt
     ),
 ];
 const TAGGED_ENTERS_WITH_ADDITIONAL_COUNTER_PREFIXES: &[&[&str]] = &[
+    &["each", "of", "them", "enters", "with"],
+    &["all", "of", "them", "enter", "with"],
     &["that", "card", "enters", "with"],
     &["that", "creature", "enters", "with"],
     &["that", "object", "enters", "with"],
@@ -1358,7 +1360,7 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence_matched(
     }
 
     let Some((count, counter_type)) =
-        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"]])?
+        parse_additional_counter_descriptor_on_target(counter_clause, &[&["it"], &["them"]])?
     else {
         return Ok(None);
     };

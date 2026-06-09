@@ -16809,6 +16809,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
         return Some(compact);
     }
+    if let Some(compact) = describe_move_to_battlefield_with_additional_counters(effects) {
+        return Some(compact);
+    }
 
     if effects.len() >= 2
         && let Some(first) = describe_target_then_look_at_tagged_object(&effect_refs[..2])
@@ -25612,6 +25615,67 @@ fn describe_each_player_return_all_from_their_graveyard_with_counters(
         .unwrap_or(target_text);
     Some(format!(
         "Each player returns {target_text} from their graveyard to the battlefield with an additional {} counter on it",
+        describe_counter_type(put_counters.counter_type),
+    ))
+}
+
+fn describe_move_to_battlefield_with_additional_counters(effects: &[Effect]) -> Option<String> {
+    let [move_effect, counter_effect] = effects else {
+        return None;
+    };
+    let moved_tag = structural_effect_tag(move_effect)?;
+    let move_to_zone = unwrap_structural_effect_tag(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+    {
+        return None;
+    }
+
+    let put_counters = tagged_put_counters_effect(counter_effect)?;
+    if put_counters.distributed
+        || put_counters.target_count.is_some()
+        || !matches!(put_counters.amount, Value::Fixed(1))
+        || !matches!(
+            &put_counters.target,
+            ChooseSpec::Tagged(tag) if tag == moved_tag
+        )
+    {
+        return None;
+    }
+
+    let target_text = if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
+        let target_text = describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+        let from_text = match owner {
+            Some(owner) => format!("{} graveyard", describe_possessive_player_filter(&owner)),
+            None if choose_spec_allows_multiple(&move_to_zone.target) => "graveyards".to_string(),
+            None => "a graveyard".to_string(),
+        };
+        format!("{target_text} from {from_text}")
+    } else {
+        describe_choose_spec(&move_to_zone.target)
+    };
+    let controller_suffix = match move_to_zone.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => {
+            if choose_spec_allows_multiple(&move_to_zone.target) {
+                " under their owners' control"
+            } else {
+                " under its owner's control"
+            }
+        }
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    let entering_subject = if choose_spec_allows_multiple(&move_to_zone.target) {
+        "Each of them enters"
+    } else {
+        "It enters"
+    };
+
+    Some(format!(
+        "Put {target_text} onto the battlefield{controller_suffix}. {entering_subject} with an additional {} counter on it",
         describe_counter_type(put_counters.counter_type),
     ))
 }

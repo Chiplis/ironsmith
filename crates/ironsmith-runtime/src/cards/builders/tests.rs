@@ -29021,6 +29021,198 @@ fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_aberrant_return_oracle_parses_and_renders_enters_with_counters() {
+    assert_oracle_card_parses_strict("Aberrant Return");
+    let def = parse_oracle_card_definition("Aberrant Return");
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("MoveToZoneEffect")
+            && debug.contains("WithCount")
+            && debug.contains("min: 1")
+            && debug.contains("max: Some(3)")
+            && debug.contains("PutCountersEffect")
+            && debug.contains("MinusOneMinusOne"),
+        "Aberrant Return should lower to one-to-three targeted graveyard returns plus -1/-1 counters, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Put one, two, or three target creature cards from graveyards onto the battlefield under your control. Each of them enters with an additional -1/-1 counter on it.",
+        "Aberrant Return compiled text should preserve target count and enter-with-counter wording"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn create_aberrant_return_graveyard_permanent(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    owner: PlayerId,
+    card_types: Vec<CardType>,
+) -> ObjectId {
+    let is_creature = card_types.contains(&CardType::Creature);
+    let mut builder = crate::card::CardBuilder::new(CardId::new(), name).card_types(card_types);
+    if is_creature {
+        builder = builder.power_toughness(PowerToughness::fixed(2, 2));
+    }
+    game.create_object_from_card(&builder.build(), owner, Zone::Graveyard)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn battlefield_object_named(
+    game: &crate::game_state::GameState,
+    name: &str,
+) -> Option<ObjectId> {
+    game.battlefield.iter().copied().find(|id| {
+        game.object(*id)
+            .is_some_and(|object| object.name == name && object.zone == Zone::Battlefield)
+    })
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn replay_aberrant_return_returns_three_target_creatures_with_minus_counters() {
+    let def = parse_oracle_card_definition("Aberrant Return");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let alice_creature = create_aberrant_return_graveyard_permanent(
+        &mut game,
+        "Alice Aberrant Bear",
+        alice,
+        vec![CardType::Creature],
+    );
+    let bob_creature = create_aberrant_return_graveyard_permanent(
+        &mut game,
+        "Bob Aberrant Bear",
+        bob,
+        vec![CardType::Creature],
+    );
+    let second_bob_creature = create_aberrant_return_graveyard_permanent(
+        &mut game,
+        "Bob Aberrant Soldier",
+        bob,
+        vec![CardType::Creature],
+    );
+    create_aberrant_return_graveyard_permanent(
+        &mut game,
+        "Ignored Aberrant Relic",
+        bob,
+        vec![CardType::Artifact],
+    );
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    game.push_to_stack(
+        crate::game_state::StackEntry::new(spell_id, alice).with_targets(vec![
+            crate::game_state::Target::Object(alice_creature),
+            crate::game_state::Target::Object(bob_creature),
+            crate::game_state::Target::Object(second_bob_creature),
+        ]),
+    );
+
+    crate::game_loop::resolve_stack_entry_with(
+        &mut game,
+        &mut crate::decision::SelectFirstDecisionMaker,
+    )
+    .expect("Aberrant Return should resolve with three legal creature-card targets");
+
+    for name in [
+        "Alice Aberrant Bear",
+        "Bob Aberrant Bear",
+        "Bob Aberrant Soldier",
+    ] {
+        let returned = battlefield_object_named(&game, name)
+            .unwrap_or_else(|| panic!("{name} should be returned to the battlefield"));
+        let object = game.object(returned).expect("returned object exists");
+        assert_eq!(
+            game.controller_of(object),
+            alice,
+            "Aberrant Return should put {name} onto the battlefield under its caster's control"
+        );
+        assert_eq!(
+            game.counter_count(returned, crate::object::CounterType::MinusOneMinusOne),
+            1,
+            "{name} should enter with exactly one -1/-1 counter"
+        );
+    }
+
+    assert!(
+        battlefield_object_named(&game, "Ignored Aberrant Relic").is_none(),
+        "noncreature graveyard cards should not be returned by Aberrant Return"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn aberrant_return_target_requirements_reject_noncreatures_and_cap_at_three() {
+    let def = parse_oracle_card_definition("Aberrant Return");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+
+    let creature_targets = (0..4)
+        .map(|idx| {
+            create_aberrant_return_graveyard_permanent(
+                &mut game,
+                &format!("Aberrant Extra Target {idx}"),
+                alice,
+                vec![CardType::Creature],
+            )
+        })
+        .collect::<Vec<_>>();
+    let artifact = create_aberrant_return_graveyard_permanent(
+        &mut game,
+        "Aberrant Illegal Relic",
+        alice,
+        vec![CardType::Artifact],
+    );
+
+    let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let requirements = crate::game_loop::extract_target_requirements_from_program_with_modes(
+        &game,
+        def.spell_effect
+            .as_ref()
+            .expect("Aberrant Return should have spell effects"),
+        alice,
+        Some(spell_id),
+        None,
+    );
+
+    assert_eq!(
+        requirements.len(),
+        1,
+        "Aberrant Return should have one target group"
+    );
+    assert_eq!(
+        requirements[0].min_targets, 1,
+        "Aberrant Return requires at least one target"
+    );
+    assert_eq!(
+        requirements[0].max_targets,
+        Some(3),
+        "Aberrant Return allows at most three targets"
+    );
+    for creature in creature_targets {
+        assert!(
+            requirements[0]
+                .legal_targets
+                .contains(&crate::game_state::Target::Object(creature)),
+            "creature cards in graveyards should be legal Aberrant Return targets"
+        );
+    }
+    assert!(
+        !requirements[0]
+            .legal_targets
+            .contains(&crate::game_state::Target::Object(artifact)),
+        "noncreature graveyard cards should not be legal Aberrant Return targets"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_named_enters_tapped_and_doesnt_untap_fails_strictly() {
     let err = CardDefinitionBuilder::new(CardId::new(), "Grimgrin Variant")
         .parse_text("Grimgrin enters tapped and doesn't untap during your untap step.")

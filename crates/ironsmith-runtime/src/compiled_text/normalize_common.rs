@@ -7403,11 +7403,14 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                         if filter.single_graveyard {
                             " in single graveyard".to_string()
                         } else {
-                            " in graveyard".to_string()
+                            " in a graveyard".to_string()
                         }
                     }
                 };
-                if let Some(stripped) = text.strip_suffix(&suffix) {
+                if let Some(stripped) = text
+                    .strip_suffix(&suffix)
+                    .or_else(|| text.strip_suffix(" in graveyard"))
+                {
                     return ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
                         filter, stripped,
                     ));
@@ -7440,11 +7443,14 @@ pub(super) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
                         if filter.single_graveyard {
                             " in single graveyard".to_string()
                         } else {
-                            " in graveyard".to_string()
+                            " in a graveyard".to_string()
                         }
                     }
                 };
-                if let Some(stripped) = text.strip_suffix(&suffix) {
+                if let Some(stripped) = text
+                    .strip_suffix(&suffix)
+                    .or_else(|| text.strip_suffix(" in graveyard"))
+                {
                     let stripped = strip_leading_article(stripped);
                     return format!("all {}", pluralize_relative_object_phrase(stripped));
                 }
