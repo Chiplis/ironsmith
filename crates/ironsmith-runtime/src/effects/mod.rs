@@ -136,8 +136,9 @@ pub(crate) use counters::{
 pub use damage::{
     ClearDamageEffect, DealDamageEffect, DealDistributedDamageEffect, PreventNextTimeDamageEffect,
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
-    RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageToTargetEffect,
-    RedirectNextTimeDamageDestination, RedirectNextTimeDamageSource,
+    RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
+    RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
+    RedirectNextTimeDamageSource,
     RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{

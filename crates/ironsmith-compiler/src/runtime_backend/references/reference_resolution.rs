@@ -762,8 +762,7 @@ fn advance_reference_frame_for_effect(
                 SubjectVerbActionAst::GainControl { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "controlled")?;
                 }
-                SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { target, .. }
-                | SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
+                SubjectVerbActionAst::RedirectNextTimeDamageToSource { target, .. }
                 | SubjectVerbActionAst::RedirectAllDamageThisTurnBySourceToSourceController {
                     source: target,
                 }
@@ -772,6 +771,18 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::PreventDamageToTargetPutCounters { target, .. }
                 | SubjectVerbActionAst::PutOrRemoveCounters { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "targeted")?;
+                }
+                SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                    protected_target,
+                    destination_target,
+                    ..
+                } => {
+                    if let Some(target) = protected_target {
+                        maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    }
+                    if let Some(target) = destination_target {
+                        maybe_tag_target(target, frame, id_gen, "targeted")?;
+                    }
                 }
                 SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. } => {
                     maybe_tag_target(target, frame, id_gen, "exiled")?;
@@ -2933,10 +2944,20 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                 bind_operand(left) + bind_operand(right)
             }
             SubjectVerbActionAst::RevealTop | SubjectVerbActionAst::ExtraTurnAfterTurn { .. } => 0,
-            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount, target } => {
-                bind_unresolved_it_in_value(amount, seed_tag)
-                    + bind_unresolved_it_in_target(target, seed_tag)
-            }
+            SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                amount,
+                protected_target,
+                destination_target,
+                ..
+            } => bind_unresolved_it_in_value(amount, seed_tag)
+                + protected_target
+                    .as_mut()
+                    .map(|target| bind_unresolved_it_in_target(target, seed_tag))
+                    .unwrap_or(0)
+                + destination_target
+                    .as_mut()
+                    .map(|target| bind_unresolved_it_in_target(target, seed_tag))
+                    .unwrap_or(0),
             SubjectVerbActionAst::RedirectNextTimeDamageToSource {
                 source,
                 target,

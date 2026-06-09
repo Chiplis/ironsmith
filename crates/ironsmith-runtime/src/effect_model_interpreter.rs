@@ -1044,9 +1044,33 @@ where
                 "redirect next damage to target without an amount".to_string(),
             ));
         };
-        return Ok(Effect::new(
-            crate::effects::RedirectNextDamageToTargetEffect::new(amount, payload.target.clone()),
-        ));
+        let effect = match payload.destination {
+            ironsmith_core::RedirectNextDamageDestination::Controller => {
+                let Some(protected_target) = payload.protected_target.clone() else {
+                    return Err(hooks.unsupported_effect(
+                        "redirect next damage to controller without a protected target".to_string(),
+                    ));
+                };
+                crate::effects::RedirectNextDamageToTargetEffect::to_controller(
+                    amount,
+                    protected_target,
+                )
+            }
+            ironsmith_core::RedirectNextDamageDestination::TargetObject => {
+                let Some(destination_target) = payload.destination_target.clone() else {
+                    return Err(hooks.unsupported_effect(
+                        "redirect next damage to target object without a target".to_string(),
+                    ));
+                };
+                let mut effect = crate::effects::RedirectNextDamageToTargetEffect::new(
+                    amount,
+                    destination_target,
+                );
+                effect.protected_target = payload.protected_target.clone();
+                effect
+            }
+        };
+        return Ok(Effect::new(effect));
     }
     if let Some(payload) =
         M::downcast_ref::<ironsmith_core::RedirectNextTimeDamageToSourceEffect>(&effect)

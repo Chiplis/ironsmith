@@ -36810,6 +36810,31 @@ fn jade_monolith_parses_and_renders_source_damage_redirect_to_you() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn vassals_duty_parses_and_renders_protected_target_redirect_to_you() {
+    let def = parse_oracle_card_definition("Vassal's Duty");
+
+    let joined = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "the next 1 damage that would be dealt to target legendary creature you control this turn is dealt to you instead"
+        ),
+        "expected Vassal's Duty redirect text in compiled output, got {joined}"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RedirectNextDamageToTargetEffect")
+            && debug.contains("protected_target: Some")
+            && debug.contains("destination: Controller")
+            && debug.contains("Legendary"),
+        "Vassal's Duty should lower to partial damage redirection from a legendary protected target to you, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn generals_regalia_parses_and_renders_redirect_to_target_creature_you_control() {
     let def = parse_oracle_card_definition("General's Regalia");
 

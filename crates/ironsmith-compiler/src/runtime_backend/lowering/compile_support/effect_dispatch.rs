@@ -2059,14 +2059,58 @@ fn compile_subject_verb_effect(
             );
             Ok((vec![effect], Vec::new()))
         }
-        SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget { amount, target } => {
+        SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+            amount,
+            protected_target,
+            destination,
+            destination_target,
+        } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            compile_effect_for_target(target, ctx, |spec| {
-                Effect::new(crate::effects::RedirectNextDamageToTargetEffect::new(
-                    amount.clone(),
-                    spec,
-                ))
-            })
+            let refs = current_reference_env(ctx);
+            let (protected_spec, mut choices) = if let Some(protected_target) = protected_target {
+                let (spec, choices) = resolve_target_spec_with_choices(protected_target, &refs)?;
+                (Some(spec), choices)
+            } else {
+                (None, Vec::new())
+            };
+            let effect = match destination {
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::Controller => {
+                    let protected_spec = protected_spec.ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "missing redirected-next damage protected target".to_string(),
+                        )
+                    })?;
+                    crate::effects::RedirectNextDamageToTargetEffect::to_controller(
+                        amount,
+                        protected_spec,
+                    )
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::TargetObject => {
+                    let destination_target = destination_target.as_ref().ok_or_else(|| {
+                        CardTextError::ParseError(
+                            "missing redirected-next damage destination target".to_string(),
+                        )
+                    })?;
+                    let (destination_spec, destination_choices) =
+                        resolve_target_spec_with_choices(destination_target, &refs)?;
+                    for choice in destination_choices {
+                        push_choice(&mut choices, choice);
+                    }
+                    let mut effect = crate::effects::RedirectNextDamageToTargetEffect::new(
+                        amount,
+                        destination_spec,
+                    );
+                    effect.protected_target = protected_spec;
+                    effect
+                }
+                crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceObject
+                | crate::cards::builders::RedirectNextTimeDamageDestinationAst::SourceController => {
+                    return Err(CardTextError::ParseError(
+                        "unsupported redirected-next damage destination".to_string(),
+                    ));
+                }
+            };
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::RedirectNextTimeDamageToSource {
             source,

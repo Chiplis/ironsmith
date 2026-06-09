@@ -17,7 +17,9 @@ pub use deal_distributed_damage::DealDistributedDamageEffect;
 pub use prevent_next_time_damage::{
     PreventNextTimeDamageEffect, PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
 };
-pub use redirect_next_damage_to_target::RedirectNextDamageToTargetEffect;
+pub use redirect_next_damage_to_target::{
+    RedirectNextDamageDestination, RedirectNextDamageToTargetEffect,
+};
 pub use redirect_next_time_damage_to_source::{
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextTimeDamageDestination,
     RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
