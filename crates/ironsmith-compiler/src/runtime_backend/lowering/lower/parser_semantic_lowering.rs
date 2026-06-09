@@ -2368,7 +2368,41 @@ pub(crate) fn lower_keyword_special_cases(
     if let Some(chunk) = try_lower_optional_behold_additional_cost(line, parse_tokens)? {
         return Ok(Some(chunk));
     }
+    if let Some(chunk) = try_lower_optional_waterbend_additional_cost(line, parse_tokens)? {
+        return Ok(Some(chunk));
+    }
     Ok(None)
+}
+
+pub(crate) fn try_lower_optional_waterbend_additional_cost(
+    line: &RewriteKeywordLine,
+    parse_tokens: &[OwnedLexToken],
+) -> Result<Option<LineAst>, CardTextError> {
+    if line.kind != RewriteKeywordLineKind::AdditionalCost {
+        return Ok(None);
+    }
+
+    let Some(effect_tokens) = additional_cost_tail_tokens(parse_tokens) else {
+        return Ok(None);
+    };
+    let stripped = trim_lexed_commas(effect_tokens);
+    let words = token_word_refs(stripped);
+    if !word_slice_starts_with(&words, &["you", "may", "waterbend"]) {
+        return Ok(None);
+    }
+
+    let Some(generic) = stripped
+        .iter()
+        .find_map(|token| token.mana_group_inner().and_then(|inner| inner.parse::<u32>().ok()))
+    else {
+        return Ok(None);
+    };
+
+    let total_cost =
+        crate::runtime_backend::lowering::compile_support::waterbend_optional_total_cost(generic);
+    Ok(Some(LineAst::OptionalCost(
+        OptionalCost::custom(line.info.raw_line.trim(), total_cost).into(),
+    )))
 }
 
 fn try_lower_partner_variant_keyword(

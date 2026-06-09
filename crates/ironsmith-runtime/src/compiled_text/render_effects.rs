@@ -44615,7 +44615,6 @@ pub(super) fn describe_imprint_from_hand_phrase(
 
 pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> String {
     let label = cost.label.as_str();
-    let cost_text = describe_cost_list(cost.cost.costs());
     if label
         .to_ascii_lowercase()
         .starts_with("as an additional cost to cast this spell")
@@ -44625,6 +44624,9 @@ pub(super) fn describe_optional_cost_line(cost: &crate::cost::OptionalCost) -> S
     if label.to_ascii_lowercase().starts_with("gift ") {
         return label.trim().to_string();
     }
+    // Alternative (one-of) payment costs have no flat cost list; the cases that
+    // reach this point are all flat costs, so it is safe to read them here.
+    let cost_text = describe_cost_list(cost.cost.costs());
     if label.to_ascii_lowercase().starts_with("kicker ") {
         return if cost_text.trim().is_empty() {
             "Kicker".to_string()

@@ -2197,6 +2197,58 @@ fn generic_mana_cost(amount: u32) -> Option<ManaCost> {
     }
 }
 
+/// Build the alternative payment branches for a "waterbend {N}" cost. The
+/// player may pay the {N} generic with mana, or tap untapped artifacts/creatures
+/// they control (each paying {1}), so the cost expands into N+1 branches: pay
+/// all the mana (0 taps), down to fully paying by tapping N permanents.
+pub(crate) fn waterbend_optional_total_cost(generic: u32) -> TotalCost {
+    let tag = TagKey::from(format!("waterbend_cost_{generic}"));
+    let mut branches = Vec::new();
+    for taps in 0..=generic {
+        if taps == 0 {
+            branches.push(TotalCost::mana(
+                generic_mana_cost(generic).unwrap_or_else(ManaCost::new),
+            ));
+            continue;
+        }
+        let mana_remaining = generic - taps;
+        let mut costs = Vec::new();
+        if mana_remaining > 0
+            && let Some(mana) = generic_mana_cost(mana_remaining)
+        {
+            costs.push(crate::costs::Cost::mana(mana));
+        }
+
+        let artifact_filter = ObjectFilter {
+            card_types: vec![CardType::Artifact],
+            ..ObjectFilter::default()
+        };
+        let creature_filter = ObjectFilter {
+            card_types: vec![CardType::Creature],
+            ..ObjectFilter::default()
+        };
+        let mut filter = ObjectFilter::default();
+        filter.untapped = true;
+        filter.controller = Some(PlayerFilter::You);
+        filter.zone = Some(Zone::Battlefield);
+        filter.any_of = vec![artifact_filter, creature_filter];
+
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::exactly(taps as usize),
+            PlayerFilter::You,
+            tag.clone(),
+        )
+        .in_zone(Zone::Battlefield);
+        costs.push(crate::costs::Cost::effect(Effect::new(choose)));
+        costs.push(crate::costs::Cost::effect(Effect::new(
+            crate::effects::TapEffect::with_spec(ChooseSpec::Tagged(tag.clone())),
+        )));
+        branches.push(TotalCost::from_costs(costs));
+    }
+    TotalCost::one_of(branches)
+}
+
 fn equipment_equip_ability(amount: u32) -> Option<Ability> {
     let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().you_control()));
     let total_cost = if amount == 0 {
