@@ -115,3 +115,82 @@ These three are genuine partial wins: the specific defect each PR targeted is fi
 - Merges were made **locally** on `main`; nothing was pushed to `origin` and no PRs were closed on GitHub (say the word and I'll push / close them).
 - Two pre-existing generated artifacts (`web/wasm_demo/pkg/ironsmith_bg.wasm`, the frontend cards checksum) were stashed before merging and are untouched.
 - `Maddening Cacophony`, `Will Kenrith`, `Unbound Flourishing`, `Decode Transmissions` compile with `mismatch=false` but sub-1.0 similarity — semantically correct, wording differs from the oracle text.
+
+---
+
+# `cargo nextest run --workspace --release --all-targets --no-fail-fast`
+
+**Result: `8657 tests run: 8600 passed, 57 failed, 3 skipped`.**
+
+(One extra fix was required just to get the full workspace to compile: the non-default-member
+`ironsmith-wasm` crate had exhaustive `match`es over `SpecialAction` and Creeping Peeper (#711)
+added a new `UnlockRoomDoor` variant — handled in a follow-up commit.)
+
+The 57 failures were classified by checking whether each failing test exists in the baseline
+(`93ee31241`) source:
+
+## A. Regressions — 40 tests that PASS on baseline `main` but FAIL after the merge
+
+These are the real concern: the merge changed shared parser behavior and tripped architectural
+ratchet lints.
+
+**9 architectural ratchet lints** (`ironsmith-tools::workspace_boundaries`) — the merged PRs were
+written in `main`'s *pre-refactor* word-based idiom (`word_slice_eq`, `.contains`, `token_word_refs`
+cursor walks), and several of my conflict resolutions kept that idiom. The ratchets require
+clause-shape / token-backed matching and an allowlist of cursor walks:
+`runtime_backend_matches_words_is_clause_shape_primitive_only`,
+`runtime_backend_word_cursor_walks_are_allowlisted`,
+`shared_util_production_shape_gates_use_token_backed_matching`,
+`whole_clause_shape_gates_use_lexed_clause_matching`,
+`creation_handlers_route_shape_gates_through_lexed_clauses`,
+`etb_clause_shape_guards_match_captured_clauses`,
+`keyword_static_as_enters_simple_choice_parsers_use_token_tail_wrapper`,
+`keyword_static_trigger_duplication_and_untap_if_tails_use_token_shapes`,
+`player_cards_in_hand_conditions_use_shared_capture_parser`.
+
+**31 existing card / effect-parse regressions** — unrelated cards whose parsing/rendering changed.
+The clearest example: **Inferno Titan** now errors `unsupported divided-damage target count
+('divided as you choose among one two or three targets')`. Full list:
+`captain_america_first_avenger_…`, `captain_america_throw_…`, `commander_liara_portyr_…`,
+`gnarled_sage_…`, `mighty_servant_of_leuk_o_…`, `mighty_servant_two_creature_crew_…`,
+`minds_dilation_…`, `octavia_living_thesis_…`, `oracle_render_regression_named_cards_compile_cleanly`,
+`parse_conditional_anthem_and_haste_…`, `parse_conditional_anthem_and_keyword_…`,
+`parse_day_of_black_sun_…`, `parse_descend_condition_…`, `parse_exile_top_card_of_target_library_…`,
+`parse_metalcraft_self_buff_…`, `parse_oracle_gwen_stacy_ghost_spider_…`, `parse_orzhov_advokist_…`,
+`parse_rejects_divided_damage_distribution_clause`, `parse_the_sixth_doctor_…`,
+`parse_the_stasis_coffin_…`, `parse_trigger_with_and_or_subtype_list_…`,
+`parse_until_end_of_turn_you_may_cast_that_card`, `parse_where_x_this_ability_resolved_…`,
+`player_subject_role_boundary_regressions_…`, `rampaging_cyclops_…`,
+`render_source_surface_for_hard_triggered_and_static_clauses`, `saving_grace_…`,
+`scryfall_inferno_cards_parse_without_unsupported_markers`, `stoic_sphinx_…`,
+`test_parse_labeled_leading_condition_with_gets_and_has`, `urabrask_heretic_praetor_…`.
+
+## B. New PR-added tests that don't pass — 17 tests (not baseline regressions)
+
+These are tests the PRs themselves added; they fail because the graft is incomplete or produces
+output that differs from what the PR's test asserts (consistent with §"The 7 cards that still fail"):
+Mindstorm Crown (3), Katara (5, incl. the unsupported `waterbend` cost), Captain Howler (3),
+Will Kenrith (2, strict text differs at sim 0.98), Unbound Flourishing (1, sim 0.88),
+Tangle Wire / fade-counter (3 — produces `CountersOnSource(Fade)` where the test expects a
+distinct "source fade counter count" value).
+
+## Root cause & recommendation
+
+A targeted check (reverting the two whole-file `--theirs` resolutions, #688/#690) recovered only
+2 of the 48 sampled failures, so the regressions are **spread across many of the word-idiom
+grafts**, not one file. The underlying issue is structural: these 42 PRs were authored against a
+`main` that has since been heavily refactored (winnow/logos rewrite + `&str`→`ClauseShape`
+migration + token-vs-word API flip). Resolving the conflicts in a way that compiles and adds the
+target cards still leaves behavior/lint regressions because the PRs' parsing approach predates the
+refactor.
+
+**This merge is therefore not production-ready as-is.** Recommended next steps (not done here, as
+the request was to surface regressions):
+1. Re-express the surviving grafts in the current clause-shape / token idiom to clear the 9 ratchet
+   lints.
+2. `git bisect` the 31 card regressions across the merge commits and either fix or downgrade the
+   offending resolutions to `-s ours` (dropping that card rather than regressing others).
+3. Decide per-card whether the 7 still-failing / partially-grafted cards are worth completing.
+
+Nothing was pushed to `origin`; all work is on the local `main`. The full per-merge resolution
+log is preserved in the commit history (`git log 93ee31241..HEAD`).
