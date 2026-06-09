@@ -161,6 +161,7 @@ pub enum Subtype {
     Ally,
     Alien,
     Angel,
+    Antelope,
     Ape,
     Army,
     Archer,
@@ -462,6 +463,7 @@ impl Subtype {
             Subtype::Ally,
             Subtype::Alien,
             Subtype::Angel,
+            Subtype::Antelope,
             Subtype::Ape,
             Subtype::Army,
             Subtype::Archer,
@@ -801,6 +803,7 @@ impl Subtype {
                 | Subtype::Ally
                 | Subtype::Alien
                 | Subtype::Angel
+                | Subtype::Antelope
                 | Subtype::Ape
                 | Subtype::Army
                 | Subtype::Archer

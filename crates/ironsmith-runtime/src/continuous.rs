@@ -4748,7 +4748,11 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
                 .iter()
                 .any(|a| a.id() == StaticAbilityId::CantBlock)
             {
-                chars.static_abilities.push(StaticAbility::cant_block());
+                let ability = StaticAbility::cant_block();
+                chars
+                    .abilities
+                    .push(crate::ability::Ability::static_ability(ability.clone()));
+                chars.static_abilities.push(ability);
             }
             chars.abilities.push(crate::ability::Ability::triggered(
                 crate::triggers::Trigger::this_attacks(),
@@ -4791,6 +4795,9 @@ fn add_abilities_from_counters(object: &Object, chars: &mut CalculatedCharacteri
             };
 
             if let Some(sa) = ability {
+                chars
+                    .abilities
+                    .push(crate::ability::Ability::static_ability(sa.clone()));
                 chars.static_abilities.push(sa);
             }
         }
@@ -5079,6 +5086,12 @@ mod tests {
                 .any(|a| a.id() == StaticAbilityId::Deathtouch),
             "Creature with deathtouch counter should have deathtouch ability"
         );
+        assert!(
+            extract_static_abilities(&chars.abilities)
+                .iter()
+                .any(|a| a.id() == StaticAbilityId::Deathtouch),
+            "ability-counter grants must survive static ability extraction from abilities"
+        );
     }
 
     #[test]
@@ -5137,6 +5150,13 @@ mod tests {
                 .any(|a| a.id() == StaticAbilityId::Vigilance)
         );
         assert_eq!(chars.static_abilities.len(), 3);
+
+        let extracted = extract_static_abilities(&chars.abilities);
+        assert!(extracted.iter().any(|a| a.id() == StaticAbilityId::Flying));
+        assert!(extracted.iter().any(|a| a.id() == StaticAbilityId::Trample));
+        assert!(extracted
+            .iter()
+            .any(|a| a.id() == StaticAbilityId::Vigilance));
     }
 
     #[test]

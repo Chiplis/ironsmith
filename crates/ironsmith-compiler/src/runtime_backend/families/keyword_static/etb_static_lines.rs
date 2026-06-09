@@ -811,6 +811,20 @@ pub(crate) fn parse_enters_with_counters_line(
             after_with = &after_with[and_with_end..];
         }
     }
+
+    if let Some(choice) = parse_enters_with_counter_choice_tokens(after_with) {
+        if condition.is_some() || !added_abilities.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported conditional self ETB counter choice clause (clause: '{}')",
+                full_words.join(" ")
+            )));
+        }
+        return Ok(Some(StaticAbility::enters_with_counter_choice(
+            choice.counter_types,
+            choice.count,
+        )));
+    }
+
     let (mut count, used) = if after_with
         .first()
         .is_some_and(|token| etb_token_word_is_any(token, ETB_ARTICLE_WORDS))
@@ -1050,6 +1064,66 @@ fn parse_enters_with_counter_conjunction_tail_tokens(
 
     (!counters.is_empty() && !rest.iter().any(|token| token.as_word().is_some()))
         .then_some(counters)
+}
+
+struct EntersWithCounterChoiceTokens {
+    counter_types: Vec<CounterType>,
+    count: Value,
+}
+
+fn parse_enters_with_counter_choice_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EntersWithCounterChoiceTokens> {
+    let words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    if !words.starts_with(&["your", "choice", "of"]) {
+        return None;
+    }
+
+    let mut idx = 3usize;
+    let mut counter_types = Vec::new();
+    loop {
+        while tokens
+            .get(idx)
+            .is_some_and(|token| ETB_ARTICLE_WORD_PATTERN.matches_token(token))
+        {
+            idx += 1;
+        }
+        let counter_end = tokens[idx..]
+            .iter()
+            .position(|token| ETB_COUNTER_OR_COUNTERS_WORD_PATTERN.matches_token(token))?
+            + idx;
+        let counter_tokens = &tokens[idx..=counter_end];
+        let counter_type = parse_counter_type_from_tokens(counter_tokens)?;
+        counter_types.push(counter_type);
+        idx = counter_end + 1;
+
+        if tokens.get(idx).is_some_and(|token| token.is_comma()) {
+            idx += 1;
+        }
+        if tokens.get(idx).and_then(OwnedLexToken::as_word) == Some("or") {
+            idx += 1;
+            continue;
+        }
+        break;
+    }
+
+    let tail_tokens = trim_commas(&tokens[idx..]);
+    let mut tail = tail_tokens.as_slice();
+    if token_slice_first_is(tail, "on") {
+        tail = &tail[1..];
+    }
+    if token_slice_first_is(tail, "it") {
+        tail = &tail[1..];
+    }
+    let tail_has_words = tail.iter().any(|token| token.as_word().is_some());
+    if counter_types.len() < 2 || tail_has_words {
+        return None;
+    }
+
+    Some(EntersWithCounterChoiceTokens {
+        counter_types,
+        count: Value::Fixed(1),
+    })
 }
 
 fn parse_enters_with_added_abilities_tail(tokens: &[OwnedLexToken]) -> Option<Vec<Ability>> {

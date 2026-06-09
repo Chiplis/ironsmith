@@ -59,6 +59,35 @@ fn apply_tribute_response(
     apply_trait_enter_with_counters(&event, counter_type, count, &[], &[]).unwrap_or(event)
 }
 
+fn apply_enter_counter_choice_response(
+    game: &GameState,
+    event: Event,
+    response: &InteractiveReplacementResponse,
+    source: ObjectId,
+    counter_types: &[CounterType],
+    count: &crate::effect::Value,
+) -> Event {
+    let Some(counter_type) = response
+        .selected_option_index()
+        .and_then(|index| counter_types.get(index))
+        .copied()
+        .or_else(|| counter_types.first().copied())
+    else {
+        return event;
+    };
+    let resolved_count = application::resolve_value_for_etb_for_choice(count, game, source);
+    apply_trait_enter_with_counters(&event, counter_type, resolved_count, &[], &[]).unwrap_or(event)
+}
+
+impl InteractiveReplacementResponse {
+    fn selected_option_index(&self) -> Option<usize> {
+        match self {
+            InteractiveReplacementResponse::Options(selected) => selected.first().copied(),
+            _ => None,
+        }
+    }
+}
+
 pub(super) fn tribute_opponents(game: &GameState, controller: PlayerId) -> Vec<PlayerId> {
     let mut opponents = game
         .players
@@ -74,6 +103,35 @@ fn tribute_source_name(game: &GameState, source: ObjectId) -> String {
     game.object(source)
         .map(|object| object.name.clone())
         .unwrap_or_else(|| "this creature".to_string())
+}
+
+pub(super) fn counter_choice_context(
+    game: &GameState,
+    source: ObjectId,
+    controller: PlayerId,
+    counter_types: &[CounterType],
+) -> crate::decisions::context::DecisionContext {
+    let source_name = tribute_source_name(game, source);
+    let options = counter_types
+        .iter()
+        .enumerate()
+        .map(|(index, counter_type)| {
+            crate::decisions::context::SelectableOption::new(
+                index,
+                format!("{} counter", counter_type.description()),
+            )
+        })
+        .collect();
+    crate::decisions::context::DecisionContext::SelectOptions(
+        crate::decisions::context::SelectOptionsContext::new(
+            controller,
+            Some(source),
+            format!("Choose a counter type for {source_name}"),
+            options,
+            1,
+            1,
+        ),
+    )
 }
 
 pub(super) fn tribute_boolean_context(
@@ -3231,6 +3289,21 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                             );
                             continue;
                         }
+                        if let ReplacementAction::EnterWithCounterChoice {
+                            counter_types,
+                            count,
+                        } = &chosen_effect.replacement
+                        {
+                            current_event = apply_enter_counter_choice_response(
+                                game,
+                                current_event,
+                                &response,
+                                chosen_effect.source,
+                                counter_types,
+                                count,
+                            );
+                            continue;
+                        }
                         let interactive_result = continue_interactive_replacement(
                             game,
                             &response,
@@ -3307,6 +3380,22 @@ pub fn process_etb_with_event_and_dm_with_initial_counters(
                         &paid_label,
                         &mut paid_labels,
                         dm,
+                    );
+                    continue;
+                }
+                if let Some(ReplacementAction::EnterWithCounterChoice {
+                    counter_types,
+                    count,
+                }) = find_effect_for_choice(game, &current_additional_effects, effect_id)
+                    .map(|effect| effect.replacement)
+                {
+                    current_event = apply_enter_counter_choice_response(
+                        game,
+                        *event,
+                        &response,
+                        object_id,
+                        &counter_types,
+                        &count,
                     );
                     continue;
                 }

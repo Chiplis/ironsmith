@@ -107,6 +107,25 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::EnterWithCounterChoice { counter_types, .. } => {
+            if counter_types.is_empty() {
+                return TraitApplyResult::Unchanged(event);
+            }
+            TraitApplyResult::NeedsInteraction {
+                decision_ctx: super::counter_choice_context(
+                    game,
+                    effect.source,
+                    effect.controller,
+                    counter_types,
+                ),
+                redirect_zone: Zone::Battlefield,
+                effect_id: effect.id,
+                object_id: effect.source,
+                filter: None,
+                destinations: None,
+            }
+        }
+
         ReplacementAction::Tribute { count, .. } => {
             let opponents = super::tribute_opponents(game, effect.controller);
             if opponents.is_empty() {
@@ -954,6 +973,14 @@ fn resolve_value_for_etb(
     source: crate::ids::ObjectId,
 ) -> u32 {
     resolve_value_for_replacement(count, game, source)
+}
+
+pub(super) fn resolve_value_for_etb_for_choice(
+    count: &crate::effect::Value,
+    game: &GameState,
+    source: crate::ids::ObjectId,
+) -> u32 {
+    resolve_value_for_etb(count, game, source)
 }
 
 fn resolve_value_for_replacement(

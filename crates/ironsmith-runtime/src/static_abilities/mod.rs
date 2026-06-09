@@ -2172,6 +2172,16 @@ impl StaticAbility {
         Self::new(EntersWithCounters::new(counter_type, count))
     }
 
+    pub fn enters_with_counter_choice(
+        counter_types: Vec<crate::object::CounterType>,
+        count: crate::effect::Value,
+    ) -> Self {
+        Self::new(crate::static_abilities::misc::EntersWithCounterChoice::new(
+            counter_types,
+            count,
+        ))
+    }
+
     pub fn enters_with_counters_if_condition(
         counter_type: crate::object::CounterType,
         count: crate::effect::Value,
