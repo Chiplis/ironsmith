@@ -526,7 +526,7 @@ pub(crate) fn parse_discard(
     if let Some((count, used)) = parse_discard_number_of_cards_equal_count(tokens) {
         let trailing_tokens = trim_commas(&tokens[used..]);
         let trailing_words = crate::runtime_backend::token_word_refs(&trailing_tokens);
-        let random = DISCARD_AT_RANDOM_PATTERN.matches_words(&trailing_words);
+        let random = word_slice_eq(&trailing_words, DISCARD_AT_RANDOM_WORDS);
         if !trailing_words.is_empty() && !random {
             return Err(CardTextError::ParseError(format!(
                 "unsupported trailing discard clause (clause: '{}')",
