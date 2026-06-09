@@ -162,6 +162,8 @@ const THIS_BECOMES_MONSTROUS_TRIGGER_PATTERN: ClauseShape<'static> = clause_shap
             &["becomes", "monstrous"],
         ]
 );
+const CREATE_OR_CREATES_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact_any & [&["create"], &["creates"]]);
 const THIS_MUTATES_TRIGGER_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
@@ -2031,6 +2033,28 @@ pub(crate) fn parse_trigger_clause_lexed(
             if trigger_clause_shape_matches_words(&gifted_words, GIFT_TAIL_PATTERN) {
                 return Ok(TriggerSpec::PlayerGivesGift(player));
             }
+        }
+    }
+
+    if let Some(create_idx) = find_token_shape(tokens, &CREATE_OR_CREATES_PATTERN) {
+        let subject_tokens = &tokens[..create_idx];
+        let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);
+        let subject_words = subject_word_view.to_word_refs();
+        if let Some(player) = parse_trigger_subject_player_filter(&subject_words) {
+            let object_tokens = trim_commas(&tokens[create_idx + 1..]);
+            let one_or_more = has_leading_one_or_more(&object_tokens);
+            let object_tokens = strip_leading_one_or_more_lexed(&object_tokens);
+            let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported token-created trigger filter (clause: '{}')",
+                    words.join(" ")
+                ))
+            })?;
+            return Ok(TriggerSpec::TokensCreated {
+                player,
+                filter,
+                one_or_more,
+            });
         }
     }
 

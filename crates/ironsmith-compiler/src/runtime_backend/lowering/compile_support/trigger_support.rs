@@ -212,6 +212,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::PlayerSacrifices { player, filter } => {
             Trigger::player_sacrifices(player, filter)
         }
+        TriggerSpec::TokensCreated {
+            player,
+            filter,
+            one_or_more,
+        } => Trigger::tokens_created(player, filter, one_or_more),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
         TriggerSpec::Dies(filter) => Trigger::dies(filter),
         TriggerSpec::DiesOneOrMore(filter) => Trigger::new(
@@ -521,6 +526,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         | TriggerSpec::PlayerRollsHighestNaturalResult { .. }
         | TriggerSpec::PlayerRollsDie { .. }
         | TriggerSpec::PlayerSacrifices { .. }
+        | TriggerSpec::TokensCreated { .. }
         | TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
@@ -598,6 +604,13 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::PlayerRollsDie { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::AbilityActivated { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::PlayerSacrifices { .. } => Some(PlayerFilter::IteratedPlayer),
+        TriggerSpec::TokensCreated { player, .. } => {
+            if *player == PlayerFilter::Any {
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                Some(player.clone())
+            }
+        }
         TriggerSpec::ThisDealsDamageToPlayer { .. }
         | TriggerSpec::DealsDamageToPlayer { .. }
         | TriggerSpec::DealsNoncombatDamageToPlayer { .. }
@@ -692,6 +705,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. }
+            | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,
             TriggerSpec::StateBased { .. } => false,
             TriggerSpec::Either(left, right) => {

@@ -240,6 +240,11 @@ pub enum TriggerKind {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    TokensCreated {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        one_or_more: bool,
+    },
     Dies {
         filter: ObjectFilter,
     },
@@ -893,6 +898,16 @@ impl Trigger {
         Self::typed(
             "player_sacrifices",
             TriggerKind::PlayerSacrifices { player, filter },
+        )
+    }
+    pub fn tokens_created(player: PlayerFilter, filter: ObjectFilter, one_or_more: bool) -> Self {
+        Self::typed(
+            "tokens_created",
+            TriggerKind::TokensCreated {
+                player,
+                filter,
+                one_or_more,
+            },
         )
     }
     pub fn dies(filter: ObjectFilter) -> Self {

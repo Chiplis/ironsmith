@@ -261,6 +261,11 @@ pub(crate) enum TriggerSpec {
         player: PlayerFilter,
         filter: ObjectFilter,
     },
+    TokensCreated {
+        player: PlayerFilter,
+        filter: ObjectFilter,
+        one_or_more: bool,
+    },
     LeavesBattlefield(ObjectFilter),
     Dies(ObjectFilter),
     DiesOneOrMore(ObjectFilter),

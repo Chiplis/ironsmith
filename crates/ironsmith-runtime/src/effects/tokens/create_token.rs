@@ -77,7 +77,7 @@ impl EffectExecutor for CreateTokenEffect {
             game,
             controller_id,
             base_count,
-            Some(token_preview),
+            Some(token_preview.clone()),
             ctx.cause.clone(),
             &mut ctx.decision_maker,
         );
@@ -142,6 +142,22 @@ impl EffectExecutor for CreateTokenEffect {
 
                 schedule_token_cleanup(game, ctx, entered_id, controller_id, cleanup_options)?;
             }
+        }
+
+        let primary_created_count = created_ids.len() as u32;
+        if primary_created_count > 0 {
+            game.queue_trigger_event(
+                ctx.provenance,
+                crate::triggers::TriggerEvent::new_with_provenance(
+                    crate::events::CreateTokensEvent::with_token_cause(
+                        controller_id,
+                        primary_created_count,
+                        token_preview,
+                        ctx.cause.clone(),
+                    ),
+                    ctx.provenance,
+                ),
+            );
         }
 
         let additional_ids = create_replacement_additional_tokens(
