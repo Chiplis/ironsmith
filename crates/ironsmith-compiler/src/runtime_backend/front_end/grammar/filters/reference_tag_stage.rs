@@ -752,6 +752,14 @@ pub(super) fn parse_object_filter_inner(
     if contains_unqualified_spell_word && !mentions_ability_word {
         filter.has_mana_cost = true;
     }
+    // "... with a mana cost that contains {X}" narrows a spell/permanent filter
+    // to objects whose printed mana cost includes an {X} symbol.
+    if all_words
+        .windows(4)
+        .any(|w| w[0] == "mana" && w[1] == "cost" && w[2] == "that" && w[3] == "contains")
+    {
+        filter.has_x_in_cost = true;
+    }
 
     if !all_words.is_empty() {
         let mut idx = 0usize;
