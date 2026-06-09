@@ -1805,6 +1805,7 @@ pub(super) fn continue_spell_cast_mana_payment(
         &mana_spend_policy,
         allow_black_life,
         Some(source),
+        crate::costs::PaymentReason::CastSpell,
         &mut *decision_maker,
     );
 
@@ -1823,6 +1824,7 @@ pub(super) fn continue_spell_cast_mana_payment(
             trigger_queue,
             player_id,
             Some(source),
+            crate::costs::PaymentReason::CastSpell,
             &pip,
             &mana_spend_policy,
             &action,
@@ -2954,6 +2956,7 @@ pub(super) fn continue_activation_cost_payment(
 
             let mut cost_ctx =
                 CostContext::new(pending.source, pending.activator, &mut *decision_maker)
+                    .with_reason(pending.payment_reason)
                     .with_provenance(pending.provenance);
             cost_ctx.tagged_objects = pending.tagged_objects.clone();
             cost_ctx.x_value = pending.x_value.and_then(|x| u32::try_from(x).ok());
@@ -3016,7 +3019,7 @@ pub(super) fn continue_activation_cost_payment(
                 pending.activator,
                 pending.source,
                 filter,
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
             );
 
             if legal_targets.is_empty() {
@@ -3123,7 +3126,7 @@ pub(super) fn continue_activation(
                 let allow_black_life = game.player_can_pay_black_with_life_for_reason(
                     pending.activator,
                     Some(pending.source),
-                    crate::costs::PaymentReason::ActivateAbility,
+                    pending.payment_reason,
                 );
                 compute_potential_mana(game, pending.activator)
                     .max_x_for_cost_with_mana_spend_policy_and_black_life(
@@ -3337,7 +3340,7 @@ pub(super) fn continue_activation(
             let allow_black_life = game.player_can_pay_black_with_life_for_reason(
                 player_id,
                 Some(source),
-                crate::costs::PaymentReason::ActivateAbility,
+                pending.payment_reason,
             );
             let display_pip =
                 current_display_pip(&pending.display_mana_pips, &pending.remaining_mana_pips);
@@ -3349,6 +3352,7 @@ pub(super) fn continue_activation(
                 &mana_spend_policy,
                 allow_black_life,
                 Some(source),
+                pending.payment_reason,
                 &mut *decision_maker,
             );
 
@@ -3367,6 +3371,7 @@ pub(super) fn continue_activation(
                     trigger_queue,
                     player_id,
                     Some(source),
+                    pending.payment_reason,
                     &pip,
                     &mana_spend_policy,
                     &action,

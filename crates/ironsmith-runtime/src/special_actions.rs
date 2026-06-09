@@ -140,6 +140,27 @@ pub fn turn_face_up_cost_display(
     Some(adjusted_turn_face_up_cost(game, controller, permanent_id, &spec).display())
 }
 
+pub fn room_unlock_cost_display(game: &GameState, room_id: ObjectId) -> Option<String> {
+    let room = game.object(room_id)?;
+    let controller = game.controller_of(room);
+    adjusted_room_unlock_cost(game, controller, room_id)
+        .ok()
+        .map(|cost| cost.display())
+}
+
+fn room_locked_door_definition(
+    game: &GameState,
+    room_id: ObjectId,
+) -> Option<crate::cards::CardDefinition> {
+    let room = game.object(room_id)?;
+    game.linked_face_definition_by_name_or_id(room.other_face_name.as_deref(), room.other_face)
+}
+
+fn room_unlock_cost(game: &GameState, room_id: ObjectId) -> Option<crate::cost::TotalCost> {
+    let locked_door = room_locked_door_definition(game, room_id)?;
+    locked_door.card.mana_cost.map(crate::cost::TotalCost::mana)
+}
+
 fn turn_face_up_spec(
     game: &GameState,
     object: &crate::object::Object,
@@ -386,6 +407,9 @@ pub enum SpecialAction {
         permanent_id: ObjectId,
         ability_index: usize,
     },
+
+    /// Unlock the locked linked face of a split Room permanent.
+    UnlockRoomDoor { room_id: ObjectId },
 }
 
 /// Errors that can occur when attempting to perform a special action.
@@ -505,6 +529,7 @@ pub fn can_perform(
             permanent_id,
             ability_index,
         } => can_activate_mana_ability(game, player, *permanent_id, *ability_index, decision_maker),
+        SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
     }
 }
 
@@ -531,6 +556,7 @@ pub fn can_perform_check(
             permanent_id,
             ability_index,
         } => can_activate_mana_ability_check(game, player, *permanent_id, *ability_index),
+        SpecialAction::UnlockRoomDoor { room_id } => can_unlock_room_door(game, player, *room_id),
     }
 }
 
@@ -565,6 +591,9 @@ pub fn perform(
             ability_index,
             &mut *decision_maker,
         ),
+        SpecialAction::UnlockRoomDoor { room_id } => {
+            perform_unlock_room_door(game, player, room_id, &mut *decision_maker)
+        }
     }
 }
 
@@ -818,6 +847,111 @@ fn perform_turn_face_up(
         ),
     );
 
+    Ok(())
+}
+
+// === Unlock Room Door ===
+
+fn validate_unlock_room_door_common(
+    game: &GameState,
+    player: PlayerId,
+    room_id: ObjectId,
+) -> Result<(), ActionError> {
+    has_sorcery_speed_special_action_timing(game, player)?;
+
+    let room = game.object(room_id).ok_or(ActionError::ObjectNotFound)?;
+    if room.zone != Zone::Battlefield {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: room.zone,
+        });
+    }
+    if game.controller_of(room) != player {
+        return Err(ActionError::InvalidTarget);
+    }
+    if !game.room_has_locked_door(room_id) {
+        return Err(ActionError::NoSuchAbility);
+    }
+    Ok(())
+}
+
+fn adjusted_room_unlock_cost(
+    game: &GameState,
+    player: PlayerId,
+    room_id: ObjectId,
+) -> Result<crate::cost::TotalCost, ActionError> {
+    let cost = room_unlock_cost(game, room_id).ok_or(ActionError::NoSuchAbility)?;
+    Ok(adjust_total_cost_mana_components_for_reason(
+        game,
+        player,
+        room_id,
+        &cost,
+        crate::costs::PaymentReason::UnlockDoor,
+    ))
+}
+
+fn can_unlock_room_door(
+    game: &GameState,
+    player: PlayerId,
+    room_id: ObjectId,
+) -> Result<(), ActionError> {
+    validate_unlock_room_door_common(game, player, room_id)?;
+    let cost = adjusted_room_unlock_cost(game, player, room_id)?;
+    crate::cost::can_pay_cost_with_reason(
+        game,
+        room_id,
+        player,
+        &cost,
+        crate::costs::PaymentReason::UnlockDoor,
+    )
+    .map_err(cost_error_to_action_error)
+}
+
+fn perform_unlock_room_door(
+    game: &mut GameState,
+    player: PlayerId,
+    room_id: ObjectId,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
+    validate_unlock_room_door_common(game, player, room_id)?;
+    let locked_door = room_locked_door_definition(game, room_id).ok_or(ActionError::NoSuchAbility)?;
+    let cost = adjusted_room_unlock_cost(game, player, room_id)?;
+    let action_provenance = game.provenance_graph_mut().alloc_root(
+        crate::provenance::ProvenanceNodeKind::EffectExecution {
+            source: room_id,
+            controller: player,
+        },
+    );
+
+    pay_total_cost_with_choice(
+        game,
+        player,
+        room_id,
+        &cost,
+        crate::costs::PaymentReason::UnlockDoor,
+        decision_maker,
+    )
+    .map_err(cost_error_to_action_error)?;
+
+    if let Some(room) = game.object_mut(room_id) {
+        room.apply_fused_split_spell_overlay(&locked_door);
+    }
+    game.mark_room_fully_unlocked(room_id);
+
+    let event_provenance = game
+        .alloc_child_event_provenance(action_provenance, crate::events::EventKind::KeywordAction);
+    game.queue_trigger_event(
+        action_provenance,
+        TriggerEvent::new_with_provenance(
+            KeywordActionEvent::new(
+                crate::events::KeywordActionKind::UnlockDoor,
+                player,
+                room_id,
+                1,
+            ),
+            event_provenance,
+        ),
+    );
     Ok(())
 }
 

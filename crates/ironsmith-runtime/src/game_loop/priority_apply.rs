@@ -792,6 +792,7 @@ pub fn apply_priority_response_with_dm(
             let cost = crate::decision::calculate_effective_activation_total_cost(
                 game, player, *source, &base_cost,
             );
+            let payment_reason = crate::costs::PaymentReason::ActivateAbility;
             let activation_provenance =
                 game.provenance_graph_mut()
                     .alloc_root(ProvenanceNodeKind::EffectExecution {
@@ -824,7 +825,7 @@ pub fn apply_priority_response_with_dm(
                         player,
                         Some(*source),
                         &resolved,
-                        crate::costs::PaymentReason::ActivateAbility,
+                        payment_reason,
                     ));
                     continue;
                 }
@@ -891,6 +892,7 @@ pub fn apply_priority_response_with_dm(
                     effects,
                     target_requirements,
                     mana_cost_to_pay,
+                    payment_reason,
                     payment_trace,
                     remaining_cost_steps,
                     std::collections::HashMap::new(),

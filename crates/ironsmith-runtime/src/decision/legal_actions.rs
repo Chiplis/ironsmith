@@ -795,6 +795,10 @@ fn add_battlefield_actions(
                 }
             }
         }
+        let unlock_action = SpecialAction::UnlockRoomDoor { room_id: perm_id };
+        if can_perform_check(&unlock_action, game, player).is_ok() {
+            actions.push(LegalAction::SpecialAction(unlock_action));
+        }
     }
 
     let simple_mana_analysis = view.simple_battlefield_mana_analysis(player);
@@ -1470,13 +1474,14 @@ fn activation_precheck_with_view(
             return None;
         }
 
+        let reason = crate::costs::PaymentReason::ActivateAbility;
         let costs = activated.mana_cost.costs();
         if !activation_printed_costs_precheck_with_view(
             game,
             controller,
             source,
             costs,
-            crate::costs::PaymentReason::ActivateAbility,
+            reason,
             view,
         ) {
             if let Some(perf_ctx) = perf_ctx {
@@ -1540,13 +1545,14 @@ fn activation_precheck_with_view(
         return None;
     }
 
+    let reason = crate::costs::PaymentReason::ActivateAbility;
     let costs = activated.mana_cost.costs();
     if !activation_printed_costs_precheck_with_view(
         game,
         controller,
         source,
         costs,
-        crate::costs::PaymentReason::ActivateAbility,
+        reason,
         view,
     ) {
         if let Some(perf_ctx) = perf_ctx {

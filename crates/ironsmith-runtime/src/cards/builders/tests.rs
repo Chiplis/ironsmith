@@ -60130,6 +60130,327 @@ fn jasmine_dragon_tea_shop_strict_parser_compiled_text_and_model_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn creeping_peeper_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Creeping Peeper");
+    let def = parse_oracle_card_definition("Creeping Peeper");
+    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+
+    assert!(
+        rendered_lower.contains(
+            "spend this mana only to cast an enchantment spell, unlock a door, or turn a permanent face up",
+        ),
+        "expected Creeping Peeper compiled text to preserve the full restricted-mana clause, got {rendered}"
+    );
+
+    let mana_activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Activated(activated) = &ability.kind else {
+                return None;
+            };
+            activated
+                .mana_usage_restrictions
+                .iter()
+                .any(|restriction| {
+                    matches!(
+                        restriction,
+                        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                            ..
+                        }
+                    )
+                })
+                .then_some(activated)
+        })
+        .expect("Creeping Peeper should have a restricted mana ability");
+
+    let has_enchantment_unlock_turn_up_restriction = mana_activated
+        .mana_usage_restrictions
+        .iter()
+        .any(|restriction| {
+            matches!(
+                restriction,
+                crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                    spell_filter,
+                } if spell_filter.card_types == vec![CardType::Enchantment]
+            )
+        });
+    assert!(
+        has_enchantment_unlock_turn_up_restriction,
+        "Creeping Peeper mana should be restricted to enchantment spells, unlocking doors, or turning permanents face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn creeping_peeper_restricted_mana_runtime_branches() {
+    let def = parse_oracle_card_definition("Creeping Peeper");
+    let restriction = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .mana_usage_restrictions
+                .iter()
+                .find(|restriction| {
+                    matches!(
+                        restriction,
+                        crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
+                            ..
+                        }
+                    )
+                })
+                .cloned(),
+            _ => None,
+        })
+        .expect("Creeping Peeper should carry its special mana usage restriction");
+
+    let alice = PlayerId::from_index(0);
+    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let peeper_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            symbol: ManaSymbol::Blue,
+            source: peeper_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction.clone()],
+        });
+
+    let blue_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]);
+    let enchantment_spell = CardDefinitionBuilder::new(CardId::new(), "Enchantment Spell")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let enchantment_spell_id =
+        game.create_object_from_definition(&enchantment_spell, alice, Zone::Stack);
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(enchantment_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Creeping Peeper mana should pay for enchantment spells"
+    );
+
+    let instant_spell = CardDefinitionBuilder::new(CardId::new(), "Instant Spell")
+        .card_types(vec![CardType::Instant])
+        .build();
+    let instant_spell_id = game.create_object_from_definition(&instant_spell, alice, Zone::Stack);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(instant_spell_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::CastSpell,
+        ),
+        "Creeping Peeper mana should not pay for non-enchantment spells"
+    );
+
+    let ability_source = CardDefinitionBuilder::new(CardId::new(), "Ordinary Ability Source")
+        .card_types(vec![CardType::Artifact])
+        .parse_text("{U}: You gain 1 life.")
+        .expect("ordinary ability source should parse");
+    let ability_source_id =
+        game.create_object_from_definition(&ability_source, alice, Zone::Battlefield);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(ability_source_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::ActivateAbility,
+        ),
+        "Creeping Peeper mana should not pay for unrelated activated abilities"
+    );
+
+    let non_lockable_room = CardDefinitionBuilder::new(CardId::new(), "Non-Lockable Room Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .build();
+    let non_lockable_room_id =
+        game.create_object_from_definition(&non_lockable_room, alice, Zone::Battlefield);
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(non_lockable_room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "Creeping Peeper mana should not pay unlock-door costs for a Room with no locked door"
+    );
+
+    let room_front_id = CardId::from_raw(571_600_001);
+    let room_back_id = CardId::from_raw(571_600_002);
+    let room = CardDefinitionBuilder::new(room_front_id, "Locked Door Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
+        .other_face(room_back_id)
+        .other_face_name("Other Locked Door Probe")
+        .linked_face_layout(crate::card::LinkedFaceLayout::Split)
+        .build();
+    let other_room_door = CardDefinitionBuilder::new(room_back_id, "Other Locked Door Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .mana_cost(blue_cost.clone())
+        .other_face(room_front_id)
+        .other_face_name("Locked Door Probe")
+        .linked_face_layout(crate::card::LinkedFaceLayout::Split)
+        .build();
+    game.register_linked_face_definition(&other_room_door);
+    let room_id = game.create_object_from_definition(&room, alice, Zone::Battlefield);
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "Creeping Peeper mana should pay to unlock a genuinely locked Room door"
+    );
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::ActivateAbility,
+        ),
+        "Creeping Peeper mana should not pay ordinary activated costs, even from a Room source"
+    );
+
+    let ordinary_room = CardDefinitionBuilder::new(CardId::new(), "Ordinary Room Ability Probe")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Room])
+        .parse_text("{U}: You gain 1 life.")
+        .expect("ordinary Room activated ability should parse");
+    let ordinary_room_id =
+        game.create_object_from_definition(&ordinary_room, alice, Zone::Battlefield);
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    let ordinary_room_ability_index = game
+        .object(ordinary_room_id)
+        .expect("ordinary Room should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("ordinary Room should have an activated ability");
+    let ordinary_room_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index }
+                    if *source == ordinary_room_id && *ability_index == ordinary_room_ability_index
+            )
+        })
+        .expect("ordinary Room activation should enter the real activation path");
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let room_activation = crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(ordinary_room_action),
+        &mut dm,
+    );
+    assert!(
+        room_activation.is_err(),
+        "Creeping Peeper mana must not be offered for ordinary activated abilities on Room permanents"
+    );
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "failed Room activation should leave Creeping Peeper mana available for a real unlock-door payment"
+    );
+
+    let unlock_room_action = crate::decision::compute_legal_actions(&game, alice)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::SpecialAction(
+                    crate::special_actions::SpecialAction::UnlockRoomDoor { room_id: action_room }
+                ) if *action_room == room_id
+            )
+        })
+        .expect("locked Room should expose a real unlock-door special action");
+    crate::game_loop::apply_priority_response_with_dm(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::PriorityResponse::PriorityAction(unlock_room_action),
+        &mut dm,
+    )
+    .expect("Creeping Peeper mana should be spendable through the real unlock-door action path");
+    assert!(
+        !game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(room_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::UnlockDoor,
+        ),
+        "fully unlocked Rooms should no longer accept unlock-door restricted mana"
+    );
+
+    game.player_mut(alice)
+        .expect("alice exists")
+        .add_restricted_mana(crate::ability::RestrictedManaUnit {
+            symbol: ManaSymbol::Blue,
+            source: peeper_id,
+            source_chosen_creature_type: None,
+            restrictions: vec![restriction],
+        });
+
+    let face_up_probe = CardDefinitionBuilder::new(CardId::new(), "Face-Up Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let face_up_probe_id =
+        game.create_object_from_definition(&face_up_probe, alice, Zone::Battlefield);
+    game.object_mut(face_up_probe_id)
+        .expect("face-up probe should exist")
+        .abilities
+        .push(Ability::static_ability(
+            crate::static_abilities::StaticAbility::morph(crate::cost::TotalCost::mana(
+                blue_cost.clone(),
+            )),
+        ));
+    game.set_face_down(face_up_probe_id);
+
+    crate::special_actions::perform(
+        crate::special_actions::SpecialAction::TurnFaceUp {
+            permanent_id: face_up_probe_id,
+            method: crate::special_actions::TurnFaceUpMethod::TurnFaceUpAbility,
+        },
+        &mut game,
+        alice,
+        &mut dm,
+    )
+    .expect("Creeping Peeper mana should pay to turn a permanent face up");
+    assert!(
+        !game.is_face_down(face_up_probe_id),
+        "turn-face-up special action should leave the permanent face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn jasmine_dragon_tea_shop_token_activation_creates_white_ally() {
     let def = parse_oracle_card_definition("Jasmine Dragon Tea Shop");
     let token_activated = def

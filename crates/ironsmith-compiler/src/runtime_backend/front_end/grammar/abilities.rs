@@ -839,11 +839,39 @@ pub(crate) fn is_spend_mana_restriction_sentence_lexed(tokens: &[OwnedLexToken])
 pub(crate) fn parse_mana_usage_restriction_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<ManaUsageRestriction> {
-    parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(tokens)
+    parse_cast_or_unlock_or_turn_face_up_mana_usage_restriction_sentence_lexed(tokens)
+        .or_else(|| parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_legacy_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_activate_ability_mana_usage_restriction_sentence_lexed(tokens))
         .or_else(|| parse_cant_be_spent_to_cast_sentence_lexed(tokens))
         .or_else(|| parse_filter_mana_usage_restriction_sentence_lexed(tokens))
+}
+
+fn parse_cast_or_unlock_or_turn_face_up_mana_usage_restriction_sentence_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<ManaUsageRestriction> {
+    const UNLOCK_DOOR_PHRASES: &[&[&str]] = &[&["unlock", "a", "door"]];
+    const TURN_FACE_UP_PHRASES: &[&[&str]] = &[
+        &["or", "turn", "a", "permanent", "face", "up"],
+        &["or", "turn", "permanents", "face", "up"],
+    ];
+    const CAST_OR_UNLOCK_OR_TURN_FACE_UP_PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::any_phrase(SPEND_MANA_CAST_PREFIXES),
+        LexPattern::object(
+            "spell_spec",
+            LexCaptureKind::UntilAnyPhrase(UNLOCK_DOOR_PHRASES),
+        ),
+        LexPattern::any_phrase(UNLOCK_DOOR_PHRASES),
+        LexPattern::any_phrase(TURN_FACE_UP_PHRASES),
+    ]);
+
+    let clause = LexedClause::new(tokens);
+    let matched = CAST_OR_UNLOCK_OR_TURN_FACE_UP_PATTERN.match_clause(clause)?;
+    let spell_clause = matched.capture_clause("spell_spec", clause)?;
+    let spell_tokens = trim_lexed_commas(spell_clause.tokens());
+    let spell_filter = parse_mana_usage_spell_filter_tokens(spell_tokens)?;
+
+    Some(ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp { spell_filter })
 }
 
 fn parse_cast_or_activate_source_mana_usage_restriction_sentence_lexed(
