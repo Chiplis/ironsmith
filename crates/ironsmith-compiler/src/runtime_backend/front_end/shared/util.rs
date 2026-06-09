@@ -1372,8 +1372,16 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         }
         let reference = &words[reference_start..reference_end];
         if shared_util_shape_matches_words(reference, SOURCE_COUNTER_REFERENCE_PATTERN) {
+            // Preserve the "this <type>" surface so the count renders/links against
+            // the named permanent ("on this artifact") rather than the bare source.
             let value = match parsed_counter_type {
-                Some(counter_type) => Value::CountersOnSource(counter_type),
+                Some(counter_type) => match this_source_surface_for_words(reference) {
+                    Some(surface) => Value::CountersOn(
+                        Box::new(source_choose_spec_for_surface(surface)),
+                        Some(counter_type),
+                    ),
+                    None => Value::CountersOnSource(counter_type),
+                },
                 None => Value::CountersOn(Box::new(ChooseSpec::Source), None),
             };
             return Some((value, reference_end));
