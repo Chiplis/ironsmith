@@ -261,6 +261,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerRollsHighestNaturalResult { player } => {
             crate::triggers::Trigger::player_rolls_highest_natural_result(player)
         }
+        TriggerKind::PlayerRollsDie { player } => {
+            crate::triggers::Trigger::player_rolls_die(player)
+        }
         TriggerKind::AbilityActivatedQualified {
             activator,
             filter,

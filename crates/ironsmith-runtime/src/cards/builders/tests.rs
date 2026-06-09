@@ -9879,6 +9879,90 @@ fn netherese_puzzle_ward_strict_parser_compiled_text_and_structure_regression() 
     );
 }
 
+#[test]
+fn the_space_family_goblinson_strict_parser_compiled_text_and_structure_regression() {
+    assert_oracle_card_parses_strict("The Space Family Goblinson");
+    let def = parse_oracle_card_definition("The Space Family Goblinson");
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+
+    assert_eq!(
+        rendered,
+        "The Space Family Goblinson has trample as long as you've rolled three or more dice this turn.\nWhenever you roll a die, put a +1/+1 counter on The Space Family Goblinson.",
+        "The Space Family Goblinson should compile back to its strict oracle text"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    let compact_debug = debug.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        compact_debug.contains("MaxDiceRolledThisTurn(You)")
+            && compact_debug.contains("GreaterThanOrEqual")
+            && compact_debug.contains("Fixed(3)")
+            && compact_debug.contains("PlayerRollsDieTrigger")
+            && compact_debug.contains("PutCountersEffect")
+            && compact_debug.contains("FullName( \"The Space Family Goblinson\"")
+            && !compact_debug.contains("UnsupportedParserLine")
+            && !compact_debug.contains("RuleFallbackText"),
+        "expected structural dice threshold, roll-any-die trigger, and named self counter effect, got {debug}"
+    );
+}
+
+#[test]
+fn the_space_family_goblinson_runtime_applies_dice_trigger_and_trample_threshold() {
+    let def = parse_oracle_card_definition("The Space Family Goblinson");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let goblinson_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+
+    assert!(
+        !game.object_has_static_ability_id(goblinson_id, StaticAbilityId::Trample),
+        "The Space Family Goblinson should not have trample before three dice are rolled"
+    );
+
+    game.turn_store.turn_history.record_die_roll(alice, 2);
+    game.turn_store.turn_history.record_die_roll(alice, 5);
+    assert!(
+        !game.object_has_static_ability_id(goblinson_id, StaticAbilityId::Trample),
+        "The Space Family Goblinson should not have trample after only two dice"
+    );
+
+    game.turn_store.turn_history.record_die_roll(alice, 1);
+    assert!(
+        game.object_has_static_ability_id(goblinson_id, StaticAbilityId::Trample),
+        "The Space Family Goblinson should have trample after you roll three dice"
+    );
+
+    let bob_roll = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::other::DieRolledEvent::new(bob, goblinson_id, 4, 6),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, goblinson_id, &bob_roll),
+        0,
+        "The Space Family Goblinson should not trigger when an opponent rolls a die"
+    );
+    assert_eq!(
+        game.counter_count(goblinson_id, crate::object::CounterType::PlusOnePlusOne),
+        0,
+        "opponent die rolls should not put counters on The Space Family Goblinson"
+    );
+
+    let alice_roll = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::other::DieRolledEvent::new(alice, goblinson_id, 6, 6),
+        crate::provenance::ProvNodeId::default(),
+    );
+    assert_eq!(
+        resolve_triggers_for_source(&mut game, goblinson_id, &alice_roll),
+        1,
+        "The Space Family Goblinson should trigger when you roll any die result"
+    );
+    assert_eq!(
+        game.counter_count(goblinson_id, crate::object::CounterType::PlusOnePlusOne),
+        1,
+        "your die roll should put one +1/+1 counter on The Space Family Goblinson"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn test_parse_sevinnes_reclamation_flashback_copy_clause() {

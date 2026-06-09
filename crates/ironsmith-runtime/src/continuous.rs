@@ -4489,6 +4489,7 @@ fn resolve_value_with_context(
         | Value::NoncombatDamageDealtToPlayersThisTurn(_)
         | Value::NoncombatDamageDealtBySourcesControlledThisTurn { .. }
         | Value::MaxCardsDrawnThisTurn(_)
+        | Value::MaxDiceRolledThisTurn(_)
         | Value::CardsInGraveyard(_)
         | Value::SpellsCastThisTurn(_)
         | Value::SpellsCastBeforeThisTurn(_)

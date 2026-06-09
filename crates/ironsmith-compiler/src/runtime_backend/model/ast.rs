@@ -214,6 +214,9 @@ pub(crate) enum TriggerSpec {
     PlayerRollsHighestNaturalResult {
         player: PlayerFilter,
     },
+    PlayerRollsDie {
+        player: PlayerFilter,
+    },
     AbilityActivated {
         activator: PlayerFilter,
         filter: ObjectFilter,

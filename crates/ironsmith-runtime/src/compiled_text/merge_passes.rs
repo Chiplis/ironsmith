@@ -719,6 +719,11 @@ pub(super) fn normalize_keyword_predicate_case(predicate: &str) -> String {
     {
         return format!("{} as long as it's your turn", keyword.to_ascii_lowercase());
     }
+    if let Some((keyword, condition)) = trimmed.split_once(" as long as ")
+        && is_keyword_phrase(keyword)
+    {
+        return format!("{} as long as {condition}", keyword.to_ascii_lowercase());
+    }
     if let Some(keywords) = trimmed.strip_suffix(" until end of turn")
         && let Some(joined) = normalize_keyword_list_phrase(keywords)
     {

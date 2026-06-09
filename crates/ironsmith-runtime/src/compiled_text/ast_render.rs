@@ -1214,9 +1214,10 @@ pub(super) fn substitute_legendary_source_reference(
     }
 
     let lower = line.to_ascii_lowercase();
-    let conditional_static_self_surface = (lower.starts_with("as long as ")
+    let conditional_static_self_surface = ((lower.starts_with("as long as ")
         || lower.contains(": as long as "))
-        && (lower.contains(", this creature has ") || lower.contains(" this creature has "));
+        && (lower.contains(", this creature has ") || lower.contains(" this creature has ")))
+        || (lower.starts_with("this creature has ") && lower.contains(" as long as "));
     let uses_named_source_surface = lower.starts_with("this creature gets ")
         || lower.starts_with("this creature's power and toughness ")
         || lower.starts_with("as this enters")

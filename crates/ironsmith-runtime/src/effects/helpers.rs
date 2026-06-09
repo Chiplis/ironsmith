@@ -1396,6 +1396,20 @@ pub fn resolve_value(
                 .max_cards_drawn_for_players(&player_ids) as i32)
         }
 
+        Value::MaxDiceRolledThisTurn(player_spec) => {
+            let player_ids =
+                resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;
+            if player_ids.is_empty() {
+                return Err(ExecutionError::UnresolvableValue(
+                    "MaxDiceRolledThisTurn requires a matching player".to_string(),
+                ));
+            }
+            Ok(game
+                .turn_store
+                .turn_history
+                .max_die_rolls_for_players(&player_ids) as i32)
+        }
+
         Value::LandsEnteredBattlefieldThisTurn(player_spec) => {
             let player_ids =
                 resolve_player_filter_to_list(game, player_spec, &ctx.filter_context(game), ctx)?;

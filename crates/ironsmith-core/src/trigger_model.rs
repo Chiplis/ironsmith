@@ -179,6 +179,9 @@ pub enum TriggerKind {
     PlayerRollsHighestNaturalResult {
         player: PlayerFilter,
     },
+    PlayerRollsDie {
+        player: PlayerFilter,
+    },
     AbilityActivatedQualified {
         activator: PlayerFilter,
         filter: ObjectFilter,
@@ -755,6 +758,9 @@ impl Trigger {
             "player_rolls_highest_natural_result",
             TriggerKind::PlayerRollsHighestNaturalResult { player },
         )
+    }
+    pub fn player_rolls_die(player: PlayerFilter) -> Self {
+        Self::typed("player_rolls_die", TriggerKind::PlayerRollsDie { player })
     }
     pub fn ability_activated_qualified(
         activator: PlayerFilter,

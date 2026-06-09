@@ -109,6 +109,7 @@ pub enum Value {
         colors: Option<ColorSet>,
     },
     MaxCardsDrawnThisTurn(PlayerFilter),
+    MaxDiceRolledThisTurn(PlayerFilter),
     LandsEnteredBattlefieldThisTurn(PlayerFilter),
     MaxCardsInHand(PlayerFilter),
     CardsInGraveyard(PlayerFilter),
