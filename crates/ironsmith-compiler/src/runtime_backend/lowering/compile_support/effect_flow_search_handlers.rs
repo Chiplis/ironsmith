@@ -167,6 +167,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 return Ok(Some(compiled));
             }
             let saved_last_object_tag = ctx.last_object_tag.clone();
+            let saved_last_player_filter = ctx.last_player_filter.clone();
             if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
                 && let Some(tag) = single_cast_tagged_reference_tag(effects, ctx)?
             {
@@ -175,6 +176,10 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let subject = LoweredSubject::resolve_chooser(*player, ctx, true, true, true)?;
             let player_filter = subject.into_player_filter();
             ctx.last_object_tag = saved_last_object_tag;
+            // The may-decider ("you" in "you may …") is the chooser, not a
+            // referenced player; don't let it shadow "that player" inside the may
+            // ("you may have that player lose 2 life" → the triggering opponent).
+            ctx.last_player_filter = saved_last_player_filter;
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
             if inner_effects.is_empty() {

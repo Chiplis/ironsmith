@@ -422,8 +422,27 @@ impl ZoneChangeTrigger {
             PlayerRelation::Any => {}
         }
 
+        // "a card is put into an opponent's graveyard from anywhere": a nontoken
+        // object of any type whose only constraint is its owner. Render the
+        // subject as "card" and surface the owner on the graveyard instead.
+        let card_into_owner_graveyard_owner = {
+            let owner_card_filter = self.object_filter.owner.clone().map(|owner| {
+                let mut expected = ObjectFilter::default().nontoken();
+                expected.owner = Some(owner.clone());
+                (owner, expected)
+            });
+            (matches!(self.to, ZonePattern::Specific(Zone::Graveyard))
+                && matches!(self.from, ZonePattern::Any))
+            .then_some(owner_card_filter)
+            .flatten()
+            .filter(|(_, expected)| self.object_filter == *expected)
+            .map(|(owner, _)| owner)
+        };
+
         // Object filter description
-        let mut filter_desc = if is_nontoken_card_subject_from_card_zones(self) {
+        let mut filter_desc = if is_nontoken_card_subject_from_card_zones(self)
+            || card_into_owner_graveyard_owner.is_some()
+        {
             if self.count_mode == CountMode::OneOrMore {
                 "cards".to_string()
             } else {
@@ -493,7 +512,12 @@ impl ZoneChangeTrigger {
                 parts.push("leaves the battlefield".to_string());
             }
             (_, ZonePattern::Specific(Zone::Graveyard)) => {
-                parts.push("is put into a graveyard".to_string());
+                let graveyard = match &card_into_owner_graveyard_owner {
+                    Some(crate::target::PlayerFilter::Opponent) => "an opponent's graveyard",
+                    Some(crate::target::PlayerFilter::You) => "your graveyard",
+                    _ => "a graveyard",
+                };
+                parts.push(format!("is put into {graveyard}"));
                 if matches!(self.from, ZonePattern::Any) {
                     parts.push("from anywhere".to_string());
                 }

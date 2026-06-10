@@ -986,7 +986,25 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     if let Some(player) = parse_leading_player_may(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
-        if token_slice_first_is_any(&stripped, &["have", "has"]) {
+        // "you may have <X>" usually means "you may <X>" (the "have" is filler),
+        // so strip it. But when "have" introduces a causative on an explicit
+        // player ("have that player lose 2 life"), stripping it drops the "that
+        // player" subject and the effect wrongly binds to the may-player; leave
+        // "have" in place so the causative parser keeps the explicit subject.
+        let causative_player_subject = token_slice_first_is_any(&stripped, &["have", "has"])
+            && stripped
+                .get(1)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| {
+                    matches!(word, "that" | "each" | "those" | "target" | "another")
+                })
+            && stripped
+                .get(2)
+                .and_then(OwnedLexToken::as_word)
+                .is_some_and(|word| {
+                    matches!(word, "player" | "players" | "opponent" | "opponents")
+                });
+        if token_slice_first_is_any(&stripped, &["have", "has"]) && !causative_player_subject {
             stripped.remove(0);
         }
         let mut effects = parse_effect_chain_with_subject_verb_primitives(&stripped)?;

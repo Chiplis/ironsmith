@@ -110,6 +110,20 @@ const CHAIN_FACE_DOWN_SHUFFLE_FROM_PREFIX: &[&str] =
 const CHAIN_EXILE_THEM_PREFIX: &[&str] = &["exile", "them"];
 const CHAIN_THEN_MELD_THEM_INTO_PREFIX: &[&str] = &["then", "meld", "them", "into"];
 const CHAIN_HAVE_OR_HAS_WORDS: &[&str] = &["have", "has"];
+
+/// Whether a clause begins with "have/has <explicit player> …" — a causative
+/// where the player after "have" is the subject ("have that player lose 2 life").
+/// In that case the "have" must NOT be stripped, or the explicit player subject
+/// is lost and the effect wrongly binds to the may-clause's player. The noun
+/// must be a player ("that player", "each opponent") — not an object such as
+/// "that creature", which is an ordinary causative the limited parser handles.
+fn leading_have_introduces_causative_player(tokens: &[OwnedLexToken]) -> bool {
+    let word = |idx: usize| tokens.get(idx).and_then(OwnedLexToken::as_word);
+    word(0).is_some_and(|w| CHAIN_HAVE_OR_HAS_WORDS.contains(&w))
+        && word(1).is_some_and(|w| matches!(w, "that" | "each" | "those" | "target" | "another"))
+        && word(2)
+            .is_some_and(|w| matches!(w, "player" | "players" | "opponent" | "opponents"))
+}
 const CHAIN_TAP_ALL_OR_EACH_PREFIXES: &[&[&str]] = &[&["tap", "all"], &["tap", "each"]];
 const CHAIN_OR_UNTAP_ALL_EACH_PHRASES: &[&[&str]] =
     &[&["or", "untap", "all"], &["or", "untap", "each"]];
@@ -508,7 +522,10 @@ pub(crate) fn parse_effect_chain_lexed(
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
         if let Some(player) = parse_leading_player_may_lexed(trailing_if.leading_tokens) {
             let mut stripped = remove_through_first_word(trailing_if.leading_tokens, "may");
-            if stripped
+            if leading_have_introduces_causative_player(&stripped) {
+                // keep "have": it introduces a causative on an explicit player
+                // ("have that player lose 2 life"); stripping it drops the subject.
+            } else if stripped
                 .first()
                 .and_then(OwnedLexToken::as_word)
                 .is_some_and(|word| CHAIN_HAVE_OR_HAS_WORDS.contains(&word))
@@ -545,7 +562,9 @@ pub(crate) fn parse_effect_chain_lexed(
 
     if let Some(player) = parse_leading_player_may_lexed(tokens) {
         let mut stripped = remove_through_first_word(tokens, "may");
-        if stripped
+        if leading_have_introduces_causative_player(&stripped) {
+            // keep "have" — see the trailing-if branch above.
+        } else if stripped
             .first()
             .and_then(OwnedLexToken::as_word)
             .is_some_and(|word| CHAIN_HAVE_OR_HAS_WORDS.contains(&word))

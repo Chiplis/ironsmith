@@ -205,6 +205,21 @@ impl GameEventType for ZoneChangeEvent {
             .unwrap_or(game.turn.active_player)
     }
 
+    fn trigger_player(&self) -> Option<PlayerId> {
+        // A card put into a graveyard is "that player" = the card's owner, since
+        // graveyards are per-owner ("a card is put into an opponent's graveyard,
+        // … have that player lose 2 life"). The pre-change snapshot carries the
+        // owner even after the object has moved.
+        if self.to == Zone::Graveyard {
+            return self
+                .snapshot
+                .as_ref()
+                .or_else(|| self.snapshots.first())
+                .map(|snapshot| snapshot.owner);
+        }
+        None
+    }
+
     fn with_target_replaced(&self, _old: &Target, _new: &Target) -> Option<Box<dyn GameEventType>> {
         // Zone changes don't have redirectable targets
         None

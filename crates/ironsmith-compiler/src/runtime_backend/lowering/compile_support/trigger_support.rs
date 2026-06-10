@@ -553,6 +553,13 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         TriggerSpec::BecomesTargetedBySourceController {
             source_controller, ..
         } => *source_controller != PlayerFilter::Any,
+        // A card put into an owner-restricted graveyard binds "that player" to the
+        // card's owner (e.g. "a card is put into an opponent's graveyard, … have
+        // that player lose 2 life"); the runtime resolves it from the zone-change
+        // event's owner. A graveyard with no owner restriction is ambiguous.
+        TriggerSpec::PutIntoGraveyard(filter) | TriggerSpec::PutIntoGraveyardOneOrMore(filter) => {
+            filter.owner.is_some()
+        }
         TriggerSpec::Either(left, right) => {
             trigger_binds_iterated_player(left) && trigger_binds_iterated_player(right)
         }
