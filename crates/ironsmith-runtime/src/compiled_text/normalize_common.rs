@@ -1389,6 +1389,8 @@ pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<Strin
         " that your controller controls",
         " its controller controls",
         " your control",
+        " target opponent controls",
+        " target player controls",
     ] {
         if let Some(stripped) = strip_suffix_ascii_ci(body.as_str(), suffix) {
             body = stripped.to_string();
@@ -2312,6 +2314,8 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact_trimmed
         == "whenever one or more scout or pirate or rogue creature you control deal combat damage to a player, that player exiles the top card of that player's library. you may cast that card. if you don't, create a treasure token"
+        || lower_compact_trimmed
+            == "whenever one or more scout or pirate or rogue you control deal combat damage to a player, that player exiles the top card of that player's library. you may cast that card. if you don't, create a treasure token"
     {
         return "Whenever one or more Scouts, Pirates, and/or Rogues you control deal combat damage to a player, exile the top card of that player's library. You may cast it. If you don't, create a Treasure token.".to_string();
     }
@@ -5158,38 +5162,32 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized == "Destroy target artifact or enchantment or creature with flying" {
         return "Destroy target artifact, enchantment, or creature with flying".to_string();
     }
-    if normalized.starts_with(
-        "Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-    )
-        || normalized.starts_with(
-            "Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-        )
-        || normalized.starts_with(
-            "Destroy target opponent's nonbasic artifact, enchantment, or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-        )
     {
-        return "Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle".to_string();
-    }
-    if let Some((prefix, _)) = normalized.split_once(
-        ": Destroy target opponent's nonbasic artifact or enchantment or land. an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-    ) {
-        return format!(
-            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
-        );
-    }
-    if let Some((prefix, _)) = normalized.split_once(
-        ": Destroy target opponent's nonbasic artifact or enchantment or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-    ) {
-        return format!(
-            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
-        );
-    }
-    if let Some((prefix, _)) = normalized.split_once(
-        ": Destroy target opponent's nonbasic artifact, enchantment, or land. An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
-    ) {
-        return format!(
-            "{prefix}: Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
-        );
+        // Destroy-then-controller-searches (Boseiju, Who Endures family): the
+        // raw render names "an opponent" three times; oracle uses controller
+        // back-references.  Match the destroy clause structurally up to the
+        // search follow-up so cost prefixes survive.
+        const SEARCH_TAILS: &[&str] = &[
+            ", then an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+            ". An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+            ". an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+        ];
+        const DESTROY_BODIES: &[&str] = &[
+            "Destroy target nonbasic artifact, enchantment, or land an opponent controls",
+            "Destroy target opponent's nonbasic artifact or enchantment or land",
+            "Destroy target opponent's nonbasic artifact, enchantment, or land",
+        ];
+        for body in DESTROY_BODIES {
+            for tail in SEARCH_TAILS {
+                let pattern = format!("{body}{tail}");
+                if let Some(idx) = normalized.find(pattern.as_str()) {
+                    let prefix = &normalized[..idx];
+                    return format!(
+                        "{prefix}Destroy target artifact, enchantment, or nonbasic land an opponent controls. That permanent's controller may search their library for a land card with a basic land type, put it onto the battlefield, then shuffle"
+                    );
+                }
+            }
+        }
     }
     if normalized
         == "Return target artifact or creature or enchantment or planeswalker to its owner's hand"
@@ -9308,11 +9306,41 @@ pub(super) fn describe_apply_continuous_clauses(
         _ => {}
     };
 
-    if let Some(modification) = &effect.modification {
-        push_modification(modification);
-    }
-    for modification in &effect.additional_modifications {
-        push_modification(modification);
+    // Type-SETTING surface: RemoveAllSubtypesOfFamily(Creature) paired with
+    // AddSubtypes renders as the oracle's plain "becomes a Bird Giant"
+    // (CR 205.1b replacement), not "in addition to its other types".
+    let set_creature_subtypes = match (&effect.modification, effect.additional_modifications.as_slice()) {
+        (
+            Some(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                crate::types::SubtypeFamily::Creature,
+            )),
+            [crate::continuous::Modification::AddSubtypes(subtypes)],
+        ) => Some(subtypes),
+        _ => None,
+    };
+    if let Some(subtypes) = set_creature_subtypes {
+        let mut words: Vec<String> = subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        if plural_target {
+            if let Some(last) = words.last_mut() {
+                *last = pluralize_word(last);
+            }
+            clauses.push(format!("become {}", words.join(" ")));
+        } else {
+            clauses.push(format!(
+                "becomes {}",
+                with_indefinite_article(&words.join(" "))
+            ));
+        }
+    } else {
+        if let Some(modification) = &effect.modification {
+            push_modification(modification);
+        }
+        for modification in &effect.additional_modifications {
+            push_modification(modification);
+        }
     }
     for runtime in &effect.runtime_modifications {
         match runtime {
@@ -10782,10 +10810,17 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
-            let source_description = describe_hexproof_from_filter(source_filter);
-            if source_description == "an opponent's" {
+            let opponent_sources_only = source_filter.controller
+                == Some(crate::target::PlayerFilter::Opponent)
+                && {
+                    let mut stripped = source_filter.clone();
+                    stripped.controller = None;
+                    stripped == ObjectFilter::default()
+                };
+            if opponent_sources_only {
                 return format!("{} have hexproof", describe_player_set_filter(player));
             }
+            let source_description = describe_hexproof_from_filter(source_filter);
             format!(
                 "{} have hexproof from {}",
                 describe_player_set_filter(player),
@@ -11284,6 +11319,9 @@ fn pluralize_relative_object_phrase(phrase: &str) -> String {
         if plural == format!("{singular} that player controlss") {
             plural = format!("{plural_noun} that player controls");
         }
+        if plural == format!("{singular} target player controlss") {
+            plural = format!("{plural_noun} target player controls");
+        }
         plural = plural.replace(
             &format!(" {singular} you don't controls"),
             &format!(" {plural_noun} you don't control"),
@@ -11307,6 +11345,10 @@ fn pluralize_relative_object_phrase(phrase: &str) -> String {
         plural = plural.replace(
             &format!(" {singular} that player controlss"),
             &format!(" {plural_noun} that player controls"),
+        );
+        plural = plural.replace(
+            &format!(" {singular} target player controlss"),
+            &format!(" {plural_noun} target player controls"),
         );
     }
     plural = plural.replace(" that was dealt damage ", " that were dealt damage ");

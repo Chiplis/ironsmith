@@ -338,8 +338,9 @@
     scale(var(--card-scale))
     scale(var(--card-jolt-scale));
   filter: brightness(var(--card-flash-brightness)) saturate(var(--card-flash-saturate));
+  /* Slight overshoot so tap/untap rotation lands with a snap. */
   transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 300ms cubic-bezier(0.34, 1.42, 0.64, 1),
     opacity 220ms ease;
   overflow: visible;
 }
@@ -17619,4 +17620,153 @@ select::-ms-expand {
     inset 0 -1px 0 rgba(0, 0, 0, 0.78),
     0 0 14px rgba(var(--decision-main-rgb, 242, 140, 40), 0.34),
     0 2px 6px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ---- Game Effect Animations (draw, mill, discard, scry, shuffle, life) ---- */
+.game-fx-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 106;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.game-fx-flight {
+  position: absolute;
+  perspective: 640px;
+  will-change: transform, opacity;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45));
+}
+
+.game-fx-flight-flip {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.game-fx-flight-face {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  backface-visibility: hidden;
+  box-shadow:
+    0 0 0 1px rgba(214, 230, 251, 0.2),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.game-fx-flight-front {
+  transform: rotateY(180deg);
+}
+
+.game-fx-peek {
+  position: absolute;
+}
+
+.game-fx-peek-card {
+  position: absolute;
+  left: -23px;
+  top: -66px;
+  width: 46px;
+  height: 64px;
+  border-radius: 4px;
+  object-fit: cover;
+  opacity: 0;
+  will-change: transform, opacity;
+  box-shadow:
+    0 0 0 1px rgba(214, 230, 251, 0.22),
+    0 0 14px 2px rgba(142, 107, 232, 0.35),
+    0 6px 14px rgba(0, 0, 0, 0.45);
+}
+
+.game-fx-peek-label-wrap {
+  position: absolute;
+  left: 0;
+  top: -148px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.game-fx-peek-label {
+  opacity: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #e8dcff;
+  text-shadow: 0 0 8px rgba(142, 107, 232, 0.8), 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.game-fx-shuffle {
+  position: absolute;
+}
+
+.game-fx-shuffle-card {
+  position: absolute;
+  left: -21px;
+  top: -29px;
+  width: 42px;
+  height: 58px;
+  border-radius: 4px;
+  object-fit: cover;
+  opacity: 0;
+  will-change: transform, opacity;
+  box-shadow:
+    0 0 0 1px rgba(214, 230, 251, 0.2),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+.game-fx-life {
+  position: absolute;
+}
+
+.game-fx-life-ring {
+  position: absolute;
+  left: -34px;
+  top: -34px;
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.game-fx-life--gain .game-fx-life-ring {
+  border: 2px solid rgba(88, 214, 166, 0.85);
+  box-shadow: 0 0 18px 4px rgba(88, 214, 166, 0.35), inset 0 0 12px rgba(88, 214, 166, 0.3);
+}
+
+.game-fx-life--loss .game-fx-life-ring {
+  border: 2px solid rgba(255, 93, 93, 0.85);
+  box-shadow: 0 0 18px 4px rgba(255, 93, 93, 0.35), inset 0 0 12px rgba(255, 93, 93, 0.3);
+}
+
+.game-fx-life-text-wrap {
+  position: absolute;
+  left: 0;
+  top: -12px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.game-fx-life-text {
+  opacity: 0;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  will-change: transform, opacity;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.game-fx-life--gain .game-fx-life-text {
+  color: #58d6a6;
+  text-shadow: 0 0 12px rgba(88, 214, 166, 0.6), 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.game-fx-life--loss .game-fx-life-text {
+  color: #ff6b6b;
+  text-shadow: 0 0 12px rgba(255, 93, 93, 0.6), 0 1px 3px rgba(0, 0, 0, 0.9);
 }

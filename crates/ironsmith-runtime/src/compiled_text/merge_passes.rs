@@ -813,6 +813,32 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 }
             }
         }
+        // "Enchanted creature gets +1/+0." + "Enchanted creature can't be
+        // blocked." → "Enchanted creature gets +1/+0 and can't be blocked."
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_verb, left_rest)) =
+                split_subject_predicate_clause(&lines[idx])
+            && matches!(left_verb, "gets" | "get" | "has" | "have" | "gains" | "gain")
+        {
+            let right = lines[idx + 1].trim().trim_end_matches('.');
+            let cant_prefix = format!("{left_subject} can't ");
+            let plain = |text: &str| {
+                let lower = text.to_ascii_lowercase();
+                !lower.contains(", if ")
+                    && !lower.contains("as long as")
+                    && !lower.contains(" until ")
+                    && !lower.contains(" unless ")
+            };
+            if let Some(cant_rest) = right.strip_prefix(&cant_prefix)
+                && plain(left_rest)
+                && plain(cant_rest)
+            {
+                let left_line = lines[idx].trim().trim_end_matches('.');
+                merged.push(format!("{left_line} and can't {cant_rest}"));
+                idx += 2;
+                continue;
+            }
+        }
         if idx + 1 < lines.len()
             && let Some(left_subject) = split_lose_all_abilities_clause(lines[idx].trim())
         {
@@ -1632,7 +1658,9 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                 continue;
             }
             if lower_rest == "creatures in addition to their other types" {
-                if left_subject.trim().eq_ignore_ascii_case("Lands") {
+                if left_subject.trim().eq_ignore_ascii_case("Lands")
+                    || left_subject.trim().eq_ignore_ascii_case("All lands")
+                {
                     merged.push(format!(
                         "All lands {left_verb} {pt} creatures that are still lands"
                     ));
@@ -1645,6 +1673,23 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
+        }
+
+        // Single-line variant: "All lands are 1/1 creatures in addition to
+        // their other types." → oracle's "... that are still lands."
+        if let Some((subject, verb, rest)) =
+            split_subject_predicate_clause(lines[idx].trim().trim_end_matches('.'))
+            && matches!(verb, "is" | "are")
+            && subject.trim().eq_ignore_ascii_case("All lands")
+            && let Some(pt) = rest
+                .trim()
+                .strip_suffix(" creatures in addition to their other types")
+        {
+            merged.push(format!(
+                "All lands {verb} {pt} creatures that are still lands"
+            ));
+            idx += 1;
+            continue;
         }
 
         merged.push(lines[idx].clone());

@@ -357,8 +357,11 @@ fn write_compare_text_job<W: Write>(out: &mut W, job: &CompileJob) -> Result<(),
 
     let display_def = compile_definition_for_job(job)?;
     let compiled_lines = compiled_text_lines(&display_def);
-    let (similarity, _, _, _, semantic_mismatch) =
-        compare_semantics_scored(&job.oracle_text, &compiled_lines, None);
+    let (_, _, similarity, _, semantic_mismatch) = compare_semantics_scored(
+        &job.oracle_text,
+        &compiled_lines,
+        ironsmith::semantic_compare::report_embedding_config(),
+    );
 
     outln!("Name: {}", display_def.card.name);
     outln!("Similarity: {:.4}", similarity);

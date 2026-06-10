@@ -118,7 +118,7 @@ fn parse_target_player_controls_pump_uses_captured_controller_filter() {
         "target-player-controlled pump should lower to filter-scoped pump plus ability grant, got {debug}"
     );
     assert!(
-        rendered.contains("target player's creatures get +1/+1")
+        rendered.contains("creatures target player controls get +1/+1")
             && rendered.contains("first strike")
             && rendered.contains("haste"),
         "target-player-controlled pump should preserve surface text, got {rendered}"
@@ -30196,7 +30196,7 @@ fn parse_each_creature_opponents_control_blocks_this_turn_if_able() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("opponent's creatures blocks this turn if able"),
+        rendered.contains("creatures your opponents control blocks this turn if able"),
         "expected must-block effect for filtered creatures, got {rendered}"
     );
 }
@@ -53464,7 +53464,8 @@ fn parse_oracle_berg_strider_etb_snow_rider_regression() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("When this creature enters, tap target opponent's artifact or creature."),
+        rendered
+            .contains("When this creature enters, tap target artifact or creature an opponent controls."),
         "expected Berg Strider ETB tap clause, got {rendered}"
     );
     assert!(

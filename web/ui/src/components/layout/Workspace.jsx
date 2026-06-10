@@ -12,6 +12,7 @@ import DragOverlay from "@/components/overlays/DragOverlay";
 import CastParticles from "@/components/overlays/CastParticles";
 import ArrowOverlay from "@/components/overlays/ArrowOverlay";
 import ZoneMoveEffects from "@/components/overlays/ZoneMoveEffects";
+import GameEffectAnimations from "@/components/overlays/GameEffectAnimations";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import { resolveGameAnimations } from "@/lib/game-animations";
@@ -1560,6 +1561,7 @@ export default function Workspace({
       <DragOverlay />
       <CastParticles />
       <ZoneMoveEffects />
+      <GameEffectAnimations suspended={deckLoadingMode || puzzleSetupMode} />
       <ArrowOverlay />
       {notices.length > 0 && (
         <div className="absolute top-2 right-2 z-[120] flex max-w-[min(460px,clamp(52vw,58vw,65vw))] flex-col gap-2">

@@ -1185,6 +1185,26 @@ fn trigger_counter_descriptor_span<'a>(
 }
 
 fn trigger_counter_type_from_descriptor(tokens: &[OwnedLexToken]) -> Option<CounterType> {
+    // The descriptor includes the count quantifier ("one or more", "a");
+    // strip it so it isn't misread as a named counter type.
+    let view = ActivationRestrictionCompatWords::new(tokens);
+    let words = view.to_word_refs();
+    let quantifier_words = if trigger_clause_shape_matches_words(&words, ONE_OR_MORE_PREFIX_PATTERN)
+    {
+        3
+    } else if matches!(words.first(), Some(&"a") | Some(&"an")) {
+        1
+    } else {
+        0
+    };
+    let tokens = if quantifier_words == 0 {
+        tokens
+    } else {
+        match view.token_index_for_word_index(quantifier_words) {
+            Some(idx) => &tokens[idx..],
+            None => return None,
+        }
+    };
     parse_counter_type_from_tokens(tokens).or_else(|| {
         let words = ActivationRestrictionCompatWords::new(tokens).to_word_refs();
         trigger_clause_shape_matches_words(&words, ENERGY_COUNTER_DESCRIPTOR_PATTERN)

@@ -225,14 +225,13 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
 
     let (base, suffix) = split_subject_suffix(&subject);
     if !base.is_empty() {
+        // Oracle quantifies unscoped grants: "All creatures have protection
+        // from black", never bare "Creatures have ...".
         let prefix_all = suffix.is_empty()
             && !base.contains(" or ")
             && !base.contains(" and ")
             && !base.contains(' ')
-            && base
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_uppercase());
+            && base.chars().next().is_some_and(|ch| ch.is_ascii_alphabetic());
         let subject = pluralize_subject_clause(&subject);
         return if prefix_all {
             format!("All {subject}")
@@ -2417,7 +2416,37 @@ impl StaticAbilityKind for GrantAbility {
                     || subject.starts_with("this ")
                     || subject.starts_with("that ");
                 let verb = if singular_subject { "has" } else { "have" };
-                format!("{subject} {verb} {ability_text}")
+                // Oracle quantifies unscoped grants ("All creatures with an
+                // odd mana value have haste"); scoped subjects ("Creatures
+                // you control ...") stay bare.
+                let lower_subject = subject.to_ascii_lowercase();
+                let already_quantified = singular_subject
+                    || lower_subject.starts_with("all ")
+                    || lower_subject.starts_with("each ")
+                    || lower_subject.starts_with("other ")
+                    || lower_subject.starts_with("another ");
+                let scoped = [
+                    " you control",
+                    " you don't control",
+                    " an opponent controls",
+                    " your opponents control",
+                    " that player controls",
+                    " you own",
+                    " they control",
+                    " you cast",
+                    " spells",
+                    " spell",
+                ]
+                .iter()
+                .any(|suffix| lower_subject.contains(suffix));
+                if !already_quantified && !scoped {
+                    format!(
+                        "All {} {verb} {ability_text}",
+                        lowercase_first_ascii(&subject)
+                    )
+                } else {
+                    format!("{subject} {verb} {ability_text}")
+                }
             }
         };
         if let Some(condition) = &self.condition {

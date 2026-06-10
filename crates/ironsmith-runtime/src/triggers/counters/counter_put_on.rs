@@ -127,6 +127,25 @@ impl TriggerMatcher for CounterPutOnTrigger {
             CountMode::Each => format!("a {}", counters),
         };
 
+        fn recipient_with_article(description: String) -> String {
+            let lower = description.to_ascii_lowercase();
+            let has_determiner = [
+                "a ", "an ", "the ", "this ", "that ", "each ", "another ", "enchanted ",
+                "equipped ", "target ", "one ",
+            ]
+            .iter()
+            .any(|prefix| lower.starts_with(prefix));
+            if has_determiner {
+                return description;
+            }
+            let article = if matches!(lower.chars().next(), Some('a' | 'e' | 'i' | 'o' | 'u')) {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {description}")
+        }
+
         if let Some(source_controller) = &self.source_controller {
             let (subject, verb) = if source_controller == &PlayerFilter::You {
                 ("you".to_string(), "put")
@@ -135,7 +154,7 @@ impl TriggerMatcher for CounterPutOnTrigger {
             };
             return format!(
                 "Whenever {subject} {verb} {counter_phrase} on {}",
-                self.filter.description()
+                recipient_with_article(self.filter.description())
             );
         }
 
@@ -143,12 +162,12 @@ impl TriggerMatcher for CounterPutOnTrigger {
             CountMode::OneOrMore => format!(
                 "Whenever one or more {}s are put on {}",
                 counters,
-                self.filter.description()
+                recipient_with_article(self.filter.description())
             ),
             CountMode::Each => format!(
                 "Whenever a {} is put on {}",
                 counters,
-                self.filter.description()
+                recipient_with_article(self.filter.description())
             ),
         }
     }

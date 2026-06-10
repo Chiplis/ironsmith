@@ -50,6 +50,15 @@ fn looked_cards_choice_count(
     tokens: &[OwnedLexToken],
 ) -> Option<(ChoiceCount, Vec<OwnedLexToken>)> {
     let trimmed = trim_commas(tokens);
+    let words = TokenWordView::new(&trimmed);
+    if word_slice_starts_with(&words.word_refs(), &["any", "number", "of"])
+        && let Some(rest_start) = words.token_index_after_words(3)
+    {
+        return Some((
+            ChoiceCount::any_number(),
+            trim_commas(&trimmed[rest_start..]),
+        ));
+    }
     let Some(((min, max), rest)) = parse_count_range_prefix(&trimmed) else {
         return Some((ChoiceCount::up_to(1), trimmed));
     };
@@ -968,8 +977,13 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
+    let Some((choice_count, count_stripped_tokens)) =
+        looked_cards_choice_count(&action_tokens[..filter_end])
+    else {
+        return Ok(None);
+    };
     let filter = if let Some(filter) =
-        effect_sentences::parse_looked_card_choice_filter(&action_tokens[..filter_end])
+        effect_sentences::parse_looked_card_choice_filter(&count_stripped_tokens)
     {
         filter
     } else {
@@ -1106,6 +1120,7 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
         Zone::Library,
         reveal_chosen,
         Vec::new(),
+        choice_count,
     ));
     Ok(Some(effects))
 }
@@ -1130,6 +1145,7 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     source_zone: Zone,
     reveal_chosen: bool,
     if_not_chosen: Vec<EffectAst>,
+    choice_count: ChoiceCount,
 ) -> Vec<EffectAst> {
     let source_zone = filter.zone.unwrap_or(source_zone);
     filter.zone = Some(source_zone);
@@ -1141,7 +1157,7 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     let mut effects = vec![if source_zone == Zone::Library {
         EffectAst::ChooseObjects {
             filter,
-            count: ChoiceCount::up_to(1),
+            count: choice_count,
             count_value: None,
             player: chooser,
             tag: chosen_tag.clone(),
@@ -1149,7 +1165,7 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     } else {
         EffectAst::ChooseObjectsAcrossZones {
             filter,
-            count: ChoiceCount::up_to(1),
+            count: choice_count,
             count_value: None,
             player: chooser,
             tag: chosen_tag.clone(),

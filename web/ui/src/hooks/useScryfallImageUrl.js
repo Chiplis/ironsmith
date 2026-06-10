@@ -10,7 +10,7 @@ export default function useScryfallImageUrl(cardName, version = "normal") {
     key,
     url: cached,
   }));
-  const currentUrl = resolved.key === key ? resolved.url : cached;
+  const currentUrl = (resolved.key === key && resolved.url) ? resolved.url : cached;
 
   useEffect(() => {
     let cancelled = false;

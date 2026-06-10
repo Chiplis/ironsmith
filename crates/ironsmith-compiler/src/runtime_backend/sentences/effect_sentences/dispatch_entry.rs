@@ -2947,6 +2947,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::SetCreatureSubtypes { .. }
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { .. }
             | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }

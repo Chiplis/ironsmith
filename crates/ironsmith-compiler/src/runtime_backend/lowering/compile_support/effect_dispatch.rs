@@ -3272,6 +3272,24 @@ fn compile_subject_verb_effect(
                 duration.clone(),
             ))
         }),
+        SubjectVerbActionAst::SetCreatureSubtypes {
+            target,
+            subtypes,
+            duration,
+        } => compile_tagged_effect_for_target(target, ctx, "subtyped", |spec| {
+            Effect::new(
+                crate::effects::ApplyContinuousEffect::with_spec(
+                    spec,
+                    crate::continuous::Modification::RemoveAllSubtypesOfFamily(
+                        crate::types::SubtypeFamily::Creature,
+                    ),
+                    duration.clone(),
+                )
+                .with_additional_modification(crate::continuous::Modification::AddSubtypes(
+                    subtypes.clone(),
+                )),
+            )
+        }),
         SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target } => {
             compile_tagged_effect_for_target(target, ctx, "saddled", |spec| {
                 Effect::new(crate::effects::ExecuteWithSourceEffect::new(

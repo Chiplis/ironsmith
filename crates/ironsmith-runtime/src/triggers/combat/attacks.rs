@@ -229,6 +229,14 @@ impl TriggerMatcher for AttacksTrigger {
 
     fn display(&self) -> String {
         let mut display_filter = self.filter.clone();
+        // Attacking already implies a creature; oracle says "another Cat you
+        // control attacks", not "another Cat creature you control attacks".
+        if display_filter.card_types == [crate::types::CardType::Creature]
+            && !display_filter.subtypes.is_empty()
+            && display_filter.all_card_types.is_empty()
+        {
+            display_filter.card_types.clear();
+        }
         let attacked_player = display_filter
             .attacking_player_or_planeswalker_controlled_by
             .take();
@@ -346,6 +354,21 @@ fn defending_player_for_attack_target(
 }
 
 fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
+    // Bare subtype subjects ("Dragon you control") pluralize the subtype.
+    if !subject.contains(" creature")
+        && let Some((head, tail)) = subject.split_once(' ')
+        && !head.is_empty()
+        && head
+            .chars()
+            .next()
+            .is_some_and(|ch| ch.is_ascii_uppercase())
+        && !head.ends_with('s')
+        && (tail.starts_with("you ")
+            || tail.starts_with("an opponent ")
+            || tail.starts_with("your "))
+    {
+        return format!("{head}s {tail}");
+    }
     if let Some((head, tail)) = subject.split_once(" creature ") {
         if !head.contains(' ')
             && head

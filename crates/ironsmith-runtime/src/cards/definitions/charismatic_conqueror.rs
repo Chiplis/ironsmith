@@ -175,7 +175,7 @@ mod tests {
         assert!(
             crate::compiled_text::debug_compiled_lines(&def)
                 .join("\n")
-                .contains("opponent's artifact or creature")
+                .contains("artifact or creature an opponent controls")
         );
     }
 

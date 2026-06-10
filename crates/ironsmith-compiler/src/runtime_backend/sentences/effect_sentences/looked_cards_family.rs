@@ -602,6 +602,35 @@ pub(crate) fn parse_looked_card_reveal_filter(tokens: &[OwnedLexToken]) -> Optio
         return Some(filter);
     }
 
+    // "<modifiers> permanent card(s)" (e.g. "snow permanent cards"): parse the
+    // modifiers with "permanent" elided, then restrict to permanent card types
+    // so the permanent-ness isn't silently dropped by the generic noun parse.
+    if non_article_words.len() > 2
+        && non_article_words[non_article_words.len() - 2] == "permanent"
+        && LOOKED_CARD_WORDS.contains(&non_article_words[non_article_words.len() - 1])
+    {
+        let mut elided_tokens = filter_tokens.to_vec();
+        if let Some(permanent_idx) = elided_tokens
+            .iter()
+            .rposition(|token| token_is_word(token, "permanent"))
+        {
+            elided_tokens.remove(permanent_idx);
+            if let Some(mut filter) = parse_object_filter_lexed(&elided_tokens, false)
+                .ok()
+                .filter(|filter| filter.card_types.is_empty() && filter.all_card_types.is_empty())
+            {
+                filter.card_types = ObjectFilter::permanent_card().card_types;
+                if same_name_suffix {
+                    filter = filter.match_tagged(
+                        TagKey::from(CHOSEN_NAME_TAG),
+                        TaggedOpbjectRelation::SameNameAsTagged,
+                    );
+                }
+                return Some(filter);
+            }
+        }
+    }
+
     let has_noncomparison_or = filter_tokens.iter().enumerate().any(|(idx, token)| {
         token_is_word(token, LOOKED_OR_WORD) && !is_comparison_or_delimiter(&filter_tokens, idx)
     });

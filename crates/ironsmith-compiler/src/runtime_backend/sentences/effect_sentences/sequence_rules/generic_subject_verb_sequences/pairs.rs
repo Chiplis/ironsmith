@@ -1810,6 +1810,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
             Zone::Graveyard,
             false,
             if_not_chosen,
+            ChoiceCount::up_to(1),
         ),
     );
     Ok(Some(effects))

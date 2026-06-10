@@ -585,6 +585,9 @@ fn is_internal_compiled_scaffolding_clause(clause: &str) -> bool {
     if lower.contains("optional cost 'squad' was paid")
         || lower.contains("optional cost 'offspring' was paid")
         || lower.contains("offspring cost was paid")
+        // The evoke sacrifice trigger is keyword-derived; the "Evoke {cost}"
+        // line carries the oracle semantics.
+        || lower.contains("evoke cost was paid")
     {
         return true;
     }
@@ -1060,6 +1063,60 @@ fn strip_compiled_ability_cost_prefix(clause: &str) -> &str {
     clause
 }
 
+/// Equate anaphoric/rule-redundant surfaces that differ only in wording:
+/// blockers are creatures by rule, and "that creature"/"that card" after a
+/// verb is the same back-reference as "it".  Word-boundary aware so
+/// possessives ("that creature's controller") are left alone.
+fn normalize_anaphoric_object_surfaces(text: &str) -> String {
+    const REWRITES: &[(&str, &str)] = &[
+        ("becomes blocked by a creature", "becomes blocked"),
+        // Object anaphors: "that creature"/"that card"/"that permanent" are
+        // the same back-reference as "it"; unify so the renderer's pronoun
+        // choice doesn't read as semantic drift.  Possessives are excluded by
+        // the word-boundary check below.
+        ("that creature", "it"),
+        ("That creature", "It"),
+        ("that card", "it"),
+        ("That card", "It"),
+        ("that permanent", "it"),
+        ("That permanent", "It"),
+        ("that token", "it"),
+        ("That token", "It"),
+        // Group back-reference vs the renderer's for-each surface.
+        ("those creatures", "each creature"),
+        ("Those creatures", "Each creature"),
+        // The shuffled library is implicit: modern oracle says "Then
+        // shuffle." where older templating says "shuffles their library".
+        ("shuffle your library", "shuffle"),
+        ("shuffles your library", "shuffles"),
+        ("shuffle their library", "shuffle"),
+        ("shuffles their library", "shuffles"),
+    ];
+    let mut normalized = text.to_string();
+    for (from, to) in REWRITES {
+        if !normalized.contains(from) {
+            continue;
+        }
+        let mut rewritten = String::with_capacity(normalized.len());
+        let mut rest = normalized.as_str();
+        while let Some(idx) = rest.find(from) {
+            let after = &rest[idx + from.len()..];
+            let boundary = after
+                .chars()
+                .next()
+                .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '\'' && c != '’');
+            // "each of those creatures" is partitive, not a group reference.
+            let partitive = rest[..idx].ends_with("of ") || rest[..idx].ends_with("Of ");
+            rewritten.push_str(&rest[..idx]);
+            rewritten.push_str(if boundary && !partitive { to } else { from });
+            rest = after;
+        }
+        rewritten.push_str(rest);
+        normalized = rewritten;
+    }
+    normalized
+}
+
 fn split_common_clause_conjunctions(text: &str) -> String {
     let mut normalized = text.to_string();
 
@@ -1089,6 +1146,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = strip_compiled_prefixes(&normalized);
     normalized = strip_not_named_phrase(&normalized);
     normalized = strip_implicit_you_control_in_sacrifice_phrases(&normalized);
+    normalized = normalize_anaphoric_object_surfaces(&normalized);
     normalized = normalized
         .replace("Flashback—", "Flashback ")
         .replace("flashback—", "flashback ")
@@ -3554,6 +3612,60 @@ pub fn normalize_card_self_references_for_compare(text: &str, card_name: &str) -
         .replace("sacrifice this permanent", "sacrifice this")
         .replace("Sacrifice this, then", "Sacrifice this then")
         .replace("sacrifice this, then", "sacrifice this then");
+    normalized = normalize_self_reference_nouns(&normalized);
+    normalized
+}
+
+/// Self-reference type nouns: "this creature", "this permanent", … all denote
+/// the source object, exactly like the card name (already rewritten to
+/// "this" above).  Unify them so stylistic differences between the oracle's
+/// and the compiler's self-naming don't read as semantic drift.  Possessive
+/// forms ("this creature's") are left alone so we don't manufacture "this's".
+fn normalize_self_reference_nouns(text: &str) -> String {
+    const SELF_NOUNS: &[&str] = &[
+        "creature",
+        "permanent",
+        "artifact",
+        "enchantment",
+        "land",
+        "planeswalker",
+        "battle",
+        "spell",
+        "card",
+        "aura",
+        "equipment",
+        "vehicle",
+        "source",
+    ];
+    let mut normalized = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut idx = 0usize;
+    'outer: while idx < bytes.len() {
+        for lead in ["this ", "This "] {
+            if text[idx..].starts_with(lead) {
+                let after_lead = idx + lead.len();
+                for noun in SELF_NOUNS {
+                    if text[after_lead..]
+                        .to_ascii_lowercase()
+                        .starts_with(noun)
+                    {
+                        let after_noun = after_lead + noun.len();
+                        let next = text[after_noun..].chars().next();
+                        let is_word_end = next
+                            .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '\'' && c != '’');
+                        if is_word_end {
+                            normalized.push_str(&lead[..4]);
+                            idx = after_noun;
+                            continue 'outer;
+                        }
+                    }
+                }
+            }
+        }
+        let ch = text[idx..].chars().next().expect("in-bounds char");
+        normalized.push(ch);
+        idx += ch.len_utf8();
+    }
     normalized
 }
 
@@ -3794,6 +3906,16 @@ fn is_pt_token(token: &str) -> bool {
 fn normalize_word(token: &str) -> Option<String> {
     if token.is_empty() {
         return None;
+    }
+    // Pure conjunction surface: "artifact and/or creature" counts the same
+    // set as "artifact or creature" (both "and" and "or" are stopwords).
+    if token == "and/or" {
+        return None;
+    }
+    // "Destroy all creatures" and "destroy each creature" quantify
+    // identically; canonicalize so surface choice doesn't read as drift.
+    if token == "all" {
+        return Some("each".to_string());
     }
     if token == "isnt" || token == "isn't" {
         return Some("isn't".to_string());
@@ -5125,11 +5247,34 @@ fn merge_transform_compiled_lines(lines: &[String]) -> Vec<String> {
     merged
 }
 
-pub fn compare_semantics_scored(
-    oracle_text: &str,
-    compiled_lines: &[String],
-    embedding: Option<EmbeddingConfig>,
-) -> (f32, f32, f32, isize, bool) {
+/// Clause-level inputs shared by scoring and residual reporting.  Built by
+/// [`prepare_clause_comparison`]; `trivially_equal` covers the early-return
+/// cases where the comparison is a perfect match by construction.
+struct ClauseComparisonPrep {
+    oracle_clauses: Vec<String>,
+    /// Clause strings paired 1:1 with `oracle_tokens` (post empty/bare-keyword
+    /// filtering); used for residual reporting only.
+    oracle_token_clauses: Vec<String>,
+    oracle_tokens: Vec<Vec<String>>,
+    compiled_clauses: Vec<String>,
+    compiled_tokens: Vec<Vec<String>>,
+    trivially_equal: bool,
+}
+
+impl ClauseComparisonPrep {
+    fn trivially_equal() -> Self {
+        Self {
+            oracle_clauses: Vec::new(),
+            oracle_token_clauses: Vec::new(),
+            oracle_tokens: Vec::new(),
+            compiled_clauses: Vec::new(),
+            compiled_tokens: Vec::new(),
+            trivially_equal: true,
+        }
+    }
+}
+
+fn prepare_clause_comparison(oracle_text: &str, compiled_lines: &[String]) -> ClauseComparisonPrep {
     let oracle_clauses = semantic_clauses(oracle_text)
         .into_iter()
         .filter(|clause| !is_ignorable_semantic_clause(clause))
@@ -5150,10 +5295,14 @@ pub fn compare_semantics_scored(
         .flat_map(|clause| split_compiled_activation_restriction_clauses(&clause))
         .collect::<Vec<_>>();
 
-    let oracle_tokens: Vec<Vec<String>> = oracle_clauses
+    let oracle_token_pairs: Vec<(String, Vec<String>)> = oracle_clauses
         .iter()
-        .map(|clause| comparison_tokens(clause))
-        .filter(|tokens| !tokens.is_empty())
+        .map(|clause| (clause.clone(), comparison_tokens(clause)))
+        .filter(|(_, tokens)| !tokens.is_empty())
+        .collect();
+    let oracle_tokens: Vec<Vec<String>> = oracle_token_pairs
+        .iter()
+        .map(|(_, tokens)| tokens.clone())
         .collect();
     let reminder_tokens: Vec<Vec<String>> = reminder_clauses
         .iter()
@@ -5230,7 +5379,7 @@ pub fn compare_semantics_scored(
     // Parenthetical-only oracle text (typically reminder text) carries no
     // semantic clauses after normalization, so don't flag as mismatch.
     if oracle_tokens.is_empty() {
-        return (1.0, 1.0, 1.0, 0, false);
+        return ClauseComparisonPrep::trivially_equal();
     }
 
     // Keyword expansion handling: when an oracle clause is a bare keyword name
@@ -5238,21 +5387,51 @@ pub fn compare_semantics_scored(
     // compiled clauses that matched the reminder were already filtered out
     // above.  Exclude these bare-keyword oracle clauses from the coverage
     // calculation since their semantics are fully captured by the expansion.
-    let oracle_tokens: Vec<Vec<String>> = if has_reminder {
-        oracle_tokens
+    let oracle_token_pairs: Vec<(String, Vec<String>)> = if has_reminder {
+        oracle_token_pairs
             .into_iter()
-            .filter(|tokens| !is_bare_keyword_clause(tokens))
+            .filter(|(_, tokens)| !is_bare_keyword_clause(tokens))
             .collect()
     } else {
-        oracle_tokens
+        oracle_token_pairs
     };
-    if oracle_tokens.is_empty() {
-        return (1.0, 1.0, 1.0, 0, false);
+    if oracle_token_pairs.is_empty() {
+        return ClauseComparisonPrep::trivially_equal();
     }
 
     if oracle_clauses == compiled_clauses {
+        return ClauseComparisonPrep::trivially_equal();
+    }
+
+    let (oracle_token_clauses, oracle_tokens): (Vec<String>, Vec<Vec<String>>) =
+        oracle_token_pairs.into_iter().unzip();
+    ClauseComparisonPrep {
+        oracle_clauses,
+        oracle_token_clauses,
+        oracle_tokens,
+        compiled_clauses,
+        compiled_tokens,
+        trivially_equal: false,
+    }
+}
+
+pub fn compare_semantics_scored(
+    oracle_text: &str,
+    compiled_lines: &[String],
+    embedding: Option<EmbeddingConfig>,
+) -> (f32, f32, f32, isize, bool) {
+    let prep = prepare_clause_comparison(oracle_text, compiled_lines);
+    if prep.trivially_equal {
         return (1.0, 1.0, 1.0, 0, false);
     }
+    let ClauseComparisonPrep {
+        oracle_clauses,
+        oracle_token_clauses: _,
+        oracle_tokens,
+        compiled_clauses,
+        compiled_tokens,
+        trivially_equal: _,
+    } = prep;
 
     let line_delta = compiled_clauses.len() as isize - oracle_clauses.len() as isize;
     let oracle_coverage = directional_coverage(&oracle_tokens, &compiled_tokens);
@@ -5396,6 +5575,97 @@ pub fn compare_card_semantics_scored(
         .map(|line| normalize_card_self_references_for_compare(line, card_name))
         .collect::<Vec<_>>();
     compare_semantics_scored(&normalized_oracle, &normalized_compiled, embedding)
+}
+
+/// One side of a clause-level comparison residual: a clause, its best
+/// counterpart on the other side (by token Jaccard), and the token sets that
+/// kept the pair from matching perfectly.
+#[derive(Debug, Clone)]
+pub struct ClauseResidual {
+    pub clause: String,
+    pub best_match: Option<String>,
+    pub best_jaccard: f32,
+    /// Tokens present in this clause but absent from the best match.
+    pub missing_tokens: Vec<String>,
+    /// Tokens present in the best match but absent from this clause.
+    pub extra_tokens: Vec<String>,
+}
+
+fn clause_residuals(
+    clauses: &[String],
+    tokens: &[Vec<String>],
+    other_clauses: &[String],
+    other_tokens: &[Vec<String>],
+) -> Vec<ClauseResidual> {
+    clauses
+        .iter()
+        .zip(tokens.iter())
+        .map(|(clause, token_set)| {
+            let mut best: Option<(usize, f32)> = None;
+            for (idx, other) in other_tokens.iter().enumerate() {
+                let score = jaccard_similarity(token_set, other);
+                if best.is_none_or(|(_, best_score)| score > best_score) {
+                    best = Some((idx, score));
+                }
+            }
+            let (best_match, best_jaccard, missing_tokens, extra_tokens) = match best {
+                Some((idx, score)) => {
+                    let other = &other_tokens[idx];
+                    let missing = token_set
+                        .iter()
+                        .filter(|token| !other.contains(token))
+                        .cloned()
+                        .collect();
+                    let extra = other
+                        .iter()
+                        .filter(|token| !token_set.contains(token))
+                        .cloned()
+                        .collect();
+                    (Some(other_clauses[idx].clone()), score, missing, extra)
+                }
+                None => (None, 0.0, token_set.clone(), Vec::new()),
+            };
+            ClauseResidual {
+                clause: clause.clone(),
+                best_match,
+                best_jaccard,
+                missing_tokens,
+                extra_tokens,
+            }
+        })
+        .collect()
+}
+
+/// Clause-level residual report for a card: which oracle clauses are not
+/// fully covered by the compiled text (and vice versa), using exactly the
+/// clause/token pipeline that drives `compare_card_semantics_scored`.
+pub fn compare_card_semantics_clause_residuals(
+    card_name: &str,
+    oracle_text: &str,
+    compiled_lines: &[String],
+) -> (Vec<ClauseResidual>, Vec<ClauseResidual>) {
+    let normalized_oracle = normalize_card_self_references_for_compare(oracle_text, card_name);
+    let normalized_compiled = compiled_lines
+        .iter()
+        .map(|line| normalize_card_self_references_for_compare(line, card_name))
+        .collect::<Vec<_>>();
+    let prep = prepare_clause_comparison(&normalized_oracle, &normalized_compiled);
+    if prep.trivially_equal {
+        return (Vec::new(), Vec::new());
+    }
+    let oracle_residuals = clause_residuals(
+        &prep.oracle_token_clauses,
+        &prep.oracle_tokens,
+        &prep.compiled_clauses,
+        &prep.compiled_tokens,
+    );
+    let compiled_residuals = clause_residuals(
+        &prep.compiled_clauses,
+        &prep.compiled_tokens,
+        &prep.oracle_token_clauses,
+        &prep.oracle_tokens,
+    );
+    (oracle_residuals, compiled_residuals)
 }
 
 pub fn compare_card_semantics(

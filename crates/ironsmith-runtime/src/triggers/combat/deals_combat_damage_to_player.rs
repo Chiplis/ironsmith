@@ -84,8 +84,20 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
+        // Combat damage already implies a creature; oracle says "a Vehicle
+        // you control deals combat damage", not "a Vehicle creature ...".
+        let surface_filter = if self.filter.card_types == [crate::types::CardType::Creature]
+            && !self.filter.subtypes.is_empty()
+            && self.filter.all_card_types.is_empty()
+        {
+            let mut stripped = self.filter.clone();
+            stripped.card_types.clear();
+            stripped
+        } else {
+            self.filter.clone()
+        };
         if self.one_or_more {
-            let mut subject = self.filter.description();
+            let mut subject = surface_filter.description();
             if let Some(stripped) = subject.strip_prefix("a ") {
                 subject = stripped.to_string();
             } else if let Some(stripped) = subject.strip_prefix("an ") {
@@ -103,7 +115,7 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         } else {
             self.player.description()
         };
-        let subject = with_indefinite_article(self.filter.description());
+        let subject = with_indefinite_article(surface_filter.description());
         format!("Whenever {} deals combat damage to {}", subject, player)
     }
 }

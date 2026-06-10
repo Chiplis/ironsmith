@@ -291,6 +291,16 @@ fn normalized_oracle_source_lines(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// Canonical oracle lines with reminder text preserved — semantic scoring
+/// needs the parentheticals so keyword expansions can match reminder clauses.
+fn scoring_oracle_source_lines(text: &str) -> Vec<String> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(normalize_canonical_oracle_line)
+        .collect()
+}
+
 fn normalize_canonical_oracle_line(line: &str) -> String {
     line.replace(
         "At the beginning of each player's end step,",
@@ -785,9 +795,10 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
 }
 
 pub fn snapshot_from_attempt(payload: &CardPayload, attempt: &ParseAttempt) -> CompilationSnapshot {
-    let mut snapshot = CompilationSnapshot::from_definition_result(
+    let mut snapshot = CompilationSnapshot::from_definition_result_with_raw_text(
         payload.parse_name.as_deref().unwrap_or(&payload.name),
         &payload.oracle_text,
+        &payload.raw_oracle_text,
         attempt.status,
         attempt.parse_error.clone(),
         attempt.definition.as_ref(),
@@ -803,9 +814,10 @@ pub fn snapshot_from_payload_definition(
     payload: &CardPayload,
     definition: &CardDefinition,
 ) -> CompilationSnapshot {
-    let mut snapshot = CompilationSnapshot::from_definition_result(
+    let mut snapshot = CompilationSnapshot::from_definition_result_with_raw_text(
         payload.parse_name.as_deref().unwrap_or(&payload.name),
         &payload.oracle_text,
+        &payload.raw_oracle_text,
         ParseStatus::StrictCompiled,
         None,
         Some(definition),
@@ -821,6 +833,31 @@ impl CompilationSnapshot {
     pub fn from_definition_result(
         card_name: &str,
         oracle_text: &str,
+        parse_status: ParseStatus,
+        parse_error: Option<String>,
+        definition: Option<&CardDefinition>,
+        parse_loss: &parse_loss::ParseLossReport,
+    ) -> Self {
+        Self::from_definition_result_with_raw_text(
+            card_name,
+            oracle_text,
+            "",
+            parse_status,
+            parse_error,
+            definition,
+            parse_loss,
+        )
+    }
+
+    /// Like [`Self::from_definition_result`], but scores semantics against
+    /// `raw_oracle_text` (reminder text included) when it is non-empty: the
+    /// comparer's keyword-expansion handling needs reminder clauses to match
+    /// compiled expansions of bare keywords like "Renown 1" or "Evoke {cost}".
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_definition_result_with_raw_text(
+        card_name: &str,
+        oracle_text: &str,
+        raw_oracle_text: &str,
         parse_status: ParseStatus,
         parse_error: Option<String>,
         definition: Option<&CardDefinition>,
@@ -842,18 +879,36 @@ impl CompilationSnapshot {
             let normalized_oracle_text = normalized_oracle.join("\n");
             let compiled = compiled_text_lines(definition);
             let compiled_text = compiled.join("\n");
+            let mut comparison = compare_card_semantics_scored(
+                card_name,
+                &normalized_oracle_text,
+                &compiled,
+                report_embedding_config(),
+            );
+            // Keyword expansions ("Renown 1", "Evoke {cost}") only match when
+            // the comparer can see the reminder text; keep whichever oracle
+            // surface scores better.
+            if !raw_oracle_text.trim().is_empty() {
+                let scoring_oracle_text = scoring_oracle_source_lines(raw_oracle_text).join("\n");
+                if scoring_oracle_text != normalized_oracle_text {
+                    let raw_comparison = compare_card_semantics_scored(
+                        card_name,
+                        &scoring_oracle_text,
+                        &compiled,
+                        report_embedding_config(),
+                    );
+                    if raw_comparison.2 > comparison.2 {
+                        comparison = raw_comparison;
+                    }
+                }
+            }
             let (
                 oracle_coverage,
                 compiled_coverage,
                 similarity_score,
                 line_delta,
                 semantic_mismatch,
-            ) = compare_card_semantics_scored(
-                card_name,
-                &normalized_oracle_text,
-                &compiled,
-                report_embedding_config(),
-            );
+            ) = comparison;
             (
                 normalized_oracle_text,
                 Some(compiled_text),

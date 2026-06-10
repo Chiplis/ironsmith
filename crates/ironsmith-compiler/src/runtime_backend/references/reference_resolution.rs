@@ -2227,6 +2227,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::AddCardTypes { .. }
             | SubjectVerbActionAst::RemoveCardTypes { .. }
             | SubjectVerbActionAst::AddSubtypes { .. }
+            | SubjectVerbActionAst::SetCreatureSubtypes { .. }
             | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
@@ -3123,6 +3124,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AddCardTypes { target, .. }
             | SubjectVerbActionAst::RemoveCardTypes { target, .. }
             | SubjectVerbActionAst::AddSubtypes { target, .. }
+            | SubjectVerbActionAst::SetCreatureSubtypes { target, .. }
             | SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target }
             | SubjectVerbActionAst::AddColors { target, .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { target, .. }

@@ -88,12 +88,12 @@ function zoneCounts(player) {
   }, 0);
 
   return [
-    { label: "BF", title: "Battlefield", count: battlefieldCount },
-    { label: "Hand", title: "Hand", count: player.hand_size ?? 0 },
-    { label: "GY", title: "Graveyard", count: player.graveyard_size ?? 0 },
-    { label: "Deck", title: "Library", count: player.library_size ?? 0 },
-    { label: "Exl", title: "Exile", count: exileCards.length },
-    { label: "CZ", title: "Command Zone", count: player.command_size ?? commandCards.length },
+    { label: "BF", title: "Battlefield", zone: "battlefield", count: battlefieldCount },
+    { label: "Hand", title: "Hand", zone: "hand", count: player.hand_size ?? 0 },
+    { label: "GY", title: "Graveyard", zone: "graveyard", count: player.graveyard_size ?? 0 },
+    { label: "Deck", title: "Library", zone: "library", count: player.library_size ?? 0 },
+    { label: "Exl", title: "Exile", zone: "exile", count: exileCards.length },
+    { label: "CZ", title: "Command Zone", zone: "command", count: player.command_size ?? commandCards.length },
   ];
 }
 
@@ -168,6 +168,8 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
                 showLibraryTop && "battlefield-count-item--with-top"
               )}
               title="Open decklist"
+              data-zone-anchor={entry.zone}
+              data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
@@ -183,6 +185,8 @@ function ZoneCountInline({ player, onOpenDecklist = null }) {
             key={entry.label}
             className={cn("battlefield-count-item", showLibraryTop && "battlefield-count-item--with-top")}
             title={showLibraryTop ? `Top card: ${libraryTopName}` : entry.title}
+            data-zone-anchor={entry.zone}
+            data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
           >
             {content}
           </span>
@@ -621,6 +625,7 @@ function OpponentSlot({
             denseSupportLayout ? "battlefield-zone-strip--shelf" : "flex gap-1"
           )}
           data-zone-layout={denseSupportLayout ? "shelf" : "lanes"}
+          data-zone-anchor-player={String(player?.id ?? player?.index ?? "")}
         >
         {(denseSupportLayout && battlefieldZoneEntry
           ? [battlefieldZoneEntry]

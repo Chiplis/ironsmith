@@ -1178,7 +1178,12 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("you don't control".to_string());
                 }
-                PlayerFilter::Opponent => parts.push("an opponent's".to_string()),
+                PlayerFilter::Opponent => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("an opponent controls".to_string());
+                }
                 PlayerFilter::Any => {}
                 PlayerFilter::Active => parts.push("the active player's".to_string()),
                 PlayerFilter::EffectController => {
@@ -1208,7 +1213,12 @@ impl ObjectFilter {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::ChosenPlayer => parts.push("the chosen player's".to_string()),
-                PlayerFilter::TaggedPlayer(_) => parts.push("that player's".to_string()),
+                PlayerFilter::TaggedPlayer(_) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
+                }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),
                 PlayerFilter::Attacking => parts.push("an attacking player's".to_string()),
@@ -1230,12 +1240,11 @@ impl ObjectFilter {
                     parts.push(describe_possessive_player_filter(ctrl));
                 }
                 PlayerFilter::Target(inner) => {
-                    let inner_desc = describe_player_filter(inner.as_ref());
-                    if inner_desc == "player" {
-                        parts.push("target player's".to_string());
-                    } else {
-                        parts.push(format!("target {inner_desc}'s"));
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
                     }
+                    let inner_desc = describe_player_filter(inner.as_ref());
+                    controller_suffix = Some(format!("target {inner_desc} controls"));
                 }
                 PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
@@ -2068,8 +2077,7 @@ impl ObjectFilter {
                 parts.push("that player both owns and controls".to_string());
             }
             (Some(controller), Some(owner)) => {
-                parts.push(controller);
-                parts.push(owner);
+                parts.push(format!("{owner} but {controller}"));
             }
             (Some(controller), None) => parts.push(controller),
             (None, Some(owner)) => parts.push(owner),

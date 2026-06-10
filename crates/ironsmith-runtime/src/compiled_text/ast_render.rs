@@ -2617,6 +2617,16 @@ pub(super) fn describe_alternative_cast_line(
             let mana_cost = method.mana_cost();
             let costs = method.non_mana_costs();
             let cast_condition = method.cast_condition();
+            // Named keyword costs keep their oracle keyword surface
+            // ("Evoke {2}{U}"), like the dedicated variants above.
+            if !name.is_empty()
+                && !name.eq_ignore_ascii_case("Parsed alternative cost")
+                && cast_condition.is_none()
+                && costs.is_empty()
+                && let Some(cost) = mana_cost
+            {
+                return format!("{name} {}", cost.to_oracle());
+            }
             let mut parts = Vec::new();
             if let Some(cost) = mana_cost {
                 parts.push(format!("pay {}", cost.to_oracle()));
@@ -2717,6 +2727,26 @@ pub(super) fn describe_alternative_cast_line(
             } else {
                 let extra = capitalize_first(&describe_alternative_costs(&costs));
                 format!("Bestow {mana_cost}, {extra}")
+            }
+        }
+        // Named composed keywords keep their oracle keyword surface.
+        AlternativeCastingMethod::Composed {
+            name,
+            total_cost,
+            condition: None,
+        } if !name.eq_ignore_ascii_case("Parsed alternative cost") => {
+            let mana_cost = total_cost
+                .mana_cost()
+                .map(|cost| cost.to_oracle())
+                .unwrap_or_else(|| "{0}".to_string());
+            let extra_costs = method.non_mana_costs();
+            if extra_costs.is_empty() {
+                format!("{name} {mana_cost}")
+            } else {
+                format!(
+                    "{name}—{}",
+                    capitalize_first(&describe_alternative_costs(&extra_costs))
+                )
             }
         }
         other => {

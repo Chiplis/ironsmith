@@ -494,7 +494,9 @@ pub(crate) fn parse_become_clause(
         ));
     }
 
-    let card_type_words = word_slice_strip_any_suffix(become_words, ADDITION_TAIL_PHRASES)
+    let stripped_addition_tail = word_slice_strip_any_suffix(become_words, ADDITION_TAIL_PHRASES);
+    let had_addition_tail = stripped_addition_tail.is_some();
+    let card_type_words = stripped_addition_tail
         .map(|(_, head)| head)
         .unwrap_or(become_words);
     if !card_type_words.is_empty() {
@@ -555,6 +557,16 @@ pub(crate) fn parse_become_clause(
             }
         }
         if all_subtypes && !subtypes.is_empty() {
+            // Plain "becomes a Bird Giant" replaces the creature subtypes
+            // (CR 205.1b); only an explicit "in addition ..." tail adds.
+            let creature_subtypes_only = subtypes.iter().all(|subtype| {
+                crate::types::Subtype::all_creature_types().contains(subtype)
+            });
+            if !had_addition_tail && creature_subtypes_only {
+                return Ok(EffectAst::subject_verb_set_creature_subtypes(
+                    target, subtypes, duration,
+                ));
+            }
             return Ok(EffectAst::subject_verb_add_subtypes(
                 target, subtypes, duration,
             ));

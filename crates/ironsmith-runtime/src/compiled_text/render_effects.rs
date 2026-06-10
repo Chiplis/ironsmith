@@ -4918,7 +4918,7 @@ fn describe_reveal_top_choice_to_hand_rest_graveyard_structural(
         return None;
     }
 
-    let mut labels = Vec::new();
+    let mut chooses: Vec<&crate::effects::ChooseObjectsEffect> = Vec::new();
     let mut chosen_tag: Option<TagKey> = None;
     let mut idx = 2usize;
     while let Some(choose) = effects
@@ -4928,7 +4928,7 @@ fn describe_reveal_top_choice_to_hand_rest_graveyard_structural(
         if choose.chooser != PlayerFilter::You
             || choose.is_search
             || choose.count.min != 0
-            || choose.count.max != Some(1)
+            || !matches!(choose.count.max, Some(1) | None)
             || choose_primary_zone(choose) != Some(Zone::Library)
             || !choose_references_tag(choose, &look.tag)
         {
@@ -4941,11 +4941,11 @@ fn describe_reveal_top_choice_to_hand_rest_graveyard_structural(
         } else {
             chosen_tag = Some(choose.tag.clone());
         }
-        labels.push(structural_revealed_choice_label(choose)?);
+        chooses.push(choose);
         idx += 1;
     }
     let chosen_tag = chosen_tag?;
-    if labels.is_empty()
+    if chooses.is_empty()
         || effects.len() != idx + 2
         || !for_each_moves_tagged_iterated_to_hand(&effects[idx], &chosen_tag)
         || !for_each_moves_unchosen_iterated_to_zone(
@@ -4960,13 +4960,28 @@ fn describe_reveal_top_choice_to_hand_rest_graveyard_structural(
 
     let owner = describe_possessive_player_filter(&look.player);
     let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
-    let choice = if labels.len() == 1 {
-        with_indefinite_article(&labels[0])
+    let choice = if let [choose] = chooses.as_slice() {
+        if choose.count.is_any_number() {
+            format!(
+                "any number of {}",
+                describe_any_number_filter_from_looked_cards(look, choose)?
+            )
+        } else if let Some(label) = structural_revealed_choice_label(choose) {
+            with_indefinite_article(&label)
+        } else {
+            describe_choose_filter_from_looked_cards(look, choose)?
+        }
     } else {
-        labels
+        if chooses.iter().any(|choose| choose.count.max.is_none()) {
+            return None;
+        }
+        chooses
             .iter()
-            .map(|label| with_indefinite_article(label))
-            .collect::<Vec<_>>()
+            .map(|choose| {
+                structural_revealed_choice_label(choose)
+                    .map(|label| with_indefinite_article(&label))
+            })
+            .collect::<Option<Vec<_>>>()?
             .join(" and/or ")
     };
     Some(format!(
@@ -13973,7 +13988,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
             let order_text = match remainder.order {
                 crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
-                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => "",
+                crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => {
+                    " in any order"
+                }
             };
             let mut filter = choose.filter.clone();
             filter.zone = None;
@@ -13990,6 +14007,8 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
                     "cards".to_string()
                 };
             }
+            filter_text =
+                normalize_looked_card_filter_description(&filter, &filter_text);
             if !filter_text.contains("card") {
                 filter_text.push_str(if choose.count.max == Some(1) {
                     " card"
@@ -16615,6 +16634,32 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 5;
             continue;
         }
+        // "You and that player each gain that much life" — adjacent same-
+        // amount life gains for you plus a back-referenced player compact to
+        // the oracle's joint-subject sentence.
+        if idx + 1 < filtered.len()
+            && let Some(first_gain) = unwrap_basic_tag_wrappers(filtered[idx])
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+            && let Some(second_gain) = unwrap_basic_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+            && first_gain.amount == second_gain.amount
+            && matches!(&first_gain.player, ChooseSpec::Player(PlayerFilter::You))
+            && let ChooseSpec::Player(second_player) = &second_gain.player
+            && *second_player != PlayerFilter::You
+        {
+            let other = match second_player {
+                PlayerFilter::DamagedPlayer | PlayerFilter::TaggedPlayer(_) => {
+                    "that player".to_string()
+                }
+                other => describe_player_filter(other),
+            };
+            parts.push(format!(
+                "You and {other} each gain {}",
+                describe_life_amount_phrase(&first_gain.amount)
+            ));
+            idx += 2;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -17202,6 +17247,30 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
 
+    // "you and that player each gain that much life" — joint-subject life
+    // gain pair (see the matching compaction in describe_effect_list).
+    if let [first, second] = effects
+        && let Some(first_gain) =
+            unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::GainLifeEffect>()
+        && let Some(second_gain) =
+            unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::GainLifeEffect>()
+        && first_gain.amount == second_gain.amount
+        && matches!(&first_gain.player, ChooseSpec::Player(PlayerFilter::You))
+        && let ChooseSpec::Player(second_player) = &second_gain.player
+        && *second_player != PlayerFilter::You
+    {
+        let other = match second_player {
+            PlayerFilter::DamagedPlayer | PlayerFilter::TaggedPlayer(_) => {
+                "that player".to_string()
+            }
+            other => describe_player_filter(other),
+        };
+        return Some(format!(
+            "you and {other} each gain {}",
+            describe_life_amount_phrase(&first_gain.amount)
+        ));
+    }
+
     let compact = describe_effect_list(effects);
     let compact_trimmed = compact.trim();
     if compact_trimmed.starts_with("Exile the bottom card of ")
@@ -17259,6 +17328,11 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
 
+    // Per-effect rendering that surfaces internal tag scaffolding is never
+    // oracle-faithful; when the compaction-aware multi-sentence render in
+    // describe_effect_list avoided that scaffolding, bail so callers use it.
+    let compact_has_scaffolding =
+        compact_trimmed.contains("tagged cards") || compact_trimmed.contains("tagged '");
     let mut parts = Vec::with_capacity(effects.len());
     for effect in effects {
         let rendered = describe_effect(effect);
@@ -17271,6 +17345,8 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
             || trimmed.starts_with("Whenever ")
             || trimmed.starts_with("At ")
             || trimmed.starts_with("Choose ")
+            || (!compact_has_scaffolding
+                && (trimmed.contains("tagged cards") || trimmed.contains("tagged '")))
         {
             return None;
         }
@@ -21542,7 +21618,7 @@ mod tests {
         ));
         assert_eq!(
             describe_effect(&owner_shuffle),
-            "The owner of target opponent's artifact shuffles it into their library"
+            "The owner of target artifact an opponent controls shuffles it into their library"
         );
 
         let graveyard_target = ChooseSpec::target(ChooseSpec::Object(
@@ -23800,7 +23876,17 @@ pub(super) fn describe_choose_then_sacrifice(
                 && (constraint.tag.as_str().starts_with("created_")
                     || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "created"))
         });
-    let chosen = choose.filter.description();
+    // "An opponent sacrifices a creature of their choice": the chooser
+    // controlling the chosen object is implicit, so elide the controller.
+    let chooser_controls_chosen = choose.filter.controller.as_ref() == Some(&choose.chooser)
+        && choose.chooser != PlayerFilter::You;
+    let chosen = if chooser_controls_chosen {
+        let mut chosen_filter = choose.filter.clone();
+        chosen_filter.controller = None;
+        chosen_filter.description()
+    } else {
+        choose.filter.description()
+    };
     if choose_is_any_number && sacrifice_any_number {
         let chosen = pluralize_noun_phrase(strip_leading_article(&chosen));
         return Some(format!("{player} {verb} any number of {chosen}"));
@@ -23827,6 +23913,10 @@ pub(super) fn describe_choose_then_sacrifice(
                 "{player} {verb} {}",
                 with_indefinite_article(&chosen)
             ));
+        }
+        if chooser_controls_chosen {
+            let chosen_kind = with_indefinite_article(strip_leading_article(&chosen));
+            return Some(format!("{player} {verb} {chosen_kind} of their choice"));
         }
         if let Some(rest) = chosen.strip_prefix(&format!("{player}'s ")) {
             let chosen_kind = with_indefinite_article(rest);
@@ -23902,6 +23992,18 @@ fn describe_sacrifice_effect(sacrifice: SacrificeView<'_>) -> String {
         }
         if let Some(chosen) = describe_greatest_power_choice_filter(sacrifice.filter) {
             return format!("{player} {verb} {}", with_indefinite_article(&chosen));
+        }
+        // A non-you sacrificer controlling the sacrificed object is implicit;
+        // elide the controller and keep the "of their choice" surface.
+        if sacrifice.player != &PlayerFilter::You
+            && sacrifice.filter.controller.as_ref() == Some(sacrifice.player)
+        {
+            let mut stripped = sacrifice.filter.clone();
+            stripped.controller = None;
+            return format!(
+                "{player} {verb} {} of their choice",
+                with_indefinite_article(strip_leading_article(&stripped.description()))
+            );
         }
         if matches!(
             sacrifice.player,
@@ -27005,7 +27107,8 @@ pub(super) fn for_each_reveals_tag(
     }
     matches!(
         for_each.effects[0].downcast_ref::<crate::effects::RevealTaggedEffect>(),
-        Some(reveal) if reveal.tag.as_str() == tag
+        Some(reveal)
+            if reveal.tag.as_str() == tag || reveal.tag.as_str() == "__it__"
     )
 }
 
@@ -28016,14 +28119,20 @@ pub(super) fn describe_look_at_top_then_put_one_hand_other_bottom(
         return None;
     }
     let (count_text, noun, _) = describe_look_count_and_noun(&look_at_top.count);
-    let remainder = if look_at_top.count == Value::Fixed(2) {
-        "the other".to_string()
+    // A two-card look leaves a single remainder card ("the other", no order
+    // phrase); larger looks follow the oracle's "the rest ... in any order".
+    let (remainder, order_text) = if look_at_top.count == Value::Fixed(2) {
+        ("the other", "")
     } else {
-        "the rest".to_string()
+        let order_text = match rest.order {
+            crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+            crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+        };
+        ("the rest", order_text)
     };
 
     Some(format!(
-        "Look at the top {count_text} {noun} of your library. Put one of them into your hand and {remainder} on the bottom of your library"
+        "Look at the top {count_text} {noun} of your library. Put one of them into your hand and {remainder} on the bottom of your library{order_text}"
     ))
 }
 
@@ -35785,8 +35894,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return format!("Look at {owner} hand");
     }
     if let Some(look_at_objects) = effect.downcast_ref::<crate::effects::LookAtObjectsEffect>() {
-        let description = look_at_objects.filter.description();
-        if description == "target player's face-down creature" {
+        // "Look at any face-down creatures they control" — a target-player
+        // face-down creature scope reads as a pronoun back-reference.
+        let targets_player_face_down = look_at_objects.filter.face_down == Some(true)
+            && look_at_objects.filter.card_types == [CardType::Creature]
+            && matches!(
+                &look_at_objects.filter.controller,
+                Some(PlayerFilter::Target(_))
+            );
+        if targets_player_face_down {
             return "Look at any face-down creatures they control".to_string();
         }
         return format!("Look at {}", look_at_objects.filter.description());
@@ -38750,7 +38866,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("At the beginning of the next end step, {delayed_text}");
         }
         if schedule.one_shot && trigger_lower.contains("end of combat") {
-            return format!("At this turn's next end of combat, {delayed_text}");
+            // Oracle phrases the one-shot combat cleanup as a suffix:
+            // "destroy that creature at end of combat".
+            return format!("{delayed_text} at end of combat");
         }
         if schedule.one_shot && trigger_lower.contains("beginning of your end step") {
             return format!("At the beginning of your next end step, {delayed_text}");

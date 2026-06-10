@@ -267,11 +267,25 @@ impl ZoneChangeTrigger {
 
     /// Generate display text for this trigger.
     fn generate_display(&self) -> String {
+        fn subject_is_creature_subtype_only(filter: &ObjectFilter) -> bool {
+            filter.all_card_types.is_empty()
+                && filter.card_types.is_empty()
+                && !filter.subtypes.is_empty()
+                && filter.subtypes.iter().all(|subtype| {
+                    crate::types::Subtype::all_creature_types().contains(subtype)
+                })
+        }
+
         fn subject_is_always_creature(filter: &ObjectFilter) -> bool {
             if !filter.all_card_types.is_empty() {
                 return filter.all_card_types.contains(&CardType::Creature);
             }
-            filter.card_types.len() == 1 && filter.card_types[0] == CardType::Creature
+            if filter.card_types.len() == 1 && filter.card_types[0] == CardType::Creature {
+                return true;
+            }
+            // A filter naming only creature subtypes ("Insect you control")
+            // reads as a creature in oracle text: "another Insect ... dies".
+            subject_is_creature_subtype_only(filter)
         }
 
         fn subject_description_for_zone_change(filter: &ObjectFilter) -> String {
@@ -279,7 +293,7 @@ impl ZoneChangeTrigger {
                 let mut explicit_other = filter.clone();
                 explicit_other.other = false;
                 let description = explicit_other.description();
-                if !description.contains("creature") {
+                if !description.contains("creature") && !subject_is_creature_subtype_only(filter) {
                     return format!("{description} other than this");
                 }
                 let mut subject = description
@@ -479,7 +493,15 @@ impl ZoneChangeTrigger {
         if self.count_mode == CountMode::OneOrMore {
             parts.push("one or more".to_string());
         } else if !has_article {
-            parts.push("a".to_string());
+            let article = if matches!(
+                filter_desc.chars().next().map(|c| c.to_ascii_lowercase()),
+                Some('a' | 'e' | 'i' | 'o' | 'u')
+            ) {
+                "an"
+            } else {
+                "a"
+            };
+            parts.push(article.to_string());
         }
         if filter_desc != "object" {
             parts.push(filter_desc);

@@ -1296,6 +1296,13 @@ pub(crate) enum SubjectVerbActionAst {
         subtypes: Vec<Subtype>,
         duration: Until,
     },
+    /// "becomes a Bird Giant" without "in addition": replaces the object's
+    /// creature subtypes (CR 205.1b) instead of adding to them.
+    SetCreatureSubtypes {
+        target: TargetAst,
+        subtypes: Vec<Subtype>,
+        duration: Until,
+    },
     BecomeSaddledUntilEndOfTurn {
         target: TargetAst,
     },
@@ -2687,6 +2694,16 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 duration,
             } => f
                 .debug_struct("AddSubtypes")
+                .field("target", target)
+                .field("subtypes", subtypes)
+                .field("duration", duration)
+                .finish(),
+            Self::SetCreatureSubtypes {
+                target,
+                subtypes,
+                duration,
+            } => f
+                .debug_struct("SetCreatureSubtypes")
                 .field("target", target)
                 .field("subtypes", subtypes)
                 .field("duration", duration)
@@ -4626,6 +4643,22 @@ impl EffectAst {
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::AddSubtypes {
+                target,
+                subtypes,
+                duration,
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_set_creature_subtypes(
+        target: TargetAst,
+        subtypes: Vec<Subtype>,
+        duration: Until,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::SetCreatureSubtypes {
                 target,
                 subtypes,
                 duration,

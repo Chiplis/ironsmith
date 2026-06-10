@@ -80,6 +80,7 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .into_iter()
         .map(finalize_ast_surface_line)
         .flat_map(expand_finalized_ast_surface_line)
+        .map(normalize_mass_opponent_controller_surface)
         .collect()
 }
 
@@ -93,7 +94,52 @@ fn normalize_scored_compiled_line(line: String) -> String {
             "instead counter that spell",
         );
     }
-    line
+    normalize_mass_opponent_controller_surface(line)
+}
+
+/// Oracle text uses "an opponent controls" for single-object references but
+/// "your opponents control" in mass contexts ("each creature your opponents
+/// control", "all artifacts your opponents control").  The filter description
+/// only knows the singular surface; rewrite it when the clause quantifies over
+/// every matching object.
+fn normalize_mass_opponent_controller_surface(line: String) -> String {
+    const PHRASE: &str = "an opponent controls";
+    if !line.contains(PHRASE) {
+        return line;
+    }
+    let mut rewritten = String::with_capacity(line.len());
+    let mut rest = line.as_str();
+    while let Some(idx) = rest.find(PHRASE) {
+        let (before, after) = rest.split_at(idx);
+        let clause_start = before
+            .rfind(['.', ',', ':', ';'])
+            .map(|punct| punct + 1)
+            .unwrap_or(0);
+        let clause = before[clause_start..].to_ascii_lowercase();
+        // A plural subject noun right before the phrase ("creatures an
+        // opponent controls") is also a mass context — but counted groups
+        // ("one or more creatures an opponent controls") keep the single
+        // opponent because their controller's identity matters.
+        let plural_subject = clause
+            .split_whitespace()
+            .last()
+            .is_some_and(|word| word.ends_with('s') && word != "less")
+            && !clause.contains("or more ")
+            && !clause.contains("or fewer ")
+            // "the greatest number of artifacts an opponent controls" picks a
+            // single opponent's count; keep the singular surface.
+            && !clause.contains("number of ");
+        let mass_context = clause.contains("each ") || clause.contains("all ") || plural_subject;
+        rewritten.push_str(before);
+        rewritten.push_str(if mass_context {
+            "your opponents control"
+        } else {
+            PHRASE
+        });
+        rest = &after[PHRASE.len()..];
+    }
+    rewritten.push_str(rest);
+    rewritten
 }
 
 fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> String {
@@ -493,6 +539,8 @@ fn finalize_ast_surface_line(line: String) -> String {
     }
     if lower
         == "look at target player's hand, look at the top card of target player's library, look at target player's face-down creature, look at the top four cards of your library, then put them back in any order."
+        || lower
+            == "look at target player's hand, look at the top card of target player's library, look at any face-down creatures they control, look at the top four cards of your library, then put them back in any order."
     {
         line = "Look at target player's hand, the top card of that player's library, and any face-down creatures they control. Look at the top four cards of your library, then put them back in any order.".to_string();
     }

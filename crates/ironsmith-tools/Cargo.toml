@@ -26,6 +26,11 @@ path = "src/bin/audit_compiled_cards.rs"
 test = false
 
 [[bin]]
+name = "audit_similarity_residuals"
+path = "src/bin/audit_similarity_residuals.rs"
+test = false
+
+[[bin]]
 name = "audit_oracle_clusters"
 path = "src/bin/audit_oracle_clusters.rs"
 test = false

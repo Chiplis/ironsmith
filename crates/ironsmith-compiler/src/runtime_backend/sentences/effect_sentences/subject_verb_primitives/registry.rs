@@ -1208,6 +1208,114 @@ pub(crate) fn parse_sentence_you_and_target_player_each_draw(
     parse_you_and_target_player_each_draw_sentence(clause)
 }
 
+/// "You and that player each gain that much life." / "You and target opponent
+/// each lose 2 life." — the joint-subject analog of the shared draw sentence.
+pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let optional_each = [LexPattern::word("each")];
+    let action_boundaries: &[&[&str]] =
+        &[&["each"], &["gain"], &["gains"], &["lose"], &["loses"]];
+    let atoms = [
+        LexPattern::role_capture(
+            "subject",
+            LexCaptureRole::Subject,
+            LexCaptureKind::UntilPhrase(&["and"]),
+        ),
+        LexPattern::word("and"),
+        LexPattern::role_capture(
+            "object",
+            LexCaptureRole::Object,
+            LexCaptureKind::UntilAnyPhrase(action_boundaries),
+        ),
+        LexPattern::optional(&optional_each),
+        LexPattern::role_capture(
+            "verb",
+            LexCaptureRole::Action,
+            LexCaptureKind::OneOf(&["gain", "gains", "lose", "loses"]),
+        ),
+        LexPattern::role_capture(
+            "amount",
+            LexCaptureRole::Amount,
+            LexCaptureKind::OneOrMoreWords,
+        ),
+    ];
+    let pattern = LexPattern::new(&atoms);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_you_and_player_each_gain_or_lose_life_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject)
+    else {
+        return Ok(None);
+    };
+    if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
+        return Ok(None);
+    }
+
+    let Some(object_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
+        return Ok(None);
+    };
+    let Some(other_player) = parse_registry_player_object_clause(object_clause) else {
+        return Ok(None);
+    };
+
+    let Some(verb_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Action) else {
+        return Ok(None);
+    };
+    let gains = matches!(verb_clause.word_refs().as_slice(), ["gain"] | ["gains"]);
+
+    let Some(amount_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Amount) else {
+        return Ok(None);
+    };
+    let Some((amount, used)) = parse_value(amount_clause.tokens()) else {
+        return Ok(None);
+    };
+    if amount_clause
+        .tokens()
+        .get(used)
+        .and_then(OwnedLexToken::as_word)
+        .is_none_or(|word| word != "life")
+    {
+        return Ok(None);
+    }
+    if !amount_clause.from(used + 1).word_refs().is_empty() {
+        return Ok(None);
+    }
+
+    let action = |amount: Value| {
+        if gains {
+            SubjectVerbActionAst::GainLife { amount }
+        } else {
+            SubjectVerbActionAst::LoseLife { amount }
+        }
+    };
+    Ok(Some(vec![
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            action(amount.clone()),
+        ),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            other_player,
+            action(amount),
+        ),
+    ]))
+}
+
+pub(crate) fn parse_sentence_you_and_player_each_gain_or_lose_life(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_you_and_player_each_gain_or_lose_life_sentence(clause)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
