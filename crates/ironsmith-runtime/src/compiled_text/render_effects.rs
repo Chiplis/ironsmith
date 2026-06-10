@@ -19137,7 +19137,11 @@ fn normalize_redundant_short_name_etb_surface(
     {
         return line;
     }
-    format!("{}When {subject} enters,{rest}", &line[..start])
+    // Honor the oracle's surface: when the card names itself in its ETB trigger
+    // ("When Katara enters"), keep the name rather than collapsing it to the
+    // generic subject. Type-surface triggers ("this artifact") still render the
+    // type; this branch only fires for a captured ShortName surface.
+    format!("{}When {surface} enters,{rest}", &line[..start])
 }
 
 fn normalize_spellcast_trigger_mana_value_surface(

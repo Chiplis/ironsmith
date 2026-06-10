@@ -582,12 +582,18 @@ fn finalize_ast_surface_line(line: String) -> String {
             "if the player doesn't, you mill three cards",
         );
     }
-    if lower.starts_with(
-        "when this creature enters, reveal the top six cards of your library, you choose a card",
-    ) && lower.contains("return that object to its owner's hand")
+    if lower.starts_with("when ")
+        && let Some(reveal_idx) =
+            lower.find(" enters, reveal the top six cards of your library, you choose a card")
+        && lower.contains("return that object to its owner's hand")
         && lower.contains("put that object into its owner's graveyard")
     {
-        return "When this creature enters, reveal the top six cards of your library. You choose a card from among them and put it into your hand. Put the rest into your graveyard.".to_string();
+        // Preserve the original "When <subject> enters" surface (the subject may
+        // be the card's name now that ETB triggers honor their self-naming hint).
+        let prefix = &line[..reveal_idx + " enters".len()];
+        return format!(
+            "{prefix}, reveal the top six cards of your library. You choose a card from among them and put it into your hand. Put the rest into your graveyard."
+        );
     }
     if lower == "prevent all combat damage that would be dealt to you this turn, then populate." {
         line =

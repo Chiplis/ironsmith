@@ -726,13 +726,13 @@ fn katara_seeking_revenge_strict_parser_and_compiled_text_regression() {
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     let raw = format!("{def:#?}");
 
-    // ETB triggers surface the generic "this creature" subject (local convention,
-    // not the card name); the waterbend cost, the unless-paid discard, and the
-    // "for each" Lesson scaling all render faithfully to the oracle wording.
+    // ETB triggers now honor the oracle's self-naming surface ("When Katara
+    // enters"); the waterbend cost, the unless-paid discard, and the "for each"
+    // Lesson scaling all render faithfully to the oracle wording.
     assert!(
         rendered.contains("As an additional cost to cast this spell, you may waterbend {2}.")
             && rendered.contains(
-                "When this creature enters, draw a card. Then if this spell's additional cost wasn't paid, you discard a card.",
+                "When Katara enters, draw a card. Then if this spell's additional cost wasn't paid, you discard a card.",
             )
             && rendered.contains("Katara gets +1/+1 for each Lesson card in your graveyard"),
         "Katara, Seeking Revenge compiled text should preserve waterbend, conditional discard, and Lesson scaling, got {rendered}"
@@ -17472,8 +17472,8 @@ fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("When Loran of the Third Path enters")
-            || rendered.contains("When this creature enters"),
+        rendered.contains("When Loran enters")
+            || rendered.contains("When Loran of the Third Path enters"),
         "expected self-reference trigger render, got {rendered}"
     );
 }
@@ -35502,7 +35502,7 @@ fn parse_black_cat_cunning_thief_oracle_text_strictly() {
 
     assert_eq!(
         unprocessed_compiled_lines(&def).join(" "),
-        "When this creature enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
+        "When Black Cat enters, look at the top nine cards of target opponent's library, exile two of them face down, then put the rest on the bottom of their library in a random order. You may play the exiled cards for as long as they remain exiled. Mana of any type can be spent to cast spells this way."
     );
 }
 
@@ -51293,7 +51293,7 @@ fn parse_oracle_wan_shi_tong_half_x_draw_regression() {
         "expected Wan Shi Tong compiled text to preserve half-X draw wording, got {rendered}"
     );
     assert!(
-        rendered.contains("When this creature enters, put X +1/+1 counters on this creature")
+        rendered.contains("When Wan Shi Tong enters, put X +1/+1 counters on him")
             && rendered
                 .to_ascii_lowercase()
                 .contains("draw half x cards, rounded down"),
@@ -51715,7 +51715,7 @@ fn parse_oracle_named_source_metadata_surface_regressions() {
     let shaun = parse_oracle_card_definition("Shaun & Rebecca, Agents");
     let shaun_rendered = unprocessed_compiled_lines(&shaun).join(" ");
     assert!(
-        shaun_rendered.contains("When this creature enters"),
+        shaun_rendered.contains("When Shaun & Rebecca enters"),
         "expected ampersand source names to preserve creature metadata, got {shaun_rendered}"
     );
     assert!(
@@ -51726,7 +51726,7 @@ fn parse_oracle_named_source_metadata_surface_regressions() {
     let splinter = parse_oracle_card_definition("Splinter & Leo, Father & Son");
     let splinter_rendered = unprocessed_compiled_lines(&splinter).join(" ");
     assert!(
-        splinter_rendered.contains("When this creature enters"),
+        splinter_rendered.contains("When Splinter & Leo enters"),
         "expected Splinter & Leo to preserve creature metadata despite ampersand source name, got {splinter_rendered}"
     );
 }
@@ -54053,7 +54053,7 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
         unprocessed_compiled_lines(&parse_oracle_card_definition("Adéwalé, Breaker of Chains"))
             .join("\n");
     assert!(
-        adewale.contains("When this creature enters, reveal the top six cards of your library")
+        adewale.contains("When Adéwalé enters, reveal the top six cards of your library")
             && adewale.contains("into your hand"),
         "expected Adéwalé helper chain to normalize, got {adewale}"
     );
@@ -66452,7 +66452,7 @@ fn parse_oracle_slinn_voda_renders_kicked_exception_bounce_cleanly() {
 
     assert!(
         rendered.contains(
-            "When this creature enters, if this spell was kicked, return all creatures to their owners' hands except for Merfolk, Krakens, Leviathans, Octopuses, and Serpents."
+            "When Slinn Voda enters, if this spell was kicked, return all creatures to their owners' hands except for Merfolk, Krakens, Leviathans, Octopuses, and Serpents."
         ),
         "expected Slinn Voda compiled text to preserve kicked ETB exception wording, got {rendered}"
     );
