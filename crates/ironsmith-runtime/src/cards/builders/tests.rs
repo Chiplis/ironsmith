@@ -17480,6 +17480,36 @@ fn parse_multiword_name_first_word_still_resolves_self_reference_triggers() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn legendary_self_reference_uses_oracle_short_name_when_oracle_shortens() {
+    // A comma-less legendary whose oracle shortens its own name ("Bramblewood")
+    // should keep that short form on every self-reference, not just the trigger
+    // that captured it — driven by the captured oracle surface, not the card name.
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bramblewood of the Deep Vale")
+        .card_types(vec![CardType::Creature])
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .parse_text(
+            "When Bramblewood enters, draw a card.\nBramblewood's power and toughness are each equal to the number of Forests you control.",
+        )
+        .expect("self-referencing legendary should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("When Bramblewood enters"),
+        "ETB should keep the oracle short name, got {rendered}"
+    );
+    assert!(
+        rendered.contains("Bramblewood's power and toughness are each equal to"),
+        "the static self-reference should reuse the oracle short name, got {rendered}"
+    );
+    assert!(
+        !rendered.contains("Bramblewood of the Deep Vale's power"),
+        "the static self-reference should not fall back to the full card name, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn test_parse_bolster_trigger_without_fallback_marker() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Bolster Trigger Probe")
         .card_types(vec![CardType::Creature])

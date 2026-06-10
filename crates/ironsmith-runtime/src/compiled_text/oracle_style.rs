@@ -1,8 +1,16 @@
 use super::*;
 
 pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    let oracle_short = super::ast_render::oracle_short_self_name(def);
     super::normalize_ast_surface_lines(super::debug_compiled_lines(def))
         .into_iter()
-        .map(|line| super::substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| {
+            super::substitute_legendary_source_reference(
+                &line,
+                &def.card,
+                "",
+                oracle_short.as_deref(),
+            )
+        })
         .collect()
 }

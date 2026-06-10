@@ -41,18 +41,24 @@ pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
 
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
+    let oracle_short = oracle_short_self_name(def);
     normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
-        .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| {
+            substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
+        })
         .map(|line| substitute_kicked_draw_source_reference(&line, def))
         .map(normalize_scored_compiled_line)
         .collect()
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    let oracle_short = oracle_short_self_name(def);
     normalize_ast_surface_lines(debug_compiled_lines(def))
         .into_iter()
-        .map(|line| substitute_legendary_source_reference(&line, &def.card, ""))
+        .map(|line| {
+            substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
+        })
         .map(normalize_unprocessed_compiled_line)
         .collect()
 }

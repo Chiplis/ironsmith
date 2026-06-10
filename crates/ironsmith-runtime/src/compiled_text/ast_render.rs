@@ -1320,10 +1320,18 @@ pub(super) fn substitute_legendary_source_reference(
     line: &str,
     card: &crate::card::Card,
     _subject: &str,
+    oracle_short_name: Option<&str>,
 ) -> String {
     if card.name.contains(" // ") {
         return line.to_string();
     }
+
+    // Prefer the name the oracle text actually used to refer to the source (a
+    // captured ShortName surface) over a naive comma split, so a card whose
+    // oracle shortens itself ("Loran of the Third Path" -> "Loran") renders that
+    // way, while one that doesn't ("Kodama of the Center Tree") stays full.
+    let comma_short = card.name.split(',').next().unwrap_or(&card.name).trim();
+    let self_name = oracle_short_name.map(str::trim).unwrap_or(comma_short);
 
     let lower = line.to_ascii_lowercase();
     let conditional_static_self_surface = ((lower.starts_with("as long as ")
@@ -1351,16 +1359,15 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": whenever this creature deals combat damage to a player")
         || lower.starts_with("this planeswalker has ");
     if card.supertypes.contains(&Supertype::Legendary) && lower.starts_with("soulshift ") {
-        let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
-        if !source_name.is_empty() {
-            return format!("{source_name} has {}", lowercase_first(line));
+        if !self_name.is_empty() {
+            return format!("{self_name} has {}", lowercase_first(line));
         }
     }
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
         return line.to_string();
     }
 
-    let source_name = card.name.split(',').next().unwrap_or(&card.name).trim();
+    let source_name = self_name;
     if source_name.is_empty() {
         return line.to_string();
     }
@@ -1398,6 +1405,28 @@ pub(super) fn substitute_legendary_source_reference(
     } else {
         substituted
     }
+}
+
+/// The shortened self-name the card's oracle text uses for itself, if any —
+/// captured as a `ShortName` source-reference surface on one of its triggers
+/// (e.g. "When Loran enters" on "Loran of the Third Path"). Returns `None` when
+/// the oracle only ever names the card in full ("Kodama of the Center Tree"),
+/// so render-side substitution stays faithful to the printed wording.
+pub(super) fn oracle_short_self_name(def: &CardDefinition) -> Option<String> {
+    for ability in &def.abilities {
+        let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+            continue;
+        };
+        if let Some(zone_change) = triggered
+            .trigger
+            .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+            && let Some(crate::target::SourceReferenceSurface::ShortName(name)) =
+                &zone_change.this_object_surface
+        {
+            return Some(name.clone());
+        }
+    }
+    None
 }
 
 fn replace_outside_quotes(input: &str, from: &str, to: &str) -> String {
@@ -2980,8 +3009,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                     *line = substitute_pregame_card_self_reference(line, subject, &def.card.name);
                 }
             }
+            let oracle_short = oracle_short_self_name(def);
             for line in &mut ability_lines {
-                *line = substitute_legendary_source_reference(line, &def.card, subject);
+                *line = substitute_legendary_source_reference(
+                    line,
+                    &def.card,
+                    subject,
+                    oracle_short.as_deref(),
+                );
             }
             output.extend(ability_lines);
             ability_idx += 1;
@@ -3018,8 +3053,14 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             };
             let mut ability_lines =
                 describe_ability(idx + 1, ability, ability_subject, rewrite_it_deals);
+            let oracle_short = oracle_short_self_name(def);
             for line in &mut ability_lines {
-                *line = substitute_legendary_source_reference(line, &def.card, subject);
+                *line = substitute_legendary_source_reference(
+                    line,
+                    &def.card,
+                    subject,
+                    oracle_short.as_deref(),
+                );
             }
             out.extend(ability_lines);
         }
@@ -3046,9 +3087,17 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
         out.push("Fuse".to_string());
     }
     out.extend(alternative_cast_lines);
+    let oracle_short = oracle_short_self_name(def);
     merge_adjacent_keyword_surface_lines(out)
         .into_iter()
-        .map(|line| substitute_legendary_source_reference(&line, &def.card, subject))
+        .map(|line| {
+            substitute_legendary_source_reference(
+                &line,
+                &def.card,
+                subject,
+                oracle_short.as_deref(),
+            )
+        })
         .collect()
 }
 
