@@ -1984,28 +1984,6 @@
   --aura-scale-2-max: 1.02;
 }
 
-.game-card.hand-card.hand-card-no-visible-mana-cost {
-  background: transparent;
-}
-
-.game-card.hand-card.hand-card-no-visible-mana-cost .game-card-surface {
-  left: 50%;
-  right: auto;
-  width: auto;
-  height: 100%;
-  aspect-ratio: 63 / 88;
-  transform: translateX(-50%);
-  box-shadow:
-    0 2px 6px rgba(0,0,0,0.45),
-    0 6px 16px rgba(0,0,0,0.3),
-    inset 0 0 8px 2px rgba(0,0,0,0.3),
-    inset 0 0 0 1px rgba(255,255,255,0.05);
-}
-
-.game-card.hand-card.hand-card-no-visible-mana-cost .game-card-surface > img {
-  object-fit: contain;
-}
-
 .game-card.hand-card .game-card-surface::before {
   inset: -12% 6% 3% 6%;
 }

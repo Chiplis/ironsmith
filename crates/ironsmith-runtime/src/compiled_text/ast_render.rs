@@ -2729,26 +2729,6 @@ pub(super) fn describe_alternative_cast_line(
                 format!("Bestow {mana_cost}, {extra}")
             }
         }
-        // Named composed keywords keep their oracle keyword surface.
-        AlternativeCastingMethod::Composed {
-            name,
-            total_cost,
-            condition: None,
-        } if !name.eq_ignore_ascii_case("Parsed alternative cost") => {
-            let mana_cost = total_cost
-                .mana_cost()
-                .map(|cost| cost.to_oracle())
-                .unwrap_or_else(|| "{0}".to_string());
-            let extra_costs = method.non_mana_costs();
-            if extra_costs.is_empty() {
-                format!("{name} {mana_cost}")
-            } else {
-                format!(
-                    "{name}—{}",
-                    capitalize_first(&describe_alternative_costs(&extra_costs))
-                )
-            }
-        }
         other => {
             if other.name().eq_ignore_ascii_case("Parsed alternative cost") {
                 if let Some(cost) = other.mana_cost() {
