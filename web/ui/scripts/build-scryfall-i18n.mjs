@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 const ROOT = process.cwd();
 const DEFAULT_LOCALE = "es";
 const BULK_DATA_URL = "https://api.scryfall.com/bulk-data";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const USER_AGENT = "Ironsmith i18n asset builder (local development)";
 
 function parseArgs(argv) {
@@ -137,19 +137,21 @@ function parenGroupCount(text) {
   return (String(text || "").match(/\(/g) || []).length;
 }
 
-// Scryfall has no localized oracle text — only per-printing printed_text, which
-// includes reminder text only when that physical printing carried it. Rank each
-// localized printing so we keep the one closest to the current English oracle text:
-// 2 = printed_text present with at least as many parenthetical (reminder) groups
-//     as the English oracle text, 1 = printed_text present, 0 = no digitized text
-// (still useful for name/typeLine). Never backfill rules text with English.
-function printingScore(englishParens, localizedCard) {
-  const printedText = firstFaceValue(localizedCard, "printed_text");
-  if (!printedText) return 0;
-  return parenGroupCount(printedText) >= englishParens ? 2 : 1;
+function normalizeText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
 }
 
-function translatedPayload(english, localizedCard, locale) {
+// Scryfall marks not-yet-localized printings as lang:<locale> with a localized
+// printed_name but printed_text still in English (e.g. brand-new Commander
+// reprints). Treat such text as absent so a properly translated older printing
+// wins instead.
+function localizedPrintedText(english, localizedCard) {
+  const printedText = firstFaceValue(localizedCard, "printed_text");
+  if (!printedText || normalizeText(printedText) === english.textNorm) return "";
+  return printedText;
+}
+
+function translatedPayload(english, localizedCard, locale, printedText) {
   return {
     schemaVersion: SCHEMA_VERSION,
     source: "scryfall",
@@ -163,7 +165,7 @@ function translatedPayload(english, localizedCard, locale) {
     // English text when a field is empty.
     name: firstFaceValue(localizedCard, "printed_name") || "",
     typeLine: firstFaceValue(localizedCard, "printed_type_line") || "",
-    oracleText: firstFaceValue(localizedCard, "printed_text") || "",
+    oracleText: printedText,
     scryfallId: localizedCard.id || null,
     set: localizedCard.set || null,
     collectorNumber: localizedCard.collector_number || null,
@@ -305,11 +307,13 @@ for await (const card of streamBulkCards(bulkFile)) {
   if (card?.lang !== "en" || !card?.oracle_id) continue;
   if (englishByOracle.has(card.oracle_id)) continue;
   const name = firstFaceValue(card, "name");
+  const textNorm = normalizeText(firstFaceValue(card, "oracle_text"));
   englishByOracle.set(card.oracle_id, {
     oracleId: card.oracle_id,
     name,
     route: routeKey(name),
-    parens: parenGroupCount(firstFaceValue(card, "oracle_text")),
+    textNorm,
+    parens: parenGroupCount(textNorm),
   });
 }
 console.log(`  indexed ${englishByOracle.size} English cards`);
@@ -320,9 +324,13 @@ for await (const card of streamBulkCards(bulkFile)) {
   if (card?.lang !== locale || !card?.oracle_id) continue;
   const english = englishByOracle.get(card.oracle_id);
   if (!english || !english.route) continue;
-  const payload = translatedPayload(english, card, locale);
+  // Rank printings: 2 = localized text keeping at least as many parenthetical
+  // (reminder) groups as the English oracle text, 1 = any localized text,
+  // 0 = name/typeLine only. Newest printing wins within each tier.
+  const printedText = localizedPrintedText(english, card);
+  const payload = translatedPayload(english, card, locale, printedText);
   if (!payload.name && !payload.typeLine && !payload.oracleText) continue;
-  const score = printingScore(english.parens, card);
+  const score = !printedText ? 0 : (parenGroupCount(printedText) >= english.parens ? 2 : 1);
   const releasedAt = String(card.released_at || "");
   const existing = byOracle.get(card.oracle_id);
   if (

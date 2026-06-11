@@ -5,6 +5,7 @@ import { debounceClick, debouncePointerDown } from "@/lib/interactionDebounce";
 import { cn } from "@/lib/utils";
 import { fetchScryfallCardMeta } from "@/lib/scryfall";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
+import { useTranslatedCardName } from "@/i18n/useTranslatedCardName";
 import { ManaCostIcons } from "@/lib/mana-symbols";
 
 const semanticScoreCache = new Map();
@@ -810,6 +811,9 @@ export default function GameCard({
 }) {
   const { game, inspectorDebug } = useGame();
   const name = card.name || "";
+  // English name stays the lookup key everywhere (art, mana parsing, DOM
+  // attributes); only user-facing labels use the localized name.
+  const displayName = useTranslatedCardName(name, card.oracle_id || card.oracleId || null);
   const artVersion = variant === "hand" ? "normal" : "art_crop";
   const artUrl = useScryfallImageUrl(name, artVersion);
   const imageLoading = variant === "hand" ? "eager" : "lazy";
@@ -1296,7 +1300,7 @@ export default function GameCard({
       data-stable-id={stableId}
       data-member-stable-ids={memberStableIds.join(",")}
       data-card-name={name}
-      title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${name} (${groupSize} grouped permanents)` : name)}
+      title={suppressTooltip || variant === "battlefield" ? undefined : (groupSize > 1 ? `${displayName} (${groupSize} grouped permanents)` : displayName)}
       onClick={debouncedOnClick}
       onContextMenu={onContextMenu}
       onPointerDown={debouncedOnPointerDown}
@@ -1393,7 +1397,7 @@ export default function GameCard({
               className="battlefield-token-svg"
               viewBox="0 0 120 120"
               role="img"
-              aria-label={name}
+              aria-label={displayName}
               preserveAspectRatio="xMidYMid meet"
             >
               <defs>
@@ -1527,7 +1531,7 @@ export default function GameCard({
         ) : variant === "hand" ? (
           <div className="hand-card-header absolute top-0 left-0 right-0 z-2 px-1.5 py-1">
             <div className="hand-card-title whitespace-nowrap overflow-hidden text-ellipsis text-shadow-[0_1px_1px_rgba(0,0,0,0.85)]">
-              {name}
+              {displayName}
             </div>
             {showDebugSimilarityBadge && (
               <span

@@ -539,8 +539,19 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     const response = await fetchScryfallApiJson(`https://api.scryfall.com/cards/search?${params.toString()}`);
     if (!response.ok) return null;
     const payload = await response.json();
+    // Scryfall marks not-yet-localized printings as lang:<locale> with a
+    // localized printed_name but printed_text still in English; treat that
+    // text as absent so a properly translated older printing wins instead.
+    const englishTextNorm = String(firstFaceValue(englishCard, "oracle_text") || "")
+      .replace(/\s+/g, " ")
+      .trim();
     const candidates = (payload?.data || [])
       .map((card) => localizedCardPayload(card, targetLang))
+      .map((card) => (
+        card && card.oracleText && card.oracleText.replace(/\s+/g, " ").trim() === englishTextNorm
+          ? { ...card, oracleText: "" }
+          : card
+      ))
       .filter((card) => card && (card.oracleText || card.name || card.typeLine));
     // Reminder text only exists on printings that physically carried it. Prefer
     // the newest printing whose printed_text keeps at least as many parenthetical
