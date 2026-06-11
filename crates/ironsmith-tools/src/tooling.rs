@@ -510,7 +510,6 @@ fn authoritative_semantic_marker_parse_error(snapshot: &CompilationSnapshot) -> 
     let compiled_text = snapshot.compiled_text.as_deref()?;
     let oracle = snapshot.normalized_oracle_text.to_ascii_lowercase();
     let compiled = compiled_text.to_ascii_lowercase();
-
     let internal_markers = [
         ("valuecomparison {", "value-comparison-debug"),
         ("tagged '", "tagged-object-reference"),

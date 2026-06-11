@@ -75,6 +75,7 @@ impl EffectExecutor for ForEachTaggedEffect {
         }
 
         let mut outcomes = Vec::new();
+        let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
 
         let it_tag = TagKey::from("__it__");
         for snapshot in &snapshots {
@@ -83,6 +84,7 @@ impl EffectExecutor for ForEachTaggedEffect {
             let original_it = ctx.tagged_objects.remove(&it_tag);
             ctx.tag_object(it_tag.clone(), snapshot.clone());
 
+            let start = outcomes.len();
             ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
                 // Also expose this object's controller as the iterated player.
                 // This lets inner effects naturally say "its controller" via IteratedPlayer.
@@ -94,6 +96,17 @@ impl EffectExecutor for ForEachTaggedEffect {
                     Ok::<(), ExecutionError>(())
                 })
             })?;
+            let count = EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
+                .as_count()
+                .unwrap_or(0);
+            if let Some((_, total)) = player_counts
+                .iter_mut()
+                .find(|(player, _)| *player == snapshot.controller)
+            {
+                *total += count;
+            } else {
+                player_counts.push((snapshot.controller, count));
+            }
 
             match original_it {
                 Some(value) => {
@@ -105,7 +118,7 @@ impl EffectExecutor for ForEachTaggedEffect {
             }
         }
 
-        Ok(EffectOutcome::aggregate_summing_counts(outcomes))
+        Ok(EffectOutcome::aggregate_summing_counts(outcomes).with_player_counts(player_counts))
     }
 }
 

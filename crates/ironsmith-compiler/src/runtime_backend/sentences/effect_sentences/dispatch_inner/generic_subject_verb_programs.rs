@@ -1151,6 +1151,12 @@ fn put_counted_top_cards_owner(
     }
 }
 
+fn generic_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
+    !phrase.is_empty()
+        && words
+            .windows(phrase.len())
+            .any(|window| window == phrase)
+}
 
 pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
     tokens: &[OwnedLexToken],

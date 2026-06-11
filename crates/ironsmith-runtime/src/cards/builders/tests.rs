@@ -433,6 +433,55 @@ fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_runtime() {
 }
 
 #[test]
+fn duplicant_strict_parser_compiled_text_and_model_regression() {
+    assert_oracle_card_parses_strict("Duplicant");
+
+    let def = parse_oracle_card_definition("Duplicant");
+    let rendered = compiled_text_lines(&def).join("\n");
+    let ability_debug = format!("{:#?}", def.abilities);
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    let source_static_debug = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            (static_ability.id() == StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard)
+                .then(|| format!("{static_ability:#?}"))
+        })
+        .expect("Duplicant should have source-linked static characteristics");
+
+    assert!(
+        rendered.contains("When this creature enters, you may exile target nontoken creature"),
+        "expected Duplicant's optional nontoken exile trigger to render, got {rendered}"
+    );
+    assert!(
+        rendered.contains("last creature card exiled with it")
+            && rendered.contains("It's still a Shapeshifter"),
+        "expected Duplicant's exiled-card characteristic static ability to render, got {rendered}"
+    );
+    assert!(
+        ability_debug.contains("MayEffect")
+            && ability_debug.contains("nontoken: true")
+            && static_ids.contains(&StaticAbilityId::SourceCharacteristicsOfLastExiledCreatureCard),
+        "expected Duplicant to model optional nontoken exile plus source-linked static characteristics, got ids {static_ids:?} and abilities {ability_debug}"
+    );
+    assert!(
+        source_static_debug.contains("nontoken: true")
+            && source_static_debug.contains("zone: Some(Exile)"),
+        "expected Duplicant's source-linked static filter to require nontoken creature cards in exile, got {source_static_debug}"
+    );
+}
+
+#[test]
 fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Rampaging Aetherhood");
     let ability_debug = format!("{:#?}", def.abilities);
@@ -23120,6 +23169,170 @@ fn parse_equipped_activated_grant_with_unattach_cost_compiles() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn carry_away_strict_parser_and_text_regression() {
+    let def = parse_oracle_card_definition("Carry Away");
+    let debug = format!("{def:#?}").to_ascii_lowercase();
+    assert!(
+        debug.contains("unattachobjectseffect") && debug.contains("controlattachedpermanent"),
+        "Carry Away should lower to unattach effect plus attached control static ability, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("unattach enchanted equipment"),
+        "Carry Away compiled text should preserve the unattach enchanted Equipment clause, got {rendered}"
+    );
+    assert!(
+        rendered.contains("you control enchanted equipment"),
+        "Carry Away compiled text should preserve the control-attached Equipment clause, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn carry_away_runtime_setup(
+    equipment_starts_attached: bool,
+) -> (
+    crate::game_state::GameState,
+    PlayerId,
+    PlayerId,
+    ObjectId,
+    ObjectId,
+    ObjectId,
+) {
+    let carry_away = parse_oracle_card_definition("Carry Away");
+    let equipment = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+    let creature = CardDefinitionBuilder::new(CardId::new(), "Carry Away Test Bear")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_id = game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    let equipment_id = game.create_object_from_definition(&equipment, bob, Zone::Battlefield);
+    if equipment_starts_attached {
+        assert!(game.attach_object_to_target(
+            equipment_id,
+            crate::object::AttachmentTarget::Object(creature_id),
+        ));
+    }
+    let carry_away_id = game.create_object_from_definition(&carry_away, alice, Zone::Battlefield);
+    assert!(game.attach_object_to_target(
+        carry_away_id,
+        crate::object::AttachmentTarget::Object(equipment_id),
+    ));
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+
+    (game, alice, bob, carry_away_id, equipment_id, creature_id)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn resolve_carry_away_enter_trigger(
+    game: &mut crate::game_state::GameState,
+    carry_away_id: ObjectId,
+) {
+    let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+        game.object(carry_away_id)
+            .expect("Carry Away should exist on battlefield"),
+        game,
+    );
+    let enters_event = crate::events::RawEvent::new(
+        crate::events::ZoneChangeEvent::with_cause(
+            carry_away_id,
+            Zone::Stack,
+            Zone::Battlefield,
+            crate::events::cause::EventCause::effect(),
+            Some(snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    for entry in crate::triggers::check_triggers(game, &enters_event)
+        .into_iter()
+        .filter(|entry| entry.source == carry_away_id)
+    {
+        trigger_queue.add(entry);
+    }
+    crate::game_loop::put_triggers_on_stack(game, &mut trigger_queue)
+        .expect("Carry Away enters trigger should go on the stack");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Carry Away entering should create exactly one unattach trigger"
+    );
+    crate::game_loop::resolve_stack_entry(game)
+        .expect("Carry Away unattach trigger should resolve");
+    game.mark_continuous_state_dirty();
+    game.refresh_continuous_state();
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_unattaches_enchanted_equipment_and_controls_it() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(true);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        Some(crate::object::AttachmentTarget::Object(creature_id)),
+        "test setup should start with the enchanted Equipment attached to the creature"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "Carry Away should unattach the enchanted Equipment from the creature"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "Carry Away should remain attached to the Equipment it enchants"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn carry_away_does_not_detach_aura_when_equipment_is_already_unattached() {
+    let (mut game, alice, bob, carry_away_id, equipment_id, creature_id) =
+        carry_away_runtime_setup(false);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(game.controller_of_id(creature_id), Some(bob));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "test setup should start with unattached enchanted Equipment"
+    );
+
+    resolve_carry_away_enter_trigger(&mut game, carry_away_id);
+
+    assert_eq!(game.controller_of_id(equipment_id), Some(alice));
+    assert_eq!(
+        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        None,
+        "already-unattached Equipment should remain unattached"
+    );
+    assert_eq!(
+        game.object(carry_away_id).and_then(|aura| aura.attached_to),
+        Some(crate::object::AttachmentTarget::Object(equipment_id)),
+        "the unattach effect should not detach Carry Away itself"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_auriok_steelshaper_strict_and_preserves_equip_cost_modifier_text() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Auriok Steelshaper")
         .card_types(vec![CardType::Creature])
@@ -24439,6 +24652,266 @@ fn parse_oracle_winds_of_qal_sisma_ferocious_prevents_only_opponents_creature_da
         game.player(bob).expect("Bob exists").life,
         17,
         "ferocious Winds of Qal Sisma should not prevent its controller's creature combat damage"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn radiant_kavu_test_permanent(
+    game: &mut crate::game_state::GameState,
+    name: &str,
+    controller: PlayerId,
+    card_types: Vec<CardType>,
+    colors: crate::color::ColorSet,
+) -> ObjectId {
+    let card = crate::card::CardBuilder::new(CardId::new(), name)
+        .card_types(card_types)
+        .color_indicator(colors)
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .build();
+    game.create_object_from_card(&card, controller, Zone::Battlefield)
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn activate_radiant_kavu(
+    game: &mut crate::game_state::GameState,
+    controller: PlayerId,
+    kavu_id: ObjectId,
+) {
+    let ability_index = game
+        .object(kavu_id)
+        .expect("Radiant Kavu should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Radiant Kavu should have an activated ability");
+    let activate_action = crate::decision::compute_legal_actions(game, controller)
+        .into_iter()
+        .find(|action| {
+            matches!(
+                action,
+                crate::decision::LegalAction::ActivateAbility { source, ability_index: idx }
+                    if *source == kavu_id && *idx == ability_index
+            )
+        })
+        .expect("Radiant Kavu activation should be legal after paying {R}{G}{W}");
+
+    let mut trigger_queue = crate::triggers::TriggerQueue::new();
+    let mut state = crate::game_loop::PriorityLoopState::new(game.players_in_game());
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let progress = crate::game_loop::apply_priority_response_with_dm(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        &crate::game_loop::PriorityResponse::PriorityAction(activate_action),
+        &mut dm,
+    )
+    .expect("Radiant Kavu activation should start");
+    chandras_regulator_drive_activation(
+        game,
+        &mut trigger_queue,
+        &mut state,
+        progress,
+        &mut dm,
+        None,
+    );
+    crate::game_loop::resolve_stack_entry_with(game, &mut dm)
+        .expect("Radiant Kavu activated ability should resolve");
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiant_kavu_strict_parser_and_compiled_text_regression() {
+    assert_oracle_card_parses_strict("Radiant Kavu");
+    let def = parse_oracle_card_definition("Radiant Kavu");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Radiant Kavu should have an activated ability");
+    let prevent = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::PreventAllDamageEffect>())
+        .expect("Radiant Kavu should lower to a prevent-all damage effect");
+    let source_filter = prevent
+        .damage_filter
+        .from_source
+        .as_ref()
+        .expect("Radiant Kavu prevention should be source-filtered");
+
+    assert_eq!(
+        rendered,
+        "{R}{G}{W}: Prevent all combat damage blue creatures and black creatures would deal this turn.",
+        "Radiant Kavu compiled text should preserve its exact blue/black creature combat-prevention clause"
+    );
+    assert!(
+        !rendered_lower.contains("unsupported") && !rendered_lower.contains("unimplemented"),
+        "Radiant Kavu should compile without fallback markers, got {rendered}"
+    );
+    assert!(
+        prevent.damage_filter.combat_only
+            && source_filter.zone == Some(Zone::Battlefield)
+            && source_filter.card_types == vec![CardType::Creature]
+            && source_filter.colors
+                == Some(crate::color::ColorSet::BLUE.union(crate::color::ColorSet::BLACK)),
+        "Radiant Kavu should lower to a combat-only blue/black creature source-filter shield, got {prevent:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime() {
+    let def = parse_oracle_card_definition("Radiant Kavu");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    game.turn.active_player = alice;
+    game.turn.phase = crate::game_state::Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.priority_player = Some(alice);
+
+    let kavu_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    let ability_index = game
+        .object(kavu_id)
+        .expect("Radiant Kavu should exist")
+        .abilities
+        .iter()
+        .position(|ability| matches!(ability.kind, AbilityKind::Activated(_)))
+        .expect("Radiant Kavu should have an activated ability");
+    let cost_debug = format!(
+        "{:?}",
+        game.object(kavu_id)
+            .expect("Radiant Kavu should exist")
+            .abilities[ability_index]
+    );
+    assert!(
+        cost_debug.contains("Red") && cost_debug.contains("Green") && cost_debug.contains("White"),
+        "Radiant Kavu activated ability should carry its {{R}}{{G}}{{W}} cost, got {cost_debug}"
+    );
+
+    {
+        let player = game.player_mut(alice).expect("Alice should exist");
+        player.mana_pool.add(ManaSymbol::Red, 1);
+        player.mana_pool.add(ManaSymbol::Green, 1);
+        player.mana_pool.add(ManaSymbol::White, 1);
+    }
+    activate_radiant_kavu(&mut game, alice, kavu_id);
+    assert_eq!(
+        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        0,
+        "Radiant Kavu activation should spend {{R}}{{G}}{{W}}"
+    );
+
+    let shields = game.effect_store.prevention_effects.shields();
+    assert_eq!(
+        shields.len(),
+        1,
+        "Radiant Kavu should create one prevention shield"
+    );
+    assert!(
+        shields[0].damage_filter.combat_only && shields[0].damage_filter.from_source.is_some(),
+        "Radiant Kavu should create a combat-only source-filter prevention shield, got {:?}",
+        shields[0]
+    );
+
+    let blue_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Blue Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::BLUE,
+    );
+    let black_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Black Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::BLACK,
+    );
+    let green_creature = radiant_kavu_test_permanent(
+        &mut game,
+        "Green Combat Source",
+        bob,
+        vec![CardType::Creature],
+        crate::color::ColorSet::GREEN,
+    );
+    let blue_artifact = radiant_kavu_test_permanent(
+        &mut game,
+        "Blue Noncreature Source",
+        bob,
+        vec![CardType::Artifact],
+        crate::color::ColorSet::BLUE,
+    );
+
+    let (blue_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_combat, 0,
+        "Radiant Kavu should prevent blue creature combat damage"
+    );
+
+    let (black_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        black_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        black_combat, 0,
+        "Radiant Kavu should prevent black creature combat damage"
+    );
+
+    let (green_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        green_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        green_combat, 3,
+        "Radiant Kavu should not prevent green creature combat damage"
+    );
+
+    let (blue_artifact_combat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_artifact,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        true,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_artifact_combat, 3,
+        "Radiant Kavu should not prevent combat damage from blue noncreatures"
+    );
+
+    let (blue_noncombat, _) = crate::events::processing::process_damage_with_event(
+        &mut game,
+        blue_creature,
+        crate::events::DamageTarget::Player(alice),
+        3,
+        false,
+        crate::events::cause::EventCause::effect(),
+    );
+    assert_eq!(
+        blue_noncombat, 3,
+        "Radiant Kavu should not prevent noncombat damage"
     );
 }
 

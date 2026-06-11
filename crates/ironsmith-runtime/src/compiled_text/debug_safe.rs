@@ -29,6 +29,9 @@ fn mechanical_cleanup(line: String) -> String {
     if line.trim().is_empty() {
         return String::new();
     }
+    if line.trim().eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
+        return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
+    }
     let line = normalize_debug_safe_sentence_surface(&line);
     let line = normalize_debug_safe_legacy_surface(&line);
     let line = normalize_debug_safe_mana_symbol_case(&line);

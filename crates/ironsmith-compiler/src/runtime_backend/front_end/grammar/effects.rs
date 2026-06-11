@@ -801,6 +801,19 @@ pub(crate) fn parse_prevent_damage_sentence_lexed(
             .is_some_and(|word| *word == "deal")
     {
         let source_tokens = &core_tokens[..would_idx];
+        if !source_tokens
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(is_prevent_damage_source_head_word)
+            && let Ok(source_filter) = parse_object_filter(source_tokens, false)
+        {
+            return Ok(Some(
+                EffectAst::subject_verb_prevent_all_combat_damage_from_source_filter(
+                    source_filter,
+                    crate::effect::Until::EndOfTurn,
+                ),
+            ));
+        }
         let (source, has_color_condition) =
             parse_prevent_damage_source_target_lexed(source_tokens, &words)?;
         let has_color_condition = has_color_condition

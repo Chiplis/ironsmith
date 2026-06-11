@@ -103,6 +103,7 @@ pub enum StaticAbilityId {
     RemoveAllAbilitiesForFilter,
     RemoveAllAbilitiesExceptManaForFilter,
     SetBasePowerToughnessForFilter,
+    SourceCharacteristicsOfLastExiledCreatureCard,
     EquipmentGrant,
     CharacteristicDefiningPT,
     AddCardTypes,
@@ -375,6 +376,7 @@ impl StaticAbilityId {
             | RemoveAllAbilitiesForFilter
             | RemoveAllAbilitiesExceptManaForFilter
             | SetBasePowerToughnessForFilter
+            | SourceCharacteristicsOfLastExiledCreatureCard
             | EquipmentGrant
             | CharacteristicDefiningPT
             | AddCardTypes
