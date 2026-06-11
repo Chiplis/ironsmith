@@ -116,6 +116,23 @@ function firstFaceValue(card, field) {
   return "";
 }
 
+function parenGroupCount(text) {
+  return (String(text || "").match(/\(/g) || []).length;
+}
+
+// Scryfall has no localized oracle text — only per-printing printed_text, which
+// includes reminder text only when that physical printing carried it. Rank each
+// localized printing so we keep the one closest to the current English oracle text:
+// 2 = printed_text present with at least as many parenthetical (reminder) groups
+//     as the English oracle text, 1 = printed_text present, 0 = no digitized text
+// (still useful for name/typeLine). Never backfill rules text with English.
+function printingScore(englishCard, localizedCard) {
+  const printedText = firstFaceValue(localizedCard, "printed_text");
+  if (!printedText) return 0;
+  const englishParens = parenGroupCount(firstFaceValue(englishCard, "oracle_text"));
+  return parenGroupCount(printedText) >= englishParens ? 2 : 1;
+}
+
 function translatedPayload(englishCard, localizedCard, locale) {
   const oracleId = String(localizedCard.oracle_id || englishCard.oracle_id || "").trim();
   const englishName = firstFaceValue(englishCard, "name");
@@ -129,7 +146,7 @@ function translatedPayload(englishCard, localizedCard, locale) {
     route: routeKey(englishName),
     name: firstFaceValue(localizedCard, "printed_name") || firstFaceValue(localizedCard, "name") || "",
     typeLine: firstFaceValue(localizedCard, "printed_type_line") || firstFaceValue(localizedCard, "type_line") || "",
-    oracleText: firstFaceValue(localizedCard, "printed_text") || firstFaceValue(localizedCard, "oracle_text") || "",
+    oracleText: firstFaceValue(localizedCard, "printed_text") || "",
     scryfallId: localizedCard.id || null,
     set: localizedCard.set || null,
     collectorNumber: localizedCard.collector_number || null,
@@ -188,12 +205,21 @@ for (const card of cards) {
   if (!englishCard) continue;
   const payload = translatedPayload(englishCard, card, locale);
   if (!payload.route || (!payload.name && !payload.typeLine && !payload.oracleText)) continue;
-  if (!byOracle.has(payload.oracleId)) byOracle.set(payload.oracleId, payload);
+  const score = printingScore(englishCard, card);
+  const releasedAt = String(card.released_at || "");
+  const existing = byOracle.get(payload.oracleId);
+  if (
+    !existing
+    || score > existing.score
+    || (score === existing.score && releasedAt > existing.releasedAt)
+  ) {
+    byOracle.set(payload.oracleId, { payload, score, releasedAt });
+  }
 }
 
 const outRoot = path.resolve(ROOT, args.outDir, locale);
 let written = 0;
-for (const payload of byOracle.values()) {
+for (const { payload } of byOracle.values()) {
   await atomicWriteJson(path.join(outRoot, "by-oracle", `${payload.oracleId}.json`), payload);
   await atomicWriteJson(path.join(outRoot, "by-name", `${payload.route}.json`), payload);
   written += 1;

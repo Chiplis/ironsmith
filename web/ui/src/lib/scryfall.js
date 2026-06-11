@@ -477,11 +477,25 @@ export async function fetchScryfallCardMeta(cardName) {
   return request;
 }
 
+function firstFaceValue(card, field) {
+  if (card?.[field]) return card[field];
+  if (Array.isArray(card?.card_faces)) {
+    return card.card_faces.map((face) => face?.[field]).filter(Boolean).join("\n//\n");
+  }
+  return "";
+}
+
+function parenGroupCount(text) {
+  return (String(text || "").match(/\(/g) || []).length;
+}
+
 function localizedCardPayload(card, locale) {
   if (!card || typeof card !== "object") return null;
-  const name = card.printed_name || card.name || "";
-  const typeLine = card.printed_type_line || card.type_line || "";
-  const oracleText = card.printed_text || card.oracle_text || "";
+  const name = firstFaceValue(card, "printed_name") || firstFaceValue(card, "name");
+  const typeLine = firstFaceValue(card, "printed_type_line") || firstFaceValue(card, "type_line");
+  // Scryfall has no localized oracle text; printed_text is the only localized
+  // rules text. Never backfill it with the English oracle_text field.
+  const oracleText = firstFaceValue(card, "printed_text");
   if (!name && !typeLine && !oracleText) return null;
   return {
     schemaVersion: 1,
@@ -518,13 +532,23 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     const params = new URLSearchParams({
       q: `lang:${targetLang} oracleid:${oracleId}`,
       unique: "prints",
+      order: "released",
+      dir: "desc",
     });
     const response = await fetchScryfallApiJson(`https://api.scryfall.com/cards/search?${params.toString()}`);
     if (!response.ok) return null;
     const payload = await response.json();
-    const translated = (payload?.data || [])
+    const candidates = (payload?.data || [])
       .map((card) => localizedCardPayload(card, targetLang))
-      .find((card) => card?.oracleText || card?.name || card?.typeLine);
+      .filter((card) => card && (card.oracleText || card.name || card.typeLine));
+    // Reminder text only exists on printings that physically carried it. Prefer
+    // the newest printing whose printed_text keeps at least as many parenthetical
+    // (reminder) groups as the current English oracle text, then the newest with
+    // any printed_text, then the newest with just a localized name/type line.
+    const englishParens = parenGroupCount(firstFaceValue(englishCard, "oracle_text"));
+    const translated = candidates.find((card) => card.oracleText && parenGroupCount(card.oracleText) >= englishParens)
+      || candidates.find((card) => card.oracleText)
+      || candidates[0];
     return translated || null;
   })()
     .catch((error) => {

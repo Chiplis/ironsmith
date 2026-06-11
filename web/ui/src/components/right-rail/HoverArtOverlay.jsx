@@ -898,9 +898,15 @@ export default function HoverArtOverlay({
     || hoveredStackObject?.oracleId
     || ""
   ).trim();
+  const cardTranslationKey = [
+    locale,
+    cardTranslationOracleId,
+    baseDisplayObjectName || "",
+    baseDisplayTypeLine || "",
+    baseDisplayRulesText || "",
+  ].join("|");
   useEffect(() => {
     let cancelled = false;
-    setTranslatedCardText(null);
 
     if (debugInspector || locale === "en") return undefined;
 
@@ -916,22 +922,28 @@ export default function HoverArtOverlay({
 
     loadTranslatedCardView(locale, cardView).then((next) => {
       if (cancelled) return;
-      setTranslatedCardText(next || null);
+      setTranslatedCardText(next ? { key: cardTranslationKey, view: next } : null);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [baseDisplayObjectName, baseDisplayRulesText, baseDisplayTypeLine, cardTranslationOracleId, debugInspector, locale]);
+  }, [baseDisplayObjectName, baseDisplayRulesText, baseDisplayTypeLine, cardTranslationKey, cardTranslationOracleId, debugInspector, locale]);
 
-  const displayRulesText = translatedCardText?.rulesText || baseDisplayRulesText;
+  const activeCardTranslation = translatedCardText?.key === cardTranslationKey
+    ? translatedCardText.view
+    : null;
+  // A hovered stack ability shows that ability's compiled text; the card-level
+  // translation covers the whole card, so it must not replace it.
+  const displayRulesText = (!shouldPreferStackAbilityRules && activeCardTranslation?.rulesText)
+    || baseDisplayRulesText;
   const displayRulesLines = useMemo(() => (
     displayRulesText
       ? displayRulesText.split(/\n+/).map((line) => line.trim()).filter(Boolean)
       : []
   ), [displayRulesText]);
-  const displayObjectName = translatedCardText?.name || baseDisplayObjectName;
-  const displayTypeLine = translatedCardText?.typeLine || baseDisplayTypeLine;
+  const displayObjectName = activeCardTranslation?.name || baseDisplayObjectName;
+  const displayTypeLine = activeCardTranslation?.typeLine || baseDisplayTypeLine;
   const displayTypeLineBadges = debugInspector ? [] : typeLineBadges;
   const displayZoneLine = debugInspector ? null : zoneLine;
   const displayCountersLine = debugInspector ? null : countersLine;

@@ -106,13 +106,19 @@ export async function loadTranslatedCardView(locale, cardView) {
       const official = await loadOfficialCardTranslation(locale, cardName, oracleId);
       if (official) {
         const officialTypeLine = official.typeLine || official.printedTypeLine || "";
+        const officialRulesText = String(official.oracleText || official.rulesText || "").trim();
+        // Official payloads never carry English rules text; when no localized
+        // printing was digitized, fall back to the generated translation.
+        const generatedRulesText = !officialRulesText && rulesText
+          ? await loadGeneratedTextTranslation(locale, rulesText)
+          : null;
         return {
           name: official.name || cardName || null,
           typeLine: translateTypeLineFallback(
             locale,
             officialTypeLine && officialTypeLine !== typeLine ? officialTypeLine : typeLine
           ) || null,
-          rulesText: official.oracleText || official.rulesText || rulesText || null,
+          rulesText: officialRulesText || generatedRulesText || rulesText || null,
           source: "scryfall",
         };
       }
