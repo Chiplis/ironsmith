@@ -13,7 +13,7 @@ import {
 } from "@/lib/battlefield-layout";
 import { isTriggerOrderingDecision } from "@/lib/trigger-ordering";
 import {
-  ANGELIC_DESTROY_BOARD_HOLD_MS,
+  DEATH_COLLAPSE_BOARD_HOLD_MS,
   RIFT_DISSOLVE_EXILE_BOARD_HOLD_MS,
 } from "@/lib/game-animations";
 import GameCard from "@/components/cards/GameCard";
@@ -238,12 +238,12 @@ function firstMatchingStableId(card, stableIds) {
 }
 
 function holdDurationForLeaveKind(leaveKind) {
-  if (leaveKind === "destroyed") return ANGELIC_DESTROY_BOARD_HOLD_MS;
+  if (leaveKind === "destroyed" || leaveKind === "sacrificed") return DEATH_COLLAPSE_BOARD_HOLD_MS;
   return RIFT_DISSOLVE_EXILE_BOARD_HOLD_MS;
 }
 
 function shouldHoldAnimatedLeaveKind(leaveKind) {
-  return leaveKind === "exiled" || leaveKind === "destroyed";
+  return leaveKind === "exiled" || leaveKind === "destroyed" || leaveKind === "sacrificed";
 }
 
 function buildAnimatedLeaveLayoutHolds(transitions, previousCards, snapshotId) {

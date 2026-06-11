@@ -34,6 +34,7 @@ impl EffectExecutor for ExtraTurnEffect {
 
         // Add an extra turn for this player
         game.turn_store.extra_turns.push(player_id);
+        game.record_ui_effect_event("extra_turn", Some(player_id), None, Vec::new(), None, None);
 
         Ok(EffectOutcome::resolved())
     }

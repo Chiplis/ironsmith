@@ -15,16 +15,27 @@ function ComicTooltip({
   className,
   contentClassName,
   persistOnOutsideInteraction = false,
+  disabled = false,
   ...props
 }) {
   const [open, setOpen] = React.useState(false);
 
-  if (!title && !description) {
+  React.useEffect(() => {
+    if (disabled && open) setOpen(false);
+  }, [disabled, open]);
+
+  // `disabled` keeps the wrapper mounted (so the trigger child never remounts
+  // when the tooltip toggles availability) while preventing it from opening.
+  if (!title && !description && !disabled) {
     return children;
   }
 
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen} {...props}>
+    <PopoverPrimitive.Root
+      open={open && !disabled}
+      onOpenChange={(next) => setOpen(disabled ? false : next)}
+      {...props}
+    >
       <PopoverPrimitive.Trigger asChild className={className}>
         {children}
       </PopoverPrimitive.Trigger>

@@ -3,12 +3,13 @@ import { useGame } from "@/context/GameContext";
 import { useHoveredObjectId } from "@/context/HoverContext";
 import DecisionRouter from "@/components/decisions/DecisionRouter";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
+import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
 import { normalizeDecisionText } from "@/components/decisions/decisionText";
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
 import { currentPriorityPhaseLabel, isMainPhase, nextPriorityAdvanceLabel } from "@/lib/constants";
-import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -137,8 +138,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const decision = state?.decision;
   const gameOver = state?.game_over || null;
   const rematch = multiplayer?.rematch || null;
-  const peerWait = multiplayer?.peerWait || null;
+  const rawPeerWait = multiplayer?.peerWait || null;
+  const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
+  const peerWaitLocked = Boolean(rawPeerWait);
   const rematchSideboarding = rematch?.phase === "sideboarding";
   const rematchReady = Boolean(rematch?.localReady);
   const showGameOverPanel = Boolean(gameOver);
@@ -199,8 +202,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const passHelpAdvanceLabel = resolvingStackPriority
     ? "Resolve"
     : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
-  const localDecisionButton = isLocalDecisionButton(state, decision);
+  const { style: decisionButtonStyle, isLocal: localDecisionButton } =
+    useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const showSurrender = Boolean(
     multiplayer?.matchStarted
     && !showGameOverPanel
@@ -407,10 +410,10 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   variant="ghost"
                   size="sm"
                   className="decision-neon-button decision-main-button pass-priority-btn h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 text-left text-[15px] font-bold uppercase whitespace-normal"
-                  aria-disabled={peerWaiting || (rematchSideboarding && rematchReady)}
+                  aria-disabled={peerWaitLocked || (rematchSideboarding && rematchReady)}
                   disabled={peerWaiting ? false : (rematchSideboarding && rematchReady)}
                   onClick={() => {
-                    if (peerWaiting) return;
+                    if (peerWaitLocked) return;
                     handleRematchClick();
                   }}
                 >
@@ -436,9 +439,9 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                     className="decision-neon-button decision-main-button pass-priority-btn group h-auto min-h-10 w-full shrink-0 justify-start px-3 py-1.5 pr-9 text-left text-[15px] font-bold uppercase whitespace-normal"
                     style={decisionButtonStyle}
                     data-local-action={localDecisionButton ? "true" : "false"}
-                    aria-disabled={peerWaiting || !canAct}
+                    aria-disabled={peerWaitLocked || !canAct}
                     onClick={() => {
-                      if (peerWaiting || !canAct) return;
+                      if (peerWaitLocked || !canAct) return;
                       dispatch(
                         { type: "priority_action", action_index: passAction.index, action_ref: passAction.action_ref },
                         passAction.label

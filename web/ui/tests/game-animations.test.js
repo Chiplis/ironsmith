@@ -175,29 +175,114 @@ test("exile animation uses the exact previous object rect before stable-id fallb
   );
 });
 
-test("destroy animation builds the angelic inspector flight for matching runtime events", () => {
+test("destroy animation builds a collapse plus an inspector-bound stream", () => {
   const result = resolveGameAnimations({
     previews: [destroyPreview()],
     state: { snapshot_id: 4, battlefield_transitions: [{ stable_id: 43, kind: "destroyed" }] },
     previousCardRects: new Map([["stable:43", rect]]),
   });
 
-  assert.equal(result.previews[0].animationKind, "angelic-destroy");
+  assert.equal(result.previews[0].animationKind, "death-collapse");
   assert.equal(result.previews[0].inspectorShaderReveal, true);
-  assert.equal(result.previews[0].animationStaggerMs, 0);
   assert.equal(result.previews[0].inspectorRevealScope, "inspector");
-  assert.equal(result.previews[0].inspectorRevealDelayMs, 420);
+  assert.equal(result.previews[0].inspectorRevealDelayMs, 1250);
+  assert.equal(result.previews[0].animationStaggerMs, 0);
   assert.deepEqual(
     result.visualEffects.map((effect) => [effect.id, effect.kind, effect.travelsToInspector]),
     [
-      ["destroy-angelic:p0:stable:43", "angelic-destroy", true],
+      ["death-collapse:p0:stable:43", "death-collapse", false],
+      ["death-collapse-stream:p0:stable:43", "marquee-stream", true],
     ],
   );
-  assert.equal(result.visualEffects[0].targetToken, "p0:stable:43");
-  assert.equal(result.visualEffects[0].targetScope, "inspector");
+  assert.equal(result.visualEffects[0].collapseVariant, "destroyed");
+  assert.equal(result.visualEffects[1].streamProfile, "death");
+  assert.equal(result.visualEffects[1].targetToken, "p0:stable:43");
+  assert.equal(result.visualEffects[1].targetScope, "inspector");
 });
 
-test("destroy animation staggers angelic flights while preserving flight effect duration", () => {
+test("sacrifice gets the violet collapse variant and its own stream profile", () => {
+  const result = resolveGameAnimations({
+    previews: [destroyPreview()],
+    state: { snapshot_id: 9, battlefield_transitions: [{ stable_id: 43, kind: "sacrificed" }] },
+    previousCardRects: new Map([["stable:43", rect]]),
+  });
+
+  assert.equal(result.previews[0].animationKind, "sacrifice-collapse");
+  assert.equal(result.previews[0].inspectorShaderReveal, true);
+  assert.deepEqual(
+    result.visualEffects.map((effect) => [effect.kind, effect.collapseVariant ?? effect.streamProfile]),
+    [
+      ["death-collapse", "sacrificed"],
+      ["marquee-stream", "sacrifice"],
+    ],
+  );
+});
+
+test("countered spells shatter from the stack and stream to the inspector", () => {
+  const preview = {
+    token: "p0:stack:77",
+    objectId: 300,
+    fromObjectId: 300,
+    toObjectId: 301,
+    fromZone: "stack",
+    toZone: "graveyard",
+    playerKey: "0",
+    card: { id: 301, stable_id: 77, name: "Countered Spell" },
+    trackingKeys: ["stable:77", "object:300", "object:301"],
+    title: "Stack -> Graveyard",
+  };
+  const result = resolveGameAnimations({
+    previews: [preview],
+    state: {
+      snapshot_id: 10,
+      battlefield_transitions: [],
+      effect_events: [{ id: 5, kind: "spell_countered", stable_ids: [77] }],
+    },
+    previousCardRects: new Map([["object:300", rect]]),
+  });
+
+  assert.equal(result.previews[0].animationKind, "counter-shatter");
+  assert.equal(result.previews[0].inspectorShaderReveal, true);
+  assert.deepEqual(
+    result.visualEffects.map((effect) => [effect.id, effect.kind, effect.travelsToInspector]),
+    [
+      ["counter-shatter:p0:stack:77", "counter-shatter", false],
+      ["counter-shatter-stream:p0:stack:77", "marquee-stream", true],
+    ],
+  );
+  assert.equal(result.visualEffects[1].streamProfile, "counter");
+});
+
+test("three or more simultaneous deaths emit a single wipe wave", () => {
+  const previews = Array.from({ length: 3 }, (_, index) => (
+    destroyPreview({
+      token: `p0:stable:${43 + index}`,
+      card: { id: 101 + index, stable_id: 43 + index, name: `Wiped ${index + 1}` },
+      trackingKeys: [`stable:${43 + index}`],
+    })
+  ));
+  const result = resolveGameAnimations({
+    previews,
+    state: {
+      snapshot_id: 11,
+      battlefield_transitions: previews.map((preview) => ({
+        stable_id: preview.card.stable_id,
+        kind: "destroyed",
+      })),
+    },
+    previousCardRects: new Map(previews.map((preview, index) => [
+      `stable:${preview.card.stable_id}`,
+      { ...rect, left: index * 200 },
+    ])),
+  });
+
+  const waves = result.visualEffects.filter((effect) => effect.kind === "wipe-wave");
+  assert.equal(waves.length, 1);
+  assert.equal(waves[0].rect.left, 0);
+  assert.equal(waves[0].rect.width, 200 * 2 + rect.width);
+});
+
+test("destroy animation staggers collapses by source position", () => {
   const previews = [
     destroyPreview({ token: "p0:stable:43", card: { id: 101, stable_id: 43, name: "Destroyed A" }, trackingKeys: ["stable:43"] }),
     destroyPreview({ token: "p0:stable:44", card: { id: 102, stable_id: 44, name: "Destroyed B" }, trackingKeys: ["stable:44"] }),
@@ -222,13 +307,21 @@ test("destroy animation staggers angelic flights while preserving flight effect 
 
   assert.deepEqual(
     result.previews.map((preview) => preview.animationStaggerMs),
-    [0, 140, 280],
+    [0, 90, 180],
   );
-  assert.equal(result.previews[0].inspectorRevealDelayMs, 700);
   assert.deepEqual(
-    result.visualEffects.map((effect) => effect.startDelayMs),
-    [0, 140, 280],
+    result.visualEffects
+      .filter((effect) => effect.kind === "death-collapse")
+      .map((effect) => effect.startDelayMs),
+    [0, 90, 180],
   );
+  assert.deepEqual(
+    result.visualEffects
+      .filter((effect) => effect.kind === "marquee-stream")
+      .map((effect) => effect.startDelayMs),
+    [0, 90, 180],
+  );
+  assert.equal(result.previews[0].inspectorRevealDelayMs, 1250 + 180);
 });
 
 test("destroy animation does not reuse stagger start times for adjacent visual sources", () => {
@@ -255,8 +348,10 @@ test("destroy animation does not reuse stagger start times for adjacent visual s
   });
 
   assert.deepEqual(
-    result.visualEffects.map((effect) => effect.startDelayMs),
-    [0, 140, 280, 420, 560, 700],
+    result.visualEffects
+      .filter((effect) => effect.kind === "death-collapse")
+      .map((effect) => effect.startDelayMs),
+    [0, 90, 180, 270, 360, 450],
   );
 });
 

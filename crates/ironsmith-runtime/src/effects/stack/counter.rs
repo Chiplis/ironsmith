@@ -45,6 +45,13 @@ fn counter_one_stack_object(
 
     // Find the stack entry for this object
     if game.stack.iter().any(|e| e.object_id == target_id) {
+        // Capture identity before the countered spell changes zones.
+        let countered_info = game.object(target_id).map(|obj| {
+            (
+                obj.stable_id,
+                game.current_controller(target_id).unwrap_or(obj.owner),
+            )
+        });
         let additional_effects = ctx.additional_replacement_effects_snapshot();
         let outcome = process_zone_change_with_additional_effects(
             game,
@@ -88,6 +95,16 @@ fn counter_one_stack_object(
         }
 
         if !game.stack.iter().any(|e| e.object_id == target_id) {
+            if let Some((stable_id, controller)) = countered_info {
+                game.record_ui_effect_event(
+                    "spell_countered",
+                    Some(controller),
+                    None,
+                    vec![stable_id],
+                    None,
+                    None,
+                );
+            }
             EffectOutcome::resolved()
         } else {
             EffectOutcome::target_invalid()

@@ -837,6 +837,17 @@ fn perform_turn_face_up(
         object.add_counters(crate::object::CounterType::PlusOnePlusOne, 1);
     }
 
+    if let Some(stable_id) = game.object(permanent_id).map(|o| o.stable_id) {
+        game.record_ui_effect_event(
+            "turned_face_up",
+            Some(player),
+            None,
+            vec![stable_id],
+            None,
+            None,
+        );
+    }
+
     let event_provenance = game
         .alloc_child_event_provenance(action_provenance, crate::events::EventKind::TurnedFaceUp);
     game.queue_trigger_event(

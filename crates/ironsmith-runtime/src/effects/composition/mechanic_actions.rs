@@ -1488,6 +1488,17 @@ impl EffectExecutor for AdaptEffect {
             return Ok(EffectOutcome::count(0));
         }
 
+        if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
+            game.record_ui_effect_event(
+                "level_up",
+                Some(ctx.controller),
+                None,
+                vec![stable_id],
+                Some(i64::from(self.amount)),
+                Some("adapt".to_string()),
+            );
+        }
+
         crate::effects::PutCountersEffect::on_source(CounterType::PlusOnePlusOne, self.amount)
             .execute(game, ctx)
     }

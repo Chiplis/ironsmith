@@ -143,11 +143,13 @@ export default function PeerWaitPopover({
   sideOffset = 7,
   contentClassName = "max-w-[320px]",
 }) {
-  if (!peerWait) return children;
-
+  // Always render the same wrapper tree: toggling between bare children and a
+  // popover-wrapped child remounts the trigger (typically the main decision
+  // button), restarting its animations/transitions on every peer round-trip.
   return (
-    <PeerWaitContext.Provider value={peerWait}>
+    <PeerWaitContext.Provider value={peerWait || null}>
       <ComicTooltip
+        disabled={!peerWait}
         title={peerWaitTitle(peerWait)}
         description={peerWaitDescription(peerWait)}
         side={side}

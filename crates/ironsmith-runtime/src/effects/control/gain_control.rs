@@ -83,6 +83,16 @@ impl EffectExecutor for GainControlEffect {
             && previous_controller != ctx.controller
         {
             game.clear_soulbond_pair(target_id);
+            if let Some(stable_id) = game.object(target_id).map(|o| o.stable_id) {
+                game.record_ui_effect_event(
+                    "control_change",
+                    Some(ctx.controller),
+                    Some(previous_controller),
+                    vec![stable_id],
+                    None,
+                    None,
+                );
+            }
             outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                 ControlChangedEvent::new(target_id, previous_controller, ctx.controller),
                 ctx.provenance,

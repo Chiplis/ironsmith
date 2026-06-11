@@ -16634,6 +16634,43 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 5;
             continue;
         }
+        // "Target player reveals three cards from their hand and you choose
+        // one of them. That player discards that card." — the revealer picks
+        // the revealed pool, you pick from it, they discard your pick.
+        if idx + 2 < filtered.len()
+            && let Some(first_choose) = unwrap_basic_tag_wrappers(filtered[idx])
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(second_choose) = unwrap_basic_tag_wrappers(filtered[idx + 1])
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(discard) = unwrap_basic_tag_wrappers(filtered[idx + 2])
+                .downcast_ref::<crate::effects::DiscardEffect>()
+            && matches!(&first_choose.chooser, PlayerFilter::Target(_))
+            && choose_primary_zone(first_choose) == Some(Zone::Hand)
+            && first_choose.filter.owner.as_ref() == Some(&first_choose.chooser)
+            && second_choose.chooser == PlayerFilter::You
+            && choose_exact_count(second_choose) == Some(1)
+            && choose_references_tag(second_choose, &first_choose.tag)
+            && discard.player == first_choose.chooser
+            && !discard.random
+            && !discard.any_number
+            && discard
+                .card_filter
+                .as_ref()
+                .is_some_and(|filter| object_filter_has_tag(filter, &second_choose.tag))
+        {
+            let revealer = describe_player_filter(&first_choose.chooser);
+            let reveal_count = choose_exact_count(first_choose)
+                .map(|count| {
+                    number_word(count as i32).unwrap_or_else(|| count.to_string())
+                })
+                .unwrap_or_else(|| describe_choice_count(&first_choose.count));
+            parts.push(format!(
+                "{} reveals {reveal_count} cards from their hand and you choose one of them. That player discards that card",
+                capitalize_first(&revealer)
+            ));
+            idx += 3;
+            continue;
+        }
         // "You and that player each gain that much life" — adjacent same-
         // amount life gains for you plus a back-referenced player compact to
         // the oracle's joint-subject sentence.
@@ -38866,9 +38903,22 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("At the beginning of the next end step, {delayed_text}");
         }
         if schedule.one_shot && trigger_lower.contains("end of combat") {
-            // Oracle phrases the one-shot combat cleanup as a suffix:
-            // "destroy that creature at end of combat".
-            return format!("{delayed_text} at end of combat");
+            // Short back-referencing cleanups read as a suffix in oracle:
+            // "destroy that creature at end of combat".  Longer payloads keep
+            // the explicit "At this turn's next end of combat, ..." prefix.
+            let delayed_lower = delayed_text.to_ascii_lowercase();
+            let single_clause = !delayed_lower.contains(". ")
+                && !delayed_lower.contains(" and ")
+                && !delayed_lower.contains(", then");
+            let back_references = delayed_lower
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '\'')
+                .any(|word| word == "it")
+                || delayed_lower.contains("that creature")
+                || delayed_lower.contains("that permanent");
+            if single_clause && back_references {
+                return format!("{delayed_text} at end of combat");
+            }
+            return format!("At this turn's next end of combat, {delayed_text}");
         }
         if schedule.one_shot && trigger_lower.contains("beginning of your end step") {
             return format!("At the beginning of your next end step, {delayed_text}");

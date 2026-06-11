@@ -147,6 +147,16 @@ impl EffectExecutor for DirectionalAdjacentPlayerControlEffect {
                 && previous_controller != new_controller
             {
                 game.clear_soulbond_pair(object_id);
+                if let Some(stable_id) = game.object(object_id).map(|o| o.stable_id) {
+                    game.record_ui_effect_event(
+                        "control_change",
+                        Some(new_controller),
+                        Some(previous_controller),
+                        vec![stable_id],
+                        None,
+                        None,
+                    );
+                }
                 outcome = outcome.with_event(TriggerEvent::new_with_provenance(
                     ControlChangedEvent::new(object_id, previous_controller, new_controller),
                     ctx.provenance,

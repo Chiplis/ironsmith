@@ -212,6 +212,21 @@ impl EffectExecutor for CreateTokenEffect {
             }
         }
 
+        let created_stable_ids: Vec<_> = created_ids
+            .iter()
+            .filter_map(|id| game.object(*id).map(|obj| obj.stable_id))
+            .collect();
+        if !created_stable_ids.is_empty() {
+            game.record_ui_effect_event(
+                "tokens_created",
+                Some(controller_id),
+                None,
+                created_stable_ids,
+                Some(created_ids.len() as i64),
+                Some(self.token.card.name.clone()),
+            );
+        }
+
         Ok(EffectOutcome::with_objects(created_ids.clone())
             .with_events(events)
             .with_affected_objects_from_game(game, created_ids))

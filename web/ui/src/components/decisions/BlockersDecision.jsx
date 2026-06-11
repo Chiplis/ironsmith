@@ -2,9 +2,10 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
-import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import { Button } from "@/components/ui/button";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
+import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -64,10 +65,12 @@ export default function BlockersDecision({
   const blockerOptionsRef = useRef(blockerOptions);
   const selectedBlockerRef = useRef(null);
   const declarationsRef = useRef([]);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
-  const localDecisionButton = isLocalDecisionButton(state, decision);
-  const peerWait = multiplayer?.peerWait || null;
+  const { style: decisionButtonStyle, isLocal: localDecisionButton } =
+    useDecisionButtonAccent(state, decision, playerAccentOverrides);
+  const rawPeerWait = multiplayer?.peerWait || null;
+  const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
+  const peerWaitLocked = Boolean(rawPeerWait);
 
   const [declarations, setDeclarations] = useState([]);
   const [selectedBlockerId, setSelectedBlockerId] = useState(null);
@@ -365,10 +368,10 @@ export default function BlockersDecision({
             className="decision-neon-button decision-main-button decision-submit-button h-9 w-full rounded-sm px-2 text-[16px] font-bold uppercase"
             style={decisionButtonStyle}
             data-local-action={localDecisionButton ? "true" : "false"}
-            aria-disabled={peerWaiting || !canAct}
+            aria-disabled={peerWaitLocked || !canAct}
             disabled={peerWaiting ? false : !canAct}
             onClick={() => {
-              if (peerWaiting) return;
+              if (peerWaitLocked) return;
               dispatch(
                 { type: "declare_blockers", declarations },
                 `Declared ${declarations.length} blocker(s)`

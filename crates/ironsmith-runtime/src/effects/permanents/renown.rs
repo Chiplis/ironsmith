@@ -21,6 +21,16 @@ impl EffectExecutor for RenownEffect {
         }
 
         game.set_renowned(ctx.source);
+        if let Some(stable_id) = game.object(ctx.source).map(|o| o.stable_id) {
+            game.record_ui_effect_event(
+                "level_up",
+                Some(ctx.controller),
+                None,
+                vec![stable_id],
+                Some(i64::from(self.amount)),
+                Some("renown".to_string()),
+            );
+        }
 
         let mut outcome = EffectOutcome::count(1);
         if self.amount > 0

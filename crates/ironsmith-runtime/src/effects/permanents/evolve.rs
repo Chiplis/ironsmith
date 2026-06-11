@@ -85,6 +85,16 @@ impl EffectExecutor for EvolveEffect {
         }
 
         let mut outcome = EffectOutcome::count(1);
+        if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
+            game.record_ui_effect_event(
+                "level_up",
+                Some(ctx.controller),
+                None,
+                vec![stable_id],
+                Some(1),
+                Some("evolve".to_string()),
+            );
+        }
         if let Some(counter_event) = game.add_counters_with_source(
             source_id,
             CounterType::PlusOnePlusOne,

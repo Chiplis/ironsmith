@@ -951,6 +951,34 @@ export default function GameCard({
   const debouncedOnClick = debounceClick(onClick);
   const debouncedOnPointerDown = debouncePointerDown(onPointerDown);
 
+  // Pulse counter badges when the counter signature changes — green for
+  // additions, red for removals. Applied via classList so re-renders don't
+  // restart the animation.
+  const previousCounterStateRef = useRef(null);
+  useEffect(() => {
+    if (variant !== "battlefield") return undefined;
+    const previous = previousCounterStateRef.current;
+    const next = {
+      signature: card?.counter_signature ?? "-",
+      total: totalBattlefieldCounters,
+    };
+    previousCounterStateRef.current = next;
+    if (previous == null || previous.signature === next.signature) return undefined;
+    const node = rootRef.current;
+    if (!node) return undefined;
+    const pulseClass = next.total >= previous.total ? "counter-pulse-add" : "counter-pulse-remove";
+    node.classList.remove("counter-pulse-add", "counter-pulse-remove");
+    void node.offsetWidth;
+    node.classList.add(pulseClass);
+    const timer = window.setTimeout(() => node.classList.remove(pulseClass), 620);
+    return () => {
+      window.clearTimeout(timer);
+      node.classList.remove(pulseClass);
+    };
+  }, [card?.counter_signature, totalBattlefieldCounters, variant]);
+
+  const showTokenMaterialize = variant === "battlefield" && isNew && Boolean(card?.token);
+
   useEffect(() => {
     if (!inspectorDebug || !game || !name || semanticScoreCache.has(name)) return undefined;
 
@@ -1315,6 +1343,12 @@ export default function GameCard({
             </div>
           ))}
         </div>
+      )}
+      {showTokenMaterialize && (
+        <>
+          <span className="token-materialize-ring" aria-hidden="true" />
+          <span className="token-materialize-sheen" aria-hidden="true" />
+        </>
       )}
       <div className="game-card-surface">
         {artUrl && (variant !== "battlefield" || !useTokenBattlefield) && (

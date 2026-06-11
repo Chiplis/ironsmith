@@ -113,6 +113,32 @@ pub(crate) fn apply_processed_damage_assignment(
     keywords: SourceDamageKeywords,
     cause: crate::events::cause::EventCause,
 ) -> AppliedDamageAssignment {
+    let record_damage_ui_event = |game: &mut GameState| {
+        if amount == 0 {
+            return;
+        }
+        let mut stable_ids = Vec::new();
+        if let Some(stable_id) = game.object(source).map(|obj| obj.stable_id) {
+            stable_ids.push(stable_id);
+        }
+        let mut player = None;
+        match target {
+            crate::events::DamageTarget::Player(player_id) => player = Some(player_id),
+            crate::events::DamageTarget::Object(object_id) => {
+                if let Some(stable_id) = game.object(object_id).map(|obj| obj.stable_id) {
+                    stable_ids.push(stable_id);
+                }
+            }
+        }
+        game.record_ui_effect_event(
+            "damage",
+            player,
+            None,
+            stable_ids,
+            Some(i64::from(amount)),
+            None,
+        );
+    };
     match target {
         crate::events::DamageTarget::Player(player_id) => {
             let source_controller = game
@@ -132,6 +158,7 @@ pub(crate) fn apply_processed_damage_assignment(
                 ) {
                     game.queue_trigger_event(event.provenance(), event);
                 }
+                record_damage_ui_event(game);
                 return AppliedDamageAssignment {
                     applied: true,
                     life_lost: 0,
@@ -147,6 +174,7 @@ pub(crate) fn apply_processed_damage_assignment(
             } else {
                 0
             };
+            record_damage_ui_event(game);
             AppliedDamageAssignment {
                 applied: true,
                 life_lost,
@@ -198,6 +226,7 @@ pub(crate) fn apply_processed_damage_assignment(
                 game.mark_deathtouch_damage_since_sba(object_id);
             }
 
+            record_damage_ui_event(game);
             AppliedDamageAssignment {
                 applied: true,
                 life_lost: 0,

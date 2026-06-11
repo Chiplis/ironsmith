@@ -3579,24 +3579,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   will-change: transform, opacity, filter;
 }
 
-.zone-angelic-destroy-effect {
-  position: fixed;
-  transform-origin: 50% 50%;
-  animation: zone-exile-rise 1900ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-  will-change: transform, opacity, filter;
-}
-
-.zone-angelic-destroy-effect--to-inspector {
-  animation: none;
-  opacity: 1;
-}
-
-.zone-angelic-destroy-effect--preflight {
-  animation: zone-angelic-destroy-preflight-root 60000ms linear var(--exile-start-delay, 0ms) both;
-  opacity: 0;
-  filter: brightness(1.06) saturate(1.08);
-}
-
 .zone-exile-halo {
   position: absolute;
   inset: -34%;
@@ -3610,24 +3592,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   animation: zone-exile-source-only-halo 2200ms ease-out forwards;
 }
 
-.zone-angelic-destroy-effect .zone-exile-halo {
-  inset: -38% -16% -26%;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(255, 255, 252, 0.95) 0%, rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.44) 20%, rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.14) 44%, transparent 72%),
-    conic-gradient(from 0deg, transparent 0deg, rgba(255, 255, 255, 0.24) 52deg, transparent 104deg, rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.2) 156deg, transparent 214deg, rgba(255, 255, 255, 0.18) 286deg, transparent 360deg);
-  filter: blur(2px);
-  transform: scale(0.62);
-  animation: zone-exile-halo 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-exile-halo {
-  animation: zone-angelic-destroy-launch-halo 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-exile-halo {
-  animation: zone-angelic-destroy-preflight-halo 900ms ease-in-out var(--exile-start-delay, 0ms) infinite alternate both;
-}
-
 .zone-exile-card-proxy {
   position: absolute;
   inset: 0;
@@ -3637,33 +3601,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   box-shadow: none;
   transform-origin: 50% 52%;
   animation: zone-exile-source-only-card-proxy 2200ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-.zone-angelic-destroy-card-proxy {
-  position: absolute;
-  inset: 0;
-  overflow: hidden;
-  border-radius: 6px;
-  background:
-    linear-gradient(180deg, rgba(248, 239, 215, 0.98), rgba(121, 174, 229, 0.76)),
-    linear-gradient(180deg, rgba(13, 20, 30, 0.95), rgba(7, 12, 18, 0.96));
-  box-shadow:
-    0 0 0 1px rgba(255, 250, 226, 0.76),
-    0 0 24px rgba(255, 240, 174, 0.8),
-    0 0 62px rgba(145, 207, 255, 0.46),
-    inset 0 0 18px rgba(255, 255, 255, 0.28);
-  transform-origin: 50% 52%;
-  animation: zone-exile-card-proxy 1900ms cubic-bezier(0.22, 1, 0.36, 1) var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-proxy {
-  animation: zone-angelic-destroy-card-proxy-to-inspector 2400ms cubic-bezier(0.22, 1, 0.36, 1) var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-proxy {
-  animation: none;
-  opacity: 1;
-  transform: scale(1) rotateX(0deg);
 }
 
 .zone-exile-card-proxy img {
@@ -3677,27 +3614,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-.zone-angelic-destroy-card-proxy img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.94;
-  filter: saturate(1.18) contrast(1.08) brightness(1.04);
-  animation: zone-exile-art-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-proxy img {
-  animation: zone-angelic-destroy-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-proxy img {
-  animation: none;
-  opacity: 1;
-  filter: saturate(1.14) contrast(1.06) brightness(1.02);
-}
-
 .zone-exile-source-clone {
   position: absolute;
   inset: 0;
@@ -3705,41 +3621,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   overflow: hidden;
   border-radius: inherit;
   animation: zone-exile-source-only-art 2200ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-.zone-angelic-destroy-source-clone {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  border-radius: inherit;
-  animation: zone-exile-art-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-source-clone {
-  animation: zone-angelic-destroy-art-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-source-clone {
-  animation: none;
-  opacity: 1;
-  filter: saturate(1.08) contrast(1.04) brightness(1.02);
-}
-
-.zone-angelic-destroy-source-clone > .game-card {
-  width: 100% !important;
-  min-width: 0 !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  max-width: none !important;
-  pointer-events: none !important;
-  transform: none !important;
-  transition: none !important;
-}
-
-.zone-angelic-destroy-source-clone .game-card,
-.zone-angelic-destroy-source-clone .game-card * {
-  pointer-events: none !important;
 }
 
 .zone-exile-source-clone > .game-card {
@@ -3758,17 +3639,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   pointer-events: none !important;
 }
 
-.zone-angelic-destroy-card-frame {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.92), transparent 7%, transparent 93%, rgba(255, 255, 255, 0.72)),
-    linear-gradient(180deg, rgba(255, 252, 230, 0.88), transparent 10%, transparent 88%, rgba(160, 218, 255, 0.54));
-  opacity: 0.75;
-  mix-blend-mode: screen;
-}
-
 .zone-exile-card-frame {
   position: absolute;
   inset: 0;
@@ -3776,28 +3646,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   background: transparent;
   opacity: 0;
   mix-blend-mode: screen;
-}
-
-.zone-angelic-destroy-card-whiteout {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 1) 0%, rgba(255, 246, 205, 0.86) 24%, rgba(255, 255, 255, 0) 58%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 236, 162, 0.2));
-  opacity: 0;
-  mix-blend-mode: screen;
-  animation: zone-exile-whiteout 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-card-whiteout {
-  animation: zone-angelic-destroy-whiteout-to-inspector 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-angelic-destroy-card-whiteout {
-  animation: none;
-  opacity: 0;
 }
 
 .zone-exile-card-whiteout,
@@ -3941,180 +3789,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
     0 0 58px rgba(143, 211, 255, 0.72);
   opacity: 0;
   animation: zone-exile-final-spark 1900ms ease-out forwards;
-}
-
-.zone-angelic-destroy-effect .zone-exile-wings {
-  animation: zone-exile-wings-visible 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect .zone-exile-final-spark {
-  animation: zone-exile-final-spark 1900ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-exile-wings {
-  animation: zone-angelic-destroy-wings-to-star 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-exile-final-spark {
-  animation: zone-angelic-destroy-final-spark-to-inspector 2400ms ease-out var(--exile-start-delay, 0ms) forwards;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-exile-wings {
-  animation: zone-angelic-destroy-preflight-wings 360ms ease-out var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-exile-final-spark {
-  animation: none;
-  opacity: 0;
-}
-
-.zone-destroy-tombstone-flight {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 6;
-  width: min(72%, 108px);
-  height: min(64%, 92px);
-  transform: translate(-50%, -50%);
-  transform-origin: 50% 50%;
-  will-change: transform, opacity, filter;
-  animation: zone-destroy-tombstone-source 1900ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-destroy-tombstone {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 100%;
-  height: 100%;
-  transform: translate(-50%, -50%);
-  transform-origin: 50% 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: hidden;
-  border-radius: 48% 48% 8px 8px / 38% 38% 8px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.86);
-  background:
-    radial-gradient(80% 54% at 50% 22%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.26) 58%, transparent 78%),
-    linear-gradient(180deg, rgba(48, 52, 58, 0.98), rgba(19, 20, 24, 0.98));
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.34),
-    inset 0 -10px 20px rgba(0, 0, 0, 0.34),
-    0 0 0 1px rgba(0, 0, 0, 0.82),
-    0 0 18px rgba(255, 255, 255, 0.42),
-    0 0 42px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.36);
-  color: rgba(255, 255, 255, 0.94);
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.78),
-    0 0 9px rgba(255, 255, 255, 0.36);
-  will-change: width, height, transform, opacity, filter, border-radius, background, color;
-}
-
-.zone-destroy-tombstone::before {
-  content: "";
-  position: absolute;
-  inset: 10% 17% auto;
-  height: 2px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.44);
-  box-shadow: 0 12px 0 rgba(255, 255, 255, 0.18);
-}
-
-.zone-destroy-tombstone::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 50%;
-  width: 0;
-  height: 8px;
-  border-radius: 999px;
-  transform: translateY(-50%);
-  opacity: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.58), rgba(255, 255, 255, 0.98));
-  filter: blur(4px);
-}
-
-.zone-destroy-tombstone-name {
-  position: relative;
-  z-index: 1;
-  max-width: 82%;
-  padding-top: 10%;
-  font-size: 11px;
-  line-height: 0.92;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-align: center;
-  text-transform: uppercase;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-destroy-tombstone-flight {
-  animation: zone-destroy-tombstone-to-inspector 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-destroy-tombstone {
-  animation: zone-destroy-tombstone-to-stroke 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-destroy-tombstone::after {
-  animation: zone-destroy-tombstone-stroke-tail 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-destroy-tombstone-name {
-  animation: zone-destroy-tombstone-name-to-stroke 2400ms ease-out var(--exile-start-delay, 0ms) both;
-}
-
-.zone-angelic-destroy-effect--preflight .zone-destroy-tombstone-flight {
-  animation: zone-destroy-tombstone-preflight 900ms ease-in-out var(--exile-start-delay, 0ms) infinite alternate both;
-}
-
-.zone-angelic-destroy-shooting-star {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  z-index: 5;
-  width: 11px;
-  height: 11px;
-  margin: -5.5px 0 0 -5.5px;
-  border-radius: 999px;
-  opacity: 0;
-  background: #fffdf4;
-  box-shadow:
-    0 0 10px #fff,
-    0 0 26px rgba(255, 230, 145, 0.92),
-    0 0 54px rgba(142, 211, 255, 0.62);
-  transform-origin: 50% 50%;
-  animation: none;
-}
-
-.zone-angelic-destroy-shooting-star::before,
-.zone-angelic-destroy-shooting-star::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 50%;
-  height: 2px;
-  width: var(--destroy-trail-length, 96px);
-  border-radius: 999px;
-  pointer-events: none;
-  transform: translateY(-50%);
-  background: linear-gradient(90deg, transparent, rgba(151, 214, 255, 0.48), rgba(255, 255, 255, 0.96));
-  filter: blur(0.2px);
-}
-
-.zone-angelic-destroy-shooting-star::after {
-  height: 7px;
-  opacity: 0.46;
-  filter: blur(5px);
-}
-
-.zone-angelic-destroy-effect--to-inspector .zone-angelic-destroy-shooting-star {
-  animation: zone-angelic-destroy-shooting-star 2400ms cubic-bezier(0.16, 1, 0.3, 1) var(--exile-start-delay, 0ms) both;
 }
 
 @keyframes zone-exile-rise {
@@ -4296,500 +3970,6 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   100% {
     opacity: 0;
     transform: scale(0.12);
-  }
-}
-
-@keyframes zone-angelic-destroy-to-inspector {
-  0% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-    filter: brightness(1.08) saturate(1.08);
-  }
-  18% {
-    opacity: 1;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.14),
-        calc(var(--destroy-target-y) * 0.09 - 18px),
-        0
-      )
-      rotate(calc(var(--exile-tilt) * 0.7))
-      scale(0.96);
-    filter: brightness(2.25) saturate(0.7);
-  }
-  38% {
-    opacity: 0.92;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.52),
-        calc(var(--destroy-target-y) * 0.48 - 26px),
-        0
-      )
-      rotate(calc(var(--exile-tilt) * -0.4))
-      scale(0.54);
-    filter: brightness(2.9) saturate(0.38) blur(0.35px);
-  }
-  56% {
-    opacity: 0.28;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.9),
-        calc(var(--destroy-target-y) * 0.9 - 6px),
-        0
-      )
-      rotate(calc(var(--exile-tilt) * 0.16))
-      scale(0.16);
-    filter: brightness(4.1) saturate(0.08) blur(1.1px);
-  }
-  62% {
-    opacity: 0;
-    transform:
-      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
-      rotate(0deg)
-      scale(0.045);
-    filter: brightness(4.5) saturate(0) blur(1.8px);
-  }
-  100% {
-    opacity: 0;
-    transform:
-      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
-      rotate(0deg)
-      scale(0.045);
-    filter: brightness(4.5) saturate(0) blur(1.8px);
-  }
-}
-
-@keyframes zone-angelic-destroy-preflight-root {
-  0% {
-    opacity: 0;
-  }
-  0.01%,
-  100% {
-    opacity: 1;
-  }
-}
-
-@keyframes zone-angelic-destroy-preflight-halo {
-  0% {
-    opacity: 0.36;
-    transform: scale(0.86) rotate(0deg);
-  }
-  100% {
-    opacity: 0.74;
-    transform: scale(1.08) rotate(18deg);
-  }
-}
-
-@keyframes zone-angelic-destroy-preflight-wings {
-  0% {
-    opacity: 0;
-    transform: scale(0.72) translateY(8%);
-  }
-  100% {
-    opacity: 0.92;
-    transform: scale(1.02) translateY(-3%);
-  }
-}
-
-@keyframes zone-destroy-tombstone-source {
-  0%,
-  10% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.82);
-    filter: brightness(0.88) saturate(0.9);
-  }
-  25% {
-    opacity: 1;
-  }
-  58% {
-    opacity: 0.96;
-    transform: translate(-50%, -56%) scale(1.04);
-    filter: brightness(1.12) saturate(1.02);
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -82%) scale(0.34);
-    filter: brightness(2.2) saturate(0.6) blur(1px);
-  }
-}
-
-@keyframes zone-destroy-tombstone-preflight {
-  0% {
-    opacity: 0.78;
-    transform: translate(-50%, -50%) scale(0.94);
-    filter: brightness(0.92);
-  }
-  100% {
-    opacity: 1;
-    transform: translate(-50%, -54%) scale(1.03);
-    filter: brightness(1.14);
-  }
-}
-
-@keyframes zone-destroy-tombstone-to-inspector {
-  0%,
-  10% {
-    opacity: 1;
-    transform: translate(-50%, -50%) rotate(0deg) scale(1);
-    filter: brightness(1) saturate(1);
-  }
-  22% {
-    opacity: 1;
-    transform:
-      translate(-50%, -50%)
-      translate3d(
-        calc(var(--destroy-target-x) * 0.06),
-        calc(var(--destroy-target-y) * 0.04 - 10px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(1.06);
-    filter: brightness(2.5) saturate(0.9);
-  }
-  46% {
-    opacity: 0.92;
-    transform:
-      translate(-50%, -50%)
-      translate3d(
-        calc(var(--destroy-target-x) * 0.46),
-        calc(var(--destroy-target-y) * 0.42 - 24px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.64);
-    filter: brightness(2.8) saturate(0.74) blur(0.1px);
-  }
-  62% {
-    opacity: 0.54;
-    transform:
-      translate(-50%, -50%)
-      translate3d(
-        calc(var(--destroy-target-x) * 0.82),
-        calc(var(--destroy-target-y) * 0.8 - 8px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.28);
-    filter: brightness(4.0) saturate(0.35) blur(0.5px);
-  }
-  70%,
-  100% {
-    opacity: 0;
-    transform:
-      translate(-50%, -50%)
-      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.06);
-    filter: brightness(4.6) saturate(0) blur(1.4px);
-  }
-}
-
-@keyframes zone-destroy-tombstone-to-stroke {
-  0%,
-  12% {
-    width: 100%;
-    height: 100%;
-    opacity: 1;
-    border-radius: 48% 48% 8px 8px / 38% 38% 8px 8px;
-    background:
-      radial-gradient(80% 54% at 50% 22%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.26) 58%, transparent 78%),
-      linear-gradient(180deg, rgba(48, 52, 58, 0.98), rgba(19, 20, 24, 0.98));
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.34),
-      inset 0 -10px 20px rgba(0, 0, 0, 0.34),
-      0 0 0 1px rgba(0, 0, 0, 0.82),
-      0 0 18px rgba(255, 255, 255, 0.42),
-      0 0 42px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.36);
-  }
-  24% {
-    width: var(--destroy-trail-length, 96px);
-    height: 12px;
-    opacity: 1;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow:
-      0 0 10px rgba(255, 255, 255, 0.98),
-      0 0 28px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.82),
-      0 0 58px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.46);
-  }
-  58% {
-    width: var(--destroy-trail-length, 96px);
-    height: 8px;
-    opacity: 0.84;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.98);
-    box-shadow:
-      0 0 12px rgba(255, 255, 255, 1),
-      0 0 34px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.74),
-      0 0 70px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.38);
-  }
-  70%,
-  100% {
-    width: 24px;
-    height: 5px;
-    opacity: 0;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 1);
-    box-shadow:
-      0 0 12px rgba(255, 255, 255, 1),
-      0 0 30px rgba(var(--destroy-accent-rgb, 142, 211, 255), 0.62);
-  }
-}
-
-@keyframes zone-destroy-tombstone-stroke-tail {
-  0%,
-  18% {
-    width: 0;
-    opacity: 0;
-  }
-  28% {
-    width: var(--destroy-trail-length, 96px);
-    opacity: 0.56;
-  }
-  58% {
-    width: var(--destroy-trail-length, 96px);
-    opacity: 0.36;
-  }
-  70%,
-  100% {
-    width: 0;
-    opacity: 0;
-  }
-}
-
-@keyframes zone-destroy-tombstone-name-to-stroke {
-  0%,
-  14% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  22% {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-}
-
-@keyframes zone-angelic-destroy-launch-halo {
-  0%,
-  8% {
-    opacity: 0.58;
-    transform: scale(0.92) rotate(0deg);
-  }
-  22% {
-    opacity: 0.86;
-    transform: scale(1.18) rotate(28deg);
-  }
-  42% {
-    opacity: 0.26;
-    transform: scale(0.72) rotate(78deg);
-  }
-  58%,
-  100% {
-    opacity: 0;
-    transform: scale(0.18) rotate(128deg);
-  }
-}
-
-@keyframes zone-angelic-destroy-wings-to-star {
-  0%,
-  8% {
-    opacity: 0.92;
-    transform: scaleX(0.94) scaleY(1.02) translateY(-3%);
-  }
-  22% {
-    opacity: 1;
-    transform: scaleX(0.68) scaleY(1.22) translateY(-7%);
-  }
-  38% {
-    opacity: 0.42;
-    transform: scaleX(0.24) scaleY(1.38) translateY(-12%);
-  }
-  52%,
-  100% {
-    opacity: 0;
-    transform: scaleX(0.06) scaleY(0.52) translateY(-18%);
-  }
-}
-
-@keyframes zone-angelic-destroy-shooting-star {
-  0%,
-  18% {
-    opacity: 0;
-    transform:
-      translate3d(0, 0, 0)
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.22);
-    filter: brightness(2.8) saturate(0.4) blur(0.2px);
-  }
-  24% {
-    opacity: 1;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.06),
-        calc(var(--destroy-target-y) * 0.04 - 10px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(1.2);
-    filter: brightness(3.6) saturate(0.7) blur(0);
-  }
-  46% {
-    opacity: 0.92;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.46),
-        calc(var(--destroy-target-y) * 0.42 - 24px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.8);
-    filter: brightness(2.5) saturate(0.86) blur(0.1px);
-  }
-  58% {
-    opacity: 0.72;
-    transform:
-      translate3d(
-        calc(var(--destroy-target-x) * 0.82),
-        calc(var(--destroy-target-y) * 0.8 - 8px),
-        0
-      )
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.36);
-    filter: brightness(3.8) saturate(0.4) blur(0.45px);
-  }
-  64% {
-    opacity: 0;
-    transform:
-      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.08);
-    filter: brightness(4.6) saturate(0) blur(1.2px);
-  }
-  100% {
-    opacity: 0;
-    transform:
-      translate3d(var(--destroy-target-x), var(--destroy-target-y), 0)
-      rotate(var(--destroy-flight-angle, 0rad))
-      scale(0.08);
-    filter: brightness(4.6) saturate(0) blur(1.2px);
-  }
-}
-
-@keyframes zone-angelic-destroy-card-proxy-to-inspector {
-  0% {
-    transform: scale(0.98) rotateX(0deg);
-  }
-  18% {
-    transform: scale(1.08) rotateX(8deg);
-  }
-  42% {
-    transform: scale(0.82) rotateX(22deg);
-  }
-  62%,
-  100% {
-    transform: scale(0.38) rotateX(72deg);
-  }
-}
-
-@keyframes zone-angelic-destroy-art-to-inspector {
-  0% {
-    opacity: 1;
-    filter: saturate(1.14) contrast(1.06) brightness(1.02);
-  }
-  18% {
-    opacity: 0.88;
-    filter: saturate(0.62) contrast(1.24) brightness(2.3);
-  }
-  48% {
-    opacity: 0.36;
-    filter: saturate(0.12) contrast(1.48) brightness(4.2) blur(0.7px);
-  }
-  62%,
-  100% {
-    opacity: 0;
-    filter: saturate(0) contrast(1.7) brightness(4.8) blur(2px);
-  }
-}
-
-@keyframes zone-angelic-destroy-halo-to-inspector {
-  0% {
-    opacity: 0;
-    transform: scale(0.42) rotate(0deg);
-  }
-  16% {
-    opacity: 0.94;
-    transform: scale(1.36) rotate(26deg);
-  }
-  44% {
-    opacity: 0.72;
-    transform: scale(0.84) rotate(78deg);
-  }
-  62%,
-  100% {
-    opacity: 0;
-    transform: scale(0.2) rotate(128deg);
-  }
-}
-
-@keyframes zone-angelic-destroy-wings-to-inspector {
-  0%,
-  10% {
-    opacity: 0;
-    transform: scale(0.78) translateY(10%);
-  }
-  22% {
-    opacity: 1;
-    transform: scale(1.14) translateY(-4%);
-  }
-  44% {
-    opacity: 0.84;
-    transform: scale(0.86) translateY(-10%);
-  }
-  62%,
-  100% {
-    opacity: 0;
-    transform: scale(0.18) translateY(-38%);
-  }
-}
-
-@keyframes zone-angelic-destroy-whiteout-to-inspector {
-  0% {
-    opacity: 0;
-    transform: scale(0.52);
-  }
-  20% {
-    opacity: 0.86;
-    transform: scale(1.1);
-  }
-  50% {
-    opacity: 0.52;
-    transform: scale(0.74);
-  }
-  62%,
-  100% {
-    opacity: 0;
-    transform: scale(0.24);
-  }
-}
-
-@keyframes zone-angelic-destroy-final-spark-to-inspector {
-  0%,
-  48% {
-    opacity: 0;
-    transform: scale(0.2);
-  }
-  58% {
-    opacity: 0.74;
-    transform: scale(1.55);
-  }
-  66%,
-  100% {
-    opacity: 0;
-    transform: scale(0.14);
   }
 }
 
@@ -15450,22 +14630,33 @@ select::-ms-expand {
   }
 }
 
+/* Registering the accent vars lets the browser interpolate them, so the main
+   decision button fades between seat colors instead of strobing when priority
+   bounces between players (multiplayer echoes, auto-passes). Browsers without
+   @property simply skip the transition and snap, as before. */
+@property --decision-main-accent {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: #88683c;
+}
+
+@property --decision-main-rgb {
+  syntax: "<number>#";
+  inherits: true;
+  initial-value: 136, 104, 60;
+}
+
+/* The local-turn pulse animates `filter`, not box-shadow: the base rule paints
+   box-shadow/background with !important (author !important beats keyframes,
+   and !important inside @keyframes is ignored outright), while `filter` is set
+   normally so keyframes win. drop-shadow also follows the chamfer clip-path
+   instead of the rectangular border box. */
 @keyframes decision-main-local-pulse {
   0%, 100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.18),
-      inset 0 -1px 0 rgba(6, 8, 11, 0.72),
-      0 0 0 1px rgba(var(--decision-main-rgb, 136, 104, 60), 0.68),
-      0 0 18px rgba(var(--decision-main-rgb, 136, 104, 60), 0.34),
-      0 0 36px rgba(var(--decision-main-rgb, 136, 104, 60), 0.16) !important;
+    filter: brightness(1) drop-shadow(0 0 5px rgba(var(--decision-main-rgb, 136, 104, 60), 0.32));
   }
   50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.24),
-      inset 0 -1px 0 rgba(6, 8, 11, 0.72),
-      0 0 0 1px rgba(var(--decision-main-rgb, 136, 104, 60), 0.92),
-      0 0 28px rgba(var(--decision-main-rgb, 136, 104, 60), 0.54),
-      0 0 58px rgba(var(--decision-main-rgb, 136, 104, 60), 0.24) !important;
+    filter: brightness(1.07) drop-shadow(0 0 13px rgba(var(--decision-main-rgb, 136, 104, 60), 0.6));
   }
 }
 
@@ -15503,7 +14694,9 @@ select::-ms-expand {
     border-color 220ms ease,
     box-shadow 220ms ease,
     color 220ms ease,
-    transform 500ms ease;
+    transform 500ms ease,
+    --decision-main-accent 260ms ease,
+    --decision-main-rgb 260ms ease;
 }
 
 .decision-main-button::before,
@@ -15532,7 +14725,7 @@ select::-ms-expand {
   -webkit-text-fill-color: #fff7df !important;
 }
 
-.decision-main-button[data-local-action="true"]:not([data-transitioning="true"]) {
+.decision-main-button[data-local-action="true"]:not([data-transitioning="true"]):not(:disabled) {
   animation: decision-main-local-pulse 1.55s ease-in-out infinite;
 }
 
@@ -15917,6 +15110,9 @@ select::-ms-expand {
   overflow: hidden;
   height: 100%;
   min-height: 100%;
+  transition:
+    --decision-main-accent 260ms ease,
+    --decision-main-rgb 260ms ease;
   border-top: 0 !important;
   border-bottom: 0 !important;
   border-left: 0 !important;
@@ -15939,7 +15135,9 @@ select::-ms-expand {
     transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
     background 220ms ease,
     box-shadow 220ms ease,
-    filter 220ms ease;
+    filter 220ms ease,
+    --decision-main-accent 260ms ease,
+    --decision-main-rgb 260ms ease;
   will-change: transform;
 }
 
@@ -15952,6 +15150,13 @@ select::-ms-expand {
     0 0 0 1px rgba(var(--decision-main-rgb, 214, 164, 74), 0.28),
     0 0 22px rgba(var(--decision-main-rgb, 214, 164, 74), 0.24),
     0 10px 18px rgba(0, 0, 0, 0.24) !important;
+}
+
+/* Segmented strip: the advance button is transparent (the region paints the
+   accent gradient), so the local-turn pulse lives on the region. :not(:hover)
+   keeps the hover brightness/transform feedback authoritative. */
+.action-strip-main-region[data-local-action="true"]:not(:hover) {
+  animation: decision-main-local-pulse 1.55s ease-in-out infinite;
 }
 
 .action-strip-command-region > .action-strip-main-region,
@@ -17747,4 +16952,688 @@ select::-ms-expand {
 .game-fx-life--loss .game-fx-life-text {
   color: #ff6b6b;
   text-shadow: 0 0 12px rgba(255, 93, 93, 0.6), 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+/* ---- Death collapse (battlefield -> graveyard) ---- */
+/* The slot stays held for layout, but the collapse clone is the visual. */
+.battlefield-row-card--layout-hold.zone-death-hold-hidden {
+  visibility: hidden;
+}
+
+.zone-death-effect {
+  position: absolute;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.zone-death-card {
+  position: absolute;
+  inset: 0;
+  transform-origin: 50% 80%;
+  animation: zone-death-card-collapse 1050ms cubic-bezier(0.4, 0, 0.6, 1) var(--death-delay, 0ms) both;
+}
+
+.zone-death-source-clone,
+.zone-death-source-clone > .game-card {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  min-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+}
+
+.zone-death-card > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+@keyframes zone-death-card-collapse {
+  0% {
+    filter: none;
+    transform: none;
+    opacity: 1;
+    clip-path: polygon(0% 0%, 14% 0%, 30% 0%, 47% 0%, 65% 0%, 82% 0%, 100% 0%, 100% 100%, 0% 100%);
+  }
+  7% {
+    filter: brightness(1.85) saturate(1.5) contrast(1.1);
+    transform: scale(1.035);
+  }
+  14% {
+    filter: brightness(1.1) saturate(1.1);
+    transform: scale(1.0);
+  }
+  38% {
+    filter: grayscale(0.85) brightness(0.62) contrast(0.95);
+    transform: translateY(2px) rotate(calc(var(--death-tilt, 1.6deg) * 0.4)) scale(0.99);
+    opacity: 1;
+    clip-path: polygon(0% 0%, 14% 2%, 30% 0%, 47% 3%, 65% 0%, 82% 2%, 100% 0%, 100% 100%, 0% 100%);
+  }
+  62% {
+    filter: grayscale(1) brightness(0.42) contrast(0.9);
+    transform: translateY(6px) rotate(var(--death-tilt, 1.6deg)) scale(0.965);
+    opacity: 0.96;
+    clip-path: polygon(0% 34%, 14% 22%, 30% 38%, 47% 26%, 65% 41%, 82% 27%, 100% 36%, 100% 100%, 0% 100%);
+  }
+  84% {
+    filter: grayscale(1) brightness(0.3);
+    opacity: 0.7;
+    clip-path: polygon(0% 72%, 14% 58%, 30% 76%, 47% 62%, 65% 78%, 82% 64%, 100% 74%, 100% 100%, 0% 100%);
+  }
+  100% {
+    filter: grayscale(1) brightness(0.2);
+    transform: translateY(13px) rotate(var(--death-tilt, 1.6deg)) scale(0.92);
+    opacity: 0;
+    clip-path: polygon(0% 100%, 14% 96%, 30% 100%, 47% 97%, 65% 100%, 82% 97%, 100% 100%, 100% 100%, 0% 100%);
+  }
+}
+
+.zone-death-flash {
+  position: absolute;
+  inset: -14%;
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 45%,
+    rgba(255, 236, 214, 0.85) 0%,
+    rgba(255, 120, 90, 0.4) 42%,
+    rgba(255, 80, 70, 0) 72%);
+  opacity: 0;
+  animation: zone-death-flash 320ms ease-out var(--death-delay, 0ms) both;
+}
+
+@keyframes zone-death-flash {
+  0% { opacity: 0; transform: scale(0.7); }
+  28% { opacity: 1; transform: scale(1.02); }
+  100% { opacity: 0; transform: scale(1.18); }
+}
+
+.zone-death-soul {
+  position: absolute;
+  left: 50%;
+  top: 42%;
+  width: 26%;
+  aspect-ratio: 1 / 1.9;
+  margin-left: -13%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 60%,
+    rgba(236, 240, 255, 0.75) 0%,
+    rgba(190, 205, 255, 0.32) 48%,
+    rgba(190, 205, 255, 0) 75%);
+  filter: blur(3px);
+  opacity: 0;
+  animation: zone-death-soul 880ms ease-out calc(var(--death-delay, 0ms) + 170ms) both;
+}
+
+@keyframes zone-death-soul {
+  0% { opacity: 0; transform: translateY(8px) scale(0.6, 0.5); }
+  26% { opacity: 0.9; transform: translateY(-8px) scale(1, 1); }
+  100% { opacity: 0; transform: translateY(-58px) scale(0.7, 1.45); }
+}
+
+.zone-death-ash {
+  position: absolute;
+  border-radius: 1px;
+  background: linear-gradient(180deg, #6f6a66, #2e2b29);
+  box-shadow: 0 0 3px rgba(20, 18, 16, 0.8);
+  opacity: 0;
+  animation: zone-death-ash var(--ash-duration, 800ms) cubic-bezier(0.3, 0.2, 0.7, 1)
+    calc(var(--death-delay, 0ms) + var(--ash-delay, 300ms)) both;
+}
+
+@keyframes zone-death-ash {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  18% { opacity: 0.95; }
+  100% {
+    opacity: 0;
+    transform: translate(var(--ash-dx, 0px), var(--ash-dy, 48px)) rotate(160deg);
+  }
+}
+
+
+/* Sacrifice variant of the collapse: drawn down and inward rather than
+ * crumbling — violet soul, inverted ash drift (pulled into the card). */
+.zone-death-effect--sacrificed .zone-death-card {
+  animation-name: zone-death-card-sacrifice;
+  transform-origin: 50% 100%;
+}
+
+.zone-death-effect--sacrificed .zone-death-soul {
+  background: radial-gradient(ellipse at 50% 60%,
+    rgba(214, 186, 255, 0.8) 0%,
+    rgba(150, 110, 235, 0.35) 48%,
+    rgba(150, 110, 235, 0) 75%);
+}
+
+.zone-death-effect--sacrificed .zone-death-flash {
+  background: radial-gradient(ellipse at 50% 55%,
+    rgba(214, 186, 255, 0.7) 0%,
+    rgba(122, 86, 214, 0.38) 42%,
+    rgba(90, 60, 180, 0) 72%);
+}
+
+.zone-death-effect--sacrificed .zone-death-ash {
+  background: linear-gradient(180deg, #7a6a96, #2c2440);
+  animation-name: zone-death-ash-implode;
+}
+
+@keyframes zone-death-card-sacrifice {
+  0% {
+    filter: none;
+    transform: none;
+    opacity: 1;
+    clip-path: inset(0% 0% 0% 0%);
+  }
+  10% {
+    filter: brightness(1.4) saturate(0.9) hue-rotate(-12deg);
+    transform: translateY(-3px) scale(1.02);
+  }
+  42% {
+    filter: grayscale(0.55) brightness(0.6) hue-rotate(-18deg);
+    transform: translateY(5px) scale(0.94, 0.9) rotate(calc(var(--death-tilt, 1.6deg) * 0.5));
+    opacity: 1;
+    clip-path: inset(2% 3% 0% 3%);
+  }
+  74% {
+    filter: grayscale(0.9) brightness(0.36);
+    transform: translateY(13px) scale(0.74, 0.5) rotate(var(--death-tilt, 1.6deg));
+    opacity: 0.85;
+    clip-path: inset(14% 16% 0% 16%);
+  }
+  100% {
+    filter: grayscale(1) brightness(0.18);
+    transform: translateY(22px) scale(0.4, 0.08) rotate(var(--death-tilt, 1.6deg));
+    opacity: 0;
+    clip-path: inset(34% 34% 0% 34%);
+  }
+}
+
+@keyframes zone-death-ash-implode {
+  0% { opacity: 0; transform: translate(var(--ash-dx, 0px), calc(var(--ash-dy, 48px) * -0.6)) rotate(0deg); }
+  22% { opacity: 0.9; }
+  100% {
+    opacity: 0;
+    transform: translate(0, 14px) rotate(-120deg);
+  }
+}
+
+/* ---- Counter-spell shatter (stack -> graveyard) ---- */
+.zone-shatter-effect {
+  position: absolute;
+  pointer-events: none;
+  z-index: 32;
+}
+
+.zone-shatter-flash {
+  position: absolute;
+  inset: -18%;
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 45%,
+    rgba(228, 244, 255, 0.95) 0%,
+    rgba(120, 190, 255, 0.45) 40%,
+    rgba(80, 150, 255, 0) 70%);
+  opacity: 0;
+  animation: zone-shatter-flash 360ms ease-out var(--shatter-delay, 0ms) both;
+}
+
+@keyframes zone-shatter-flash {
+  0% { opacity: 0; transform: scale(0.6); }
+  22% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+.zone-shatter-shard {
+  position: absolute;
+  inset: 0;
+  clip-path: var(--shard-clip);
+  animation: zone-shatter-shard 980ms cubic-bezier(0.3, 0, 0.7, 1)
+    calc(var(--shatter-delay, 0ms) + var(--shard-delay, 0ms)) both;
+  will-change: transform, opacity;
+}
+
+.zone-shatter-source-clone,
+.zone-shatter-source-clone > .game-card {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  min-width: 100% !important;
+  height: 100% !important;
+  min-height: 100% !important;
+  margin: 0 !important;
+}
+
+.zone-shatter-shard > img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+
+.zone-shatter-shard-glint {
+  position: absolute;
+  inset: 0;
+  clip-path: var(--shard-clip);
+  background: linear-gradient(125deg,
+    rgba(210, 236, 255, 0) 28%,
+    rgba(210, 236, 255, 0.55) 47%,
+    rgba(210, 236, 255, 0) 64%);
+  mix-blend-mode: screen;
+}
+
+@keyframes zone-shatter-shard {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 1;
+    filter: none;
+  }
+  12% {
+    filter: brightness(1.7) saturate(0.5) contrast(1.05);
+  }
+  38% {
+    transform: translate(calc(var(--shard-dx, 0px) * 0.55), calc(var(--shard-dy, 20px) * 0.4)) rotate(calc(var(--shard-rot, 8deg) * 0.5));
+    opacity: 0.95;
+    filter: brightness(1.15) saturate(0.35) grayscale(0.4);
+  }
+  100% {
+    transform: translate(var(--shard-dx, 0px), calc(var(--shard-dy, 20px) + 30px)) rotate(var(--shard-rot, 8deg));
+    opacity: 0;
+    filter: brightness(0.5) grayscale(1);
+  }
+}
+
+/* ---- Tier 2/3 game effects ---- */
+
+/* Reanimation flights glow necrotic green. */
+.game-fx-flight--necro {
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.45)) drop-shadow(0 0 14px rgba(112, 235, 162, 0.55));
+}
+
+.game-fx-flight--necro .game-fx-flight-face {
+  box-shadow:
+    0 0 0 1px rgba(150, 240, 185, 0.45),
+    0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* Life total exchange: two orbs crossing between HUDs. */
+.game-fx-lifeswap-orb {
+  position: absolute;
+  width: 18px;
+  height: 18px;
+  margin: -9px 0 0 -9px;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle at 38% 32%, #eafff4 0%, #58d6a6 55%, #1f7a55 100%);
+  box-shadow: 0 0 16px 5px rgba(88, 214, 166, 0.5);
+  will-change: transform, opacity;
+}
+
+.game-fx-lifeswap-orb--second {
+  background: radial-gradient(circle at 38% 32%, #fff2ea 0%, #ffa46b 55%, #9c4a22 100%);
+  box-shadow: 0 0 16px 5px rgba(255, 164, 107, 0.5);
+}
+
+/* HUD flourishes (monarch / initiative / emblem). */
+.game-fx-hud {
+  position: absolute;
+}
+
+.game-fx-hud-ring {
+  position: absolute;
+  left: -42px;
+  top: -28px;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  opacity: 0;
+  border: 2px solid rgba(245, 208, 139, 0.9);
+  box-shadow: 0 0 22px 6px rgba(245, 208, 139, 0.4), inset 0 0 14px rgba(245, 208, 139, 0.35);
+}
+
+.game-fx-hud--initiative .game-fx-hud-ring {
+  border-color: rgba(255, 122, 122, 0.9);
+  box-shadow: 0 0 22px 6px rgba(255, 122, 122, 0.4), inset 0 0 14px rgba(255, 122, 122, 0.35);
+}
+
+.game-fx-hud--emblem .game-fx-hud-ring {
+  border-color: rgba(176, 196, 222, 0.95);
+  box-shadow: 0 0 22px 6px rgba(176, 196, 222, 0.4), inset 0 0 14px rgba(176, 196, 222, 0.35);
+}
+
+.game-fx-hud-badge {
+  position: absolute;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.game-fx-hud-icon {
+  display: block;
+  width: 30px;
+  height: 20px;
+  background: linear-gradient(180deg, #ffe9ad, #d9a93f);
+  clip-path: polygon(0% 100%, 0% 28%, 22% 56%, 50% 8%, 78% 56%, 100% 28%, 100% 100%);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
+}
+
+.game-fx-hud--initiative .game-fx-hud-icon {
+  background: linear-gradient(180deg, #ffb3a3, #c9503a);
+  clip-path: polygon(50% 0%, 100% 18%, 88% 78%, 50% 100%, 12% 78%, 0% 18%);
+}
+
+.game-fx-hud--emblem .game-fx-hud-icon {
+  background: linear-gradient(180deg, #e8f1ff, #93a9c8);
+  clip-path: polygon(50% 0%, 95% 35%, 78% 100%, 22% 100%, 5% 35%);
+}
+
+.game-fx-hud-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #ffe9ad;
+  text-shadow: 0 0 10px rgba(245, 208, 139, 0.7), 0 1px 2px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+.game-fx-hud--initiative .game-fx-hud-label { color: #ffc9bd; text-shadow: 0 0 10px rgba(255, 122, 122, 0.7), 0 1px 2px rgba(0, 0, 0, 0.9); }
+.game-fx-hud--emblem .game-fx-hud-label { color: #dbe7f7; text-shadow: 0 0 10px rgba(176, 196, 222, 0.7), 0 1px 2px rgba(0, 0, 0, 0.9); }
+
+/* Coin flip / die roll. */
+.game-fx-coin {
+  position: absolute;
+  perspective: 420px;
+}
+
+.game-fx-coin-chip {
+  position: absolute;
+  left: -22px;
+  top: -50px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 36% 30%, #ffefc2 0%, #e3b659 48%, #8a6420 100%);
+  box-shadow:
+    0 0 0 2px rgba(255, 240, 200, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(227, 182, 89, 0.45);
+  will-change: transform, opacity;
+  font-size: 19px;
+  color: rgba(90, 62, 16, 0.85);
+}
+
+.game-fx-coin--die .game-fx-coin-chip {
+  border-radius: 10px;
+  background: linear-gradient(150deg, #f4f7ff 0%, #aab8d8 55%, #5d6c8e 100%);
+  box-shadow:
+    0 0 0 2px rgba(225, 235, 255, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.55),
+    0 0 22px rgba(170, 184, 216, 0.45);
+  color: rgba(38, 48, 76, 0.9);
+}
+
+.game-fx-coin-result-wrap {
+  position: absolute;
+  left: 0;
+  top: -104px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.game-fx-coin-result {
+  opacity: 0;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #ffe9ad;
+  text-shadow: 0 0 12px rgba(245, 208, 139, 0.8), 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+/* Control change: glowing card silhouette crossing the table. */
+.game-fx-control-flight {
+  position: absolute;
+  will-change: transform, opacity;
+}
+
+.game-fx-control-card {
+  position: absolute;
+  inset: 0;
+  border-radius: 8px;
+  border: 1.5px solid rgba(140, 200, 255, 0.85);
+  background: linear-gradient(160deg, rgba(140, 200, 255, 0.28), rgba(60, 110, 190, 0.16));
+  box-shadow:
+    0 0 18px 4px rgba(140, 200, 255, 0.45),
+    inset 0 0 22px rgba(140, 200, 255, 0.3);
+}
+
+.game-fx-control-trail {
+  position: absolute;
+  inset: 18% -28%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(140, 200, 255, 0.3) 0%, rgba(140, 200, 255, 0) 70%);
+  filter: blur(6px);
+}
+
+.game-card.control-change-arrival {
+  --card-flash-brightness: 1.45;
+  box-shadow:
+    0 0 12px 4px rgba(140, 200, 255, 0.65),
+    0 0 30px 9px rgba(140, 200, 255, 0.3) !important;
+  transition: box-shadow 160ms ease;
+}
+
+/* Phasing. */
+.game-fx-phase-ghost {
+  position: absolute;
+  border-radius: 8px;
+  border: 1px dashed rgba(190, 210, 255, 0.7);
+  background:
+    repeating-linear-gradient(135deg, rgba(190, 210, 255, 0.12) 0 6px, rgba(190, 210, 255, 0.03) 6px 12px);
+  box-shadow: 0 0 18px rgba(190, 210, 255, 0.3), inset 0 0 22px rgba(190, 210, 255, 0.2);
+  will-change: transform, opacity, filter;
+}
+
+/* Level-up (monstrous / renown / adapt / evolve). */
+.game-fx-levelup {
+  position: absolute;
+}
+
+.game-fx-levelup-ring {
+  position: absolute;
+  left: -56px;
+  top: -56px;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  opacity: 0;
+  border: 2.5px solid rgba(126, 214, 146, 0.9);
+  box-shadow: 0 0 26px 8px rgba(126, 214, 146, 0.45), inset 0 0 18px rgba(126, 214, 146, 0.4);
+  will-change: transform, opacity;
+}
+
+.game-fx-levelup-label-wrap {
+  position: absolute;
+  left: 0;
+  top: -64px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.game-fx-levelup-label {
+  opacity: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #c9f3d4;
+  text-shadow: 0 0 12px rgba(126, 214, 146, 0.8), 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* Day / night wash. */
+.game-fx-board-tint {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 12vh;
+  will-change: opacity;
+}
+
+.game-fx-board-tint--day {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(255, 222, 150, 0.30) 0%, rgba(255, 222, 150, 0.12) 45%, rgba(255, 222, 150, 0) 75%);
+}
+
+.game-fx-board-tint--night {
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(72, 96, 200, 0.34) 0%, rgba(40, 52, 120, 0.16) 45%, rgba(20, 26, 64, 0) 78%);
+}
+
+.game-fx-board-tint-label {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.5em;
+  text-transform: uppercase;
+  color: rgba(255, 240, 200, 0.9);
+  text-shadow: 0 0 18px rgba(255, 222, 150, 0.8), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+.game-fx-board-tint--night .game-fx-board-tint-label {
+  color: rgba(196, 210, 255, 0.92);
+  text-shadow: 0 0 18px rgba(110, 140, 255, 0.8), 0 2px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* Extra turn banner. */
+.game-fx-turn-banner {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.game-fx-turn-banner-text {
+  display: inline-block;
+  padding: 6px 18px;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: #ffeec2;
+  background: linear-gradient(100deg, rgba(90, 64, 18, 0.92), rgba(140, 100, 30, 0.92), rgba(90, 64, 18, 0.92));
+  border: 1px solid rgba(245, 208, 139, 0.7);
+  border-radius: 4px;
+  box-shadow: 0 0 24px rgba(245, 208, 139, 0.5), 0 6px 18px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Transform / turn-face-up sheen. */
+.game-fx-flip {
+  position: absolute;
+  perspective: 520px;
+}
+
+.game-fx-flip-sheen {
+  position: absolute;
+  inset: -4%;
+  border-radius: 10px;
+  opacity: 0;
+  background: linear-gradient(115deg,
+    rgba(255, 255, 255, 0) 30%,
+    rgba(255, 244, 214, 0.85) 50%,
+    rgba(255, 255, 255, 0) 70%);
+  box-shadow: 0 0 26px rgba(255, 240, 200, 0.55);
+  will-change: transform, opacity;
+}
+
+/* Mana motes. */
+.game-fx-mana-mote {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle at 36% 30%, #ffffff 0%, var(--mote-color, #cfd6dd) 55%, rgba(0, 0, 0, 0.35) 130%);
+  box-shadow: 0 0 12px 3px var(--mote-color, #cfd6dd);
+  will-change: transform, opacity;
+}
+
+/* Counter add/remove pulse on battlefield cards. */
+@keyframes counter-pulse-pop {
+  0% { transform: scale(1); filter: none; }
+  35% { transform: scale(1.35); filter: brightness(1.6); }
+  100% { transform: scale(1); filter: none; }
+}
+
+.game-card.counter-pulse-add .battlefield-counter-badge,
+.game-card.counter-pulse-remove .battlefield-counter-badge {
+  animation: counter-pulse-pop 560ms cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.game-card.counter-pulse-add .battlefield-counter-badge {
+  box-shadow: 0 0 12px 3px rgba(126, 214, 146, 0.75) !important;
+}
+
+.game-card.counter-pulse-remove .battlefield-counter-badge {
+  box-shadow: 0 0 12px 3px rgba(255, 122, 122, 0.75) !important;
+}
+
+/* Token materialize shimmer on entry. */
+@keyframes token-materialize-ring {
+  0% { transform: scale(0.5); opacity: 0; }
+  25% { opacity: 0.95; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes token-materialize-sheen {
+  0% { opacity: 0; background-position: -130% 0; }
+  30% { opacity: 0.8; }
+  100% { opacity: 0; background-position: 230% 0; }
+}
+
+.token-materialize-ring {
+  position: absolute;
+  inset: -8%;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: 12px;
+  border: 1.5px solid rgba(214, 230, 251, 0.85);
+  box-shadow: 0 0 18px 4px rgba(214, 230, 251, 0.45), inset 0 0 14px rgba(214, 230, 251, 0.3);
+  animation: token-materialize-ring 760ms ease-out 80ms both;
+}
+
+.token-materialize-sheen {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(115deg,
+    rgba(255, 255, 255, 0) 35%,
+    rgba(225, 240, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0) 65%);
+  background-size: 240% 100%;
+  animation: token-materialize-sheen 820ms ease-out 60ms both;
+}
+
+/* Declared attackers lean toward the enemy; selected blockers brace. */
+.game-card.attack-selected,
+.game-card.attack-active {
+  --card-rotate: -2.5deg;
+  --card-translate-y: -6px;
+}
+
+.game-card.blocker-attacker-active {
+  --card-rotate: 1.5deg;
+  --card-scale: 1.03;
 }

@@ -22,10 +22,19 @@ impl EffectExecutor for FlipCoinEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let _player = resolve_player_filter(game, &self.player, ctx)?;
+        let player = resolve_player_filter(game, &self.player, ctx)?;
         let mut faces = [true, false];
         game.shuffle_slice(&mut faces);
-        Ok(EffectOutcome::count(i32::from(faces[0])))
+        let won = faces[0];
+        game.record_ui_effect_event(
+            "coin_flip",
+            Some(player),
+            None,
+            Vec::new(),
+            Some(i64::from(won)),
+            Some(if won { "heads" } else { "tails" }.to_string()),
+        );
+        Ok(EffectOutcome::count(i32::from(won)))
     }
 }
 

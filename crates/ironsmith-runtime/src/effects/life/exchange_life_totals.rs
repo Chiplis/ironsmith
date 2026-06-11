@@ -181,6 +181,15 @@ impl EffectExecutor for ExchangeLifeTotalsEffect {
             }
         }
 
+        game.record_ui_effect_event(
+            "life_exchange",
+            Some(player1_id),
+            Some(player2_id),
+            Vec::new(),
+            None,
+            None,
+        );
+
         Ok(outcome)
     }
 

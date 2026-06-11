@@ -16,6 +16,28 @@ const ZONE_FLIGHT_KINDS = new Map([
   ["graveyard->library", "recycle"],
   ["hand->library", "tuck"],
   ["library->hand", "draw"],
+  ["graveyard->battlefield", "reanimate"],
+]);
+
+// Engine-side effect events (state.effect_events) that the overlay animates.
+// Anything not listed is ignored client-side.
+const ENGINE_EFFECT_KINDS = new Set([
+  "coin_flip",
+  "die_roll",
+  "control_change",
+  "transform",
+  "turned_face_up",
+  "phase_out",
+  "phase_in",
+  "level_up",
+  "emblem",
+  "monarch",
+  "initiative",
+  "day_night",
+  "extra_turn",
+  "life_exchange",
+  "damage",
+  "mana_added",
 ]);
 
 // Flights whose card identity is hidden in the source zone travel face down
@@ -87,7 +109,33 @@ export function collectZoneFlightEvents(state, processedTransitionIds) {
       fromZone,
       toZone,
       cardName: String(transition?.card?.name || ""),
+      objectId: transition.new_object_id ?? transition.newObjectId ?? transition?.card?.id ?? null,
       revealsFace: FACE_DOWN_SOURCE_ZONES.has(fromZone),
+    });
+  }
+  return events;
+}
+
+export function collectEngineEffectEvents(state, processedEffectEventIds) {
+  const rawEvents = Array.isArray(state?.effect_events) ? state.effect_events : [];
+  const events = [];
+  for (const raw of rawEvents) {
+    if (raw?.id == null) continue;
+    const idKey = `engine:${raw.id}`;
+    if (processedEffectEventIds?.has(idKey)) continue;
+    processedEffectEventIds?.add(idKey);
+
+    const kind = String(raw.kind || "");
+    if (!ENGINE_EFFECT_KINDS.has(kind)) continue;
+    events.push({
+      type: "engine-effect",
+      kind,
+      id: idKey,
+      playerKey: raw.player == null ? "" : String(raw.player),
+      otherPlayerKey: raw.other_player == null ? "" : String(raw.other_player),
+      stableIds: (Array.isArray(raw.stable_ids) ? raw.stable_ids : []).map(String),
+      value: raw.value ?? null,
+      text: raw.text == null ? "" : String(raw.text),
     });
   }
   return events;
@@ -111,6 +159,7 @@ export function collectGameEffectEvents({
   const events = [];
   const flightEvents = collectZoneFlightEvents(state, processedTransitionIds);
   events.push(...flightEvents);
+  events.push(...collectEngineEffectEvents(state, processedTransitionIds));
 
   const flightCounts = new Map();
   for (const flight of flightEvents) {

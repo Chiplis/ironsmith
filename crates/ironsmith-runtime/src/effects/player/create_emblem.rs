@@ -50,6 +50,19 @@ impl EffectExecutor for CreateEmblemEffect {
         // add_object handles adding to command_zone for Zone::Command
         game.add_object(emblem_obj);
 
+        let stable_ids = game
+            .object(id)
+            .map(|obj| vec![obj.stable_id])
+            .unwrap_or_default();
+        game.record_ui_effect_event(
+            "emblem",
+            Some(owner),
+            None,
+            stable_ids,
+            None,
+            Some(self.emblem.name.clone()),
+        );
+
         Ok(EffectOutcome::with_objects(vec![id]))
     }
 }

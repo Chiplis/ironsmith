@@ -74,6 +74,16 @@ impl EffectExecutor for MonstrosityEffect {
             }
         }
         game.set_monstrous(source_id);
+        if let Some(stable_id) = game.object(source_id).map(|o| o.stable_id) {
+            game.record_ui_effect_event(
+                "level_up",
+                Some(ctx.controller),
+                None,
+                vec![stable_id],
+                Some(i64::from(n_value)),
+                Some("monstrous".to_string()),
+            );
+        }
 
         // Return a special result that indicates monstrosity happened
         // The game loop will need to generate the BecameMonstrous event

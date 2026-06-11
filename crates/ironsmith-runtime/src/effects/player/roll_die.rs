@@ -61,6 +61,14 @@ impl EffectExecutor for RollDieEffect {
             game.turn_store
                 .turn_history
                 .record_die_roll(player, adjusted);
+            game.record_ui_effect_event(
+                "die_roll",
+                Some(player),
+                None,
+                Vec::new(),
+                Some(i64::from(adjusted)),
+                Some(format!("d{}", self.sides)),
+            );
             return Ok(EffectOutcome::count(adjusted as i32)
                 .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                     DieRolledEvent::new_with_natural_result(
@@ -80,6 +88,14 @@ impl EffectExecutor for RollDieEffect {
         game.turn_store
             .turn_history
             .record_die_roll(player, adjusted);
+        game.record_ui_effect_event(
+            "die_roll",
+            Some(player),
+            None,
+            Vec::new(),
+            Some(i64::from(adjusted)),
+            Some(format!("d{}", self.sides)),
+        );
         Ok(EffectOutcome::count(adjusted as i32)
             .with_event(crate::triggers::TriggerEvent::new_with_provenance(
                 DieRolledEvent::new_with_natural_result(

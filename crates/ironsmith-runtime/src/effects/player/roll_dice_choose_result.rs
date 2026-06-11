@@ -61,6 +61,14 @@ impl EffectExecutor for RollDiceChooseResultEffect {
                 faces[0]
             };
             game.turn_store.turn_history.record_die_roll(player, result);
+            game.record_ui_effect_event(
+                "die_roll",
+                Some(player),
+                None,
+                Vec::new(),
+                Some(i64::from(result)),
+                Some(format!("d{}", self.sides)),
+            );
             events.push(crate::triggers::TriggerEvent::new_with_provenance(
                 DieRolledEvent::new(player, ctx.source, result, self.sides),
                 ctx.provenance,

@@ -3,10 +3,11 @@ import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { getCardRect, centerOf } from "@/hooks/useCardPositions";
 import { buildObjectControllerById } from "@/lib/decision-object-meta";
-import { decisionButtonAccentVars, isLocalDecisionButton } from "@/lib/decision-button-style";
+import { useDecisionButtonAccent } from "@/lib/decision-button-style";
 import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButtonTransition";
 import { Button } from "@/components/ui/button";
 import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/PeerWaitPopover";
+import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 
@@ -103,10 +104,12 @@ export default function AttackersDecision({
   const objectControllerById = useMemo(() => buildObjectControllerById(state), [state]);
   const optionsRef = useRef(options);
   const attackButtonTransition = useDeclareAttackersButtonTransition(decision);
-  const decisionButtonStyle = decisionButtonAccentVars(state, decision, playerAccentOverrides);
-  const localDecisionButton = isLocalDecisionButton(state, decision);
-  const peerWait = multiplayer?.peerWait || null;
+  const { style: decisionButtonStyle, isLocal: localDecisionButton } =
+    useDecisionButtonAccent(state, decision, playerAccentOverrides);
+  const rawPeerWait = multiplayer?.peerWait || null;
+  const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
+  const peerWaitLocked = Boolean(rawPeerWait);
 
   const [declarations, setDeclarations] = useState(() => {
     const initial = [];
@@ -472,10 +475,10 @@ export default function AttackersDecision({
             style={decisionButtonStyle}
             data-local-action={localDecisionButton ? "true" : "false"}
             data-transitioning={attackButtonTransition.transitioning ? "true" : "false"}
-            aria-disabled={peerWaiting || !canAct || attackButtonTransition.locked}
+            aria-disabled={peerWaitLocked || !canAct || attackButtonTransition.locked}
             disabled={peerWaiting ? false : (!canAct || attackButtonTransition.locked)}
             onClick={() => {
-              if (peerWaiting) return;
+              if (peerWaitLocked) return;
               dispatch(
                 { type: "declare_attackers", declarations },
                 `Declared ${declarations.length} attacker(s)`

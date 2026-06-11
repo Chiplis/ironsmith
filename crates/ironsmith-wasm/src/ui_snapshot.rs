@@ -685,6 +685,32 @@ pub(super) struct ZoneTransitionSnapshot {
     pub(super) card: ZoneCardSnapshot,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub(super) struct UiEffectEventSnapshot {
+    pub(super) id: u64,
+    pub(super) kind: String,
+    pub(super) player: Option<u8>,
+    pub(super) other_player: Option<u8>,
+    pub(super) stable_ids: Vec<u64>,
+    pub(super) value: Option<i64>,
+    pub(super) text: Option<String>,
+}
+
+fn effect_event_snapshots(game: &GameState) -> Vec<UiEffectEventSnapshot> {
+    game.ui_effect_events()
+        .iter()
+        .map(|event| UiEffectEventSnapshot {
+            id: event.id,
+            kind: event.kind.clone(),
+            player: event.player.map(|p| p.0),
+            other_player: event.other_player.map(|p| p.0),
+            stable_ids: event.stable_ids.iter().map(|sid| sid.0.0).collect(),
+            value: event.value,
+            text: event.text.clone(),
+        })
+        .collect()
+}
+
 pub(super) fn battlefield_transition_snapshots(
     transitions: impl IntoIterator<Item = UiBattlefieldTransition>,
 ) -> Vec<BattlefieldTransitionSnapshot> {
@@ -783,6 +809,7 @@ pub(super) struct GameSnapshot {
     pub(super) players: Vec<PlayerSnapshot>,
     pub(super) battlefield_transitions: Vec<BattlefieldTransitionSnapshot>,
     pub(super) zone_transitions: Vec<ZoneTransitionSnapshot>,
+    pub(super) effect_events: Vec<UiEffectEventSnapshot>,
     pub(super) crypto_requirements: Vec<CryptoRequirementView>,
     pub(super) viewed_cards: Option<ViewedCardsSnapshot>,
     pub(super) decision: Option<DecisionView>,
@@ -1100,6 +1127,7 @@ impl GameSnapshot {
             })
             .collect();
         let zone_transitions = zone_transition_snapshots(game, perspective, viewed_cards);
+        let effect_events = effect_event_snapshots(game);
 
         let mut stack_preview: Vec<String> = game
             .stack
@@ -1172,6 +1200,7 @@ impl GameSnapshot {
             players,
             battlefield_transitions,
             zone_transitions,
+            effect_events,
             crypto_requirements: Vec::new(),
             viewed_cards: viewed_cards
                 .filter(|view| view.public || view.viewer == perspective)

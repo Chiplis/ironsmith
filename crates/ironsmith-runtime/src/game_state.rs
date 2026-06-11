@@ -134,6 +134,19 @@ pub struct UiZoneTransition {
     pub to: Zone,
 }
 
+/// A UI-only effect event record for the frontend animation layer.
+/// Bounded feed, same lifecycle as `ui_zone_transitions`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UiEffectEvent {
+    pub id: u64,
+    pub kind: String,
+    pub player: Option<PlayerId>,
+    pub other_player: Option<PlayerId>,
+    pub stable_ids: Vec<StableId>,
+    pub value: Option<i64>,
+    pub text: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HiddenCardInfo {
     pub owner: PlayerId,
@@ -180,6 +193,8 @@ struct MetadataStateStore {
     ui_battlefield_transitions: Vec<UiBattlefieldTransition>,
     ui_zone_transitions: Vec<UiZoneTransition>,
     next_ui_zone_transition_id: u64,
+    ui_effect_events: Vec<UiEffectEvent>,
+    next_ui_effect_event_id: u64,
     provenance_graph: ProvenanceGraph,
 }
 
@@ -2304,6 +2319,8 @@ impl GameState {
                 ui_battlefield_transitions: Vec::new(),
                 ui_zone_transitions: Vec::new(),
                 next_ui_zone_transition_id: 0,
+                ui_effect_events: Vec::new(),
+                next_ui_effect_event_id: 0,
                 provenance_graph: ProvenanceGraph::new(),
             },
             combat: None,
@@ -5534,6 +5551,7 @@ impl GameState {
         self.mark_continuous_state_dirty();
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
+        self.record_counter_ui_effect_event("counters_added", id, counter_type, amount);
 
         let event_provenance = self
             .provenance_graph_mut()
@@ -5563,6 +5581,7 @@ impl GameState {
         if removed == 0 {
             return None;
         }
+        self.record_counter_ui_effect_event("counters_removed", id, counter_type, removed);
 
         let event_provenance = self
             .provenance_graph_mut()
@@ -5599,6 +5618,7 @@ impl GameState {
 
         let obj = self.object_mut(id)?;
         obj.add_counters(counter_type, amount);
+        self.record_counter_ui_effect_event("counters_added", id, counter_type, amount);
 
         let event_provenance = self
             .provenance_graph_mut()
@@ -5613,6 +5633,34 @@ impl GameState {
             ),
             event_provenance,
         ))
+    }
+
+    /// Record a UI-only counter change event for battlefield objects.
+    fn record_counter_ui_effect_event(
+        &mut self,
+        kind: &str,
+        id: ObjectId,
+        counter_type: crate::object::CounterType,
+        amount: u32,
+    ) {
+        if amount == 0 {
+            return;
+        }
+        let Some(stable_id) = self
+            .object(id)
+            .filter(|obj| obj.zone == Zone::Battlefield)
+            .map(|obj| obj.stable_id)
+        else {
+            return;
+        };
+        self.record_ui_effect_event(
+            kind,
+            None,
+            None,
+            vec![stable_id],
+            Some(i64::from(amount)),
+            Some(counter_type.description().into_owned()),
+        );
     }
 
     /// Get the number of counters of a specific type on an object.
@@ -7525,6 +7573,9 @@ impl GameState {
     ///
     /// Use `None` to clear the designation.
     pub fn set_monarch(&mut self, monarch: Option<PlayerId>) {
+        if monarch.is_some() && monarch != self.monarch {
+            self.record_ui_effect_event("monarch", monarch, None, Vec::new(), None, None);
+        }
         self.monarch = monarch;
     }
 
@@ -7532,6 +7583,9 @@ impl GameState {
     ///
     /// Use `None` to clear the designation.
     pub fn set_initiative(&mut self, initiative: Option<PlayerId>) {
+        if initiative.is_some() && initiative != self.initiative {
+            self.record_ui_effect_event("initiative", initiative, None, Vec::new(), None, None);
+        }
         self.initiative = initiative;
     }
 
@@ -9120,6 +9174,9 @@ impl GameState {
             .saturating_add(1);
         self.transform_count.insert(id, next);
         self.effect_store.continuous_effects.record_entry(id);
+        if let Some(stable_id) = self.object(id).map(|o| o.stable_id) {
+            self.record_ui_effect_event("transform", None, None, vec![stable_id], None, None);
+        }
     }
 
     /// Transform a transform-like permanent in place.
@@ -9239,6 +9296,14 @@ impl GameState {
             self.apply_day_nightbound_transformations();
         }
         if had_day_night && changed {
+            self.record_ui_effect_event(
+                "day_night",
+                None,
+                None,
+                Vec::new(),
+                None,
+                Some(if daytime { "day" } else { "night" }.to_string()),
+            );
             let provenance = self
                 .provenance_graph_mut()
                 .alloc_root_event(crate::events::EventKind::DayNightChanged);
@@ -9266,13 +9331,21 @@ impl GameState {
     /// Phase out a permanent.
     pub fn phase_out(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
-        self.phased_out.insert(id);
+        if self.phased_out.insert(id)
+            && let Some(stable_id) = self.object(id).map(|o| o.stable_id)
+        {
+            self.record_ui_effect_event("phase_out", None, None, vec![stable_id], None, None);
+        }
     }
 
     /// Phase in a permanent.
     pub fn phase_in(&mut self, id: ObjectId) {
         self.mark_continuous_state_dirty();
-        self.phased_out.remove(&id);
+        if self.phased_out.remove(&id)
+            && let Some(stable_id) = self.object(id).map(|o| o.stable_id)
+        {
+            self.record_ui_effect_event("phase_in", None, None, vec![stable_id], None, None);
+        }
     }
 
     /// Check if a card is exiled via madness.
@@ -10012,6 +10085,46 @@ impl GameState {
             }
         }
 
+        if let Some(mana_added) = event.downcast::<crate::events::ManaAddedEvent>()
+            && !mana_added.mana.is_empty()
+        {
+            let player = mana_added.player;
+            let count = mana_added.mana.len() as i64;
+            let text: String = mana_added
+                .mana
+                .iter()
+                .map(|symbol| {
+                    format!(
+                        "{{{}}}",
+                        match symbol {
+                            crate::mana::ManaSymbol::White => "W".to_string(),
+                            crate::mana::ManaSymbol::Blue => "U".to_string(),
+                            crate::mana::ManaSymbol::Black => "B".to_string(),
+                            crate::mana::ManaSymbol::Red => "R".to_string(),
+                            crate::mana::ManaSymbol::Green => "G".to_string(),
+                            crate::mana::ManaSymbol::Colorless => "C".to_string(),
+                            crate::mana::ManaSymbol::Snow => "S".to_string(),
+                            crate::mana::ManaSymbol::X => "X".to_string(),
+                            crate::mana::ManaSymbol::Generic(n) => n.to_string(),
+                            crate::mana::ManaSymbol::Life(_) => "P".to_string(),
+                        }
+                    )
+                })
+                .collect();
+            let stable_ids = self
+                .object(mana_added.source)
+                .map(|obj| vec![obj.stable_id])
+                .unwrap_or_default();
+            self.record_ui_effect_event(
+                "mana_added",
+                Some(player),
+                None,
+                stable_ids,
+                Some(count),
+                Some(text),
+            );
+        }
+
         let initial_provenance = event.provenance();
         if initial_provenance == ProvNodeId::default()
             || self.provenance_graph().node(initial_provenance).is_none()
@@ -10166,6 +10279,42 @@ impl GameState {
         if self.metadata.ui_zone_transitions.len() > MAX_UI_ZONE_TRANSITIONS {
             let excess = self.metadata.ui_zone_transitions.len() - MAX_UI_ZONE_TRANSITIONS;
             self.metadata.ui_zone_transitions.drain(0..excess);
+        }
+    }
+
+    pub fn ui_effect_events(&self) -> &[UiEffectEvent] {
+        &self.metadata.ui_effect_events
+    }
+
+    /// Record a UI-only effect event for the frontend animation layer.
+    ///
+    /// This has no rules meaning: it is a bounded, append-only feed of
+    /// "something visually interesting happened" hints keyed by monotonic id.
+    pub fn record_ui_effect_event(
+        &mut self,
+        kind: &str,
+        player: Option<PlayerId>,
+        other_player: Option<PlayerId>,
+        stable_ids: Vec<StableId>,
+        value: Option<i64>,
+        text: Option<String>,
+    ) {
+        const MAX_UI_EFFECT_EVENTS: usize = 64;
+        let event = UiEffectEvent {
+            id: self.metadata.next_ui_effect_event_id,
+            kind: kind.to_string(),
+            player,
+            other_player,
+            stable_ids,
+            value,
+            text,
+        };
+        self.metadata.next_ui_effect_event_id =
+            self.metadata.next_ui_effect_event_id.saturating_add(1);
+        self.metadata.ui_effect_events.push(event);
+        if self.metadata.ui_effect_events.len() > MAX_UI_EFFECT_EVENTS {
+            let excess = self.metadata.ui_effect_events.len() - MAX_UI_EFFECT_EVENTS;
+            self.metadata.ui_effect_events.drain(0..excess);
         }
     }
 

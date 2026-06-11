@@ -1,11 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
-import { RIFT_DISSOLVE_EXILE_EFFECT_MS } from "@/lib/game-animations";
+import {
+  DEATH_COLLAPSE_EFFECT_MS,
+  MARQUEE_STREAM_EFFECT_MS,
+  RIFT_DISSOLVE_EXILE_EFFECT_MS,
+  WIPE_WAVE_EFFECT_MS,
+} from "@/lib/game-animations";
 
 const EXILE_EFFECT_DURATION_MS = RIFT_DISSOLVE_EXILE_EFFECT_MS;
 const EXILE_EFFECT_KIND = "rift-dissolve-exile";
-const ANGELIC_DESTROY_EFFECT_DURATION_MS = 2400;
-const ANGELIC_DESTROY_EFFECT_KIND = "angelic-destroy";
+const DEATH_COLLAPSE_EFFECT_DURATION_MS = DEATH_COLLAPSE_EFFECT_MS;
+const DEATH_COLLAPSE_EFFECT_KIND = "death-collapse";
+const MARQUEE_STREAM_EFFECT_KIND = "marquee-stream";
+const COUNTER_SHATTER_EFFECT_KIND = "counter-shatter";
+const COUNTER_SHATTER_EFFECT_DURATION_MS = 1300;
+const WIPE_WAVE_EFFECT_KIND = "wipe-wave";
+
+// Shader effect-kind ids (u_effectKinds uniform).
+const SHADER_KIND_EXILE = 0;
+const SHADER_KIND_DEATH_STREAM = 1;
+const SHADER_KIND_SACRIFICE_STREAM = 2;
+const SHADER_KIND_COUNTER_STREAM = 3;
+const SHADER_KIND_WIPE_WAVE = 4;
+
+const STREAM_PROFILE_SHADER_KINDS = {
+  death: SHADER_KIND_DEATH_STREAM,
+  sacrifice: SHADER_KIND_SACRIFICE_STREAM,
+  counter: SHADER_KIND_COUNTER_STREAM,
+};
 const MAX_SHADER_EFFECTS = 8;
 const TARGET_WAIT_TIMEOUT_MS = 1100;
 // The inspector mounts with hover-art-drop-in (360ms translate3d -36px → 0)
@@ -88,7 +110,23 @@ float ringRect(vec2 p, vec4 rect, float width, float feather) {
   return saturate(outer - inner);
 }
 
-vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float seed, vec3 accentColor) {
+// Per-kind stream tuning. kind: 0 exile firefly, 1 death ember, 2 sacrifice
+// void-pull, 3 counter frost-shards. Each returns additive light.
+vec3 streamPalette(float kind, vec3 accentColor) {
+  if (kind < 0.5) return accentColor;                       // exile: player accent
+  if (kind < 1.5) return vec3(1.0, 0.52, 0.24);             // death: hot ember
+  if (kind < 2.5) return vec3(0.62, 0.42, 0.96);            // sacrifice: void violet
+  return vec3(0.5, 0.78, 1.0);                              // counter: frost blue
+}
+
+float streamTravel(float kind, float progress) {
+  if (kind < 0.5) return easeInCubic(saturate((progress - 0.04) / 0.76));
+  if (kind < 1.5) return easeInOut(saturate((progress - 0.16) / 0.62));   // death: lifts off after collapse starts
+  if (kind < 2.5) return easeInCubic(saturate((progress - 0.10) / 0.55)); // sacrifice: accelerating pull
+  return easeInOut(saturate((progress - 0.08) / 0.6));                    // counter: burst then glide
+}
+
+vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float seed, vec3 accentColor, float kind) {
   vec2 srcC = src.xy + src.zw * 0.5;
   vec2 dstC = dst.xy + dst.zw * 0.5;
   vec2 path = dstC - srcC;
@@ -97,8 +135,16 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
   vec2 side = vec2(-dir.y, dir.x);
   float along = dot(p - srcC, dir);
   float lateral = dot(p - srcC, side);
-  float pathT = saturate(along / pathLength);
-  float travel = easeInCubic(saturate((progress - 0.04) / 0.76));
+
+  // Death embers sag under gravity early in the path; sacrifice streams bow
+  // inward (drawn down then yanked); exile/counter stay straight.
+  float pathTRaw = saturate(along / pathLength);
+  float sagAmount = kind > 0.5 && kind < 1.5 ? 26.0 : (kind > 1.5 && kind < 2.5 ? -18.0 : 0.0);
+  float sag = sin(pathTRaw * 3.14159) * sagAmount * (dir.y >= 0.0 ? 1.0 : -1.0);
+  lateral -= sag;
+
+  float pathT = pathTRaw;
+  float travel = streamTravel(kind, progress);
   float headAlong = pathLength * travel;
 
   float targetFillProgress = smoothstep(0.74, 0.94, progress) * smoothstep(1.0, 0.82, progress);
@@ -110,14 +156,24 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
   float arrivalFade = mix(1.0, 0.08, smoothstep(0.68, 0.98, pathT));
   float inspectorAbsorb = mix(1.0, 0.12, inspectorEnvelope * smoothstep(0.58, 0.92, progress));
 
-  float streamWidth = mix(src.z * 0.72, max(dst.z * 0.42, 42.0), pathT);
+  // Sacrifice streams narrow toward the destination (a pull); the others
+  // widen from the card and relax toward the inspector.
+  float streamWidth = kind > 1.5 && kind < 2.5
+    ? mix(src.z * 0.66, 26.0, pathT)
+    : mix(src.z * 0.72, max(dst.z * 0.42, 42.0), pathT);
   float lateralNorm = abs(lateral) / max(streamWidth, 1.0);
   float lateralEnvelope = exp(-lateralNorm * lateralNorm * 1.18);
   float pathEnvelope = smoothstep(-48.0, 34.0, along) * smoothstep(pathLength + 66.0, pathLength - 8.0, along);
   float tail = smoothstep(430.0, 0.0, headAlong - along) * smoothstep(-22.0, 62.0, headAlong - along);
   float front = exp(-abs(along - headAlong) * 0.018);
-  float turbulence = sin(pathT * 19.0 + seed * 37.0 + progress * 12.0) * 20.0
-                   + sin(pathT * 47.0 + seed * 91.0) * 8.0;
+
+  float turbulenceAmp = kind < 0.5 ? 20.0 : (kind < 1.5 ? 27.0 : (kind < 2.5 ? 12.0 : 16.0));
+  float turbulence = sin(pathT * 19.0 + seed * 37.0 + progress * 12.0) * turbulenceAmp
+                   + sin(pathT * 47.0 + seed * 91.0) * turbulenceAmp * 0.4;
+
+  // Counter shards are elongated slivers; everything else is round motes.
+  float anisoX = kind > 2.5 ? 2.6 : 1.0;
+  float anisoY = kind > 2.5 ? 0.55 : 1.0;
 
   vec2 particleCoord = vec2(
     along / 8.4 - travel * pathLength / 6.8,
@@ -126,14 +182,17 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
   vec2 cell = floor(particleCoord);
   vec2 cellJitter = vec2(hash(cell + seed * 127.0 + 5.1), hash(cell + seed * 149.0 + 9.7)) - 0.5;
   vec2 local = fract(particleCoord) - 0.5 - cellJitter * 0.42;
+  local = vec2(local.x * anisoX, local.y / max(anisoY, 0.001));
   float particleSeed = hash(cell + seed * 113.0);
   float particleSize = mix(8.0, 17.0, hash(cell + 31.0));
   float fireflyCore = exp(-dot(local, local) * particleSize);
   float fireflyGlow = exp(-dot(local, local) * (particleSize * 0.18));
-  float fireflyVisible = step(0.36, particleSeed);
+  float fireflyVisible = step(kind > 0.5 && kind < 1.5 ? 0.30 : 0.36, particleSeed);
   float fireflyTwinkle = 0.72 + 0.28 * sin(progress * 21.0 + particleSeed * 6.28318 + seed * 17.0);
-  fireflyCore *= fireflyVisible * fireflyTwinkle;
-  fireflyGlow *= fireflyVisible * fireflyTwinkle;
+  // Embers cool as they travel: bright near the source, dimmer near arrival.
+  float emberCooling = kind > 0.5 && kind < 1.5 ? mix(1.18, 0.7, pathT) : 1.0;
+  fireflyCore *= fireflyVisible * fireflyTwinkle * emberCooling;
+  fireflyGlow *= fireflyVisible * fireflyTwinkle * emberCooling;
 
   float streamActive = smoothstep(0.06, 0.18, progress) * smoothstep(0.96, 0.78, progress);
   float fireflyPath = (tail * 0.92 + front * 0.64);
@@ -154,13 +213,28 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
                    * arrivalFade
                    * inspectorAbsorb;
 
-  float sourceMask = rectMask(p, src, 8.0);
-  float sourceBreak = saturate((progress - 0.10) / 0.72);
-  float sourceCoord = dot(p - src.xy, dir) / max(src.z, src.w);
-  float sourceEdgeNoise = sin((p.y + seed * 193.0) * 0.11) * 0.045
-                        + sin((p.x + seed * 71.0) * 0.17) * 0.028;
-  float sourceCut = smoothstep(sourceBreak - 0.16 + sourceEdgeNoise, sourceBreak + 0.10 + sourceEdgeNoise, sourceCoord);
-  float sourceAsh = sourceMask * sourceCut * smoothstep(0.08, 0.22, progress) * smoothstep(0.94, 0.72, progress);
+  // Source ash sweep is exile-only — marquee kinds dissolve their source via
+  // the DOM collapse/shatter instead.
+  float sourceAsh = 0.0;
+  if (kind < 0.5) {
+    float sourceMask = rectMask(p, src, 8.0);
+    float sourceBreak = saturate((progress - 0.10) / 0.72);
+    float sourceCoord = dot(p - src.xy, dir) / max(src.z, src.w);
+    float sourceEdgeNoise = sin((p.y + seed * 193.0) * 0.11) * 0.045
+                          + sin((p.x + seed * 71.0) * 0.17) * 0.028;
+    float sourceCut = smoothstep(sourceBreak - 0.16 + sourceEdgeNoise, sourceBreak + 0.10 + sourceEdgeNoise, sourceCoord);
+    sourceAsh = sourceMask * sourceCut * smoothstep(0.08, 0.22, progress) * smoothstep(0.94, 0.72, progress);
+  }
+
+  // Counter spells flash a frost nova at the source as the shards burst.
+  float sourceNova = 0.0;
+  if (kind > 2.5) {
+    vec2 novaSpace = vec2((p.x - srcC.x) / max(src.z, 1.0), (p.y - srcC.y) / max(src.w, 1.0));
+    float novaDist = length(novaSpace);
+    float novaRadius = mix(0.05, 1.35, easeOutCubic(saturate(progress / 0.34)));
+    float novaBand = exp(-pow((novaDist - novaRadius) / 0.11, 2.0));
+    sourceNova = novaBand * smoothstep(0.42, 0.1, progress);
+  }
 
   vec2 cloudSpace = (p - clipC) + seed * 73.0;
   vec2 cloudCell = floor(cloudSpace / 9.0);
@@ -178,13 +252,41 @@ vec3 effectColor(vec2 p, vec4 src, vec4 dst, vec4 clip, float progress, float se
   vec3 white = vec3(1.0);
   vec3 pearl = vec3(1.0, 0.96, 0.82);
   vec3 ash = vec3(0.82, 0.82, 0.76);
+  vec3 kindColor = streamPalette(kind, accentColor);
+  vec3 coreColor = kind < 0.5 ? white : mix(white, kindColor, 0.35);
   float shimmer = 0.84 + 0.16 * sin(pathT * 37.0 + seed * 41.0 + progress * 15.0);
   vec3 color = vec3(0.0);
   color += mix(ash, pearl, 0.82) * sourceAsh * 1.02;
-  color += white * particleStream * 1.72 * shimmer;
-  color += accentColor * haloStream * 0.62;
-  color += white * particleStream * front * 0.58;
-  color += mix(white, accentColor, 0.42) * cloudParticle * mix(0.7, 0.3, u_inspectorReady);
+  color += coreColor * particleStream * 1.72 * shimmer;
+  color += kindColor * haloStream * 0.62;
+  color += coreColor * particleStream * front * 0.58;
+  color += kindColor * sourceNova * 0.85;
+  color += mix(white, kindColor, 0.42) * cloudParticle * mix(0.7, 0.3, u_inspectorReady);
+  return color;
+}
+
+// Board-wipe shockwave: a luminous front sweeping left-to-right across the
+// union rect of every dying card, with rising sparks in its wake.
+vec3 waveColor(vec2 p, vec4 rect, float progress, float seed) {
+  float sweep = easeInOut(saturate(progress / 0.85));
+  float frontX = rect.x - 40.0 + (rect.z + 80.0) * sweep;
+  float inBandY = smoothstep(rect.y - 36.0, rect.y + 14.0, p.y)
+                * (1.0 - smoothstep(rect.y + rect.w - 14.0, rect.y + rect.w + 36.0, p.y));
+  float frontBand = exp(-pow((p.x - frontX) / 26.0, 2.0));
+  float wake = exp(-max(frontX - p.x, 0.0) * 0.012) * step(p.x, frontX);
+  float fade = smoothstep(0.0, 0.12, progress) * smoothstep(1.0, 0.7, progress);
+
+  float sparkSeed = hash(floor(p / 6.0) + seed * 53.0);
+  vec2 sparkLocal = fract(p / 6.0) - 0.5;
+  float spark = exp(-dot(sparkLocal, sparkLocal) * 14.0) * step(0.62, sparkSeed);
+  float sparkRise = sin(progress * 9.0 + sparkSeed * 6.28318) * 0.5 + 0.5;
+
+  vec3 gold = vec3(1.0, 0.86, 0.55);
+  vec3 emberRed = vec3(1.0, 0.45, 0.3);
+  vec3 color = vec3(0.0);
+  color += gold * frontBand * inBandY * fade * 0.9;
+  color += emberRed * wake * inBandY * fade * 0.22;
+  color += mix(gold, emberRed, sparkSeed) * spark * wake * inBandY * fade * sparkRise * 0.55;
   return color;
 }
 
@@ -193,28 +295,33 @@ void main() {
   vec2 p = vec2(pixel.x, u_resolution.y - pixel.y);
   vec3 color = vec3(0.0);
   float groupProgress = 1.0;
-  float hasAngelicDestroy = 0.0;
-  float globalWindow = 0.0;
+  float hasMarqueeStream = 0.0;
+  float hasAnyStream = 0.0;
 
   for (int i = 0; i < MAX_EFFECTS; i++) {
     if (i >= u_count) break;
     float rawProgress = u_progress[i];
     float effectKind = u_effectKinds[i];
+
+    if (effectKind > 3.5) {
+      // Wipe wave: ambient, never gates the inspector reveal.
+      color += waveColor(p, u_sourceRects[i], rawProgress, u_seed[i]);
+      continue;
+    }
+
+    hasAnyStream = 1.0;
+    hasMarqueeStream = max(hasMarqueeStream, step(0.5, effectKind));
     float pi = effectKind < 0.5 ? saturate(rawProgress / 0.8) : rawProgress;
     groupProgress = min(groupProgress, rawProgress);
-    hasAngelicDestroy = max(hasAngelicDestroy, step(0.5, effectKind));
-    if (effectKind < 0.5) {
-      color += effectColor(p, u_sourceRects[i], u_targetRects[i], u_clipRects[i], pi, u_seed[i], u_accentColors[i]);
-    }
+    color += effectColor(p, u_sourceRects[i], u_targetRects[i], u_clipRects[i], pi, u_seed[i], u_accentColors[i], effectKind);
   }
 
-  float revealStart = mix(0.84, 0.54, hasAngelicDestroy);
-  float revealEnd = mix(1.0, 0.74, hasAngelicDestroy);
-
-  // All cards in the current batch must reach the inspector before the black
-  // foreground mask dissolves away to reveal the DOM-rendered inspector art.
-  float globalReveal = smoothstep(revealStart, revealEnd, groupProgress);
-  globalWindow = 1.0;
+  // Marquee streams arrive faster than exile dust, so their reveal window
+  // opens earlier. All cards in the batch must arrive before the mask lifts.
+  float revealStart = mix(0.84, 0.56, hasMarqueeStream);
+  float revealEnd = mix(1.0, 0.78, hasMarqueeStream);
+  float globalReveal = hasAnyStream > 0.5 ? smoothstep(revealStart, revealEnd, groupProgress) : 0.0;
+  float globalWindow = hasAnyStream;
   float alpha = saturate(max(max(color.r, color.g), color.b));
 
   if (u_inspectorReady > 0.5
@@ -424,9 +531,26 @@ function capTargetRectToSourceScale(sourceRect, targetRect) {
 }
 
 function effectDurationMs(effect) {
-  return effect?.kind === ANGELIC_DESTROY_EFFECT_KIND
-    ? ANGELIC_DESTROY_EFFECT_DURATION_MS
-    : EXILE_EFFECT_DURATION_MS;
+  switch (effect?.kind) {
+    case DEATH_COLLAPSE_EFFECT_KIND:
+      return DEATH_COLLAPSE_EFFECT_DURATION_MS;
+    case MARQUEE_STREAM_EFFECT_KIND:
+      return MARQUEE_STREAM_EFFECT_MS;
+    case COUNTER_SHATTER_EFFECT_KIND:
+      return COUNTER_SHATTER_EFFECT_DURATION_MS;
+    case WIPE_WAVE_EFFECT_KIND:
+      return WIPE_WAVE_EFFECT_MS;
+    default:
+      return EXILE_EFFECT_DURATION_MS;
+  }
+}
+
+function shaderKindForEffect(effect) {
+  if (effect?.kind === MARQUEE_STREAM_EFFECT_KIND) {
+    return STREAM_PROFILE_SHADER_KINDS[effect.streamProfile] ?? SHADER_KIND_DEATH_STREAM;
+  }
+  if (effect?.kind === WIPE_WAVE_EFFECT_KIND) return SHADER_KIND_WIPE_WAVE;
+  return SHADER_KIND_EXILE;
 }
 
 function resolveFlightTargetRects(rawEffect, sourceRect, targetRect, clipRect = targetRect) {
@@ -495,8 +619,92 @@ function normalizeExileEffect(rawEffect, targetRect, clipRect = targetRect, opti
   };
 }
 
-function normalizeAngelicDestroyEffect(rawEffect, targetRect, clipRect = targetRect, options = {}) {
-  if (!rawEffect || rawEffect.kind !== ANGELIC_DESTROY_EFFECT_KIND) return null;
+function normalizeDeathCollapseEffect(rawEffect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== DEATH_COLLAPSE_EFFECT_KIND) return null;
+  const rect = normalizeRect(rawEffect.rect);
+  if (!rect) return null;
+  const startDelayMs = Math.max(0, Number(rawEffect.startDelayMs) || 0);
+  const anchorAt = Number.isFinite(options.anchorAt) ? options.anchorAt : performance.now();
+  const startedAt = anchorAt + startDelayMs;
+  const id = deterministicEffectId(rawEffect);
+
+  return {
+    id,
+    kind: DEATH_COLLAPSE_EFFECT_KIND,
+    collapseVariant: rawEffect.collapseVariant === "sacrificed" ? "sacrificed" : "destroyed",
+    rect,
+    travelsToInspector: false,
+    includeSourceClone: rawEffect.includeSourceClone !== false,
+    sourceCloneHtml: rawEffect.sourceCloneHtml || null,
+    sourceImageUrl: rawEffect.sourceImageUrl || null,
+    card: rawEffect.card || {},
+    stableIds: [
+      rawEffect.card?.stable_id,
+      ...(rawEffect.card?.member_stable_ids || []),
+    ].filter((value) => value != null).map(String),
+    accentColor: rawEffect.accentColor || null,
+    accentRgb: rawEffect.accentRgb || null,
+    seed: (hashText(`${id}:${rawEffect.card?.name || ""}`) % 10000) / 10000,
+    startDelayMs,
+    startedAt,
+    cssAnimationDelayMs: startedAt - performance.now(),
+  };
+}
+
+function normalizeCounterShatterEffect(rawEffect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== COUNTER_SHATTER_EFFECT_KIND) return null;
+  const rect = normalizeRect(rawEffect.rect);
+  if (!rect) return null;
+  const anchorAt = Number.isFinite(options.anchorAt) ? options.anchorAt : performance.now();
+  const id = deterministicEffectId(rawEffect);
+
+  return {
+    id,
+    kind: COUNTER_SHATTER_EFFECT_KIND,
+    rect,
+    travelsToInspector: false,
+    includeSourceClone: rawEffect.includeSourceClone !== false,
+    sourceCloneHtml: rawEffect.sourceCloneHtml || null,
+    sourceImageUrl: rawEffect.sourceImageUrl || null,
+    card: rawEffect.card || {},
+    accentColor: rawEffect.accentColor || null,
+    accentRgb: rawEffect.accentRgb || null,
+    seed: (hashText(`${id}:${rawEffect.card?.name || ""}`) % 10000) / 10000,
+    startDelayMs: 0,
+    startedAt: anchorAt,
+    cssAnimationDelayMs: anchorAt - performance.now(),
+  };
+}
+
+function normalizeWipeWaveEffect(rawEffect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== WIPE_WAVE_EFFECT_KIND) return null;
+  const rect = normalizeRect(rawEffect.rect);
+  if (!rect) return null;
+  const anchorAt = Number.isFinite(options.anchorAt) ? options.anchorAt : performance.now();
+  const id = deterministicEffectId(rawEffect);
+
+  return {
+    id,
+    kind: WIPE_WAVE_EFFECT_KIND,
+    rect,
+    targetRect: rect,
+    clipRect: rect,
+    travelsToInspector: false,
+    includeSourceClone: false,
+    card: {},
+    accentColor: rawEffect.accentColor || null,
+    accentRgb: rawEffect.accentRgb || null,
+    seed: (hashText(id) % 10000) / 10000,
+    startDelayMs: 0,
+    startedAt: anchorAt,
+    cssAnimationDelayMs: anchorAt - performance.now(),
+  };
+}
+
+// Marquee streams reuse the exile flight targeting (inspector shell rect via
+// token polling) but render purely in the shader.
+function normalizeMarqueeStreamEffect(rawEffect, targetRect, clipRect = targetRect, options = {}) {
+  if (!rawEffect || rawEffect.kind !== MARQUEE_STREAM_EFFECT_KIND) return null;
   const rect = normalizeRect(rawEffect.rect);
   if (!rect) return null;
   const { travelsToInspector, resolvedTargetRect, resolvedClipRect } = resolveFlightTargetRects(rawEffect, rect, targetRect, clipRect);
@@ -507,15 +715,16 @@ function normalizeAngelicDestroyEffect(rawEffect, targetRect, clipRect = targetR
 
   return {
     id,
-    kind: ANGELIC_DESTROY_EFFECT_KIND,
+    kind: MARQUEE_STREAM_EFFECT_KIND,
+    streamProfile: rawEffect.streamProfile || "death",
     rect,
     targetRect: resolvedTargetRect,
     clipRect: resolvedClipRect,
     travelsToInspector,
-    includeSourceClone: rawEffect.includeSourceClone !== false,
+    includeSourceClone: false,
     targetToken: rawEffect.targetToken || null,
     targetScope: rawEffect.targetScope === "inspector" ? "inspector" : "foreground",
-    sourceCloneHtml: rawEffect.sourceCloneHtml || null,
+    sourceCloneHtml: null,
     sourceImageUrl: rawEffect.sourceImageUrl || null,
     card: rawEffect.card || {},
     accentColor: rawEffect.accentColor || null,
@@ -524,7 +733,6 @@ function normalizeAngelicDestroyEffect(rawEffect, targetRect, clipRect = targetR
     startDelayMs,
     startedAt,
     cssAnimationDelayMs: startedAt - performance.now(),
-    preflight: rawEffect.preflight === true,
   };
 }
 
@@ -632,7 +840,7 @@ function seedUniformArray(effects) {
 function effectKindUniformArray(effects) {
   const values = new Float32Array(MAX_SHADER_EFFECTS);
   for (let index = 0; index < MAX_SHADER_EFFECTS; index += 1) {
-    values[index] = effects[index]?.kind === ANGELIC_DESTROY_EFFECT_KIND ? 1 : 0;
+    values[index] = effects[index] ? shaderKindForEffect(effects[index]) : 0;
   }
   return values;
 }
@@ -667,11 +875,9 @@ function ShaderCanvas({ effects }) {
   const shaderEffects = useMemo(
     () => effects
       .filter((effect) => (
-        effect.travelsToInspector
-        && (
-          effect.kind === EXILE_EFFECT_KIND
-          || effect.kind === ANGELIC_DESTROY_EFFECT_KIND
-        )
+        (effect.travelsToInspector
+          && (effect.kind === EXILE_EFFECT_KIND || effect.kind === MARQUEE_STREAM_EFFECT_KIND))
+        || effect.kind === WIPE_WAVE_EFFECT_KIND
       ))
       .slice(0, MAX_SHADER_EFFECTS),
     [effects]
@@ -959,63 +1165,178 @@ function ParticleExileCard({ effect }) {
   );
 }
 
-function AngelicDestroyCard({ effect }) {
+const DEATH_ASH_COUNT = 10;
+
+function DeathCollapseCard({ effect }) {
   const rect = effect.rect;
   const name = String(effect.card?.name || "");
-  const targetRect = effect.targetRect || rect;
-  const sourceCenterX = rect.left + rect.width / 2;
-  const sourceCenterY = rect.top + rect.height / 2;
-  const targetCenterX = targetRect.left + targetRect.width / 2;
-  const targetCenterY = targetRect.top + targetRect.height / 2;
-  const targetOffsetX = targetCenterX - sourceCenterX;
-  const targetOffsetY = targetCenterY - sourceCenterY;
-  const flightDistance = Math.hypot(targetOffsetX, targetOffsetY);
-  const rise = Math.max(170, Math.min(360, rect.height * 2.25));
+  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
+  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
+  const sacrificed = effect.collapseVariant === "sacrificed";
+
+  // The layout hold keeps the dead card's slot occupied so neighbors don't
+  // reflow mid-collapse, but the collapse clone is the only thing that should
+  // be visible — hide the held card underneath for the effect's lifetime.
+  useLayoutEffect(() => {
+    if (typeof document === "undefined" || effect.stableIds?.length === 0) return undefined;
+    const heldNodes = [];
+    for (const node of document.querySelectorAll(".battlefield-row-card--layout-hold")) {
+      // Never touch clones rendered inside the effects overlay itself.
+      if (node.closest(".zone-move-effects-layer")) continue;
+      const memberIds = String(node.getAttribute("data-member-stable-ids") || "")
+        .split(",")
+        .map((value) => value.trim());
+      const stableId = node.getAttribute("data-stable-id");
+      if (
+        (stableId && effect.stableIds.includes(stableId))
+        || memberIds.some((memberId) => memberId && effect.stableIds.includes(memberId))
+      ) {
+        node.classList.add("zone-death-hold-hidden");
+        heldNodes.push(node);
+      }
+    }
+    return () => {
+      for (const node of heldNodes) {
+        node.classList.remove("zone-death-hold-hidden");
+      }
+    };
+  }, [effect.stableIds]);
+
+  const ashes = useMemo(() => {
+    return Array.from({ length: DEATH_ASH_COUNT }, (_, index) => {
+      const seed = hashText(`${effect.id}:ash:${index}`);
+      const originX = 8 + ((seed % 1000) / 1000) * 84;
+      const originY = 28 + (((seed >> 4) % 1000) / 1000) * 58;
+      const driftX = -26 + (((seed >> 8) % 1000) / 1000) * 52;
+      const fallY = 34 + (((seed >> 12) % 1000) / 1000) * 60;
+      const size = 2.5 + (((seed >> 16) % 1000) / 1000) * 3.5;
+      return {
+        key: index,
+        style: {
+          left: `${originX}%`,
+          top: `${originY}%`,
+          width: `${size}px`,
+          height: `${size}px`,
+          "--ash-dx": `${driftX}px`,
+          "--ash-dy": `${fallY}px`,
+          "--ash-delay": `${260 + (index * 52) + (seed % 90)}ms`,
+          "--ash-duration": `${680 + ((seed >> 20) % 360)}ms`,
+        },
+      };
+    });
+  }, [effect.id]);
+
   const style = useMemo(() => ({
     left: `${rect.left}px`,
     top: `${rect.top}px`,
     width: `${rect.width}px`,
     height: `${rect.height}px`,
-    "--destroy-target-x": `${targetOffsetX}px`,
-    "--destroy-target-y": `${targetOffsetY}px`,
-    "--destroy-flight-angle": `${Math.atan2(targetOffsetY, targetOffsetX)}rad`,
-    "--destroy-trail-length": `${Math.max(42, Math.min(190, flightDistance * 0.24))}px`,
-    "--destroy-accent-rgb": effect.accentRgb || "142, 211, 255",
-    "--exile-rise": `${rise}px`,
-    "--exile-tilt": `${hashText(effect.id) % 2 === 0 ? -5 : 5}deg`,
-    "--exile-start-delay": `${effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0}ms`,
-    "--exile-wing-flap-duration": `${460 + (hashText(effect.id) % 180)}ms`,
-    "--exile-wing-flap-phase-left": `-${hashText(`${effect.id}:left`) % 280}ms`,
-    "--exile-wing-flap-phase-right": `-${hashText(`${effect.id}:right`) % 280}ms`,
+    "--death-delay": `${Math.max(0, effect.cssAnimationDelayMs ?? effect.startDelayMs ?? 0)}ms`,
+    "--death-tilt": `${effect.seed > 0.5 ? -1.6 : 1.6}deg`,
   }), [
     effect.cssAnimationDelayMs,
-    effect.accentRgb,
-    effect.id,
+    effect.seed,
     effect.startDelayMs,
     rect.height,
     rect.left,
     rect.top,
     rect.width,
-    rise,
-    targetOffsetX,
-    targetOffsetY,
-    flightDistance,
   ]);
 
   if (!effect.includeSourceClone) return null;
 
   return (
     <div
-      className={`zone-angelic-destroy-effect ${effect.preflight ? "zone-angelic-destroy-effect--preflight" : effect.travelsToInspector ? "zone-angelic-destroy-effect--to-inspector" : "zone-angelic-destroy-effect--source-only"}`}
+      className={`zone-death-effect ${sacrificed ? "zone-death-effect--sacrificed" : ""}`}
       style={style}
       aria-hidden="true"
     >
-      <div className="zone-exile-halo" />
-      <div className="zone-destroy-tombstone-flight">
-        <div className="zone-destroy-tombstone">
-          <div className="zone-destroy-tombstone-name">{name}</div>
-        </div>
+      <div className="zone-death-card">
+        {effect.sourceCloneHtml ? (
+          <div
+            className="zone-death-source-clone"
+            dangerouslySetInnerHTML={{ __html: effect.sourceCloneHtml }}
+          />
+        ) : artUrl ? (
+          <img src={artUrl} alt="" draggable="false" referrerPolicy="no-referrer" />
+        ) : null}
       </div>
+      <div className="zone-death-flash" />
+      <div className="zone-death-soul" />
+      {ashes.map((ash) => (
+        <span key={ash.key} className="zone-death-ash" style={ash.style} />
+      ))}
+    </div>
+  );
+}
+
+const SHATTER_SHARD_COUNT = 8;
+
+// Pre-computed jagged shard polygons (percent coords) roughly tiling the card.
+const SHATTER_SHARD_POLYGONS = [
+  "polygon(0% 0%, 38% 0%, 22% 30%, 0% 22%)",
+  "polygon(38% 0%, 72% 0%, 58% 24%, 22% 30%)",
+  "polygon(72% 0%, 100% 0%, 100% 30%, 58% 24%)",
+  "polygon(0% 22%, 22% 30%, 30% 58%, 0% 52%)",
+  "polygon(22% 30%, 58% 24%, 66% 52%, 30% 58%)",
+  "polygon(58% 24%, 100% 30%, 100% 62%, 66% 52%)",
+  "polygon(0% 52%, 30% 58%, 44% 100%, 0% 100%)",
+  "polygon(30% 58%, 66% 52%, 100% 62%, 100% 100%, 44% 100%)",
+];
+
+function CounterShatterCard({ effect }) {
+  const rect = effect.rect;
+  const name = String(effect.card?.name || "");
+  const resolvedArtUrl = useScryfallImageUrl(name, "art_crop");
+  const artUrl = effect.sourceImageUrl || resolvedArtUrl || null;
+
+  const shards = useMemo(() => (
+    SHATTER_SHARD_POLYGONS.slice(0, SHATTER_SHARD_COUNT).map((polygon, index) => {
+      const seed = hashText(`${effect.id}:shard:${index}`);
+      const angle = ((index + 0.5) / SHATTER_SHARD_COUNT) * Math.PI * 2;
+      const burst = 26 + (seed % 30);
+      return {
+        key: index,
+        polygon,
+        style: {
+          "--shard-clip": polygon,
+          "--shard-dx": `${Math.cos(angle) * burst}px`,
+          "--shard-dy": `${Math.sin(angle) * burst + 22}px`,
+          "--shard-rot": `${((seed % 50) - 25) * 1.4}deg`,
+          "--shard-delay": `${(seed % 70)}ms`,
+        },
+      };
+    })
+  ), [effect.id]);
+
+  if (!effect.includeSourceClone) return null;
+
+  return (
+    <div
+      className="zone-shatter-effect"
+      style={{
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.width}px`,
+        height: `${rect.height}px`,
+        "--shatter-delay": `${Math.max(0, effect.cssAnimationDelayMs || 0)}ms`,
+      }}
+      aria-hidden="true"
+    >
+      <div className="zone-shatter-flash" />
+      {shards.map((shard) => (
+        <div key={shard.key} className="zone-shatter-shard" style={shard.style}>
+          {effect.sourceCloneHtml ? (
+            <div
+              className="zone-shatter-source-clone"
+              dangerouslySetInnerHTML={{ __html: effect.sourceCloneHtml }}
+            />
+          ) : artUrl ? (
+            <img src={artUrl} alt="" draggable="false" referrerPolicy="no-referrer" />
+          ) : null}
+          <div className="zone-shatter-shard-glint" />
+        </div>
+      ))}
     </div>
   );
 }
@@ -1051,47 +1372,44 @@ export default function ZoneMoveEffects() {
     const validEffects = (Array.isArray(rawEffects) ? rawEffects : [])
       .filter((effect) => effect && (
         effect.kind === EXILE_EFFECT_KIND
-        || effect.kind === ANGELIC_DESTROY_EFFECT_KIND
+        || effect.kind === DEATH_COLLAPSE_EFFECT_KIND
+        || effect.kind === MARQUEE_STREAM_EFFECT_KIND
+        || effect.kind === COUNTER_SHATTER_EFFECT_KIND
+        || effect.kind === WIPE_WAVE_EFFECT_KIND
       ));
     if (validEffects.length === 0) return;
 
     const requestedAt = performance.now();
     const exileEffects = validEffects.filter((effect) => effect.kind === EXILE_EFFECT_KIND);
-    const angelicFlights = validEffects.filter((effect) => (
-      effect.kind === ANGELIC_DESTROY_EFFECT_KIND
-      && effect.travelsToInspector === true
-      && effect.includeSourceClone !== false
-    ));
 
-    // Phase 1: per-card in-place dissolves spawn immediately so the cards are
-    // visibly dissolving while the inspector forefront-image rect is still
-    // being resolved.
-    const sourceBurns = exileEffects
-      .filter((effect) => effect.travelsToInspector !== true)
-      .map((effect) => normalizeExileEffect(effect, null, undefined, { anchorAt: requestedAt }))
-      .filter(Boolean);
-    const preflightAngels = angelicFlights
-      .map((effect) => normalizeAngelicDestroyEffect(
-        {
-          ...effect,
-          id: `${deterministicEffectId(effect)}:preflight`,
-          travelsToInspector: false,
-          preflight: true,
-        },
-        null,
-        undefined,
-        { anchorAt: requestedAt },
-      ))
-      .filter(Boolean);
-    if (sourceBurns.length > 0 || preflightAngels.length > 0) {
-      addEffects([...sourceBurns, ...preflightAngels]);
+    // In-place effects need no inspector target — spawn them immediately:
+    // death/sacrifice collapses, counter shatters, the board-wipe wave, and
+    // per-card exile source dissolves.
+    const immediateEffects = [
+      ...validEffects
+        .filter((effect) => effect.kind === DEATH_COLLAPSE_EFFECT_KIND)
+        .map((effect) => normalizeDeathCollapseEffect(effect, { anchorAt: requestedAt })),
+      ...validEffects
+        .filter((effect) => effect.kind === COUNTER_SHATTER_EFFECT_KIND)
+        .map((effect) => normalizeCounterShatterEffect(effect, { anchorAt: requestedAt })),
+      ...validEffects
+        .filter((effect) => effect.kind === WIPE_WAVE_EFFECT_KIND)
+        .map((effect) => normalizeWipeWaveEffect(effect, { anchorAt: requestedAt })),
+      ...exileEffects
+        .filter((effect) => effect.travelsToInspector !== true)
+        .map((effect) => normalizeExileEffect(effect, null, undefined, { anchorAt: requestedAt })),
+    ].filter(Boolean);
+    if (immediateEffects.length > 0) {
+      addEffects(immediateEffects);
     }
 
-    // Flights are grouped so every card in the same dispatch shares one
-    // polling loop. Exile dust remains anchored to the dispatch; angelic
-    // destroy flights anchor once the inspector target is ready so their
-    // per-card stagger is visible instead of being spent during target polling.
-    const flightEffects = validEffects.filter((effect) => effect.travelsToInspector === true);
+    // Inspector-bound effects (exile flights + marquee streams) are grouped so
+    // every card in the same dispatch shares one polling loop while the
+    // inspector target settles.
+    const flightEffects = validEffects.filter((effect) => (
+      effect.travelsToInspector === true
+      && (effect.kind === EXILE_EFFECT_KIND || effect.kind === MARQUEE_STREAM_EFFECT_KIND)
+    ));
     if (flightEffects.length === 0) return;
 
     const flightsByGroup = new Map();
@@ -1137,19 +1455,18 @@ export default function ZoneMoveEffects() {
 
         if ((targetRect && entrySettled && stableTargetFrames >= 2) || timedOut) {
           pendingPollsRef.current.delete(pollState);
-          const flightAnchorAt = performance.now();
           const normalized = flights
             .map((flight) => {
               const sourceRect = normalizeRect(flight.rect);
               if (!sourceRect) return null;
               const finalTargetRect = targetRect || fallbackTargetRect(sourceRect);
               if (!finalTargetRect) return null;
-              if (flight.kind === ANGELIC_DESTROY_EFFECT_KIND) {
-                return normalizeAngelicDestroyEffect(
+              if (flight.kind === MARQUEE_STREAM_EFFECT_KIND) {
+                return normalizeMarqueeStreamEffect(
                   flight,
                   finalTargetRect,
                   targetRect,
-                  { anchorAt: flightAnchorAt },
+                  { anchorAt: requestedAt },
                 );
               }
               return normalizeExileEffect(
@@ -1160,17 +1477,6 @@ export default function ZoneMoveEffects() {
               );
             })
             .filter(Boolean);
-          for (const flight of flights) {
-            if (flight.kind !== ANGELIC_DESTROY_EFFECT_KIND) continue;
-            const preflightId = `${deterministicEffectId(flight)}:preflight`;
-            const removeAt = flightAnchorAt + (Math.max(0, Number(flight.startDelayMs) || 0));
-            const timerId = window.setTimeout(() => {
-              setEffects((currentEffects) => (
-                currentEffects.filter((currentEffect) => currentEffect.id !== preflightId)
-              ));
-            }, Math.max(0, removeAt - performance.now()));
-            cleanupTimersRef.current.push(timerId);
-          }
           if (normalized.length > 0) addEffects(normalized);
           return;
         }
@@ -1210,11 +1516,18 @@ export default function ZoneMoveEffects() {
   return (
     <div className="zone-move-effects-layer">
       <ShaderCanvas effects={effects} />
-      {effects.map((effect) => (
-        effect.kind === ANGELIC_DESTROY_EFFECT_KIND
-          ? <AngelicDestroyCard key={effect.id} effect={effect} />
-          : <ParticleExileCard key={effect.id} effect={effect} />
-      ))}
+      {effects.map((effect) => {
+        if (effect.kind === DEATH_COLLAPSE_EFFECT_KIND) {
+          return <DeathCollapseCard key={effect.id} effect={effect} />;
+        }
+        if (effect.kind === COUNTER_SHATTER_EFFECT_KIND) {
+          return <CounterShatterCard key={effect.id} effect={effect} />;
+        }
+        if (effect.kind === EXILE_EFFECT_KIND) {
+          return <ParticleExileCard key={effect.id} effect={effect} />;
+        }
+        return null;
+      })}
     </div>
   );
 }
