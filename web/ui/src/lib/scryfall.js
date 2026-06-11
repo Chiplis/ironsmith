@@ -491,10 +491,11 @@ function parenGroupCount(text) {
 
 function localizedCardPayload(card, locale) {
   if (!card || typeof card !== "object") return null;
-  const name = firstFaceValue(card, "printed_name") || firstFaceValue(card, "name");
-  const typeLine = firstFaceValue(card, "printed_type_line") || firstFaceValue(card, "type_line");
-  // Scryfall has no localized oracle text; printed_text is the only localized
-  // rules text. Never backfill it with the English oracle_text field.
+  // Only the printed_* fields are localized; name/type_line/oracle_text are
+  // always English on Scryfall card objects. Never backfill with those —
+  // consumers fall back to their own English text when a field is empty.
+  const name = firstFaceValue(card, "printed_name");
+  const typeLine = firstFaceValue(card, "printed_type_line");
   const oracleText = firstFaceValue(card, "printed_text");
   if (!name && !typeLine && !oracleText) return null;
   return {

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated localized card text assets (built by scripts/build-scryfall-i18n.mjs)
+public/card-i18n
+reports/i18n/scryfall-all-cards*.json*

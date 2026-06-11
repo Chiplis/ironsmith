@@ -1,32 +1,9 @@
 import { cardRouteKey, fetchScryfallLocalizedCardTranslation } from "@/lib/scryfall";
 import { loadGeneratedTextTranslation } from "./generatedTextTranslations";
 
+const cardI18nBucketCache = new Map();
 const officialCardTranslationCache = new Map();
 const translatedCardViewCache = new Map();
-
-const ES_TYPE_LINE_REPLACEMENTS = [
-  ["Legendary", "Legendario"],
-  ["Basic", "Basico"],
-  ["Snow", "Nevado"],
-  ["Artifact", "Artefacto"],
-  ["Creature", "Criatura"],
-  ["Enchantment", "Encantamiento"],
-  ["Instant", "Instantaneo"],
-  ["Sorcery", "Conjuro"],
-  ["Land", "Tierra"],
-  ["Battle", "Batalla"],
-  ["Planeswalker", "Planeswalker"],
-  ["Kindred", "Kindred"],
-  ["Plains", "Llanura"],
-  ["Island", "Isla"],
-  ["Swamp", "Pantano"],
-  ["Mountain", "Montana"],
-  ["Forest", "Bosque"],
-  ["Human", "Humano"],
-  ["Bear", "Oso"],
-  ["Elf", "Elfo"],
-  ["Druid", "Druida"],
-];
 
 function baseAssetUrl() {
   const configured = typeof import.meta !== "undefined"
@@ -36,9 +13,16 @@ function baseAssetUrl() {
   return new URL(base, globalThis?.location?.href || "http://localhost/").href;
 }
 
-function cardI18nUrl(locale, kind, key) {
+// Prebuilt translations are sharded into bucket files keyed by the first two
+// characters of the lookup key, so the asset count stays in the hundreds
+// instead of one file per card.
+export function cardI18nBucketKey(key) {
+  return String(key || "").slice(0, 2) || "_";
+}
+
+function cardI18nBucketUrl(locale, kind, key) {
   return new URL(
-    `card-i18n/${encodeURIComponent(locale)}/${kind}/${encodeURIComponent(key)}.json`,
+    `card-i18n/${encodeURIComponent(locale)}/${kind}/${encodeURIComponent(cardI18nBucketKey(key))}.json`,
     baseAssetUrl()
   ).href;
 }
@@ -51,13 +35,18 @@ async function fetchJsonOrNull(url) {
   return payload && typeof payload === "object" ? payload : null;
 }
 
-function translateTypeLineFallback(locale, typeLine) {
-  if (locale !== "es") return typeLine || "";
-  let translated = String(typeLine || "");
-  for (const [english, spanish] of ES_TYPE_LINE_REPLACEMENTS) {
-    translated = translated.replace(new RegExp(`\\b${english}\\b`, "g"), spanish);
+async function lookupCardI18nBucket(locale, kind, key) {
+  if (!key) return null;
+  const bucketCacheKey = `${locale}:${kind}:${cardI18nBucketKey(key)}`;
+  if (!cardI18nBucketCache.has(bucketCacheKey)) {
+    cardI18nBucketCache.set(
+      bucketCacheKey,
+      fetchJsonOrNull(cardI18nBucketUrl(locale, kind, key)).catch(() => null)
+    );
   }
-  return translated;
+  const bucket = await cardI18nBucketCache.get(bucketCacheKey);
+  const entry = bucket?.[key];
+  return entry && typeof entry === "object" ? entry : null;
 }
 
 export async function loadOfficialCardTranslation(locale, cardName, oracleId = null) {
@@ -70,14 +59,10 @@ export async function loadOfficialCardTranslation(locale, cardName, oracleId = n
   const cacheKey = `${locale}:${oracleKey || "-"}:${route || "-"}`;
   if (!officialCardTranslationCache.has(cacheKey)) {
     officialCardTranslationCache.set(cacheKey, (async () => {
-      if (oracleKey) {
-        const byOracle = await fetchJsonOrNull(cardI18nUrl(locale, "by-oracle", oracleKey)).catch(() => null);
-        if (byOracle) return byOracle;
-      }
-      if (route) {
-        const byName = await fetchJsonOrNull(cardI18nUrl(locale, "by-name", route)).catch(() => null);
-        if (byName) return byName;
-      }
+      const byOracle = await lookupCardI18nBucket(locale, "by-oracle", oracleKey);
+      if (byOracle) return byOracle;
+      const byName = await lookupCardI18nBucket(locale, "by-name", route);
+      if (byName) return byName;
       return fetchScryfallLocalizedCardTranslation(cardName, locale).catch(() => null);
     })());
   }
@@ -103,38 +88,21 @@ export async function loadTranslatedCardView(locale, cardView) {
 
   if (!translatedCardViewCache.has(cacheKey)) {
     translatedCardViewCache.set(cacheKey, (async () => {
+      // Card names and type lines are only ever taken from official Scryfall
+      // printed fields; everything else stays English. Machine translation is
+      // reserved for rules text.
       const official = await loadOfficialCardTranslation(locale, cardName, oracleId);
-      if (official) {
-        const officialTypeLine = official.typeLine || official.printedTypeLine || "";
-        const officialRulesText = String(official.oracleText || official.rulesText || "").trim();
-        // Official payloads never carry English rules text; when no localized
-        // printing was digitized, fall back to the generated translation.
-        const generatedRulesText = !officialRulesText && rulesText
-          ? await loadGeneratedTextTranslation(locale, rulesText)
-          : null;
-        return {
-          name: official.name || cardName || null,
-          typeLine: translateTypeLineFallback(
-            locale,
-            officialTypeLine && officialTypeLine !== typeLine ? officialTypeLine : typeLine
-          ) || null,
-          rulesText: officialRulesText || generatedRulesText || rulesText || null,
-          source: "scryfall",
-        };
-      }
+      const officialRulesText = String(official?.oracleText || "").trim();
+      const generatedRulesText = !officialRulesText && rulesText
+        ? await loadGeneratedTextTranslation(locale, rulesText)
+        : null;
 
-      const [translatedName, translatedTypeLine, translatedRulesText] = await Promise.all([
-        cardName ? loadGeneratedTextTranslation(locale, cardName) : null,
-        typeLine ? loadGeneratedTextTranslation(locale, typeLine) : null,
-        rulesText ? loadGeneratedTextTranslation(locale, rulesText) : null,
-      ]);
-
-      if (!translatedName && !translatedTypeLine && !translatedRulesText) return null;
+      if (!official && !generatedRulesText) return null;
       return {
-        name: translatedName || cardName || null,
-        typeLine: translatedTypeLine || typeLine || null,
-        rulesText: translatedRulesText || rulesText || null,
-        source: "generated",
+        name: official?.name || cardName || null,
+        typeLine: official?.typeLine || typeLine || null,
+        rulesText: officialRulesText || generatedRulesText || rulesText || null,
+        source: official ? "scryfall" : "generated",
       };
     })());
   }

@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node ./scripts/build-scryfall-i18n.mjs --if-changed --locale es && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
     "i18n:extract-static": "node ./scripts/extract-i18n-static.mjs",
