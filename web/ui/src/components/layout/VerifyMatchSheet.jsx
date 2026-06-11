@@ -22,6 +22,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { verifyLiveAuditTranscript } from "@/lib/multiplayer-audit";
+import { useI18n } from "@/i18n/I18nContext";
 
 const defaultTriggerClassName = "stone-pill table-zone-action-button inline-flex items-center justify-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
@@ -109,6 +110,7 @@ export default function VerifyMatchSheet({
     setAuditReplayPosition,
     exitAuditReplaySession,
   } = useGame();
+  const { t } = useI18n();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verification, setVerification] = useState(emptyVerification);
   const verifyInputRef = useRef(null);
@@ -359,7 +361,7 @@ export default function VerifyMatchSheet({
         onClick={openSheet}
       >
         <ShieldCheck className="size-3.5" aria-hidden="true" />
-        Verify match
+        {t("action.verifyMatch")}
       </button>
     );
 
@@ -382,7 +384,7 @@ export default function VerifyMatchSheet({
           <SheetHeader className="fantasy-sheet-header verify-match-header pr-12">
             <div className="verify-match-eyebrow">Audit</div>
             <SheetTitle className="verify-match-title">
-              Verify Match
+              {t("action.verifyMatch")}
             </SheetTitle>
           </SheetHeader>
 

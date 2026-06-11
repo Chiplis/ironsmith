@@ -1,21 +1,12 @@
 import { useRef, useEffect, useState } from "react";
 import { useGame } from "@/context/GameContext";
+import { useI18n } from "@/i18n/I18nContext";
 import { PHASE_TRACK, normalizePhaseStep } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const COMPACT_PHASE_LABELS = {
-  Untap: "Untap",
-  Upkeep: "Upkeep",
-  Draw: "Draw",
-  Main: "Main",
-  Combat: "Combat",
-  Main2: "M2",
-  End: "End",
-  Cleanup: "Clean",
-};
-
 export default function PhaseTrack({ compact = false }) {
   const { state } = useGame();
+  const { t } = useI18n();
   const active = state ? normalizePhaseStep(state.phase, state.step) : null;
   const trackRef = useRef(null);
   const [indicator, setIndicator] = useState(null);
@@ -87,7 +78,9 @@ export default function PhaseTrack({ compact = false }) {
               : "text-[#d7c8a8]"
           )}
         >
-          {compact ? (COMPACT_PHASE_LABELS[name] || name) : name}
+          {compact
+            ? t(`game.trackCompact.${name}`, null, name)
+            : t(`game.track.${name}`, null, name)}
         </div>
       ))}
     </section>

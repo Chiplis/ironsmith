@@ -6,7 +6,7 @@ import PeerWaitPopover, { PeerWaitButtonContent } from "@/components/decisions/P
 import useDeferredPeerWait from "@/hooks/useDeferredPeerWait";
 import PhaseHelpPopover from "@/components/decisions/PhaseHelpPopover";
 import PriorityPassButtonLabel from "@/components/decisions/PriorityPassButtonLabel";
-import { normalizeDecisionText } from "@/components/decisions/decisionText";
+import { normalizeDecisionText, translateKnownDecisionText } from "@/components/decisions/decisionText";
 import { KeywordHelpersProvider, SymbolText } from "@/lib/mana-symbols";
 import { currentPriorityPhaseLabel, isMainPhase, nextPriorityAdvanceLabel } from "@/lib/constants";
 import { useDecisionButtonAccent } from "@/lib/decision-button-style";
@@ -14,6 +14,7 @@ import { playerDisplayName, samePlayerId } from "@/lib/player-display";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Flag, Undo2 } from "lucide-react";
+import { useI18n } from "@/i18n/I18nContext";
 
 const PRIORITY_ACTION_GROUPS = [
   { key: "play", label: "Play", kinds: ["play_land"] },
@@ -130,6 +131,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     submitMultiplayerCommand,
     playerAccentOverrides,
   } = useGame();
+  const { t } = useI18n();
   const hoveredObjectId = useHoveredObjectId();
   const [cancelling, setCancelling] = useState(false);
   const [surrendering, setSurrendering] = useState(false);
@@ -170,16 +172,16 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
     : null;
 
   const gameOverText = gameOver?.kind === "winner"
-    ? `${gameOver.name || `Player ${Number(gameOver.player || 0) + 1}`} wins`
+    ? t("game.wins", { player: gameOver.name || `Player ${Number(gameOver.player || 0) + 1}` })
     : gameOver?.kind === "draw"
-      ? "The game is a draw"
+      ? t("game.draw")
       : gameOver?.kind === "remaining"
-        ? "Game complete"
+        ? t("game.complete")
         : "";
 
   const metaText = gameOverText || (decision
     ? `${playerDisplayName(players, decisionPlayer)} · ${decision.reason || decision.kind}`
-    : "No pending action");
+    : t("action.noPending"));
 
   const isPriorityDecision = decision?.kind === "priority";
   const passAction = isPriorityDecision
@@ -189,19 +191,21 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
   const holdingPriority = holdRule === "always";
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const resolvingStackPriority = stackSize > 0 && !hasCustomPassLabel;
-  const passAdvanceLabel = resolvingStackPriority
+  const translatedPassAdvanceLabel = resolvingStackPriority
     ? ""
     : (hasCustomPassLabel
         ? ""
         : holdingPriority
-          ? passAction?.label || "Pass priority"
-        : `→ ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize)}`);
-  const passCurrentLabel = resolvingStackPriority
-    ? "Resolve"
-    : (hasCustomPassLabel ? passAction.label : currentPriorityPhaseLabel(state?.phase, state?.step));
-  const passHelpAdvanceLabel = resolvingStackPriority
-    ? "Resolve"
-    : (hasCustomPassLabel ? passAction.label : passAdvanceLabel);
+          ? translateKnownDecisionText(passAction?.label || "Pass priority", t)
+          : `-> ${nextPriorityAdvanceLabel(state?.phase, state?.step, stackSize, t)}`);
+  const translatedPassCurrentLabel = resolvingStackPriority
+    ? t("action.resolve")
+    : (hasCustomPassLabel
+        ? translateKnownDecisionText(passAction.label, t)
+        : currentPriorityPhaseLabel(state?.phase, state?.step, t));
+  const translatedPassHelpAdvanceLabel = resolvingStackPriority
+    ? t("action.resolve")
+    : (hasCustomPassLabel ? translateKnownDecisionText(passAction.label, t) : translatedPassAdvanceLabel);
   const { style: decisionButtonStyle, isLocal: localDecisionButton } =
     useDecisionButtonAccent(state, decision, playerAccentOverrides);
   const showSurrender = Boolean(
@@ -338,18 +342,18 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           {showGameOverPanel ? (
             <div className="flex h-full min-h-[110px] flex-col justify-center gap-2 px-2 py-2">
               <div className="text-[11px] font-bold uppercase tracking-wider text-[#d8bf7a]">
-                Game Over
+                {t("game.over")}
               </div>
               <div className="text-[16px] font-bold leading-tight text-[#f2d9a3]">
                 {gameOverText}
               </div>
               {rematchSideboarding ? (
                 <div className="text-[12px] leading-snug text-muted-foreground">
-                  Sideboard for the next game, then mark yourself ready.
+                  {t("game.sideboardNext")}
                 </div>
               ) : (
                 <div className="text-[12px] leading-snug text-muted-foreground">
-                  {canPlayAgain ? "Start a rematch with the same seats." : "The game has ended."}
+                  {canPlayAgain ? t("game.startRematch") : t("game.ended")}
                 </div>
               )}
             </div>
@@ -361,7 +365,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
             />
           ) : (
             <div className="text-muted-foreground text-[13px] italic">
-              Waiting...
+              {t("action.waiting")}
             </div>
           )}
         </div>
@@ -421,8 +425,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                     <PeerWaitButtonContent />
                   ) : (
                     rematchSideboarding
-                      ? rematchReady ? "Waiting for players" : "Ready"
-                      : "Play again"
+                      ? rematchReady ? t("game.waitingPlayers") : t("game.ready")
+                      : t("game.playAgain")
                   )}
                 </Button>
               </PeerWaitPopover>
@@ -452,8 +456,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                       <PeerWaitButtonContent />
                     ) : (
                       <PriorityPassButtonLabel
-                        currentLabel={passCurrentLabel}
-                        advanceLabel={passAdvanceLabel}
+                        currentLabel={translatedPassCurrentLabel}
+                        advanceLabel={translatedPassAdvanceLabel}
                       />
                     )}
                   </Button>
@@ -462,7 +466,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   <PhaseHelpPopover
                     state={state}
                     decision={decision}
-                    advanceLabel={passHelpAdvanceLabel}
+                    advanceLabel={translatedPassHelpAdvanceLabel}
                     className="absolute right-1.5 top-1/2 z-20 -translate-y-1/2"
                   />
                 )}
@@ -471,7 +475,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
           )}
 
           <div className="flex items-center gap-1 shrink-0 flex-wrap">
-            <h3 className="m-0 text-[12px] font-bold whitespace-nowrap uppercase tracking-wider text-[#8ec4ff]">Action</h3>
+            <h3 className="m-0 text-[12px] font-bold whitespace-nowrap uppercase tracking-wider text-[#8ec4ff]">{t("action.action")}</h3>
             <span className="text-muted-foreground text-[11px] truncate flex-1 min-w-0">{metaText}</span>
             <div className="flex items-center gap-1">
               {showSurrender ? (
@@ -485,8 +489,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   }`}
                   disabled={!canSurrender}
                   onClick={handleSurrender}
-                  title={canSurrender ? "Surrender" : "Surrender is available at sorcery speed"}
-                  aria-label={canSurrender ? "Surrender" : "Surrender unavailable"}
+                  title={canSurrender ? t("action.surrender") : t("action.surrenderSorcery")}
+                  aria-label={canSurrender ? t("action.surrender") : t("action.surrenderUnavailable")}
                 >
                   <Flag className="h-3.5 w-3.5" />
                 </Button>
@@ -501,8 +505,8 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                 }`}
                 disabled={undoDisabled}
                 onClick={handleCancel}
-                title={undoAvailable ? "Undo" : "Undo unavailable"}
-                aria-label={undoAvailable ? "Undo" : "Undo unavailable"}
+                title={undoAvailable ? t("action.undo") : t("action.undoUnavailable")}
+                aria-label={undoAvailable ? t("action.undo") : t("action.undoUnavailable")}
               >
                 <Undo2 className="h-3.5 w-3.5" />
               </Button>
@@ -512,7 +516,7 @@ export default function DecisionPanel({ inspectorOracleTextHeight = 0 }) {
                   onCheckedChange={(v) => setHoldRule(v ? "always" : "never")}
                   className="h-3 w-3"
                 />
-                Hold
+                {t("action.hold")}
               </label>
             </div>
           </div>

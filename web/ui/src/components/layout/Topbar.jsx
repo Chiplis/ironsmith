@@ -7,6 +7,7 @@ import PhaseTrack from "@/components/board/PhaseTrack";
 import { Bug, ChevronLeft, ChevronRight, Clock3, Github, ScrollText, WifiOff } from "lucide-react";
 import TopbarMenuSheet from "./TopbarMenuSheet";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
+import { useI18n } from "@/i18n/I18nContext";
 
 function dispatchPlayerTargetChoice(player, legalTargetPlayerIds) {
   const directId = Number(player?.id);
@@ -60,6 +61,7 @@ export default function Topbar({
     setInspectorDebug,
     state,
   } = useGame();
+  const { t } = useI18n();
   const { combatMode, combatModeRef } = useCombatArrows();
   const { nonDesktopViewport, tabletCompactViewport, smallDesktopViewport, largeDesktopViewport } = useViewportLayout();
 
@@ -175,6 +177,8 @@ export default function Topbar({
     currentCombatMode.onTargetAreaClick(playerId, null);
     return true;
   };
+  const translatedPhaseSummary = `${formatPhase(state?.phase, t)}${state?.step ? ` - ${formatStep(state?.step, t)}` : ""}`;
+  const translatedCompactPhaseLabel = formatStep(state?.step, t) || formatPhase(state?.phase, t) || t("game.advance.next");
 
   if (mobileOverlay) {
     // MTGA-aligned mobile UI moves phase + opponent chrome into MobileBattleScene.
@@ -219,7 +223,7 @@ export default function Topbar({
             href="https://github.com/Chiplis/ironsmith"
             target="_blank"
             rel="noopener noreferrer"
-            aria-label="Open Ironsmith GitHub repository"
+            aria-label={t("settings.repository")}
             title="GitHub"
           >
             <Github className="size-3.5" />
@@ -250,8 +254,8 @@ export default function Topbar({
             size="icon-xs"
             className="stone-pill topbar-log-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
             onClick={onToggleLog}
-            aria-label="Toggle activity log"
-            title="Log"
+            aria-label={t("settings.openLog")}
+            title={t("settings.openLog")}
           >
             <ScrollText className="size-3.5" />
           </Button>
@@ -260,9 +264,9 @@ export default function Topbar({
             size="icon-xs"
             className={`stone-pill topbar-debug-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]${inspectorDebug ? " is-active" : ""}`}
             onClick={() => setInspectorDebug(!inspectorDebug)}
-            aria-label={inspectorDebug ? "Disable debug overlay" : "Enable debug overlay"}
+            aria-label={t("settings.debug")}
             aria-pressed={inspectorDebug}
-            title={inspectorDebug ? "Debug enabled" : "Debug"}
+            title={inspectorDebug ? t("settings.debugEnabled") : t("settings.debug")}
           >
             <Bug className="size-3.5" />
           </Button>
@@ -329,9 +333,9 @@ export default function Topbar({
         ) : null}
         {showCompactPhase ? (
           <div className="topbar-mobile-status">
-            <div className="topbar-phase-chip" aria-label={phaseSummary}>
-              <span className="topbar-phase-chip-label">{compactPhaseLabel}</span>
-              <span className="topbar-phase-chip-turn">T{state?.turn_number ?? "-"}</span>
+            <div className="topbar-phase-chip" aria-label={translatedPhaseSummary}>
+              <span className="topbar-phase-chip-label">{translatedCompactPhaseLabel}</span>
+              <span className="topbar-phase-chip-turn">{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
             </div>
             {nonDesktopViewport && activeMobileOpponent ? (
               <div

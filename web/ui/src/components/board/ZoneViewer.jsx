@@ -1,11 +1,12 @@
 import { Checkbox } from "@/components/ui/checkbox";
+import { useI18n } from "@/i18n/I18nContext";
 
 const VIEWABLE_ZONES = [
-  { id: "battlefield", label: "Battlefield" },
-  { id: "hand", label: "Hand" },
-  { id: "graveyard", label: "GY" },
-  { id: "exile", label: "Exile" },
-  { id: "command", label: "CZ" },
+  { id: "battlefield", label: "Battlefield", i18nKey: "zone.battlefield" },
+  { id: "hand", label: "Hand", i18nKey: "zone.hand" },
+  { id: "graveyard", label: "GY", i18nKey: "zone.graveyard" },
+  { id: "exile", label: "Exile", i18nKey: "zone.exile" },
+  { id: "command", label: "CZ", i18nKey: "zone.command" },
 ];
 
 const TOGGLEABLE_ZONES = VIEWABLE_ZONES.filter((zone) => zone.id !== "battlefield");
@@ -21,6 +22,7 @@ export default function ZoneViewer({
   setZoneViews,
   embedded = false,
 }) {
+  const { t } = useI18n();
   const activeZones = normalizeZones(zoneViews);
 
   const toggleZone = (zoneId) => {
@@ -74,7 +76,7 @@ export default function ZoneViewer({
                 checked={checked}
                 onCheckedChange={() => toggleZone(zone.id)}
               />
-              {zone.label}
+              {t(zone.i18nKey, null, zone.label)}
             </label>
           );
         })}

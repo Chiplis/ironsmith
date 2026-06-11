@@ -7,6 +7,7 @@ import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import AddCardSheet from "./AddCardSheet";
 import AuditReplayControls from "./AuditReplayControls";
 import VerifyMatchSheet from "./VerifyMatchSheet";
+import { useI18n } from "@/i18n/I18nContext";
 
 const triggerPill = "stone-pill table-zone-action-button inline-flex items-center justify-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
 
@@ -25,6 +26,7 @@ export default function TableActionControls({
     setStatus,
     exportAuditTranscript,
   } = useGame();
+  const { t } = useI18n();
   const [zone, setZone] = useState("hand");
   const [playerIndex, setPlayerIndex] = useState(null);
   const [skipTriggers, setSkipTriggers] = useState(false);
@@ -83,7 +85,7 @@ export default function TableActionControls({
   };
 
   return (
-    <div className="table-zone-action-controls" aria-label="Table actions">
+    <div className="table-zone-action-controls" aria-label={t("settings.quick.eyebrow")}>
       <VerifyMatchSheet />
       <AuditReplayControls />
       {canExportMatch ? (
@@ -93,7 +95,7 @@ export default function TableActionControls({
           onClick={handleExportMatch}
         >
           <Download className="size-3.5" aria-hidden="true" />
-          Export match
+          {t("action.exportMatch")}
         </button>
       ) : null}
       <AddCardSheet
@@ -104,7 +106,7 @@ export default function TableActionControls({
             className={triggerPill}
             disabled={addLocked}
           >
-            Add Card
+            {t("action.addCard")}
           </button>
         )}
       />
@@ -123,7 +125,7 @@ export default function TableActionControls({
             className={triggerPill}
             disabled={addLocked}
           >
-            Compile Card
+            {t("action.compileCard")}
           </button>
         )}
       />
@@ -133,7 +135,7 @@ export default function TableActionControls({
         disabled={lobbyBusy}
         onClick={onEnterDeckLoading}
       >
-        {deckLoadingMode ? "Cancel Deck Load" : "Load Decks"}
+        {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
       </button>
       {!compact ? (
         <button
@@ -142,7 +144,7 @@ export default function TableActionControls({
           disabled={lobbyBusy}
           onClick={onOpenPuzzleSetup}
         >
-          {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
+          {puzzleSetupMode ? t("action.closePuzzle") : t("action.puzzleSetup")}
         </button>
       ) : null}
       {!compact ? (
@@ -151,7 +153,7 @@ export default function TableActionControls({
           className={triggerPill}
           onClick={handleShareCurrentTable}
         >
-          Share Table
+          {t("action.shareTable")}
         </button>
       ) : null}
       <button
@@ -159,7 +161,7 @@ export default function TableActionControls({
         className={triggerPill}
         onClick={onOpenLobby}
       >
-        {lobbyBusy ? "Open Lobby" : "Create Lobby"}
+        {lobbyBusy ? t("action.openLobby") : t("action.createLobby")}
       </button>
     </div>
   );

@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { uiFontStack } from "@/lib/ui-fonts";
 import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
+import { useI18n } from "@/i18n/I18nContext";
+import { loadTranslatedCardView } from "@/i18n/cardTranslations";
 
 const ORACLE_TEXT_STYLE = {
   textShadow: "0 0 1px rgba(0, 0, 0, 0.95), 0 1px 2px rgba(0, 0, 0, 0.88)",
@@ -128,9 +130,21 @@ function formatInspectorCounterLine(counters) {
     .join(" · ");
 }
 
-function formatInspectorZoneLabel(zone) {
+function formatInspectorZoneLabel(zone, t = null) {
   const normalized = String(zone || "").trim();
   if (!normalized) return null;
+  const key = normalized.toLowerCase();
+  const zoneKey = {
+    battlefield: "zone.battlefield",
+    hand: "zone.hand",
+    graveyard: "zone.graveyard",
+    exile: "zone.exile",
+    command: "zone.command",
+    library: "zone.library",
+    stack: "zone.stack",
+    deck: "zone.deck",
+  }[key];
+  if (zoneKey && typeof t === "function") return t(zoneKey);
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
@@ -568,6 +582,7 @@ export default function HoverArtOverlay({
   onInspectorAccentChange = null,
 }) {
   const { state, game, uiFont } = useGame();
+  const { locale, t } = useI18n();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
   const { byId: objectNameById, byStableId: objectNameByStableId } = useMemo(
@@ -618,6 +633,7 @@ export default function HoverArtOverlay({
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
   const [fontMeasureVersion, setFontMeasureVersion] = useState(0);
   const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
+  const [translatedCardText, setTranslatedCardText] = useState(null);
   const inspectorMeasureFont = useMemo(() => uiFontStack(uiFont), [uiFont]);
   const detailsObjectIdNum = useMemo(
     () => resolveObjectDetailsId(state, objectIdNum),
@@ -756,7 +772,7 @@ export default function HoverArtOverlay({
       .map((badge) => String(badge || "").trim())
       .filter(Boolean)
     : [];
-  const zoneLine = formatInspectorZoneLabel(details?.zone || previewZoneLine || hoveredStackObject?.zone);
+  const zoneLine = formatInspectorZoneLabel(details?.zone || previewZoneLine || hoveredStackObject?.zone, t);
   const countersLine = useMemo(
     () => formatInspectorCounterLine(normalizedCounters),
     [normalizedCounters]
@@ -856,7 +872,7 @@ export default function HoverArtOverlay({
     Boolean(hoveredStackObject?.ability_kind)
     && compiledRulesLines.length > 0
   );
-  const displayRulesLines = useMemo(() => {
+  const baseDisplayRulesLines = useMemo(() => {
     if (shouldPreferStackAbilityRules) {
       return compiledRulesLines;
     }
@@ -868,9 +884,54 @@ export default function HoverArtOverlay({
     }
     return compiledRulesLines;
   }, [compiledRulesLines, oracleRulesLines, shouldPreferStackAbilityRules]);
-  const displayRulesText = displayRulesLines.join("\n");
-  const displayObjectName = debugInspector ? null : objectName;
-  const displayTypeLine = debugInspector ? null : typeLineDisplay;
+  const baseDisplayRulesText = baseDisplayRulesLines.join("\n");
+  const baseDisplayObjectName = debugInspector ? null : objectName;
+  const baseDisplayTypeLine = debugInspector ? null : typeLineDisplay;
+  const cardTranslationOracleId = String(
+    details?.oracle_id
+    || details?.oracleId
+    || cardSnapshot?.oracle_id
+    || cardSnapshot?.oracleId
+    || previewCard?.oracle_id
+    || previewCard?.oracleId
+    || hoveredStackObject?.oracle_id
+    || hoveredStackObject?.oracleId
+    || ""
+  ).trim();
+  useEffect(() => {
+    let cancelled = false;
+    setTranslatedCardText(null);
+
+    if (debugInspector || locale === "en") return undefined;
+
+    const cardView = {
+      name: baseDisplayObjectName,
+      typeLine: baseDisplayTypeLine,
+      rulesText: baseDisplayRulesText,
+      oracleId: cardTranslationOracleId,
+    };
+    if (!String(cardView.name || cardView.typeLine || cardView.rulesText || cardView.oracleId || "").trim()) {
+      return undefined;
+    }
+
+    loadTranslatedCardView(locale, cardView).then((next) => {
+      if (cancelled) return;
+      setTranslatedCardText(next || null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [baseDisplayObjectName, baseDisplayRulesText, baseDisplayTypeLine, cardTranslationOracleId, debugInspector, locale]);
+
+  const displayRulesText = translatedCardText?.rulesText || baseDisplayRulesText;
+  const displayRulesLines = useMemo(() => (
+    displayRulesText
+      ? displayRulesText.split(/\n+/).map((line) => line.trim()).filter(Boolean)
+      : []
+  ), [displayRulesText]);
+  const displayObjectName = translatedCardText?.name || baseDisplayObjectName;
+  const displayTypeLine = translatedCardText?.typeLine || baseDisplayTypeLine;
   const displayTypeLineBadges = debugInspector ? [] : typeLineBadges;
   const displayZoneLine = debugInspector ? null : zoneLine;
   const displayCountersLine = debugInspector ? null : countersLine;
@@ -1829,7 +1890,7 @@ export default function HoverArtOverlay({
           {similarityBadge}
           {!showImageBackdrop && !hasRenderableContent && (
             <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[13px] font-semibold uppercase tracking-[0.14em] text-[#dbc9a3]">
-              Card details unavailable
+              {t("status.cardDetailsUnavailable")}
             </div>
           )}
         </div>
@@ -2273,7 +2334,7 @@ export default function HoverArtOverlay({
         )}
         {!showImageBackdrop && !hasRenderableContent && (
           <div className="absolute inset-0 flex items-center justify-center px-5 text-center text-[12px] font-semibold uppercase tracking-[0.14em] text-[#b5d3f2]">
-            Card details unavailable
+            {t("status.cardDetailsUnavailable")}
           </div>
         )}
       </div>
