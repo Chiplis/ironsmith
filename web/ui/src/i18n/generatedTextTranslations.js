@@ -25,8 +25,21 @@ export async function generatedTextHash(sourceText) {
   return hexFromBytes(digest);
 }
 
+function baseAssetUrl() {
+  const configured = typeof import.meta !== "undefined"
+    ? import.meta.env?.BASE_URL
+    : null;
+  const base = configured || "/";
+  return new URL(base, globalThis?.location?.href || "http://localhost/").href;
+}
+
 export function generatedTextTranslationUrl(locale, sourceHash) {
-  return `/generated-i18n/${encodeURIComponent(locale)}/${encodeURIComponent(sourceHash)}.json`;
+  // Root-absolute paths break when the app is served from a subpath; resolve
+  // against the configured Vite base like every other asset loader.
+  return new URL(
+    `generated-i18n/${encodeURIComponent(locale)}/${encodeURIComponent(sourceHash)}.json`,
+    baseAssetUrl()
+  ).href;
 }
 
 export async function loadGeneratedTextTranslation(locale, sourceText) {
