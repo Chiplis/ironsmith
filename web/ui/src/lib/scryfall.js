@@ -135,7 +135,7 @@ function baseAssetUrl() {
   return new URL(base, globalThis?.location?.href || "http://localhost/").href;
 }
 
-function cardRouteKey(name) {
+export function cardRouteKey(name) {
   const normalized = String(name || "")
     .trim()
     .toLocaleLowerCase("en-US")
@@ -435,6 +435,7 @@ export async function preloadCardArt(cardNames, options = {}) {
 }
 
 const namedCardMetaCache = new Map();
+const localizedCardTranslationCache = new Map();
 
 export async function fetchScryfallCardMeta(cardName) {
   const query = String(cardName || "").trim();
@@ -473,5 +474,64 @@ export async function fetchScryfallCardMeta(cardName) {
     });
 
   namedCardMetaCache.set(query, request);
+  return request;
+}
+
+function localizedCardPayload(card, locale) {
+  if (!card || typeof card !== "object") return null;
+  const name = card.printed_name || card.name || "";
+  const typeLine = card.printed_type_line || card.type_line || "";
+  const oracleText = card.printed_text || card.oracle_text || "";
+  if (!name && !typeLine && !oracleText) return null;
+  return {
+    schemaVersion: 1,
+    source: "scryfall-live",
+    sourceLang: "en",
+    targetLang: locale,
+    oracleId: card.oracle_id || null,
+    englishName: card.name || "",
+    route: cardRouteKey(card.name || ""),
+    name,
+    typeLine,
+    oracleText,
+    scryfallId: card.id || null,
+    set: card.set || null,
+    collectorNumber: card.collector_number || null,
+  };
+}
+
+export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
+  const query = String(cardName || "").trim();
+  const targetLang = String(locale || "").trim().toLowerCase();
+  if (!query || !targetLang || targetLang === "en" || isHiddenCardName(query)) return null;
+
+  const cacheKey = `${targetLang}:${cardJsonCacheKey(query)}`;
+  if (localizedCardTranslationCache.has(cacheKey)) {
+    return localizedCardTranslationCache.get(cacheKey);
+  }
+
+  const request = (async () => {
+    const englishCard = await fetchScryfallCardJson(query).catch(() => null);
+    const oracleId = String(englishCard?.oracle_id || "").trim();
+    if (!oracleId) return null;
+
+    const params = new URLSearchParams({
+      q: `lang:${targetLang} oracleid:${oracleId}`,
+      unique: "prints",
+    });
+    const response = await fetchScryfallApiJson(`https://api.scryfall.com/cards/search?${params.toString()}`);
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const translated = (payload?.data || [])
+      .map((card) => localizedCardPayload(card, targetLang))
+      .find((card) => card?.oracleText || card?.name || card?.typeLine);
+    return translated || null;
+  })()
+    .catch((error) => {
+      localizedCardTranslationCache.delete(cacheKey);
+      throw error;
+    });
+
+  localizedCardTranslationCache.set(cacheKey, request);
   return request;
 }

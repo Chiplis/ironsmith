@@ -19,6 +19,7 @@ import AddCardSheet from "./AddCardSheet";
 import CreateCardForgeSheet from "./CreateCardForgeSheet";
 import VerifyMatchSheet from "./VerifyMatchSheet";
 import { playerDisplayName } from "@/lib/player-display";
+import { useI18n } from "@/i18n/I18nContext";
 
 const inputClass =
   "fantasy-field w-full px-3 py-2 text-[14px] text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50";
@@ -78,6 +79,7 @@ export default function TopbarMenuSheet({
     setInspectorDebug,
     setStatus,
   } = useGame();
+  const { locale, locales, setLocale, t } = useI18n();
 
   const players = state?.players || [];
   const perspective = state?.perspective;
@@ -93,7 +95,7 @@ export default function TopbarMenuSheet({
   }, [wasmRegistryCount, wasmRegistryTotal]);
   const lobbyLabel = lobbyBusy
     ? `Lobby ${multiplayer.players.length}/${multiplayer.desiredPlayers || 0}`
-    : "No lobby";
+    : t("settings.noLobby");
   const connectionWarnings = multiplayer.connectionWarnings || [];
   const offlinePlayers = connectionWarnings.filter((warning) => !warning.local);
 
@@ -148,8 +150,8 @@ export default function TopbarMenuSheet({
           variant="secondary"
           size="icon-xs"
           className="stone-pill topbar-menu-trigger rounded-none text-[#d8c8a7] hover:text-[#fff1cd]"
-          aria-label={triggerIcon === "menu" ? "Open navigation menu" : "Open game menu"}
-          title={triggerIcon === "menu" ? "Menu" : "Settings"}
+          aria-label={triggerIcon === "menu" ? t("app.openNavigationMenu") : t("app.openGameMenu")}
+          title={triggerIcon === "menu" ? t("app.menu") : t("app.settings")}
         >
           {triggerGlyph}
         </Button>
@@ -159,22 +161,21 @@ export default function TopbarMenuSheet({
         className="fantasy-sheet settings-sheet w-[min(94vw,420px)] overflow-y-auto p-0"
       >
         <SheetHeader className="fantasy-sheet-header pr-12">
-          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">Menu</div>
+          <div className="text-[11px] uppercase tracking-[0.24em] text-[#cdb27a]">{t("app.menu")}</div>
           <SheetTitle className="text-[22px] uppercase tracking-[0.18em] text-foreground">
-            Table Settings
+            {t("settings.table")}
           </SheetTitle>
           <SheetDescription className="max-w-[32ch] text-[13px] leading-5">
-            Match setup, diagnostics, and secondary info live here so the top bar can stay
-            focused on gameplay.
+            {t("settings.description")}
           </SheetDescription>
         </SheetHeader>
 
         <div className="grid gap-4 p-4">
           {showQuickActions ? (
             <MenuSection
-              eyebrow="Quick Actions"
-              title="Shortcuts"
-              description="Mobile keeps a single entry point, so the main desktop actions are gathered here."
+              eyebrow={t("settings.quick.eyebrow")}
+              title={t("settings.quick.title")}
+              description={t("settings.quick.description")}
             >
               <div className="grid gap-2 sm:grid-cols-2">
                 <AddCardSheet
@@ -186,7 +187,7 @@ export default function TopbarMenuSheet({
                       className="stone-pill justify-start"
                       disabled={addLocked}
                     >
-                      Add Card
+                      {t("action.addCard")}
                     </Button>
                   )}
                 />
@@ -205,7 +206,7 @@ export default function TopbarMenuSheet({
                       className="stone-pill inline-flex items-center justify-start rounded-none px-2.5 py-2 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                       disabled={addLocked}
                     >
-                      Compile Card
+                      {t("action.compileCard")}
                     </button>
                   )}
                 />
@@ -216,7 +217,7 @@ export default function TopbarMenuSheet({
                   disabled={lobbyBusy}
                   onClick={handleToggleDeckLoading}
                 >
-                  {deckLoadingMode ? "Cancel Deck Load" : "Load Decks"}
+                  {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
                 </Button>
                 <Button
                   variant="secondary"
@@ -225,7 +226,7 @@ export default function TopbarMenuSheet({
                   disabled={lobbyBusy}
                   onClick={handleOpenPuzzleSetup}
                 >
-                  {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
+                  {puzzleSetupMode ? t("action.closePuzzle") : t("action.puzzleSetup")}
                 </Button>
                 <Button
                   variant="secondary"
@@ -233,7 +234,7 @@ export default function TopbarMenuSheet({
                   className="stone-pill justify-start"
                   onClick={handleShareCurrentTable}
                 >
-                  Share Table
+                  {t("action.shareTable")}
                 </Button>
                 <Button
                   variant="secondary"
@@ -241,7 +242,7 @@ export default function TopbarMenuSheet({
                   className="stone-pill justify-start"
                   onClick={handleOpenLobby}
                 >
-                  {lobbyBusy ? "Open Lobby" : "Create Lobby"}
+                  {lobbyBusy ? t("action.openLobby") : t("action.createLobby")}
                 </Button>
                 <VerifyMatchSheet
                   trigger={(
@@ -251,7 +252,7 @@ export default function TopbarMenuSheet({
                       className="stone-pill justify-start"
                     >
                       <ShieldCheck className="size-3.5" />
-                      Verify Match
+                      {t("action.verifyMatch")}
                     </Button>
                   )}
                 />
@@ -261,7 +262,7 @@ export default function TopbarMenuSheet({
                   className="stone-pill justify-start"
                   onClick={handleToggleLog}
                 >
-                  Open Log
+                  {t("settings.openLog")}
                 </Button>
                 <Button
                   variant="secondary"
@@ -270,7 +271,7 @@ export default function TopbarMenuSheet({
                   onClick={handleRefresh}
                 >
                   <RefreshCw className="size-3.5" />
-                  Refresh View
+                  {t("action.refreshView")}
                 </Button>
               </div>
               <Button variant="secondary" size="sm" className="stone-pill justify-start" asChild>
@@ -280,20 +281,41 @@ export default function TopbarMenuSheet({
                   rel="noopener noreferrer"
                 >
                   <Github className="size-3.5" />
-                  Repository
+                  {t("settings.repository")}
                   <ExternalLink className="size-3" />
                 </a>
               </Button>
             </MenuSection>
           ) : null}
           <MenuSection
-            eyebrow="Match"
-            title="Setup"
-            description="Pre-game configuration and table management. These controls stay out of the way once the match is underway."
+            eyebrow={t("settings.language.eyebrow")}
+            title={t("settings.language.title")}
+            description={t("settings.language.description")}
+          >
+            <label className={labelClass}>
+              {t("settings.language.label")}
+              <select
+                className={inputClass}
+                value={locale}
+                onChange={(event) => setLocale(event.target.value)}
+              >
+                {locales.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </MenuSection>
+
+          <MenuSection
+            eyebrow={t("settings.match.eyebrow")}
+            title={t("settings.match.title")}
+            description={t("settings.match.description")}
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={labelClass}>
-                Player Names
+                {t("settings.playerNames")}
                 <input
                   className={inputClass}
                   value={playerNames}
@@ -302,7 +324,7 @@ export default function TopbarMenuSheet({
                 />
               </label>
               <label className={labelClass}>
-                Starting Life
+                {t("settings.startingLife")}
                 <input
                   className={inputClass}
                   type="number"
@@ -321,7 +343,7 @@ export default function TopbarMenuSheet({
                 disabled={lobbyBusy}
                 onClick={onReset}
               >
-                Reset Match
+                {t("action.resetMatch")}
               </Button>
               <Button
                 variant="secondary"
@@ -330,7 +352,7 @@ export default function TopbarMenuSheet({
                 disabled={lobbyBusy}
                 onClick={handleToggleDeckLoading}
               >
-                {deckLoadingMode ? "Cancel Deck Load" : "Load Decks"}
+                {deckLoadingMode ? t("action.cancelDeckLoad") : t("action.loadDecks")}
               </Button>
               <Button
                 variant="secondary"
@@ -339,43 +361,43 @@ export default function TopbarMenuSheet({
                 disabled={lobbyBusy}
                 onClick={handleOpenPuzzleSetup}
               >
-                {puzzleSetupMode ? "Close Puzzle" : "Puzzle Setup"}
+                {puzzleSetupMode ? t("action.closePuzzle") : t("action.puzzleSetup")}
               </Button>
               <Button variant="secondary" size="sm" className="stone-pill" onClick={handleShareCurrentTable}>
-                Share Table
+                {t("action.shareTable")}
               </Button>
               <Button variant="secondary" size="sm" className="stone-pill" onClick={handleOpenLobby}>
-                {lobbyBusy ? "Open Lobby" : "Create Lobby"}
+                {lobbyBusy ? t("action.openLobby") : t("action.createLobby")}
               </Button>
               <Button variant="secondary" size="sm" className="stone-pill" onClick={handleRefresh}>
                 <RefreshCw className="size-3.5" />
-                Refresh View
+                {t("action.refreshView")}
               </Button>
             </div>
           </MenuSection>
 
           <MenuSection
-            eyebrow="Info"
-            title="Session"
-            description="Reference info that does not need to sit in the gameplay lane."
+            eyebrow={t("settings.info.eyebrow")}
+            title={t("settings.info.title")}
+            description={t("settings.info.description")}
           >
             <div className="grid gap-2 text-[13px] text-foreground">
               <div className="fantasy-sheet-stat flex items-center justify-between gap-3 px-3 py-2">
-                <span className="uppercase tracking-[0.16em] text-muted-foreground">View</span>
+                <span className="uppercase tracking-[0.16em] text-muted-foreground">{t("settings.view")}</span>
                 <Badge variant="secondary" className="fantasy-sheet-badge text-[12px] uppercase">
                   {me?.name || "-"}
                 </Badge>
               </div>
               <div className="fantasy-sheet-stat flex items-center justify-between gap-3 px-3 py-2">
                 <span className="uppercase tracking-[0.16em] text-muted-foreground">
-                  Cards Compiled
+                  {t("settings.cardsCompiled")}
                 </span>
                 <Badge variant="secondary" className="fantasy-sheet-badge text-[12px] uppercase">
                   {compiledLabel}
                 </Badge>
               </div>
               <div className="fantasy-sheet-stat flex items-center justify-between gap-3 px-3 py-2">
-                <span className="uppercase tracking-[0.16em] text-muted-foreground">Lobby</span>
+                <span className="uppercase tracking-[0.16em] text-muted-foreground">{t("settings.lobby")}</span>
                 <Badge variant="secondary" className="fantasy-sheet-badge text-[12px] uppercase">
                   {lobbyLabel}
                 </Badge>
@@ -383,7 +405,7 @@ export default function TopbarMenuSheet({
               {multiplayer.matchStarted && offlinePlayers.length > 0 ? (
                 <div className="fantasy-sheet-stat flex items-center justify-between gap-3 border-[#7d302f] bg-[#2b1114]/60 px-3 py-2">
                   <span className="uppercase tracking-[0.16em] text-[#ffb8c0]">
-                    Disconnected
+                    {t("settings.disconnected")}
                   </span>
                   <Badge variant="secondary" className="fantasy-sheet-badge max-w-[180px] truncate text-[12px] uppercase text-[#ffb8c0]">
                     {offlinePlayers.map((player) => {
@@ -404,32 +426,32 @@ export default function TopbarMenuSheet({
                 rel="noopener noreferrer"
               >
                 <Github className="size-3.5" />
-                Repository
+                {t("settings.repository")}
                 <ExternalLink className="size-3" />
               </a>
             </Button>
           </MenuSection>
 
           <MenuSection
-            eyebrow="Live"
-            title="Gameplay Controls"
-            description="Controls moved out of the landscape gameplay lane so the table can stay compact on mobile."
+            eyebrow={t("settings.live.eyebrow")}
+            title={t("settings.live.title")}
+            description={t("settings.live.description")}
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={labelClass}>
-                Auto-pass Hold
+                {t("settings.autoPassHold")}
                 <select
                   className={inputClass}
                   value={holdRule}
                   onChange={(event) => setHoldRule(event.target.value)}
                 >
-                  <option value="never">Never</option>
-                  <option value="if_actions">If actions</option>
-                  <option value="stack">Stack</option>
-                  <option value="main">Main</option>
-                  <option value="combat">Combat</option>
-                  <option value="ending">Ending</option>
-                  <option value="always">Always</option>
+                  <option value="never">{t("hold.never")}</option>
+                  <option value="if_actions">{t("hold.ifActions")}</option>
+                  <option value="stack">{t("hold.stack")}</option>
+                  <option value="main">{t("hold.main")}</option>
+                  <option value="combat">{t("hold.combat")}</option>
+                  <option value="ending">{t("hold.ending")}</option>
+                  <option value="always">{t("hold.always")}</option>
                 </select>
               </label>
               <div className="grid gap-2">
@@ -438,19 +460,19 @@ export default function TopbarMenuSheet({
                     checked={autoPassEnabled}
                     onCheckedChange={(value) => setAutoPassEnabled(Boolean(value))}
                   />
-                  Auto-pass
+                  {t("action.autoPass")}
                 </label>
                 <label className="flex items-center gap-2 text-[13px] uppercase tracking-[0.14em] text-muted-foreground">
                   <Checkbox
                     checked={inspectorDebug}
                     onCheckedChange={(value) => setInspectorDebug(Boolean(value))}
                   />
-                  Debug
+                  {t("settings.debug")}
                 </label>
               </div>
             </div>
             <Button variant="secondary" size="sm" className="stone-pill" onClick={handleToggleLog}>
-              Open Log
+              {t("settings.openLog")}
             </Button>
           </MenuSection>
         </div>

@@ -76,6 +76,10 @@ const STEP_LABELS = {
   Cleanup: "Cleanup",
 };
 
+function translatedLabel(t, key, fallback) {
+  return typeof t === "function" ? t(key, null, fallback) : fallback;
+}
+
 function turnTokenKey(value) {
   if (typeof value !== "string") return "";
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
@@ -112,39 +116,43 @@ export function normalizePhaseStep(phase, step) {
   return "Main";
 }
 
-export function nextPriorityAdvanceLabel(phase, step, stackSize) {
-  if (stackSize > 0) return "Resolve";
+export function nextPriorityAdvanceLabel(phase, step, stackSize, t = null) {
+  if (stackSize > 0) return translatedLabel(t, "action.resolve", "Resolve");
 
   switch (normalizeStepKey(step)) {
-    case "Untap": return "Upkeep";
-    case "Upkeep": return "Draw";
-    case "Draw": return "Main Phase";
-    case "BeginCombat": return "Attackers";
-    case "DeclareAttackers": return "Blockers";
-    case "DeclareBlockers": return "Damage";
-    case "CombatDamage": return "End Combat";
-    case "EndCombat": return "Main 2";
-    case "End": return "Cleanup";
-    case "Cleanup": return "Next Turn";
+    case "Untap": return translatedLabel(t, "game.step.Upkeep", "Upkeep");
+    case "Upkeep": return translatedLabel(t, "game.step.Draw", "Draw");
+    case "Draw": return translatedLabel(t, "game.advance.mainPhase", "Main Phase");
+    case "BeginCombat": return translatedLabel(t, "game.advance.attackers", "Attackers");
+    case "DeclareAttackers": return translatedLabel(t, "game.advance.blockers", "Blockers");
+    case "DeclareBlockers": return translatedLabel(t, "game.advance.damage", "Damage");
+    case "CombatDamage": return translatedLabel(t, "game.step.EndCombat", "End Combat");
+    case "EndCombat": return translatedLabel(t, "game.advance.main2", "Main 2");
+    case "End": return translatedLabel(t, "game.step.Cleanup", "Cleanup");
+    case "Cleanup": return translatedLabel(t, "game.advance.nextTurn", "Next Turn");
     default: break;
   }
 
   switch (normalizePhaseKey(phase)) {
-    case "FirstMain": return "Combat";
-    case "NextMain": return "End Step";
-    case "Ending": return "Cleanup";
-    default: return "Next";
+    case "FirstMain": return translatedLabel(t, "game.phase.Combat", "Combat");
+    case "NextMain": return translatedLabel(t, "game.step.End", "End Step");
+    case "Ending": return translatedLabel(t, "game.step.Cleanup", "Cleanup");
+    default: return translatedLabel(t, "game.advance.next", "Next");
   }
 }
 
-export function currentPriorityPhaseLabel(phase, step) {
+export function currentPriorityPhaseLabel(phase, step, t = null) {
   const normalizedStep = normalizeStepKey(step);
-  if (normalizedStep) return STEP_LABELS[normalizedStep];
+  if (normalizedStep) {
+    return translatedLabel(t, `game.step.${normalizedStep}`, STEP_LABELS[normalizedStep]);
+  }
 
   const normalizedPhase = normalizePhaseKey(phase);
-  if (normalizedPhase) return PHASE_LABELS[normalizedPhase];
+  if (normalizedPhase) {
+    return translatedLabel(t, `game.phase.${normalizedPhase}`, PHASE_LABELS[normalizedPhase]);
+  }
 
-  return phase ? String(phase).replace(/([a-z])([A-Z])/g, "$1 $2") : "Priority";
+  return phase ? String(phase).replace(/([a-z])([A-Z])/g, "$1 $2") : translatedLabel(t, "action.priority", "Priority");
 }
 
 export function priorityPassButtonColor(phase, step, stackSize) {
@@ -176,15 +184,19 @@ export function isEndingPhase(phase) {
   return normalizePhaseKey(phase) === "Ending";
 }
 
-export function formatPhase(phase) {
+export function formatPhase(phase, t = null) {
   const normalizedPhase = normalizePhaseKey(phase);
-  if (normalizedPhase) return PHASE_LABELS[normalizedPhase];
+  if (normalizedPhase) {
+    return translatedLabel(t, `game.phase.${normalizedPhase}`, PHASE_LABELS[normalizedPhase]);
+  }
   return phase ? String(phase).replace(/([a-z])([A-Z])/g, "$1 $2") : "Unknown";
 }
 
-export function formatStep(step) {
+export function formatStep(step, t = null) {
   const normalizedStep = normalizeStepKey(step);
-  if (normalizedStep) return STEP_LABELS[normalizedStep];
+  if (normalizedStep) {
+    return translatedLabel(t, `game.step.${normalizedStep}`, STEP_LABELS[normalizedStep]);
+  }
   return step ? String(step).replace(/([a-z])([A-Z])/g, "$1 $2") : "None";
 }
 

@@ -7,6 +7,7 @@ import { ComicTooltip } from "@/components/ui/comic-tooltip";
 import { UI_FONT_OPTIONS } from "@/lib/ui-fonts";
 import { getPlayerAccent } from "@/lib/player-colors";
 import { playerDisplayName, samePlayerId } from "@/lib/player-display";
+import { useI18n } from "@/i18n/I18nContext";
 
 const selectPill = "stone-select rounded-none px-2.5 py-0.5 text-[13px] font-medium border-0 outline-none cursor-pointer uppercase tracking-wide";
 const fontListId = "ironsmith-ui-font-options";
@@ -34,6 +35,7 @@ export default function AddCardBar({
     phaseAccent,
     setPhaseAccent,
   } = useGame();
+  const { t } = useI18n();
 
   const players = state?.players || [];
   const perspective = state?.perspective ?? 0;
@@ -46,6 +48,7 @@ export default function AddCardBar({
   const decisionOwnerDiffersFromPriority = decisionPlayer
     && (!priorityPlayer || !samePlayerId(decisionPlayer.id, priorityPlayer.id));
   const perspectiveAccent = getPlayerAccent(players, perspective, perspective, playerAccentOverrides);
+  const translatedPhaseSummary = `${formatPhase(state?.phase, t)}${state?.step ? ` - ${formatStep(state?.step, t)}` : ""}`;
   const phaseSummary = `${formatPhase(state?.phase)}${state?.step ? ` • ${formatStep(state?.step)}` : ""}`;
 
   return (
@@ -59,8 +62,8 @@ export default function AddCardBar({
           <span className="add-card-toolbar-separator add-card-toolbar-fidelity-separator" aria-hidden="true" />
           <div className="add-card-toolbar-fidelity-group">
             <ComicTooltip
-              title="Fidelity"
-              description="Controls the threshold for semantic similarity when parsing custom cards. Higher means stricter text matching."
+              title={t("fidelity.title")}
+              description={t("fidelity.description")}
               side="top"
               align="start"
               sideOffset={7}
@@ -69,9 +72,9 @@ export default function AddCardBar({
               <button
                 type="button"
                 className="add-card-toolbar-meta add-card-toolbar-help-trigger text-[13px] uppercase whitespace-nowrap"
-                aria-label="Explain fidelity"
+                aria-label={t("fidelity.title")}
               >
-                Fidelity
+                {t("fidelity.title")}
               </button>
             </ComicTooltip>
             <Slider
@@ -83,7 +86,7 @@ export default function AddCardBar({
               onValueChange={([value]) => setSemanticThreshold(value)}
             />
             <span className="add-card-toolbar-meta-value text-[13px] tabular-nums whitespace-nowrap">
-              {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : "Off"}
+              {semanticThreshold > 0 ? `${Math.round(semanticThreshold)}%` : t("fidelity.off")}
               {" "}({cardsMeetingThreshold})
             </span>
           </div>
@@ -97,15 +100,15 @@ export default function AddCardBar({
           className={selectPill}
           value={holdRule}
           onChange={(event) => setHoldRule(event.target.value)}
-          aria-label="Auto-pass hold rule"
+          aria-label={t("settings.autoPassHold")}
         >
-          <option value="never">Never</option>
-          <option value="if_actions">If actions</option>
-          <option value="stack">Stack</option>
-          <option value="main">Main</option>
-          <option value="combat">Combat</option>
-          <option value="ending">Ending</option>
-          <option value="always">Always</option>
+          <option value="never">{t("hold.never")}</option>
+          <option value="if_actions">{t("hold.ifActions")}</option>
+          <option value="stack">{t("hold.stack")}</option>
+          <option value="main">{t("hold.main")}</option>
+          <option value="combat">{t("hold.combat")}</option>
+          <option value="ending">{t("hold.ending")}</option>
+          <option value="always">{t("hold.always")}</option>
         </select>
         <label className="toolbar-checkbox add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap cursor-pointer uppercase">
           <Checkbox
@@ -113,16 +116,16 @@ export default function AddCardBar({
             onCheckedChange={(value) => setAutoPassEnabled(!!value)}
             className="h-3.5 w-3.5"
           />
-          Auto-pass
+          {t("action.autoPass")}
         </label>
         <label className="add-card-toolbar-perspective add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
-          <span>Playing as</span>
+          <span>{t("action.playingAs")}</span>
           <select
             className={`${selectPill} add-card-toolbar-perspective-select`}
             value={perspective}
             disabled={matchLocked}
             onChange={(event) => onChangePerspective?.(Number(event.target.value))}
-            aria-label="Playing as"
+            aria-label={t("action.playingAs")}
           >
             {players.map((player) => (
               <option key={player.id} value={player.id}>
@@ -132,13 +135,13 @@ export default function AddCardBar({
           </select>
         </label>
         <label className="add-card-toolbar-font add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
-          <span>Font</span>
+          <span>{t("action.font")}</span>
           <input
             className={`${selectPill} add-card-toolbar-font-input`}
             list={fontListId}
             value={uiFont}
             onChange={(event) => setUiFont(event.target.value)}
-            aria-label="UI font"
+            aria-label={t("action.font")}
             spellCheck={false}
           />
           <datalist id={fontListId}>
@@ -148,7 +151,7 @@ export default function AddCardBar({
           </datalist>
         </label>
         <div className="add-card-toolbar-accent add-card-toolbar-toggle flex items-center gap-1.5 whitespace-nowrap uppercase">
-          <span>Accent</span>
+          <span>{t("action.accent")}</span>
           <div
             className="add-card-toolbar-accent-split"
             style={{
@@ -161,16 +164,16 @@ export default function AddCardBar({
               type="color"
               value={phaseAccent || "#876221"}
               onChange={(event) => setPhaseAccent(event.target.value)}
-              aria-label="Phase tracker accent color"
-              title="Phase tracker accent"
+              aria-label={t("action.accent")}
+              title={t("action.accent")}
             />
             <input
               className="add-card-toolbar-accent-input add-card-toolbar-accent-input--player"
               type="color"
               value={perspectiveAccent?.hex || "#731bde"}
               onChange={(event) => setPlayerAccentOverride(perspective, event.target.value)}
-              aria-label="Player and decision accent color"
-              title="Player and decision accent"
+              aria-label={t("action.accent")}
+              title={t("action.accent")}
             />
           </div>
         </div>
@@ -178,25 +181,25 @@ export default function AddCardBar({
 
       <span className="add-card-toolbar-separator add-card-toolbar-phase-separator" aria-hidden="true" />
 
-      <div className="topbar-phase-caption add-card-toolbar-phase-caption add-card-toolbar-phase-caption--trailing" aria-label="Current turn summary">
-        <span>{phaseSummary}</span>
+      <div className="topbar-phase-caption add-card-toolbar-phase-caption add-card-toolbar-phase-caption--trailing" aria-label={t("game.currentTurnSummary")}>
+        <span>{translatedPhaseSummary}</span>
         <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-        <span>Turn {state?.turn_number ?? "-"}</span>
+        <span>{t("game.turn", { turn: state?.turn_number ?? "-" })}</span>
         {activePlayer ? (
           <>
             <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Active {playerDisplayName(players, activePlayer)}</span>
+            <span>{t("game.activePlayer", { player: playerDisplayName(players, activePlayer) })}</span>
           </>
         ) : null}
         {decisionOwnerDiffersFromPriority ? (
           <>
             <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Decision {playerDisplayName(players, decisionPlayer)}</span>
+            <span>{t("game.decisionPlayer", { player: playerDisplayName(players, decisionPlayer) })}</span>
           </>
         ) : priorityPlayer ? (
           <>
             <span className="topbar-phase-caption-dot" aria-hidden="true">•</span>
-            <span>Priority {playerDisplayName(players, priorityPlayer)}</span>
+            <span>{t("game.priorityPlayer", { player: playerDisplayName(players, priorityPlayer) })}</span>
           </>
         ) : null}
       </div>
