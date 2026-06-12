@@ -13387,17 +13387,22 @@ export function usePeerLobby({
     if (!dryRun) {
       updateMultiplayer((prev) => ({ ...prev, submittingAction: true }));
     }
+    let applyPhase = "init";
     try {
+      applyPhase = "verify_audit";
       await verifySequencedActionAudit({
         audit: message.audit,
         seq: nextSequence,
         actorIndex: message.actorIndex,
         command: message.command,
       });
+      applyPhase = "verify_pending_intent";
       const pendingIntentVerification = await verifyActionMatchesPendingIntent(message);
       if (!options.skipQuorumCertificate) {
+        applyPhase = "verify_quorum";
         await verifyActionQuorumForMessage(message);
       }
+      applyPhase = "pre_apply_checks";
       const liveStateForClock = gameRef.current ? await gameRef.current.uiState() : stateRef.current;
       const auditSigner = Number(message.audit?.signer ?? message.actorIndex);
       if (auditSigner !== Number(message.actorIndex)) {
@@ -13478,21 +13483,25 @@ export function usePeerLobby({
 	            && !actionWasDelayedByProtocolWork,
 	        });
 	      }
+      applyPhase = "reveal_pre_openings";
       await revealAuditOpenings(message.audit?.openings || [], {
         timing: "pre",
         command: message.command,
         uiState: liveStateForClock,
         updateState: false,
       });
+      applyPhase = "reveal_private_proofs";
       await revealPrivateAuditProofsForLocalViewer(message.audit || {}, {
         updateState: false,
         persistDisclosure: !dryRun,
       });
+      applyPhase = "remap_local_command";
       const localCommand = await remapCommandForLocalHiddenOpening(
         message.command,
         message.audit?.openings || [],
         message.actorIndex
       );
+      applyPhase = "preview_requirements";
       const cryptoRequirements = filterCryptoRequirementsForCommand(
         localCommand,
         liveStateForClock,
@@ -13502,15 +13511,18 @@ export function usePeerLobby({
         )
       );
       rememberActionCryptoRequirements(nextSequence, cryptoRequirements);
+      applyPhase = "verify_shuffle_proofs";
       await verifyShuffleProofsForRequirements(
         cryptoRequirements,
         message.audit?.shuffleProofs || [],
         { allowAfterOrderMismatch: true }
       );
+      applyPhase = "verify_crypto_requirements";
       await verifyAuditSatisfiesCryptoRequirements({
         requirements: cryptoRequirements,
         audit: message.audit,
       });
+      applyPhase = "inject_crypto_material";
       await injectCryptoMaterialForRequirements(cryptoRequirements, message.audit || {}, {
         command: localCommand,
         seq: nextSequence,
@@ -13530,6 +13542,7 @@ export function usePeerLobby({
       ) {
         throw new Error("Sequenced action actor is not the current decision player");
       }
+      applyPhase = "apply_command";
       const publishAppliedStateImmediately = false;
       const appliedState = await applySyncedCommand(localCommand, message.label || "", {
         actorIndex: message.actorIndex,
@@ -13614,6 +13627,13 @@ export function usePeerLobby({
       );
       await drainPendingSequencedActions();
     } catch (err) {
+      console.error("[ironsmith] apply_action:failed", {
+        seq: nextSequence,
+        actor: Number(message?.actorIndex ?? -1),
+        phase: applyPhase,
+        command: summarizePeerCommand(message?.command),
+        error: err instanceof Error ? err.message : String(err),
+      });
       if (validationSnapshot) {
         try {
           await restoreValidationSnapshot();

@@ -5171,6 +5171,7 @@ pub(super) fn normalize_common_semantic_phrasing(line: &str) -> String {
         // back-references.  Match the destroy clause structurally up to the
         // search follow-up so cost prefixes survive.
         const SEARCH_TAILS: &[&str] = &[
+            ", then each opponent may search their library for a basic land card, put it onto the battlefield, then that player shuffles",
             ", then an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
             ". An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
             ". an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",

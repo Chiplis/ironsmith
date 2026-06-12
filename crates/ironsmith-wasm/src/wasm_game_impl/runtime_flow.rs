@@ -1418,6 +1418,7 @@ impl WasmGame {
         ctx: &DecisionContext,
         command: UiCommand,
     ) -> Result<PriorityResponse, JsValue> {
+        let command_kind = crate::ui_command_kind(&command);
         match (ctx, command) {
             (
                 DecisionContext::Priority(priority),
@@ -1647,9 +1648,24 @@ impl WasmGame {
             | (DecisionContext::Blockers(_), UiCommand::SelectOptions { .. })
             | (DecisionContext::Blockers(_), UiCommand::SelectObjects { .. })
             | (DecisionContext::Blockers(_), UiCommand::SelectTargets { .. })
-            | (DecisionContext::Blockers(_), UiCommand::DeclareAttackers { .. }) => Err(
-                JsValue::from_str("command type does not match pending decision"),
-            ),
+            | (DecisionContext::Blockers(_), UiCommand::DeclareAttackers { .. }) => {
+                Err(JsValue::from_str(&format!(
+                    "command type does not match pending decision (decision={}, command={}, \
+                     pending_cast={}, pending_activation={})",
+                    decision_context_kind(ctx),
+                    command_kind,
+                    self.priority_state
+                        .pending_cast
+                        .as_ref()
+                        .map(|pending| pending.stage.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                    self.priority_state
+                        .pending_activation
+                        .as_ref()
+                        .map(|pending| pending.stage.to_string())
+                        .unwrap_or_else(|| "none".to_string()),
+                )))
+            }
             (_, _) => Err(JsValue::from_str(&format!(
                 "pending decision type is not yet supported in WASM dispatch: {}",
                 decision_context_kind(ctx)

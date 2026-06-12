@@ -201,7 +201,7 @@ async function openHarness(context, baseUrl, label) {
       argsText = "";
     }
     pageConsole.push(`${message.type()}: ${message.text()}${argsText}`);
-    if (pageConsole.length > 200) pageConsole.shift();
+    if (pageConsole.length > 600) pageConsole.shift();
     if (message.type() === "error") {
       pageErrors.push(message.text());
     }
@@ -350,7 +350,7 @@ async function openFullUiPage(context, url, label) {
       argsText = "";
     }
     pageConsole.push(`${message.type()}: ${message.text()}${argsText}`);
-    if (pageConsole.length > 200) pageConsole.shift();
+    if (pageConsole.length > 600) pageConsole.shift();
     if (message.type() === "error") {
       pageErrors.push(message.text());
     }
@@ -6313,6 +6313,271 @@ ${lastCombinedText}`);
       0,
       "expected the host deck owner to never decrypt the looked-at card (mental-poker flow): "
       + JSON.stringify(hostDisclosures, null, 2),
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS guest Claws of Gix sacrificing itself stays synced", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Lightning Bolt",
+      guestDeckText: "30 Wastes\n30 Claws of Gix",
+      hostName: "Chiplis",
+      guestName: "Alice",
+      hostLabel: "host-claws-ui",
+      guestLabel: "guest-claws-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-claws-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-claws-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    let activatedClaws = false;
+    let gainedLife = false;
+    let lastCombinedText = "";
+    let lastProgress = "start";
+
+    for (let step = 0; step < 140 && !gainedLife; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      try {
+        assertNoSyncFailureText(combinedText, "guest Claws of Gix activation should stay synced");
+        assert.doesNotMatch(
+          combinedText,
+          /Cheat detected|invalid action sequence|command type does not match pending decision/i,
+        );
+      } catch {
+        const transcriptActions = async (page) => page.evaluate(async () => {
+          const transcript = await window.__ironsmithE2E?.auditTranscript?.();
+          return (transcript?.actions || []).map((action) => ({
+            seq: action.seq,
+            actor: action.actor,
+            commandType: action.command?.type,
+            commandKind: action.command?.kind ?? action.command?.action_ref?.kind ?? null,
+          }));
+        }).catch((err) => ({ error: String(err?.message || err) }));
+        const dispatchEntries = (page) => (page.__peerHarnessConsole || [])
+          .filter((entry) => /synced dispatch:start|synced dispatch:success|synced dispatch:failed|Cheat detected|dry_run_apply_action|action_quorum|apply_action|crypto_material_request:received|crypto_material_request:authorize/.test(String(entry)))
+          .slice(-60);
+        assert.fail(`guest Claws of Gix activation should stay synced (progress: ${lastProgress})
+host transcript: ${JSON.stringify(await transcriptActions(hostPage), null, 2)}
+guest transcript: ${JSON.stringify(await transcriptActions(guestPage), null, 2)}
+host dispatches: ${JSON.stringify(dispatchEntries(hostPage), null, 2)}
+guest dispatches: ${JSON.stringify(dispatchEntries(guestPage), null, 2)}
+body:
+${combinedText}`);
+      }
+
+      // Derive all progress from the guest snapshot instead of latching flags
+      // on UI clicks — clicks can race the engine and leave flags stale.
+      const board = await guestPage.evaluate(() => {
+        const snap = window.__ironsmithE2E?.snapshot?.();
+        const state = snap?.state || {};
+        const guest = (state.players || []).find((p) => Number(p.id) === 1) || {};
+        const battlefield = guest.battlefield || [];
+        const claws = battlefield.find((c) => /^Claws of Gix$/i.test(String(c.name || "")));
+        return {
+          life: Number(guest.life),
+          clawsId: claws ? Number(claws.id) : null,
+          clawsTapped: claws ? Boolean(claws.tapped) : null,
+          hasWastes: battlefield.some((c) => /^Wastes$/i.test(String(c.name || ""))),
+          graveyardSize: Number(guest.graveyard_size ?? 0),
+          stackNames: (state.stack_preview || []).map((entry) => String(entry?.name || "")),
+          decisionKind: String(state.decision?.kind || ""),
+          decisionPlayer: state.decision?.player == null ? null : Number(state.decision.player),
+          decisionCandidates: (state.decisionCandidates || []).map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            legal: entry.legal,
+          })),
+          decisionOptions: (state.decisionOptions || []).map((option) => ({
+            index: option.index,
+            description: option.description,
+            legal: option.legal,
+          })),
+        };
+      });
+
+      if (board.life === 21) {
+        gainedLife = true;
+        break;
+      }
+
+      // Sacrifice cost selection: pick the Claws of Gix itself.
+      if (board.decisionKind === "select_objects" && board.decisionPlayer === 1) {
+        const candidate = board.decisionCandidates.find((entry) =>
+          entry.legal !== false && /^Claws of Gix$/i.test(String(entry.name || ""))
+        );
+        if (candidate?.id != null) {
+          lastProgress = "submitting sacrifice selection";
+          await guestPage.evaluate(({ command }) => (
+            window.__ironsmithE2E.submitMultiplayerCommand(command, "Selected 1 object(s)")
+          ), { command: { type: "select_objects", object_ids: [Number(candidate.id)] } });
+          await sleep(3000);
+          continue;
+        }
+      }
+
+      // Mana payment options for the {1} activation cost.
+      if (board.decisionKind === "select_options" && board.decisionPlayer === 1) {
+        const legal = board.decisionOptions.filter((option) => option.legal !== false);
+        const payment = legal.find((option) =>
+          /Wastes|\{C\}|Add/i.test(String(option.description || ""))
+        ) ?? legal[0];
+        if (payment?.index != null) {
+          lastProgress = `submitting payment option ${payment.description}`;
+          await guestPage.evaluate(({ index }) => (
+            window.__ironsmithE2E.submitMultiplayerCommand(
+              { type: "select_options", option_indices: [Number(index)] },
+              "Pay Claws of Gix activation",
+            )
+          ), { index: payment.index });
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      // Claws on the battlefield + guest priority: activate it.
+      if (
+        board.clawsId != null
+        && !activatedClaws
+        && board.decisionKind === "priority"
+        && board.decisionPlayer === 1
+      ) {
+        lastProgress = "submitting activation";
+        await guestPage.evaluate(({ source }) => (
+          window.__ironsmithE2E.submitMultiplayerCommand({
+            type: "priority_action",
+            action_ref: { kind: "activate_ability", source, ability_index: 0 },
+          }, "Activate Claws of Gix")
+        ), { source: board.clawsId });
+        activatedClaws = true;
+        await sleep(3000);
+        continue;
+      }
+
+      // Something is on the stack (the cast or the ability): pass to resolve.
+      if (board.stackNames.length > 0) {
+        lastProgress = `resolving stack: ${board.stackNames.join(", ")}`;
+        const hostPass = await clickLocalButton(hostPage, "host-resolve-claws", /PASS PRIORITY|RESOLVE/i);
+        if (hostPass) {
+          await sleep(2000);
+          continue;
+        }
+        const guestPass = await clickLocalButton(guestPage, "guest-resolve-claws", /PASS PRIORITY|RESOLVE/i);
+        if (guestPass) {
+          await sleep(2000);
+          continue;
+        }
+        await sleep(1000);
+        continue;
+      }
+
+      // Pre-activation setup: get Wastes and Claws onto the guest battlefield.
+      if (board.clawsId == null && !activatedClaws) {
+        if (!board.hasWastes) {
+          const result = await clickLocalButton(guestPage, "guest-play-wastes", /PLAY WASTES/i);
+          if (result) {
+            lastProgress = "played Wastes";
+            await sleep(3000);
+            continue;
+          }
+        } else {
+          const result = await clickLocalButton(guestPage, "guest-cast-claws", /CAST CLAWS OF GIX/i);
+          if (result) {
+            lastProgress = "cast Claws of Gix";
+            await sleep(3000);
+            continue;
+          }
+        }
+        const advancePattern = /KEEP HAND|PREGAME|BEGIN GAME|UPKEEP|DRAW|MAIN|COMBAT|ATTACKERS|BLOCKERS|NO ATTACKERS|DONE|M2|END|CLEAN|PASS PRIORITY|RESOLVE/i;
+        const hostAdvanced = await clickLocalButton(hostPage, "host-setup-claws", advancePattern);
+        if (hostAdvanced) {
+          await sleep(3000);
+          continue;
+        }
+        const guestAdvanced = await clickLocalButton(guestPage, "guest-setup-claws", advancePattern);
+        if (guestAdvanced) {
+          await sleep(3000);
+          continue;
+        }
+      }
+
+      // Post-activation: keep passing priority until the ability resolves.
+      if (activatedClaws) {
+        const guestPass = await clickLocalButton(guestPage, "guest-pass-claws-ability", /PASS PRIORITY|RESOLVE/i);
+        if (guestPass) {
+          await sleep(2000);
+          continue;
+        }
+        const hostResolve = await clickLocalButton(hostPage, "host-resolve-claws-ability", /RESOLVE|PASS PRIORITY/i);
+        if (hostResolve) {
+          await sleep(2000);
+          continue;
+        }
+      }
+
+      await sleep(1000);
+    }
+
+    const driveFailureDetail = async () => `
+progress: ${lastProgress}
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+guest decision: ${JSON.stringify((await fullUiSnapshot(guestPage))?.state?.decision || null, null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-60), null, 2)}
+last body:
+${lastCombinedText}`;
+    if (!activatedClaws) {
+      assert.fail(`expected guest to activate Claws of Gix\n${await driveFailureDetail()}`);
+    }
+    if (!gainedLife) {
+      assert.fail(`expected guest to gain 1 life from Claws of Gix sacrificing itself
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-120), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-120), null, 2)}
+last body:
+${lastCombinedText}`);
+    }
+    await sleep(4000);
+    const settledText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(settledText, "guest Claws of Gix activation should stay synced after resolution");
+    assert.doesNotMatch(
+      settledText,
+      /Cheat detected|invalid action sequence/i,
+      "guest Claws of Gix activation should not trip the anticheat",
     );
     assertNoPageErrors(hostPage, guestPage);
   } finally {

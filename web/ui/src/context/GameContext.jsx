@@ -2419,6 +2419,11 @@ export function GameProvider({ children }) {
                   legal: option.legal,
                 }))
               : undefined,
+            stack_preview: (state.stack_preview || []).map((entry) => ({
+              id: entry.id,
+              stable_id: entry.stable_id ?? entry.stableId ?? null,
+              name: entry.name,
+            })),
             players: (state.players || []).map((player) => ({
               id: player.id,
               name: player.name,

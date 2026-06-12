@@ -107,6 +107,25 @@ function normalizeInspectorMeasureText(text = "") {
     .trim();
 }
 
+// Height of the oracle body rendered at the full rules font in a given wrap
+// width, measured on an off-screen clone (full-size text re-wraps onto more
+// lines, so scaling the live height by 1/scale would undercount).
+function measureOracleBodyHeightAtFullFont(body, width) {
+  const clone = body.cloneNode(true);
+  clone.style.position = "fixed";
+  clone.style.left = "-10000px";
+  clone.style.top = "0";
+  clone.style.width = `${width}px`;
+  clone.style.maxWidth = "none";
+  for (const line of clone.querySelectorAll(".inspector-oracle-line")) {
+    line.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
+  }
+  document.body.appendChild(clone);
+  const height = clone.scrollHeight;
+  clone.remove();
+  return height;
+}
+
 function measureInspectorTextWidth(ctx, text = "") {
   const normalized = normalizeInspectorMeasureText(text);
   if (!normalized) return 0;
@@ -649,6 +668,11 @@ export default function HoverArtOverlay({
   const [failedImageUrl, setFailedImageUrl] = useState(null);
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
+  // Oracle-body width needed for the full-font text to fit the height the
+  // host granted ({ key, width } | null). Sticky per content session: once
+  // the wider shell makes the text fit, dropping the claim would re-narrow
+  // the shell and oscillate.
+  const [inspectorHeightFitSession, setInspectorHeightFitSession] = useState(null);
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
   const [measuredInspectorHeaderBottom, setMeasuredInspectorHeaderBottom] = useState(null);
   const inspectorFitBoundsRef = useRef({ key: null, fit: null, overflow: null, clientHeight: 0, clientWidth: 0, topPadding: null });
@@ -1175,7 +1199,23 @@ export default function HoverArtOverlay({
     ? null
     : Math.ceil(measuredPreferredInspectorWidth);
   const activeMeasuredPreferredInspectorWidth = preferredInspectorWidth;
-  const resolvedPreferredInspectorWidth = activeMeasuredPreferredInspectorWidth;
+  const heightFitOracleBodyWidth = (
+    inspectorHeightFitSession
+    && inspectorHeightFitSession.key === inspectorScaleSessionKey
+  )
+    ? inspectorHeightFitSession.width
+    : null;
+  const heightFitInspectorWidth = heightFitOracleBodyWidth == null
+    ? null
+    : Math.ceil(
+      heightFitOracleBodyWidth
+      + (INSPECTOR_ORACLE_HORIZONTAL_PADDING * 2)
+      + measuredOracleArtAllowance
+      + 18
+    );
+  const resolvedPreferredInspectorWidth = heightFitInspectorWidth == null
+    ? activeMeasuredPreferredInspectorWidth
+    : Math.max(activeMeasuredPreferredInspectorWidth || 0, heightFitInspectorWidth);
   const activeInspectorTextScale = compact || displayMode !== "inspector"
     ? 1
     : (inspectorScaleSession.key === inspectorScaleSessionKey ? inspectorScaleSession.scale : 1);
@@ -1537,18 +1577,7 @@ export default function HoverArtOverlay({
       const body = oracleBodyRef.current;
       let contentHeight;
       if (body && scale < 0.999) {
-        const clone = body.cloneNode(true);
-        clone.style.position = "fixed";
-        clone.style.left = "-10000px";
-        clone.style.top = "0";
-        clone.style.width = `${body.clientWidth}px`;
-        clone.style.maxWidth = "none";
-        for (const line of clone.querySelectorAll(".inspector-oracle-line")) {
-          line.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
-        }
-        document.body.appendChild(clone);
-        contentHeight = clone.scrollHeight;
-        clone.remove();
+        contentHeight = measureOracleBodyHeightAtFullFont(body, body.clientWidth);
       } else if (body) {
         contentHeight = body.scrollHeight;
       } else {
@@ -1577,6 +1606,93 @@ export default function HoverArtOverlay({
     activeInspectorTextScale,
     metadataText,
     onOracleTextHeightChange,
+    displayStatsText,
+    transitionTitle,
+  ]);
+
+  // When the full-font text overflows the height the host granted, claim the
+  // extra WIDTH that lets it re-wrap into the band instead — the inline shell
+  // is hard-capped vertically (it must never cover the battlefield below its
+  // dock), so horizontal growth is the only room there is. Bisect over
+  // off-screen full-font clones for the narrowest fitting wrap width.
+  useLayoutEffect(() => {
+    if (compact || displayMode !== "inspector") return undefined;
+    if (typeof onPreferredInspectorWidthChange !== "function") return undefined;
+    const scroller = oracleScrollRef.current;
+    const content = oracleContainerRef.current;
+    if (!scroller || !content) return undefined;
+
+    let rafId = null;
+    const publishHeightFitWidth = () => {
+      const body = oracleBodyRef.current;
+      const sessionKey = inspectorScaleSessionKey;
+      if (!body || sessionKey == null) return;
+      const styles = getComputedStyle(content);
+      const padTop = parseFloat(styles.paddingTop) || 0;
+      const padBottom = parseFloat(styles.paddingBottom) || 0;
+      const textRoom = Math.max(0, scroller.clientHeight - padTop - padBottom);
+      const currentWidth = body.clientWidth;
+      if (textRoom <= 0 || currentWidth <= 0) return;
+
+      if (measureOracleBodyHeightAtFullFont(body, currentWidth) <= textRoom + 1) {
+        setInspectorHeightFitSession((current) => (
+          current && current.key === sessionKey ? current : null
+        ));
+        return;
+      }
+      if (currentWidth >= INSPECTOR_RULES_MAX_LINE_WIDTH) return;
+
+      let fitWidth;
+      if (measureOracleBodyHeightAtFullFont(body, INSPECTOR_RULES_MAX_LINE_WIDTH) > textRoom) {
+        // Even the widest wrap overflows; claim it all and let the text-scale
+        // fit absorb the rest.
+        fitWidth = INSPECTOR_RULES_MAX_LINE_WIDTH;
+      } else {
+        let lo = currentWidth;
+        let hi = INSPECTOR_RULES_MAX_LINE_WIDTH;
+        while (hi - lo > 24) {
+          const mid = Math.round((hi + lo) / 2);
+          if (measureOracleBodyHeightAtFullFont(body, mid) <= textRoom) {
+            hi = mid;
+          } else {
+            lo = mid;
+          }
+        }
+        fitWidth = hi;
+      }
+      setInspectorHeightFitSession((current) => (
+        current && current.key === sessionKey && current.width >= fitWidth
+          ? current
+          : { key: sessionKey, width: fitWidth }
+      ));
+    };
+
+    const scheduleHeightFit = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        publishHeightFitWidth();
+      });
+    };
+
+    scheduleHeightFit();
+    const observer = new ResizeObserver(scheduleHeightFit);
+    observer.observe(scroller);
+    observer.observe(content);
+    window.addEventListener("resize", scheduleHeightFit);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleHeightFit);
+    };
+  }, [
+    compact,
+    displayMode,
+    displayRulesText,
+    inspectorScaleSessionKey,
+    metadataText,
+    onPreferredInspectorWidthChange,
     displayStatsText,
     transitionTitle,
   ]);
