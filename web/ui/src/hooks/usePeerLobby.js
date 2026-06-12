@@ -3852,28 +3852,58 @@ export function usePeerLobby({
 
 	  const privateDeckManifestForOwner = useCallback((owner, matchId = currentAuditMatchId()) => {
 	    const key = `${matchId}:${Number(owner)}`;
+	    const normalizedOwner = Number(owner);
+	    // The match-start payload's public manifest is the source of truth for
+	    // which deck sits at a seat. A locally stored private manifest can claim
+	    // the wrong owner (e.g. a guest's provisional join-time manifest built
+	    // before seat assignment), so reject any local copy that does not match
+	    // the published commitments before trusting its slot secrets.
+	    const payload = matchStartPayloadRef.current;
+	    const payloadMatches = payload && String(payload.auditMatchId || "") === String(matchId || "");
+	    const payloadPlayer = payloadMatches
+	      ? reindexPlayers(payload.players || []).find(
+	        (entry) => Number(entry.index) === normalizedOwner
+	      )
+	      : null;
+	    const payloadManifests = payloadMatches && Array.isArray(payload.deckAuditManifests)
+	      ? payload.deckAuditManifests
+	      : [];
+	    const sharedManifest = payloadMatches
+	      ? publicDeckManifest(
+	        payloadManifests.find((entry) => Number(entry?.owner) === normalizedOwner)
+	          || payloadPlayer?.deckAuditManifest
+	      )
+	      : null;
+	    const matchesPublishedManifest = (candidate) =>
+	      !sharedManifest
+	      || (
+	        String(candidate?.commitmentRoot || "") === String(sharedManifest.commitmentRoot || "")
+	        && String(candidate?.decklistCommitment || "") === String(sharedManifest.decklistCommitment || "")
+	      );
 	    const cached = privateDeckManifestsRef.current.get(key);
-	    if (cached) return cached;
+	    if (cached) {
+	      if (matchesPublishedManifest(cached)) return cached;
+	      privateDeckManifestsRef.current.delete(key);
+	    }
 	    const stored = readStoredPrivateDeckManifest(matchId, owner);
 	    if (stored?.slotSecrets) {
-	      privateDeckManifestsRef.current.set(key, stored);
-        preloadPrivateDeckManifestArt(stored);
-	      return stored;
+	      if (matchesPublishedManifest(stored)) {
+	        privateDeckManifestsRef.current.set(key, stored);
+	        preloadPrivateDeckManifestArt(stored);
+	        return stored;
+	      }
+	      // Self-heal: drop the mislabeled manifest so future reads go straight
+	      // to the published payload reconstruction.
+	      try {
+	        getPeerSessionStorage()?.removeItem(privateDeckManifestStorageKey(matchId, owner));
+	      } catch {
+	        // Ignore storage failures.
+	      }
 	    }
 	    // Open-decklist matches publish every player's slot openings in the
 	    // match-start payload, so any seat can reconstruct any owner's manifest.
-	    const payload = matchStartPayloadRef.current;
-	    if (payload && String(payload.auditMatchId || "") === String(matchId || "")) {
-	      const normalizedOwner = Number(owner);
-	      const player = reindexPlayers(payload.players || []).find(
-	        (entry) => Number(entry.index) === normalizedOwner
-	      );
-	      const slotSecrets = sanitizeDeckSlotOpenings(player?.deckSlotOpenings);
-	      const manifests = Array.isArray(payload.deckAuditManifests) ? payload.deckAuditManifests : [];
-	      const sharedManifest = publicDeckManifest(
-	        manifests.find((entry) => Number(entry?.owner) === normalizedOwner)
-	          || player?.deckAuditManifest
-	      );
+	    if (payloadMatches) {
+	      const slotSecrets = sanitizeDeckSlotOpenings(payloadPlayer?.deckSlotOpenings);
 	      if (
 	        sharedManifest
 	        && Number(sharedManifest.owner) === normalizedOwner
@@ -8629,7 +8659,7 @@ export function usePeerLobby({
 	  ]);
 
 	  const buildLocalDeckAuditManifest = useCallback(
-    async ({ matchId, owner, deck, sideboard, commanders }) => {
+    async ({ matchId, owner, deck, sideboard, commanders, persist = true }) => {
       const normalizedMatchId = String(matchId || "");
       const normalizedOwner = Number(owner);
       const normalizedDeck = sanitizeCardList(deck);
@@ -8652,7 +8682,7 @@ export function usePeerLobby({
         && Array.isArray(existing.slotSecrets)
         && existing.slotSecrets.length === normalizedDeck.length
       ) {
-        rememberPrivateDeckManifest(existing);
+        if (persist) rememberPrivateDeckManifest(existing);
         return existing;
       }
       const manifest = await buildPrivateDeckManifest({
@@ -8662,7 +8692,7 @@ export function usePeerLobby({
         sideboard: normalizedSideboard,
         commanders: normalizedCommanders,
       });
-      rememberPrivateDeckManifest(manifest);
+      if (persist) rememberPrivateDeckManifest(manifest);
       return manifest;
     },
     [privateDeckManifestForOwner, rememberPrivateDeckManifest]
@@ -20327,6 +20357,10 @@ export function usePeerLobby({
             deck: currentDeck.deck,
             sideboard: currentDeck.sideboard,
             commanders: currentDeck.commanders,
+            // A fresh joiner does not know its seat yet; persisting this
+            // provisional manifest would shadow the real seat-0 (host) deck
+            // in privateDeckManifestForOwner lookups for the whole match.
+            persist: requestedPlayerIndex != null,
           });
           const deckSlotOpenings = deckSlotOpeningsForManifest(deckAuditManifest);
           const ziffleKeyPair = await ensureZiffleIdentity({
@@ -20590,13 +20624,17 @@ export function usePeerLobby({
         publicKey: auditPublicKey,
         encryptionPublicKey: auditEncryptionPublicKey,
       } = await ensureAuditIdentity();
-      const localPlayerIndex = resolveLocalPlayerIndex(currentSession) ?? 0;
+      const resolvedLocalPlayerIndex = resolveLocalPlayerIndex(currentSession);
+      const localPlayerIndex = resolvedLocalPlayerIndex ?? 0;
       const deckAuditManifest = await buildLocalDeckAuditManifest({
         matchId: currentSession.lobbyId || currentSession.hostPeerId || "pending",
         owner: localPlayerIndex,
         deck: deckSubmission.deck,
         sideboard: deckSubmission.sideboard,
         commanders: deckSubmission.commanders,
+        // Without an assigned seat the owner is a guess; persisting it could
+        // shadow the real seat-0 deck in private manifest lookups.
+        persist: resolvedLocalPlayerIndex != null,
       });
       const deckSlotOpenings = deckSlotOpeningsForManifest(deckAuditManifest);
       const ziffleKeyPair = await ensureZiffleIdentity({

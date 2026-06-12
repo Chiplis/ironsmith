@@ -177,6 +177,14 @@ enum PendingCommanderChoice {
     StateBasedReturn { object_id: ObjectId },
 }
 
+/// Identifies the legend-rule violation the runner paused on, so a
+/// `respond_discard` answer is only consumed by the prompt that asked for it.
+#[derive(Debug, Clone)]
+struct PendingLegendRuleChoice {
+    player: PlayerId,
+    legends: Vec<ObjectId>,
+}
+
 #[derive(Debug, Clone)]
 struct PendingDredgeChoice {
     player: PlayerId,
@@ -255,6 +263,8 @@ pub struct TurnRunner {
     pending_draw_reveal: Option<PendingDrawRevealChoice>,
     /// Commander-specific choice that paused the runner.
     pending_commander_choice: Option<PendingCommanderChoice>,
+    /// Legend-rule keep choice that paused the runner.
+    pending_legend_choice: Option<PendingLegendRuleChoice>,
     /// Defending player for the current combat.
     defending_player: Option<PlayerId>,
 }
@@ -274,6 +284,7 @@ impl TurnRunner {
             pending_dredge: None,
             pending_draw_reveal: None,
             pending_commander_choice: None,
+            pending_legend_choice: None,
             defending_player: None,
         }
     }
@@ -1034,7 +1045,6 @@ impl TurnRunner {
         game: &mut GameState,
         tq: &mut TriggerQueue,
     ) -> Result<RunnerProgress<()>, GameLoopError> {
-        use crate::decisions::make_decision;
         use crate::rules::state_based::{
             StateBasedAction, StateBasedActionContext, apply_legend_rule_choice,
             apply_state_based_actions_from_actions_with, check_state_based_actions_with_context,
@@ -1053,18 +1063,42 @@ impl TurnRunner {
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_dredge = None;
+                self.pending_legend_choice = None;
                 return Ok(RunnerProgress::Complete(()));
             }
 
+            // Handle one legend-rule violation per pass: applying a keep choice
+            // can change which violations remain, so re-check SBAs before
+            // prompting for the next one. Violations arrive in APNAP order.
             let legend_specs = legend_rule_specs_from_actions(&actions);
-            if !legend_specs.is_empty() {
-                let mut auto_dm = crate::decision::AutoPassDecisionMaker;
-                for (player, spec) in legend_specs {
-                    let keep_id: ObjectId = make_decision(game, &mut auto_dm, player, None, spec);
-                    apply_legend_rule_choice(game, keep_id);
+            if let Some((player, spec)) = legend_specs.into_iter().next() {
+                use crate::decisions::DecisionSpec;
+                if let Some(pending) = self.pending_legend_choice.take() {
+                    // Any queued object selection belongs to the legend prompt
+                    // we paused on; consume it with the marker so it can never
+                    // leak into a later object-selection prompt.
+                    let answer = self.pending_discard.take();
+                    if pending.player == player && pending.legends == spec.legends {
+                        let keep_id = answer
+                            .into_iter()
+                            .flatten()
+                            .find(|id| spec.legends.contains(id))
+                            .unwrap_or_else(|| {
+                                spec.default_response(crate::decision::FallbackStrategy::Decline)
+                            });
+                        apply_legend_rule_choice(game, keep_id);
+                        crate::game_loop::drain_pending_trigger_events(game, tq);
+                        continue;
+                    }
                 }
-                crate::game_loop::drain_pending_trigger_events(game, tq);
-                continue;
+                // No matching answer (or the board shifted since we paused):
+                // surface the keep choice to the violating permanents' controller.
+                let ctx = spec.build_context(player, None, game);
+                self.pending_legend_choice = Some(PendingLegendRuleChoice {
+                    player,
+                    legends: spec.legends,
+                });
+                return Ok(RunnerProgress::NeedsDecision(ctx));
             }
 
             let mut commander_returns = Vec::new();
@@ -1091,6 +1125,7 @@ impl TurnRunner {
                     self.pending_boolean = None;
                     self.pending_commander_choice = None;
                     self.pending_dredge = None;
+                    self.pending_legend_choice = None;
                     return Ok(RunnerProgress::Complete(()));
                 }
                 continue;
@@ -1100,6 +1135,7 @@ impl TurnRunner {
                 self.pending_boolean = None;
                 self.pending_commander_choice = None;
                 self.pending_dredge = None;
+                self.pending_legend_choice = None;
                 return Ok(RunnerProgress::Complete(()));
             };
 
