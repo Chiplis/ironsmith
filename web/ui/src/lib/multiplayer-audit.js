@@ -84,6 +84,39 @@ export function isOwnerPrivateCryptoMaterialRequirement(requirement) {
   );
 }
 
+// Hidden zones whose contents are unknown even to their owner under mental
+// poker: a library is a jointly-encrypted shuffled deck, so no player (not even
+// the owner) knows a card's identity until a reveal quorum opens it. Cards in
+// other hidden zones (hand, graveyard, face-down exile/permanents) became known
+// to the owner when they entered — the owner drew/placed them — so the owner
+// may safely produce their openings.
+const OWNER_BLIND_HIDDEN_ZONES = new Set(["library"]);
+
+// Who must produce the audit material for a requirement.
+//
+// For a private view addressed to ANOTHER player (viewer !== owner) of a zone
+// the owner is blind to, the correct mental-poker flow is for the viewer to
+// aggregate everyone else's reveal tokens locally and decrypt itself — the deck
+// owner must never be asked to decrypt its own un-revealed card. Everything
+// else (public opens, owner self-views, and private views of zones the owner
+// already knows) is produced by the deck owner as before.
+export function cryptoMaterialResponsibleSeat(requirement) {
+  const type = cryptoMaterialRequirementType(requirement);
+  const owner = Number(requirement?.owner);
+  const viewer = requirement?.viewer == null ? null : Number(requirement.viewer);
+  const zone = String(requirement?.zone || "");
+  if (
+    (type === "private_open" || type === "private_view_window")
+    && viewer != null
+    && Number.isInteger(viewer)
+    && viewer !== owner
+    && OWNER_BLIND_HIDDEN_ZONES.has(zone)
+  ) {
+    return viewer;
+  }
+  return owner;
+}
+
 function cryptoMaterialRequirementId(requirement) {
   return String(
     requirement?.id
@@ -175,7 +208,7 @@ export function localAnswerableCryptoMaterialRequirements(requirements = [], loc
   return (requirements || []).filter((requirement) =>
     isCryptoMaterialRequirement(requirement)
     && !isOwnerPrivateCryptoMaterialRequirement(requirement)
-    && Number(requirement?.owner) === seat
+    && cryptoMaterialResponsibleSeat(requirement) === seat
   );
 }
 

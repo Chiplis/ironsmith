@@ -5,6 +5,7 @@ import {
   actionQuorumThreshold,
   assertResyncActionsExtendLocalTranscript,
   authorizeCryptoMaterialRequestRequirements,
+  cryptoMaterialResponsibleSeat,
   buildActionForkDisputeEvidence,
   buildSignedDisconnectForfeitVote,
   buildSignedActionEnvelope,
@@ -3849,6 +3850,31 @@ export function usePeerLobby({
 	      privateDeckManifestsRef.current.set(key, stored);
         preloadPrivateDeckManifestArt(stored);
 	      return stored;
+	    }
+	    // Open-decklist matches publish every player's slot openings in the
+	    // match-start payload, so any seat can reconstruct any owner's manifest.
+	    const payload = matchStartPayloadRef.current;
+	    if (payload && String(payload.auditMatchId || "") === String(matchId || "")) {
+	      const normalizedOwner = Number(owner);
+	      const player = reindexPlayers(payload.players || []).find(
+	        (entry) => Number(entry.index) === normalizedOwner
+	      );
+	      const slotSecrets = sanitizeDeckSlotOpenings(player?.deckSlotOpenings);
+	      const manifests = Array.isArray(payload.deckAuditManifests) ? payload.deckAuditManifests : [];
+	      const sharedManifest = publicDeckManifest(
+	        manifests.find((entry) => Number(entry?.owner) === normalizedOwner)
+	          || player?.deckAuditManifest
+	      );
+	      if (
+	        sharedManifest
+	        && Number(sharedManifest.owner) === normalizedOwner
+	        && slotSecrets.length > 0
+	        && slotSecrets.length === Number(sharedManifest.deckCount || 0)
+	      ) {
+	        const shared = { ...sharedManifest, slotSecrets };
+	        privateDeckManifestsRef.current.set(key, shared);
+	        return shared;
+	      }
 	    }
 	    return null;
 	  }, [currentAuditMatchId]);
@@ -10291,10 +10317,13 @@ export function usePeerLobby({
 	    const currentGame = gameRef.current;
 	    const proofs = [];
 		    const localSeat = resolveLocalCryptoPlayerIndex();
+      // The viewer (not the deck owner) is responsible for non-owner private
+      // views: it aggregates the other players' reveal tokens locally, so the
+      // owner never decrypts a card it is not entitled to see.
       const privateOpenRequirements = (requirements || []).filter((requirement) =>
         String(requirement?.type || "") === "private_open"
         && !isOwnerPrivateViewRequirement(requirement)
-        && Number(requirement.owner) === Number(localSeat)
+        && cryptoMaterialResponsibleSeat(requirement) === Number(localSeat)
       );
       const privateOpeningProofs = (await Promise.all(privateOpenRequirements.map(async (requirement) => {
 	      const viewer = Number(requirement.viewer);
@@ -10369,7 +10398,7 @@ export function usePeerLobby({
 	    for (const requirement of requirements || []) {
 	      if (String(requirement?.type || "") !== "private_view_window") continue;
       if (isOwnerPrivateViewRequirement(requirement)) continue;
-	      if (Number(requirement.owner) !== Number(localSeat)) continue;
+	      if (cryptoMaterialResponsibleSeat(requirement) !== Number(localSeat)) continue;
 	      const openingHashes = privateOpeningProofs
         .filter((entry) =>
           Number(entry.owner) === Number(requirement.owner)
@@ -10674,10 +10703,12 @@ export function usePeerLobby({
       const type = String(requirement?.type || "");
       if (!["public_open", "private_open", "private_view_window"].includes(type)) continue;
       if (isOwnerPrivateViewRequirement(requirement)) continue;
-      const owner = Number(requirement.owner);
-      if (!Number.isInteger(owner) || owner === Number(localSeat)) continue;
-      if (!materialByOwner.has(owner)) materialByOwner.set(owner, []);
-      materialByOwner.get(owner).push(requirement);
+      // Private views addressed to another player are produced by the viewer
+      // (mental-poker flow); everything else by the deck owner.
+      const seat = cryptoMaterialResponsibleSeat(requirement);
+      if (!Number.isInteger(seat) || seat === Number(localSeat)) continue;
+      if (!materialByOwner.has(seat)) materialByOwner.set(seat, []);
+      materialByOwner.get(seat).push(requirement);
     }
     const command = options.command || null;
     const seq = options.seq;
@@ -10727,87 +10758,98 @@ export function usePeerLobby({
       requirements: summarizeCryptoRequirementsForPerf(requirements),
       request_preview: requestPreview,
     });
-    for (const [owner, ownerRequirements] of materialByOwner) {
-      const player = players.find((entry) => Number(entry.index) === owner);
-      const routePeerId = routePeerIdForPlayer(player);
-      if (!routePeerId) {
-        throw new Error(`Missing peer route for cryptographic material from player ${owner + 1}`);
-      }
-      const conn = await waitForZiffleRoute(routePeerId);
-      const requestId = makeZiffleRequestId("crypto-material");
-      const playerLabel = player.name || `Player ${owner + 1}`;
-      const requestedAtMs = Date.now();
-      const waiter = waitForCryptoMaterial(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
-        peerIndex: owner,
-        peerName: playerLabel,
-        description:
-          `${playerLabel} is generating hidden-card opening payloads for this action.`,
-      });
-      outboundCryptoMaterialRequestsRef.current.set(requestId, {
-        owner,
-        peerId: routePeerId,
-        requirements: cloneMultiplayerPayload(ownerRequirements),
-        command: command ? cloneMultiplayerPayload(command) : null,
-        seq,
-        actorIndex,
-        prevStateHash,
-        publicCheckpointHash,
-        actionIntent: actionIntent ? cloneMultiplayerPayload(actionIntent) : null,
-        createdAt: requestedAtMs,
-      });
-      setStatus(`Waiting for ${playerLabel} to generate hidden-card opening payloads`);
-      const requestPayload = {
-        type: "crypto_material_request",
-        protocolVersion: PROTOCOL_VERSION,
-        requestId,
-        matchId: currentAuditMatchId(),
-        requesterIndex: localSeat,
-        ...(seq !== null && seq !== undefined ? { seq: Number(seq) } : {}),
-        ...(actorIndex !== null && actorIndex !== undefined ? { actorIndex: Number(actorIndex) } : {}),
-        prevStateHash,
-        publicCheckpointHash,
-        requirements: ownerRequirements,
-        ...(command ? { command: cloneMultiplayerPayload(command) } : {}),
-        ...(actionIntent ? { actionIntent: cloneMultiplayerPayload(actionIntent) } : {}),
-      };
-      const responsePerf = {
-        owner,
-        peer_id: routePeerId,
-        request_id: requestId,
-        command: summarizePeerCommand(command),
-        seq: seq == null ? null : Number(seq),
-        actor: actorIndex == null ? null : Number(actorIndex),
-        requirements: summarizeCryptoRequirementsForPerf(ownerRequirements),
-        request_preview: requestPreview,
-        request_bytes: payloadSizeBytes(requestPayload),
-      };
-      recordPeerSyncPerf("collect_remote_crypto_material:send_request", responsePerf);
-      safeSend(conn, requestPayload);
-      try {
-        const response = await timePeerSyncPhase(
-          "collect_remote_crypto_material:wait_response",
-          responsePerf,
-          () => waitForProtocolResponse(waiter, {
-            basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
-            targetPlayerIndex: owner,
-            targetPeerId: player.peerId,
-            requesterIndex: localSeat,
-            requestType: requestPayload.type,
-            requestId,
-            requestPayload,
-            responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
-            requestedAtMs,
-          })
-        );
-        recordPeerSyncPerf("collect_remote_crypto_material:received_response", {
-          ...responsePerf,
-          material: summarizeCryptoMaterialForPerf(response),
-        });
-        responses.push(response);
-      } finally {
-        outboundCryptoMaterialRequestsRef.current.delete(requestId);
-      }
+    // Fan out one request per responsible seat concurrently: a hidden action in
+    // a 3-4 player game needs material from multiple peers, and awaiting each in
+    // series made the actor's latency scale linearly with player count. The
+    // reveal-token collector already uses this pattern; the waiter infra is
+    // keyed by requestId so concurrent waiters are safe.
+    if (materialByOwner.size > 0) {
+      setStatus("Waiting for players to generate hidden-card opening payloads");
     }
+    const ownerResponses = await Promise.all(
+      [...materialByOwner].map(async ([owner, ownerRequirements]) => {
+        const player = players.find((entry) => Number(entry.index) === owner);
+        const routePeerId = routePeerIdForPlayer(player);
+        if (!routePeerId) {
+          throw new Error(`Missing peer route for cryptographic material from player ${owner + 1}`);
+        }
+        const conn = await waitForZiffleRoute(routePeerId);
+        const requestId = makeZiffleRequestId("crypto-material");
+        const playerLabel = player.name || `Player ${owner + 1}`;
+        const requestedAtMs = Date.now();
+        const waiter = waitForCryptoMaterial(requestId, PROTOCOL_RESPONSE_TIMEOUT_MS, {
+          peerIndex: owner,
+          peerName: playerLabel,
+          description:
+            `${playerLabel} is generating hidden-card opening payloads for this action.`,
+        });
+        outboundCryptoMaterialRequestsRef.current.set(requestId, {
+          owner,
+          targetSeat: owner,
+          peerId: routePeerId,
+          requirements: cloneMultiplayerPayload(ownerRequirements),
+          command: command ? cloneMultiplayerPayload(command) : null,
+          seq,
+          actorIndex,
+          prevStateHash,
+          publicCheckpointHash,
+          actionIntent: actionIntent ? cloneMultiplayerPayload(actionIntent) : null,
+          createdAt: requestedAtMs,
+        });
+        const requestPayload = {
+          type: "crypto_material_request",
+          protocolVersion: PROTOCOL_VERSION,
+          requestId,
+          matchId: currentAuditMatchId(),
+          requesterIndex: localSeat,
+          ...(seq !== null && seq !== undefined ? { seq: Number(seq) } : {}),
+          ...(actorIndex !== null && actorIndex !== undefined ? { actorIndex: Number(actorIndex) } : {}),
+          prevStateHash,
+          publicCheckpointHash,
+          requirements: ownerRequirements,
+          ...(command ? { command: cloneMultiplayerPayload(command) } : {}),
+          ...(actionIntent ? { actionIntent: cloneMultiplayerPayload(actionIntent) } : {}),
+        };
+        const responsePerf = {
+          owner,
+          peer_id: routePeerId,
+          request_id: requestId,
+          command: summarizePeerCommand(command),
+          seq: seq == null ? null : Number(seq),
+          actor: actorIndex == null ? null : Number(actorIndex),
+          requirements: summarizeCryptoRequirementsForPerf(ownerRequirements),
+          request_preview: requestPreview,
+          request_bytes: payloadSizeBytes(requestPayload),
+        };
+        recordPeerSyncPerf("collect_remote_crypto_material:send_request", responsePerf);
+        safeSend(conn, requestPayload);
+        try {
+          const response = await timePeerSyncPhase(
+            "collect_remote_crypto_material:wait_response",
+            responsePerf,
+            () => waitForProtocolResponse(waiter, {
+              basisSequence: Number(multiplayerRef.current.lastAppliedSequence || 0),
+              targetPlayerIndex: owner,
+              targetPeerId: player.peerId,
+              requesterIndex: localSeat,
+              requestType: requestPayload.type,
+              requestId,
+              requestPayload,
+              responseTimeoutMs: PROTOCOL_RESPONSE_TIMEOUT_MS,
+              requestedAtMs,
+            })
+          );
+          recordPeerSyncPerf("collect_remote_crypto_material:received_response", {
+            ...responsePerf,
+            material: summarizeCryptoMaterialForPerf(response),
+          });
+          return response;
+        } finally {
+          outboundCryptoMaterialRequestsRef.current.delete(requestId);
+        }
+      })
+    );
+    responses.push(...ownerResponses);
 
     const merged = {
       openings: mergeAuditOpenings(...responses.map((response) => response.openings || [])),
@@ -14017,12 +14059,22 @@ export function usePeerLobby({
     if (!pending) return false;
     if (String(pending.peerId || "") !== String(message?.requesterPeerId || "")) return false;
     if (!pending.actionIntent) return false;
-    if (Number(pending.owner) !== Number(owner)) return false;
-    if (Number(pending.owner) !== Number(requester)) return false;
+    // The peer we asked for material is the seat responsible for the
+    // requirement: the deck owner, or the viewer of a non-owner private view
+    // (who must collect our reveal token to aggregate the card locally).
+    if (Number(pending.targetSeat ?? pending.owner) !== Number(requester)) return false;
     const requested = new Set((positions || []).map((position) => Number(position)));
     const allowed = new Set();
     for (const requirement of pending.requirements || []) {
       if (Number(requirement?.owner) !== Number(owner)) continue;
+      const type = ziffleRequirementType(requirement);
+      if (
+        (type === "private_open" || type === "private_view_window")
+        && ziffleRequirementViewer(requirement) !== Number(requester)
+        && Number(requirement.owner) !== Number(requester)
+      ) {
+        continue;
+      }
       const position =
         zifflePositionFromCommitment(requirement.commitment)
         ?? zifflePositionFromCommitment(requirement.positionCommitment)
@@ -14354,7 +14406,9 @@ export function usePeerLobby({
     if (!auth || typeof auth !== "object") return reject("missing_action_authorization");
     if (String(auth.matchId || "") !== String(currentAuditMatchId())) return reject("match_id_mismatch");
     if (Number(auth.requesterIndex) !== Number(requester)) return reject("requester_index_mismatch");
-    if (Number(requester) !== Number(owner)) return reject("requester_is_not_owner");
+    // The requester may be the deck owner (its own reveals) or the viewer of a
+    // non-owner private view (mental-poker flow); requirement checks below
+    // only authorize private positions whose viewer is the requester.
     const sequence = Number(auth.seq);
     if (!Number.isSafeInteger(sequence) || sequence <= 0) return reject("invalid_sequence");
     if (!auth.command || typeof auth.command !== "object") return reject("missing_command");
@@ -14410,15 +14464,19 @@ export function usePeerLobby({
       );
       if (authorizedByOpenCount && debug) debug.reason = "authorized_by_stored_open_count";
       if (authorizedByOpenCount) return true;
-      const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
-        owner,
-        String(ceremony?.deckHash || ""),
-        positions,
-        2000
-      );
-      if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
-        if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
-        return true;
+      // The visible-state fallback derives positions from zones the OWNER is
+      // entitled to open; never extend it to other requesters.
+      if (Number(requester) === Number(owner)) {
+        const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
+          owner,
+          String(ceremony?.deckHash || ""),
+          positions,
+          2000
+        );
+        if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
+          if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
+          return true;
+        }
       }
       return reject("stored_requirements_do_not_authorize_positions");
     }
@@ -14575,15 +14633,17 @@ export function usePeerLobby({
     if (authorizedByMulliganShuffle && debug) debug.reason = "authorized_by_attached_mulligan_shuffle";
     if (authorizedByMulliganShuffle) return true;
 
-    const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
-      owner,
-      String(ceremony?.deckHash || ""),
-      positions,
-      2000
-    );
-    if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
-      if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
-      return true;
+    if (Number(requester) === Number(owner)) {
+      const authorizedByVisibleState = await waitForAuthorizedZiffleRevealPositions(
+        owner,
+        String(ceremony?.deckHash || ""),
+        positions,
+        2000
+      );
+      if ([...positions].every((position) => authorizedByVisibleState.has(Number(position)))) {
+        if (debug) debug.reason = "authorized_by_visible_current_hidden_zone_state";
+        return true;
+      }
     }
     return reject("requirements_do_not_authorize_positions");
   }
@@ -14593,8 +14653,8 @@ export function usePeerLobby({
     try {
       const requester = playerIndexForPeerId(conn?.peer);
       const requestedOwner = Number(message.ceremonyOwner);
-      if (requester == null || Number(requester) !== requestedOwner) {
-        throw new Error("Ziffle reveal tokens can only be requested by the deck owner");
+      if (requester == null) {
+        throw new Error("Ziffle reveal tokens can only be requested by a match player");
       }
       const lookup = {
         deckHash: message.deckHash,
@@ -14706,13 +14766,17 @@ export function usePeerLobby({
           ceremony,
           actionAuthorizationDebug
         );
-      const allowedPositions = (authorizedByCryptoRequest || authorizedByAction)
-        ? new Set()
-        : await waitForAuthorizedZiffleRevealPositions(
-          requestedOwner,
-          String(ceremony.deckHash || message.deckHash || ""),
-          cardPositions
-        );
+      // The visible-state fallback only applies to the deck owner re-opening
+      // positions it is already entitled to; other requesters must carry an
+      // explicit authorization.
+      const allowedPositions =
+        (authorizedByCryptoRequest || authorizedByAction || Number(requester) !== requestedOwner)
+          ? new Set()
+          : await waitForAuthorizedZiffleRevealPositions(
+            requestedOwner,
+            String(ceremony.deckHash || message.deckHash || ""),
+            cardPositions
+          );
       for (const position of cardPositions) {
         if (
           !allowedPositions.has(Number(position))

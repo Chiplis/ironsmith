@@ -5765,6 +5765,214 @@ guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-12
   }
 });
 
+test("full UI PeerJS Mishra's Bauble shows the targeted player's library top card to its controller", { timeout: 300000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const hostDeck = deckUrlParam("60 Mishra's Bauble");
+    const guestDeck = deckUrlParam("60 Lightning Bolt");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${hostDeck}`, "host-bauble-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a Mishra's Bauble lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${guestDeck}`,
+      "guest-bauble-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    let castBauble = false;
+    let baubleResolved = false;
+    let activatedBauble = false;
+    let targetedGuest = false;
+    let sawLibraryTopCard = false;
+    let lastCombinedText = "";
+
+    for (let step = 0; step < 90 && !sawLibraryTopCard; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      assertNoSyncFailureText(combinedText, "Mishra's Bauble opponent-library look should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Ziffle reveal-token request is not authorized|Missing audit material for private_view_window|Cheat detected|Invalid priority action ref|Action order mismatch/i,
+        `Mishra's Bauble opponent-library look should authorize its private view window
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`
+      );
+
+      if (!castBauble) {
+        const result = await clickLocalButton(hostPage, "host-cast-bauble", /MISHRA.S BAUBLE/i);
+        if (result) {
+          castBauble = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (castBauble && !baubleResolved) {
+        if (/BF\s*1/i.test(hostText) && /Mishra's Bauble[\s\S]*Battlefield/i.test(hostText)) {
+          baubleResolved = true;
+          continue;
+        }
+        const hostPass = await clickLocalButton(hostPage, "host-pass-bauble", /PASS PRIORITY|RESOLVE/i);
+        if (hostPass) {
+          await sleep(2500);
+          continue;
+        }
+        const guestPass = await clickLocalButton(guestPage, "guest-resolve-bauble", /PASS PRIORITY|RESOLVE/i);
+        if (guestPass) {
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (baubleResolved && !activatedBauble) {
+        const result = await clickLocalButton(hostPage, "host-activate-bauble", /Look at the top card/i);
+        if (result) {
+          activatedBauble = true;
+          await sleep(2500);
+          continue;
+        }
+        await sleep(1000);
+        continue;
+      }
+
+      if (activatedBauble && !targetedGuest) {
+        await hostPage.evaluate(() => {
+          window.dispatchEvent(new CustomEvent("ironsmith:target-choice", {
+            detail: { target: { kind: "player", player: 1 } },
+          }));
+        });
+        await sleep(250);
+        const submittedTargets = await clickLocalButton(
+          hostPage,
+          "host-submit-bauble-target",
+          /SUBMIT TARGETS|SUBMIT/i,
+        );
+        if (submittedTargets) {
+          targetedGuest = true;
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (targetedGuest && !sawLibraryTopCard) {
+        if (/Look at cards from the top of a library[\s\S]*Lightning Bolt/i.test(hostText)) {
+          sawLibraryTopCard = true;
+          break;
+        }
+        const hostPass = await clickLocalButton(hostPage, "host-pass-bauble-ability", /PASS PRIORITY|RESOLVE/i);
+        if (hostPass) {
+          await sleep(2500);
+          continue;
+        }
+        const guestResolve = await clickLocalButton(guestPage, "guest-resolve-bauble-ability", /RESOLVE|PASS PRIORITY/i);
+        if (guestResolve) {
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (!castBauble) {
+        const hostAdvanced = await clickLocalButton(hostPage, "host-setup-bauble", /KEEP HAND|PREGAME|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i);
+        if (hostAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+        const guestAdvanced = await clickLocalButton(guestPage, "guest-setup-bauble", /KEEP HAND|PREGAME|UPKEEP|DRAW|MAIN|PASS PRIORITY|RESOLVE/i);
+        if (guestAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+      }
+
+      await sleep(1000);
+    }
+
+    assert.equal(castBauble, true, `expected host to cast Mishra's Bauble\n${lastCombinedText}`);
+    assert.equal(baubleResolved, true, `expected Mishra's Bauble to resolve to the battlefield\n${lastCombinedText}`);
+    assert.equal(activatedBauble, true, `expected host to activate Mishra's Bauble\n${lastCombinedText}`);
+    assert.equal(targetedGuest, true, `expected host to target the other player with Mishra's Bauble\n${lastCombinedText}`);
+    if (!sawLibraryTopCard) {
+      assert.fail(`expected Mishra's Bauble to show the targeted player's library top card to its controller
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-120), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-120), null, 2)}
+last body:
+${lastCombinedText}`);
+    }
+    await sleep(4000);
+    const settledText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(settledText, "Mishra's Bauble look should stay synced after the reveal");
+    assert.doesNotMatch(
+      settledText,
+      /Ziffle reveal-token request is not authorized|Missing audit material for private_view_window/i,
+      "Mishra's Bauble private view window audit material should be complete after the reveal",
+    );
+    const [hostTranscript, guestTranscript] = await Promise.all([
+      hostPage.evaluate(() => window.__ironsmithE2E?.auditTranscript?.() || null),
+      guestPage.evaluate(() => window.__ironsmithE2E?.auditTranscript?.() || null),
+    ]);
+    const hostDisclosures = hostTranscript?.privateViewDisclosures || [];
+    const guestDisclosures = guestTranscript?.privateViewDisclosures || [];
+    assert.ok(
+      hostDisclosures.some((disclosure) =>
+        Number(disclosure?.owner ?? disclosure?.payload?.owner) === 1
+        && Number(disclosure?.viewer ?? disclosure?.payload?.viewer) === 0
+        && /Lightning Bolt/i.test(JSON.stringify(disclosure?.payload || {}))
+      ),
+      `expected the viewer to hold the private-view disclosure for the looked-at card\n${JSON.stringify(hostDisclosures, null, 2)}`,
+    );
+    assert.equal(
+      guestDisclosures.length,
+      0,
+      "expected the deck owner to never decrypt the looked-at card (mental-poker flow): "
+      + JSON.stringify(guestDisclosures, null, 2),
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("full UI PeerJS Tainted Pact resolution reveals choices and stays synced", { timeout: 240000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);
