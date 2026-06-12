@@ -303,6 +303,13 @@ fn tagged_permission_target_surface(tokens: &[OwnedLexToken]) -> TaggedPermissio
         TaggedPermissionTargetSurface::SingleTaggedObject
     } else if PLURAL_TAGGED_CARDS_PATTERN.match_clause(clause).is_some() {
         TaggedPermissionTargetSurface::PluralTaggedCards
+    } else if token_word_refs(tokens)
+        .windows(5)
+        .any(|window| window == ["from", "among", "cards", "exiled", "with"])
+    {
+        // "a spell from among cards exiled with this <type>" — a tagged pool
+        // reference, eligible for free-cast windows.
+        TaggedPermissionTargetSurface::PluralTaggedCards
     } else {
         TaggedPermissionTargetSurface::Other
     }

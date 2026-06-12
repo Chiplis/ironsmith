@@ -517,6 +517,8 @@ pub struct DealDamageEffect {
     pub amount: Value,
     pub target: ChooseSpec,
     pub source_is_combat: bool,
+    /// "The damage can't be prevented." rider on this damage.
+    pub unpreventable: bool,
 }
 
 impl DealDamageEffect {
@@ -525,11 +527,17 @@ impl DealDamageEffect {
             amount: amount.into(),
             target,
             source_is_combat: false,
+            unpreventable: false,
         }
     }
 
     pub fn with_combat(mut self, is_combat: bool) -> Self {
         self.source_is_combat = is_combat;
+        self
+    }
+
+    pub fn with_unpreventable(mut self, unpreventable: bool) -> Self {
+        self.unpreventable = unpreventable;
         self
     }
 }
@@ -1613,6 +1621,36 @@ impl<E> ExecuteWithSourceEffect<E> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct RetainManaUntilEndOfTurnEffect {
     pub player: PlayerFilter,
+}
+
+/// "Turn the exiled card face up." / "Turn it face up."
+#[derive(Debug, Clone, PartialEq)]
+pub struct TurnFaceUpEffect {
+    pub target: ChooseSpec,
+}
+
+impl TurnFaceUpEffect {
+    pub fn new(target: ChooseSpec) -> Self {
+        Self { target }
+    }
+}
+
+/// "It becomes foretold. Its foretell cost is its mana cost reduced by {N}."
+#[derive(Debug, Clone, PartialEq)]
+pub struct BecomeForetoldEffect {
+    pub target: ChooseSpec,
+    /// Generic-mana reduction applied to the card's mana cost to form its
+    /// foretell cost.
+    pub cost_reduction: u32,
+}
+
+impl BecomeForetoldEffect {
+    pub fn new(target: ChooseSpec, cost_reduction: u32) -> Self {
+        Self {
+            target,
+            cost_reduction,
+        }
+    }
 }
 
 impl RetainManaUntilEndOfTurnEffect {

@@ -620,6 +620,7 @@ pub(crate) enum PredicateAst {
         subtype: Subtype,
     },
     SourceAttackedThisTurn,
+    SourceSuspected,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
     SourceIsInZone(Zone),
@@ -635,6 +636,7 @@ pub(crate) enum PredicateAst {
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
     YouHaveFullParty,
     YouAttackedThisTurn,
+    YouAttackedWithNOrMoreCreaturesThisTurn(u32),
     SourceWasCast,
     ThisSpellEscaped,
     NoSpellsWereCastLastTurn,
@@ -687,6 +689,7 @@ impl PredicateAst {
             | PredicateAst::SourceHasAttachmentsMatching { .. }
             | PredicateAst::SourcePowerAtLeast(_)
             | PredicateAst::SourceAttackedThisTurn
+            | PredicateAst::SourceSuspected
             | PredicateAst::SourceCameUnderYourControlThisTurn
             | PredicateAst::SourceAttackedOrBlockedThisTurn
             | PredicateAst::SourceIsInZone(_)
@@ -1531,6 +1534,10 @@ pub(crate) enum SubjectVerbActionAst {
     },
     DealDamage {
         amount: Value,
+        target: TargetAst,
+        unpreventable: bool,
+    },
+    TurnFaceUp {
         target: TargetAst,
     },
     DealDamageEach {
@@ -3037,7 +3044,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("ability", ability)
                 .field("duration", duration)
                 .finish(),
-            Self::DealDamage { amount, target } => f
+            Self::TurnFaceUp { target } => f
+                .debug_struct("TurnFaceUp")
+                .field("target", target)
+                .finish(),
+            Self::DealDamage { amount, target, .. } => f
                 .debug_struct("DealDamage")
                 .field("amount", amount)
                 .field("target", target)
@@ -5467,7 +5478,11 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::DealDamage { amount, target },
+            SubjectVerbActionAst::DealDamage {
+                amount,
+                target,
+                unpreventable: false,
+            },
         )
     }
 

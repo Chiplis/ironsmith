@@ -1002,7 +1002,7 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage_mat
         return Ok(None);
     };
     let (main_amount, main_target) = if let EffectAst::SubjectVerb(subject_verb) = main_damage
-        && let SubjectVerbActionAst::DealDamage { amount, target } = &subject_verb.action
+        && let SubjectVerbActionAst::DealDamage { amount, target, .. } = &subject_verb.action
     {
         (amount, target)
     } else {

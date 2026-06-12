@@ -1091,6 +1091,12 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("to each of three", "to three"),
         ("to each of four", "to four"),
         ("to each of up to", "to up to"),
+        // Post-search shuffle surfaces: the per-player conditional shuffle
+        // is the same event as "each player who searched ... shuffles".
+        (
+            "If an opponent does, shuffle that player's library",
+            "Then each player who searched their library this way shuffles",
+        ),
         // The shuffled library is implicit: modern oracle says "Then
         // shuffle." where older templating says "shuffles their library".
         ("shuffle your library", "shuffle"),

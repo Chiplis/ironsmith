@@ -767,6 +767,8 @@ pub enum Condition {
         count: u32,
     },
     AttackedThisTurn,
+    /// "you attacked with N or more creatures this turn"
+    AttackedWithNOrMoreCreaturesThisTurn(u32),
     OpponentLostLifeThisTurn,
     PermanentLeftBattlefieldThisTurn,
     PermanentLeftBattlefieldUnderYourControlThisTurn,
@@ -918,6 +920,8 @@ pub enum Condition {
     },
     OwnsCardExiledWithCounter(CounterType),
     SourceAttackedThisTurn,
+    /// "this creature is suspected"
+    SourceSuspected,
     SourceCameUnderYourControlThisTurn,
     SourceAttackedOrBlockedThisTurn,
     SourceIsUntapped,

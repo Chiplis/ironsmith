@@ -30,6 +30,9 @@ const HAND_REVEAL_HEIGHT_DEFAULT = 164;
 const TOP_LEFT_INSPECTOR_INSET = 6;
 const TOP_LEFT_INSPECTOR_ZONE_GAP = 6;
 const TOP_LEFT_INSPECTOR_MIN_HEIGHT = 96;
+// How far the inspector may grow past its dock strip (over the opponents'
+// board) when a long-text card needs the room.
+const INSPECTOR_DOCK_BOARD_OVERLAP = 120;
 const HAND_LANE_HOVER_FUZZ = 6;
 const TRANSITION_TRACKED_ZONE_IDS = ["battlefield", "hand", "graveyard", "exile", "command"];
 const SINGLE_ACTION_AUTO_DROP_MIN_DISTANCE_SQ = 18 * 18;
@@ -1690,6 +1693,7 @@ export default function Workspace({
                 inline
                 inlineDockPlacement="top"
                 inlineExpandedAnchor="top"
+                inlineExpandedOverflowAllowance={INSPECTOR_DOCK_BOARD_OVERLAP}
                 expandInlineToZoneViewer
                 inlineFillHeight
                 allowTopInlinePlacement
@@ -1719,6 +1723,8 @@ export default function Workspace({
               inline
               inlineDockPlacement="top"
               inlineExpandedSide="left"
+              inlineExpandedAnchor="top"
+              inlineExpandedOverflowAllowance={INSPECTOR_DOCK_BOARD_OVERLAP}
               inlineFillWidth
               allowTopInlinePlacement
             />

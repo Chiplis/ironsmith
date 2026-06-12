@@ -2419,13 +2419,35 @@ pub fn process_damage_assignments_with_event_with_source_snapshot(
     cause: crate::events::cause::EventCause,
     source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
 ) -> ProcessedDamageResult {
+    process_damage_assignments_with_event_with_source_snapshot_opts(
+        game,
+        source,
+        target,
+        amount,
+        is_combat,
+        false,
+        cause,
+        source_snapshot,
+    )
+}
+
+pub fn process_damage_assignments_with_event_with_source_snapshot_opts(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    target: DamageTarget,
+    amount: u32,
+    is_combat: bool,
+    unpreventable: bool,
+    cause: crate::events::cause::EventCause,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+) -> ProcessedDamageResult {
     use crate::events::{DamageEvent, downcast_event};
 
     game.update_cant_effects();
     game.update_replacement_effects();
 
     // Check if damage can be prevented
-    let can_prevent = game.can_prevent_damage();
+    let can_prevent = !unpreventable && game.can_prevent_damage();
 
     // Create the event using the new Event type
     let event = if can_prevent {

@@ -683,6 +683,27 @@ pub(crate) fn parse_gain_life(
         ));
     }
 
+    // "gains no life [instead]" — a prevention rider ("If <player> would gain
+    // life this turn, that player gains no life instead", Flames of the Blood
+    // Hand). Model as a can't-gain-life window for the damaged player.
+    {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        if matches!(
+            words.as_slice(),
+            ["no", "life", "instead"] | ["no", "life", "this", "turn", "instead"] | ["no", "life"]
+        ) {
+            let restricted = match player {
+                PlayerAst::You => crate::target::PlayerFilter::You,
+                _ => crate::target::PlayerFilter::DamagedPlayer,
+            };
+            return Ok(EffectAst::subject_verb_cant(
+                crate::effect::Restriction::gain_life(restricted),
+                Until::EndOfTurn,
+                None,
+            ));
+        }
+    }
+
     let (mut amount, used) = parse_life_amount(tokens, "life gain")?;
 
     let rest = &tokens[used..];

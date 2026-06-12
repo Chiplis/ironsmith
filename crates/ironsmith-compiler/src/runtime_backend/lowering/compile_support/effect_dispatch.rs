@@ -4289,7 +4289,18 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::DealDamage { amount, target } => {
+        SubjectVerbActionAst::TurnFaceUp { target } => {
+            let (effects, choices) =
+                compile_tagged_effect_for_target(target, ctx, "turned_face_up", |spec| {
+                    Effect::turn_face_up(spec)
+                })?;
+            Ok((effects, choices))
+        }
+        SubjectVerbActionAst::DealDamage {
+            amount,
+            target,
+            unpreventable,
+        } => {
             let mut resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
                 target
@@ -4302,7 +4313,11 @@ fn compile_subject_verb_effect(
             }
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
-                    Effect::deal_damage(resolved_amount.clone(), spec)
+                    if *unpreventable {
+                        Effect::deal_unpreventable_damage(resolved_amount.clone(), spec)
+                    } else {
+                        Effect::deal_damage(resolved_amount.clone(), spec)
+                    }
                 })?;
             if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
                 target

@@ -162,7 +162,7 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
-    ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
+    ReconfigureEffect, RegenerateEffect, RenownEffect, TurnFaceUpEffect, SaddleCostEffect, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
     UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UntapEffect,
 };

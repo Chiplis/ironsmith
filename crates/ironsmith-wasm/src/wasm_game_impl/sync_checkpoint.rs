@@ -153,6 +153,8 @@ struct SyncObject {
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
+    #[serde(default)]
+    suspected: bool,
     plotted_by: Option<u8>,
     plotted_turn: Option<u32>,
     damage_marked: u32,
@@ -235,6 +237,8 @@ struct PublicAuditObject {
     phased_out: bool,
     madness_exiled: bool,
     foretold: bool,
+    #[serde(default)]
+    suspected: bool,
     plotted_by: Option<u8>,
     plotted_turn: Option<u32>,
     damage_marked: u32,
@@ -721,6 +725,7 @@ impl WasmGame {
             "faceDown": self.game.is_face_down(id),
             "manifested": self.game.is_manifested(id),
             "foretold": self.game.is_foretold(id),
+            "suspected": self.game.is_suspected(id),
             "plottedBy": self
                 .game
                 .plotted_cards
@@ -854,6 +859,7 @@ impl WasmGame {
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
+                    suspected: self.game.is_suspected(id),
                     plotted_by: self
                         .game
                         .plotted_cards
@@ -1051,6 +1057,7 @@ impl WasmGame {
                     phased_out: self.game.is_phased_out(id),
                     madness_exiled: self.game.is_madness_exiled(id),
                     foretold: self.game.is_foretold(id),
+                    suspected: self.game.is_suspected(id),
                     plotted_by: self
                         .game
                         .plotted_cards
@@ -1493,6 +1500,9 @@ impl WasmGame {
             }
             if object.foretold {
                 self.game.set_foretold(id);
+            }
+            if object.suspected {
+                self.game.set_suspected(id);
             }
             if let Some(player) = object.plotted_by {
                 self.game

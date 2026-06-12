@@ -1008,6 +1008,15 @@ fn evaluate_condition_shared_core(
                 .players_attacked_this_turn
                 .contains(&ctx.controller),
         ),
+        Condition::AttackedWithNOrMoreCreaturesThisTurn(count) => Some(
+            game.turn_store
+                .turn_history
+                .creatures_attacked_this_turn
+                .iter()
+                .filter(|id| game.current_controller(**id) == Some(ctx.controller))
+                .count() as u32
+                >= *count,
+        ),
         Condition::OpponentLostLifeThisTurn => {
             let filter_ctx = game.filter_context_for(ctx.controller, ctx.filter_source);
             Some(filter_ctx.opponents.iter().any(|opponent| {
@@ -1220,6 +1229,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CreatureCardPutIntoYourGraveyardThisTurn => {}
         Condition::CastSpellThisTurn => {}
         Condition::AttackedThisTurn => {}
+        Condition::AttackedWithNOrMoreCreaturesThisTurn(..) => {}
         Condition::OpponentLostLifeThisTurn => {}
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
@@ -1306,6 +1316,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::CountParity { .. } => {}
         Condition::OwnsCardExiledWithCounter(..) => {}
         Condition::SourceAttackedThisTurn => {}
+        Condition::SourceSuspected => {}
         Condition::SourceCameUnderYourControlThisTurn => {}
         Condition::SourceIsUntapped => {}
         Condition::SourceIsAttacking => {}
@@ -2060,6 +2071,7 @@ pub fn evaluate_condition_external(
         }),
 
         Condition::SourceAttackedThisTurn => game.creature_attacked_this_turn(ctx.source),
+        Condition::SourceSuspected => game.is_suspected(ctx.source),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             game.source_dealt_combat_damage_to_player_this_turn(ctx.source)
         }
@@ -2172,6 +2184,7 @@ pub fn evaluate_condition_external(
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
+        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
@@ -2865,6 +2878,7 @@ fn evaluate_condition_simple(
         | Condition::CountParity { .. }
         | Condition::OwnsCardExiledWithCounter(_)
         | Condition::SourceAttackedThisTurn
+        | Condition::SourceSuspected
         | Condition::SourceDealtCombatDamageToPlayerThisTurn
         | Condition::SourceCameUnderYourControlThisTurn
         | Condition::SourceAttackedOrBlockedThisTurn
@@ -2924,6 +2938,7 @@ fn evaluate_condition_simple(
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
+        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
@@ -4043,6 +4058,7 @@ fn evaluate_condition(
             })
         })),
         Condition::SourceAttackedThisTurn => Ok(game.creature_attacked_this_turn(ctx.source)),
+        Condition::SourceSuspected => Ok(game.is_suspected(ctx.source)),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             Ok(game.source_dealt_combat_damage_to_player_this_turn(ctx.source))
         }
@@ -4074,6 +4090,7 @@ fn evaluate_condition(
         | Condition::CreatureDiedThisTurn
         | Condition::CastSpellThisTurn
         | Condition::AttackedThisTurn
+        | Condition::AttackedWithNOrMoreCreaturesThisTurn(_)
         | Condition::OpponentLostLifeThisTurn
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn

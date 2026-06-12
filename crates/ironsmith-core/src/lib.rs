@@ -71,7 +71,7 @@ pub use effect::{
     ApplyContinuousEffect, AttachObjectsEffect, AttachToEffect, AuraSwapEffect, BackupEffect,
     BattlefieldController, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
     BecomeCreatureTypeChoiceEffect, BecomeMonarchEffect, BecomeSaddledUntilEotEffect, BeholdEffect,
-    BidLifeEffect, BolsterEffect, CantEffect, CastSourceEffect, CastTaggedEffect, ChoiceCount,
+    BecomeForetoldEffect, BidLifeEffect, TurnFaceUpEffect, BolsterEffect, CantEffect, CastSourceEffect, CastTaggedEffect, ChoiceCount,
     ChooseCardNameEffect, ChooseCardTypeEffect, ChooseColorEffect, ChooseCreatureTypeEffect,
     ChooseModeEffect, ChooseNamedOptionEffect, ChooseNewTargetsEffect, ChooseObjectsEffect,
     ChoosePlayerEffect, ChooseSpellCastHistoryEffect, CipherEffect, ClashEffect, ClashOpponentMode,

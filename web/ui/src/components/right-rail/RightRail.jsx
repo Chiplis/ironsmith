@@ -271,6 +271,7 @@ export default function RightRail({
   inlineExpandedSide = "right",
   inlineExpandedAnchor = "bottom",
   inlineExpandedMaxHeight = null,
+  inlineExpandedOverflowAllowance = 0,
   expandInlineToZoneViewer = false,
   inlineFillWidth = false,
   inlineFillHeight = false,
@@ -286,6 +287,7 @@ export default function RightRail({
   const railMotionRef = useRef(null);
   const expandedMotionRef = useRef(null);
   const [expandedInlineHeight, setExpandedInlineHeight] = useState(INLINE_EXPANDED_DEFAULT_HEIGHT);
+  const [expandedInlineOverflowing, setExpandedInlineOverflowing] = useState(false);
   const [inspectorAccent, setInspectorAccent] = useState(null);
   const { hoveredObjectId, hoveredLinkedObjectIds } = useHover();
   const decision = state?.decision || null;
@@ -523,16 +525,29 @@ export default function RightRail({
       const heightCap = inlineExpandedMaxHeight == null
         ? availableHeight
         : Math.min(inlineExpandedMaxHeight, availableHeight);
-      const nextHeight = inlineFillHeight
+      const baseHeight = inlineFillHeight
         ? availableHeight
         : Math.max(
           minimumHeight,
           Math.min(Math.max(defaultExpandedHeight, preferredHeight), heightCap)
         );
+      // Long-card escape hatch: when the content needs more than the dock
+      // offers, let the shell overflow the dock by a bounded amount — and
+      // only by as much as the content actually needs.
+      const overflowAllowance = Math.max(0, Number(inlineExpandedOverflowAllowance) || 0);
+      const overflowBase = inlineFillHeight ? availableHeight : heightCap;
+      const nextHeight = (
+        overflowAllowance > 0
+        && hasPreferredHeight
+        && preferredHeight > overflowBase
+      )
+        ? Math.max(baseHeight, Math.min(preferredHeight, overflowBase + overflowAllowance))
+        : baseHeight;
 
       setExpandedInlineHeight((currentHeight) => (
         Math.abs(currentHeight - nextHeight) >= 1 ? nextHeight : currentHeight
       ));
+      setExpandedInlineOverflowing(nextHeight > availableHeight);
 
       const tierOverrides = getViewportTierInspectorOverrides();
       const effectiveExpandedMaxWidth = tierOverrides.expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
@@ -595,6 +610,7 @@ export default function RightRail({
     inline,
     inlineDockPlacement,
     inlineExpandedMaxHeight,
+    inlineExpandedOverflowAllowance,
     inlineFillHeight,
     preferredExpandedInlineHeight,
     expandInlineToZoneViewer,
@@ -668,7 +684,9 @@ export default function RightRail({
             ...(inline
               ? {
                 width: "100%",
-                height: inlineFillHeight ? "100%" : `${expandedInlineHeight}px`,
+                height: inlineFillHeight && !expandedInlineOverflowing
+                  ? "100%"
+                  : `${expandedInlineHeight}px`,
                 ...expandedInlineShellOffset,
               }
               : { width: "100%", height: "100%" }),

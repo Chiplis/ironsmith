@@ -4390,6 +4390,7 @@ fn parse_player_dealt_combat_damage_by_subtype_this_turn_shape(
 fn parse_combat_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     parse_you_attacked_this_turn_shape(tokens)
         .or_else(|| parse_triggering_object_had_to_attack_this_combat_shape(tokens))
+        .or_else(|| parse_you_attacked_with_n_or_more_creatures_shape(tokens))
         .or_else(|| parse_you_attacked_with_exactly_other_creatures_shape(tokens))
         .or_else(|| parse_source_attacked_or_blocked_this_turn_shape(tokens))
 }
@@ -4442,6 +4443,38 @@ fn parse_triggering_object_had_to_attack_this_combat_shape(
         return Some(PredicateAst::TriggeringObjectHadToAttackThisCombat);
     }
     None
+}
+
+/// "you attacked with N or more creatures this turn" (Windbrisk Heights)
+fn parse_you_attacked_with_n_or_more_creatures_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let tail_phrases: &[&[&str]] = &[
+        &["or", "more", "creatures", "this", "turn"],
+        &["or", "more", "creature", "this", "turn"],
+    ];
+    let atoms = [
+        LexPattern::subject("subject", LexCaptureKind::WordCount(1)),
+        LexPattern::action("action", LexCaptureKind::WordCount(2)),
+        LexPattern::amount("count", LexCaptureKind::UntilAnyPhrase(tail_phrases)),
+        LexPattern::object("object", LexCaptureKind::Rest),
+    ];
+    let matched = LexPattern::new(&atoms).match_clause(clause)?;
+    let subject_clause = matched.capture_clause_by_role(LexCaptureRole::Subject, clause)?;
+    if !is_you_clause(subject_clause) {
+        return None;
+    }
+    let action_clause = matched.capture_clause_by_role(LexCaptureRole::Action, clause)?;
+    if !clause_matches_phrase(action_clause, &["attacked", "with"]) {
+        return None;
+    }
+    let count_clause = matched.capture_clause_by_role(LexCaptureRole::Amount, clause)?;
+    let (count, used) = parse_number(count_clause.tokens())?;
+    if used != count_clause.tokens().len() {
+        return None;
+    }
+    Some(PredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count))
 }
 
 fn parse_you_attacked_with_exactly_other_creatures_shape(
@@ -6363,6 +6396,18 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
 
     if let Some(predicate) = parse_repeated_if_or_predicate(predicate_tokens)? {
         return Ok(predicate);
+    }
+    {
+        let simple_words = non_article_token_word_refs(predicate_tokens);
+        if matches!(
+            simple_words.as_slice(),
+            ["this", "creature", "is", "suspected"]
+                | ["this", "permanent", "is", "suspected"]
+                | ["it", "is", "suspected"]
+                | ["its", "suspected"]
+        ) {
+            return Ok(PredicateAst::SourceSuspected);
+        }
     }
     if let Some(predicate) = parse_secret_choices_match_predicate(predicate_tokens) {
         return Ok(predicate);

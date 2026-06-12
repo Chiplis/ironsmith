@@ -593,6 +593,17 @@ impl Effect {
         Self::new(DealDamageEffect::new(amount.into(), target))
     }
 
+    pub fn turn_face_up(target: crate::target::ChooseSpec) -> Self {
+        Self::new(ironsmith_core::TurnFaceUpEffect::new(target))
+    }
+
+    pub fn deal_unpreventable_damage(
+        amount: impl Into<Value>,
+        target: crate::target::ChooseSpec,
+    ) -> Self {
+        Self::new(DealDamageEffect::new(amount.into(), target).with_unpreventable(true))
+    }
+
     pub fn choose_one(modes: Vec<EffectMode>) -> Self {
         Self::new(ChooseModeEffect::new(
             modes,

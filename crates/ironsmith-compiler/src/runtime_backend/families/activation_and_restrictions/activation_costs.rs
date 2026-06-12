@@ -810,6 +810,19 @@ fn direct_cant_static_ability(
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // Multi-sentence lines ("Damage can't be prevented this turn. Stomp deals
+    // 2 damage to any target.") are effect sequences, not single static
+    // restrictions; the duration stripper would otherwise swallow the period
+    // and merge the sentences. Decline so the statement path splits them.
+    if tokens.iter().enumerate().any(|(idx, token)| {
+        matches!(token.kind, crate::runtime_backend::lexer::TokenKind::Period)
+            && tokens[idx + 1..]
+                .iter()
+                .any(|later| later.as_word().is_some())
+    }) {
+        return Ok(None);
+    }
+
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
         && remainder.as_slice() != tokens
     {

@@ -1571,6 +1571,67 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    // "If <damaged player refs> would gain life this turn, that player gains
+    // no life instead." == those players can't gain life this turn (Flames of
+    // the Blood Hand, Searing Blood riders).
+    if clause_words.first() == Some(&"if")
+        && clause_words.len() >= 10
+        && clause_words
+            .windows(5)
+            .any(|window| window == ["would", "gain", "life", "this", "turn"])
+        && clause_words.ends_with(&["gains", "no", "life", "instead"])
+    {
+        return Ok(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::gain_life(crate::target::PlayerFilter::DamagedPlayer),
+            Until::EndOfTurn,
+            None,
+        ));
+    }
+
+    // "The damage can't be prevented." rider — approximate with a
+    // damage-can't-be-prevented window for the turn (Flames of the Blood Hand).
+    if matches!(
+        clause_words.as_slice(),
+        ["the", "damage", "cant", "be", "prevented"] | ["damage", "cant", "be", "prevented"]
+            | ["that", "damage", "cant", "be", "prevented"]
+    ) {
+        return Ok(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::prevent_damage(),
+            Until::EndOfTurn,
+            None,
+        ));
+    }
+
+    // "Turn the exiled card face up." / "Turn it face up."
+    if matches!(
+        clause_words.as_slice(),
+        ["turn", "the", "exiled", "card", "face", "up"]
+            | ["turn", "exiled", "card", "face", "up"]
+    ) {
+        return Ok(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::TurnFaceUp {
+                target: TargetAst::Tagged(
+                    TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+                    span_from_tokens(tokens),
+                ),
+            },
+        ));
+    }
+    if matches!(
+        clause_words.as_slice(),
+        ["turn", "it", "face", "up"] | ["turn", "that", "card", "face", "up"]
+    ) {
+        return Ok(EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::You,
+            SubjectVerbActionAst::TurnFaceUp {
+                target: TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens)),
+            },
+        ));
+    }
+
     if word_slice_eq(&clause_words, PLANESWALK_WORDS) {
         return Ok(EffectAst::subject_verb_emit_keyword_action(
             crate::events::KeywordActionKind::Planeswalk,
@@ -1633,12 +1694,14 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed(
                 &tokens[if_idx..],
             )
-        && let Ok(head_effect) = parse_effect_clause(&trim_commas(&tokens[..if_idx]))
+        && let Ok(head_effects) =
+            super::parse_effect_sentence_lexed(&trim_commas(&tokens[..if_idx]))
+        && !head_effects.is_empty()
     {
         parser_trace("parse_effect_clause:trailing-if-fallback", tokens);
         return Ok(EffectAst::Conditional {
             predicate,
-            if_true: vec![head_effect],
+            if_true: head_effects,
             if_false: Vec::new(),
         });
     }

@@ -407,7 +407,7 @@ fn repair_that_object_power_damage_subject(
             continue;
         };
         match &subject_verb.action {
-            SubjectVerbActionAst::DealDamage { amount, target }
+            SubjectVerbActionAst::DealDamage { amount, target, .. }
                 if matches!(amount, Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source))
                     && matches!(target, TargetAst::Source(_)) =>
             {
@@ -2971,6 +2971,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
             | SubjectVerbActionAst::ConsultTopOfLibrary { .. }
             | SubjectVerbActionAst::AdditionalPhases { .. }
+            | SubjectVerbActionAst::TurnFaceUp { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::Cant { .. } => {}
             SubjectVerbActionAst::SearchLibrary {

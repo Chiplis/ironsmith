@@ -681,7 +681,61 @@ fn pre_rule_copy_and_cast_followups(
         }));
     }
 
+    // "The damage can't be prevented." — rider on the previous deal-damage
+    // effect (Flames of the Blood Hand, Skullcrack-style burn spells).
+    {
+        let words = crate::runtime_backend::front_end::shared::util::non_article_token_word_refs(
+            sentence_tokens,
+        );
+        if matches!(
+            words.as_slice(),
+            ["damage", "cant", "be", "prevented"] | ["that", "damage", "cant", "be", "prevented"]
+        ) && mark_last_deal_damage_unpreventable(state.effects)
+        {
+            return Ok(Some(PreParseFollowupResult::Handled {
+                consumed_sentences: 1,
+                route: None,
+            }));
+        }
+    }
+
     Ok(None)
+}
+
+fn mark_last_deal_damage_unpreventable(effects: &mut [EffectAst]) -> bool {
+    for effect in effects.iter_mut().rev() {
+        if mark_deal_damage_unpreventable_in_effect(effect) {
+            return true;
+        }
+    }
+    false
+}
+
+fn mark_deal_damage_unpreventable_in_effect(effect: &mut EffectAst) -> bool {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+            SubjectVerbActionAst::DealDamage { unpreventable, .. } => {
+                *unpreventable = true;
+                true
+            }
+            _ => false,
+        },
+        _ => {
+            let mut marked = false;
+            for_each_nested_effects_mut(effect, true, |nested| {
+                if marked {
+                    return;
+                }
+                for nested_effect in nested.iter_mut().rev() {
+                    if mark_deal_damage_unpreventable_in_effect(nested_effect) {
+                        marked = true;
+                        break;
+                    }
+                }
+            });
+            marked
+        }
+    }
 }
 
 fn pre_rule_token_followups(

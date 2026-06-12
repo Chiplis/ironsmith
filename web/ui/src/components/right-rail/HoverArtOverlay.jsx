@@ -19,7 +19,7 @@ const METADATA_TEXT_STYLE = {
   textShadow: "0 1px 2px rgba(0, 0, 0, 0.96), 0 2px 10px rgba(0, 0, 0, 0.84)",
 };
 const INSPECTOR_ART_SWAP_MS = 240;
-const MIN_INSPECTOR_TEXT_SCALE = 0.74;
+const MIN_INSPECTOR_TEXT_SCALE = 0.64;
 const MIN_INSPECTOR_TITLE_SCALE = 0.5;
 const INSPECTOR_TITLE_FONT_SIZE = 22;
 const COMPACT_INSPECTOR_TITLE_FONT_SIZE = 22;
@@ -38,6 +38,8 @@ const INSPECTOR_HEADER_HORIZONTAL_PADDING = 24;
 const INSPECTOR_ORACLE_ART_WIDTH_ALLOWANCE = 72;
 const INSPECTOR_LEFT_ART_HEADER_ALLOWANCE = 188;
 const INSPECTOR_ORACLE_TOP_PADDING = 54;
+const INSPECTOR_HEADER_RULES_GAP = 12;
+const INSPECTOR_LOW_PROFILE_HEADER_RULES_GAP = 8;
 const INSPECTOR_ORACLE_BOTTOM_PADDING = 10;
 const INSPECTOR_ORACLE_HORIZONTAL_PADDING = 28;
 const INSPECTOR_ORACLE_EARLY_WRAP_WIDTH = 640;
@@ -648,6 +650,8 @@ export default function HoverArtOverlay({
   const [copiedDebug, setCopiedDebug] = useState(false);
   const [inspectorScaleSession, setInspectorScaleSession] = useState({ key: null, scale: 1 });
   const [inspectorTitleScaleSession, setInspectorTitleScaleSession] = useState({ key: null, scale: 1 });
+  const [measuredInspectorHeaderBottom, setMeasuredInspectorHeaderBottom] = useState(null);
+  const inspectorFitBoundsRef = useRef({ key: null, fit: null, overflow: null, clientHeight: 0, clientWidth: 0, topPadding: null });
   const [fontMeasureVersion, setFontMeasureVersion] = useState(0);
   const [renderedRulesWidth, setRenderedRulesWidth] = useState(null);
   const [translatedCardText, setTranslatedCardText] = useState(null);
@@ -1410,6 +1414,57 @@ export default function HoverArtOverlay({
   ]);
 
   useLayoutEffect(() => {
+    const measuringHeader = !compact && displayMode === "inspector";
+    const headerNode = measuringHeader ? topHeaderRef.current : null;
+
+    let rafId = null;
+    const publishHeaderBottom = () => {
+      rafId = null;
+      const node = measuringHeader ? topHeaderRef.current : null;
+      if (!node) {
+        setMeasuredInspectorHeaderBottom(null);
+        return;
+      }
+      const nextBottom = Math.ceil(node.offsetTop + node.offsetHeight);
+      setMeasuredInspectorHeaderBottom((current) => (
+        current != null && Math.abs(current - nextBottom) < 1 ? current : nextBottom
+      ));
+    };
+    const scheduleHeaderBottom = () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(publishHeaderBottom);
+    };
+
+    scheduleHeaderBottom();
+    if (!headerNode) {
+      return () => {
+        if (rafId != null) cancelAnimationFrame(rafId);
+      };
+    }
+
+    const observer = new ResizeObserver(scheduleHeaderBottom);
+    observer.observe(headerNode);
+    window.addEventListener("resize", scheduleHeaderBottom);
+
+    return () => {
+      if (rafId != null) cancelAnimationFrame(rafId);
+      observer.disconnect();
+      window.removeEventListener("resize", scheduleHeaderBottom);
+    };
+  }, [
+    activeInspectorTitleScale,
+    compact,
+    displayMode,
+    displayManaCost,
+    displayObjectName,
+    displayTypeLineBadges.length,
+    hasTopLeftInlineMetadata,
+    lowProfileInspector,
+    objectIdKey,
+    transitionTitle,
+  ]);
+
+  useLayoutEffect(() => {
     if (typeof onProtectedTopChange !== "function") return undefined;
     const leftNode = topHeaderRef.current;
     const rightNode = topMetadataRef.current;
@@ -1466,7 +1521,40 @@ export default function HoverArtOverlay({
 
     let rafId = null;
     const publishOracleHeight = () => {
-      onOracleTextHeightChange(Math.ceil(node.scrollHeight));
+      // Report the height the text needs at full scale, not at the currently
+      // shrunken one — otherwise the host sizes the inspector to the small
+      // text and the fit search can never grow it back. Measure the oracle
+      // body, not the container: the container is min-h-full, so its
+      // scrollHeight stretches to whatever size the host already granted and
+      // would latch the inspector at its grown height forever. Scaling the
+      // shrunken height by 1/scale is not enough either — full-size text
+      // re-wraps onto more lines — so measure an off-screen clone rendered
+      // at full font size in the current wrap width.
+      const scale = clampNumber(Number(activeInspectorTextScale) || 1, 0.01, 1);
+      const styles = getComputedStyle(node);
+      const padTop = parseFloat(styles.paddingTop) || 0;
+      const padBottom = parseFloat(styles.paddingBottom) || 0;
+      const body = oracleBodyRef.current;
+      let contentHeight;
+      if (body && scale < 0.999) {
+        const clone = body.cloneNode(true);
+        clone.style.position = "fixed";
+        clone.style.left = "-10000px";
+        clone.style.top = "0";
+        clone.style.width = `${body.clientWidth}px`;
+        clone.style.maxWidth = "none";
+        for (const line of clone.querySelectorAll(".inspector-oracle-line")) {
+          line.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
+        }
+        document.body.appendChild(clone);
+        contentHeight = clone.scrollHeight;
+        clone.remove();
+      } else if (body) {
+        contentHeight = body.scrollHeight;
+      } else {
+        contentHeight = Math.max(0, (node.scrollHeight - padTop - padBottom) / scale);
+      }
+      onOracleTextHeightChange(Math.ceil(padTop + padBottom + contentHeight));
     };
 
     publishOracleHeight();
@@ -1531,6 +1619,14 @@ export default function HoverArtOverlay({
     [onInspectorAccentChange]
   );
 
+  const measuredOracleTopPadding = measuredInspectorHeaderBottom == null
+    ? null
+    : measuredInspectorHeaderBottom + (
+      lowProfileInspector
+        ? INSPECTOR_LOW_PROFILE_HEADER_RULES_GAP
+        : INSPECTOR_HEADER_RULES_GAP
+    );
+
   useLayoutEffect(() => {
     if (compact || displayMode !== "inspector") return undefined;
 
@@ -1546,12 +1642,53 @@ export default function HoverArtOverlay({
         : 1;
       const preferredWidth = Number(resolvedPreferredInspectorWidth);
       const availableWidth = Number(availableInspectorWidth);
+      const clientHeight = scroller.clientHeight;
+      const clientWidth = scroller.clientWidth;
+      // Fit the text against the padding-free room using the body's own
+      // height: the container is min-h-full, so the scroller's scrollHeight
+      // can never reveal slack below the text (it always reads ≈clientHeight
+      // once content fits) and would stall the grow probe.
+      const containerStyles = getComputedStyle(content);
+      const padTop = parseFloat(containerStyles.paddingTop) || 0;
+      const padBottom = parseFloat(containerStyles.paddingBottom) || 0;
+      const body = oracleBodyRef.current;
+      const bodyHeight = body
+        ? body.scrollHeight
+        : Math.max(0, scroller.scrollHeight - padTop - padBottom);
+      const textRoom = Math.max(0, clientHeight - padTop - padBottom);
+
+      // The fit bounds bracket the largest scale whose content still fits
+      // the scroller; they are only valid for the geometry they were
+      // measured against.
+      const topPaddingSignature = measuredOracleTopPadding ?? -1;
+      let bounds = inspectorFitBoundsRef.current;
+      if (
+        bounds.key !== inspectorScaleSessionKey
+        || Math.abs(bounds.clientHeight - clientHeight) > 1
+        || Math.abs(bounds.clientWidth - clientWidth) > 1
+        || bounds.topPadding !== topPaddingSignature
+      ) {
+        bounds = {
+          key: inspectorScaleSessionKey,
+          fit: null,
+          overflow: null,
+          clientHeight,
+          clientWidth,
+          topPadding: topPaddingSignature,
+        };
+        inspectorFitBoundsRef.current = bounds;
+      }
+
       // Recompute from 1 each pass (instead of ratcheting down from the
       // session scale) so the text recovers when the inspector regains space.
       let nextScale = 1;
 
+      // Width only caps the scale for short text kept unwrapped for comfort;
+      // longer text wraps anyway, so only the height fit below should decide
+      // its size.
       if (
-        Number.isFinite(preferredWidth)
+        shouldComfortWrapOracle
+        && Number.isFinite(preferredWidth)
         && preferredWidth > 0
         && Number.isFinite(availableWidth)
         && availableWidth > 0
@@ -1562,21 +1699,33 @@ export default function HoverArtOverlay({
         );
       }
 
-      const clientHeight = scroller.clientHeight;
-      const scrollHeight = scroller.scrollHeight;
-      if (clientHeight > 0 && scrollHeight > clientHeight + 1) {
-        nextScale = Math.min(nextScale, Math.max(
-          minInspectorTextScale,
-          baseScale * (clientHeight / scrollHeight)
-        ));
-      } else if (clientHeight > 0 && scrollHeight > 0 && baseScale < 1) {
-        // Content fits at the shrunken scale; grow back toward the fill
-        // estimate, conservatively — wrapping makes height nonlinear in
-        // font size, so overshooting would oscillate.
-        nextScale = Math.min(nextScale, Math.max(
-          baseScale,
-          Math.min(1, baseScale * (clientHeight / scrollHeight) * 0.95)
-        ));
+      if (clientHeight > 0 && bodyHeight > textRoom + 1) {
+        // Overflows at baseScale: tighten the upper bound and jump toward
+        // the linear estimate, never below a scale already known to fit.
+        bounds.overflow = bounds.overflow == null
+          ? baseScale
+          : Math.min(bounds.overflow, baseScale);
+        const estimate = baseScale * (textRoom / bodyHeight);
+        const target = Math.min(
+          Math.max(bounds.fit ?? minInspectorTextScale, estimate),
+          bounds.overflow - 0.01
+        );
+        nextScale = Math.min(nextScale, Math.max(minInspectorTextScale, target));
+      } else if (clientHeight > 0 && bodyHeight > 0 && baseScale < nextScale) {
+        // Fits at baseScale: raise the lower bound and probe upward —
+        // bisecting once an overflowing scale is known, so the search
+        // converges on the largest fitting scale instead of oscillating
+        // (wrapping makes height nonlinear in font size).
+        bounds.fit = bounds.fit == null ? baseScale : Math.max(bounds.fit, baseScale);
+        let probe;
+        if (bounds.overflow == null) {
+          probe = Math.max(baseScale, baseScale * (textRoom / bodyHeight));
+        } else if (bounds.overflow - bounds.fit <= 0.02) {
+          probe = bounds.fit;
+        } else {
+          probe = (bounds.fit + bounds.overflow) / 2;
+        }
+        nextScale = Math.min(nextScale, Math.max(baseScale, probe));
       }
 
       setInspectorScaleSession((currentSession) => {
@@ -1623,10 +1772,12 @@ export default function HoverArtOverlay({
     displayRulesText,
     inspectorScaleSession,
     inspectorScaleSessionKey,
+    measuredOracleTopPadding,
     metadataText,
     minInspectorTextScale,
     objectIdKey,
     resolvedPreferredInspectorWidth,
+    shouldComfortWrapOracle,
     displayStatsText,
   ]);
 
@@ -1800,10 +1951,16 @@ export default function HoverArtOverlay({
   const inspectorLeftArtOffset = !compact && inspectorArtSafeWidth != null
     ? Math.ceil(inspectorArtSafeWidth)
     : 0;
+  const fallbackOracleTopPadding = lowProfileInspector
+    ? (displayObjectName ? (hasTopLeftInlineMetadata ? 58 : 38) : INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING)
+    : inspectorOracleTopPadding * inspectorScale;
   const inspectorOracleContainerStyle = compact ? undefined : {
-    paddingTop: lowProfileInspector
-      ? `${displayObjectName ? (hasTopLeftInlineMetadata ? 58 : 38) : INSPECTOR_LOW_PROFILE_ORACLE_TOP_PADDING}px`
-      : `${inspectorOracleTopPadding * inspectorScale}px`,
+    // Prefer the measured header bottom: the header is sized by the title
+    // scale, so an estimate multiplied by the rules-text scale lets long
+    // card text ride up into the name/type banner.
+    paddingTop: `${debugInspector
+      ? fallbackOracleTopPadding
+      : (measuredOracleTopPadding ?? fallbackOracleTopPadding)}px`,
     paddingBottom: lowProfileInspector
       ? `${INSPECTOR_LOW_PROFILE_ORACLE_BOTTOM_PADDING}px`
       : `${Math.max(INSPECTOR_ORACLE_BOTTOM_PADDING * inspectorScale, inspectorBottomOverlayPadding)}px`,

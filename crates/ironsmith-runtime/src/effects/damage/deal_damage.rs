@@ -13,7 +13,7 @@ use crate::events::DamageEvent;
 use crate::events::DamageTarget;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
-use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot;
+use crate::events::processing::process_damage_assignments_with_event_with_source_snapshot_opts;
 use crate::game_state::GameState;
 use crate::target::{ChooseSpec, ObjectRef, PlayerFilter};
 use crate::triggers::AttackEventTarget;
@@ -49,16 +49,42 @@ pub(crate) fn apply_processed_damage_outcome(
     provenance: crate::provenance::ProvNodeId,
     cause: crate::events::cause::EventCause,
 ) -> EffectOutcome {
+    apply_processed_damage_outcome_opts(
+        game,
+        source,
+        source_snapshot,
+        initial_target,
+        amount,
+        source_is_combat,
+        false,
+        provenance,
+        cause,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn apply_processed_damage_outcome_opts(
+    game: &mut GameState,
+    source: crate::ids::ObjectId,
+    source_snapshot: Option<&crate::snapshot::ObjectSnapshot>,
+    initial_target: DamageTarget,
+    amount: u32,
+    source_is_combat: bool,
+    unpreventable: bool,
+    provenance: crate::provenance::ProvNodeId,
+    cause: crate::events::cause::EventCause,
+) -> EffectOutcome {
     let source_controller = source_snapshot
         .map(|snapshot| snapshot.controller)
         .or_else(|| game.object(source).map(|obj| game.controller_of(obj)));
 
-    let processed = process_damage_assignments_with_event_with_source_snapshot(
+    let processed = process_damage_assignments_with_event_with_source_snapshot_opts(
         game,
         source,
         initial_target,
         amount,
         source_is_combat,
+        unpreventable,
         cause.clone(),
         source_snapshot,
     );
@@ -206,13 +232,14 @@ impl EffectExecutor for DealDamageEffect {
         // If so, resolve the target from the context's iterated_player
         if let ChooseSpec::Player(PlayerFilter::IteratedPlayer) = &self.target {
             if let Some(player_id) = ctx.iteration.iterated_player {
-                return Ok(apply_processed_damage_outcome(
+                return Ok(apply_processed_damage_outcome_opts(
                     game,
                     ctx.source,
                     ctx.source_snapshot.as_ref(),
                     DamageTarget::Player(player_id),
                     amount,
                     self.source_is_combat,
+                    self.unpreventable,
                     ctx.provenance,
                     ctx.cause.clone(),
                 ));
@@ -228,13 +255,14 @@ impl EffectExecutor for DealDamageEffect {
                     if !can_be_damaged {
                         return Ok(EffectOutcome::target_invalid());
                     }
-                    return Ok(apply_processed_damage_outcome(
+                    return Ok(apply_processed_damage_outcome_opts(
                         game,
                         ctx.source,
                         ctx.source_snapshot.as_ref(),
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
+                        self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
                     ));
@@ -265,13 +293,14 @@ impl EffectExecutor for DealDamageEffect {
 
             match attacked_target {
                 AttackEventTarget::Player(player_id) => {
-                    return Ok(apply_processed_damage_outcome(
+                    return Ok(apply_processed_damage_outcome_opts(
                         game,
                         ctx.source,
                         ctx.source_snapshot.as_ref(),
                         DamageTarget::Player(player_id),
                         amount,
                         self.source_is_combat,
+                        self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
                     ));
@@ -283,13 +312,14 @@ impl EffectExecutor for DealDamageEffect {
                     {
                         return Ok(EffectOutcome::target_invalid());
                     }
-                    return Ok(apply_processed_damage_outcome(
+                    return Ok(apply_processed_damage_outcome_opts(
                         game,
                         ctx.source,
                         ctx.source_snapshot.as_ref(),
                         DamageTarget::Object(object_id),
                         amount,
                         self.source_is_combat,
+                        self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
                     ));
@@ -300,13 +330,14 @@ impl EffectExecutor for DealDamageEffect {
         // Handle SourceController - deal damage to the controller of the source (e.g., Ancient Tomb)
         if let ChooseSpec::SourceController = &self.target {
             let controller = ctx.controller;
-            return Ok(apply_processed_damage_outcome(
+            return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
+                self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
             ));
@@ -334,13 +365,14 @@ impl EffectExecutor for DealDamageEffect {
                                 {
                                     continue;
                                 }
-                                return Ok(apply_processed_damage_outcome(
+                                return Ok(apply_processed_damage_outcome_opts(
                                     game,
                                     ctx.source,
                                     ctx.source_snapshot.as_ref(),
                                     DamageTarget::Player(*player_id),
                                     amount,
                                     self.source_is_combat,
+                                    self.unpreventable,
                                     ctx.provenance,
                                     ctx.cause.clone(),
                                 ));
@@ -352,13 +384,14 @@ impl EffectExecutor for DealDamageEffect {
                                 }) {
                                     continue;
                                 }
-                                return Ok(apply_processed_damage_outcome(
+                                return Ok(apply_processed_damage_outcome_opts(
                                     game,
                                     ctx.source,
                                     ctx.source_snapshot.as_ref(),
                                     DamageTarget::Object(*object_id),
                                     amount,
                                     self.source_is_combat,
+                                    self.unpreventable,
                                     ctx.provenance,
                                     ctx.cause.clone(),
                                 ));
@@ -399,13 +432,14 @@ impl EffectExecutor for DealDamageEffect {
             let Some(controller) = controller else {
                 return Ok(EffectOutcome::target_invalid());
             };
-            return Ok(apply_processed_damage_outcome(
+            return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
+                self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
             ));
@@ -442,13 +476,14 @@ impl EffectExecutor for DealDamageEffect {
             let Some(controller) = controller else {
                 return Ok(EffectOutcome::target_invalid());
             };
-            return Ok(apply_processed_damage_outcome(
+            return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(controller),
                 amount,
                 self.source_is_combat,
+                self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
             ));
@@ -463,13 +498,14 @@ impl EffectExecutor for DealDamageEffect {
                 | ChooseSpec::EachPlayer(_)
         ) && let Ok(player_id) = resolve_player_from_spec(game, &self.target, ctx)
         {
-            return Ok(apply_processed_damage_outcome(
+            return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Player(player_id),
                 amount,
                 self.source_is_combat,
+                self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
             ));
@@ -484,13 +520,14 @@ impl EffectExecutor for DealDamageEffect {
                 })
             })
         {
-            return Ok(apply_processed_damage_outcome(
+            return Ok(apply_processed_damage_outcome_opts(
                 game,
                 ctx.source,
                 ctx.source_snapshot.as_ref(),
                 DamageTarget::Object(object_id),
                 amount,
                 self.source_is_combat,
+                self.unpreventable,
                 ctx.provenance,
                 ctx.cause.clone(),
             ));
@@ -500,13 +537,14 @@ impl EffectExecutor for DealDamageEffect {
         for target in &ctx.targets {
             match target {
                 ResolvedTarget::Player(player_id) => {
-                    return Ok(apply_processed_damage_outcome(
+                    return Ok(apply_processed_damage_outcome_opts(
                         game,
                         ctx.source,
                         ctx.source_snapshot.as_ref(),
                         DamageTarget::Player(*player_id),
                         amount,
                         self.source_is_combat,
+                        self.unpreventable,
                         ctx.provenance,
                         ctx.cause.clone(),
                     ));
@@ -518,13 +556,14 @@ impl EffectExecutor for DealDamageEffect {
                         if !can_be_damaged {
                             continue;
                         }
-                        return Ok(apply_processed_damage_outcome(
+                        return Ok(apply_processed_damage_outcome_opts(
                             game,
                             ctx.source,
                             ctx.source_snapshot.as_ref(),
                             DamageTarget::Object(*object_id),
                             amount,
                             self.source_is_combat,
+                            self.unpreventable,
                             ctx.provenance,
                             ctx.cause.clone(),
                         ));

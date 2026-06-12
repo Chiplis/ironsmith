@@ -11949,6 +11949,10 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::AttackedThisTurn => "you attacked this turn".to_string(),
+        Condition::AttackedWithNOrMoreCreaturesThisTurn(count) => format!(
+            "you attacked with {} or more creatures this turn",
+            number_word(*count as i32).unwrap_or_else(|| count.to_string())
+        ),
         Condition::OpponentLostLifeThisTurn => "an opponent lost life this turn".to_string(),
         Condition::PermanentLeftBattlefieldThisTurn => {
             "a permanent left the battlefield this turn".to_string()
@@ -12974,6 +12978,7 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
             counter.description()
         ),
         Condition::SourceAttackedThisTurn => "this creature attacked this turn".to_string(),
+        Condition::SourceSuspected => "this creature is suspected".to_string(),
         Condition::SourceDealtCombatDamageToPlayerThisTurn => {
             "it dealt combat damage to a player this turn".to_string()
         }

@@ -34529,6 +34529,10 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 subject = "this creature".to_string();
             } else if subject == "it" {
                 subject = "that creature".to_string();
+            } else if subject.eq_ignore_ascii_case("target creature") {
+                // The targeting happened in an earlier clause; this is a
+                // back-reference ("That creature deals ...").
+                subject = "that creature".to_string();
             }
             let mut target = describe_choose_spec(&deal_damage.target);
             if target == "this source" {
@@ -34602,6 +34606,12 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return describe_effect(&with_source.effect);
     }
     if let Some(deal_damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
+        if deal_damage.unpreventable {
+            let mut preventable = deal_damage.clone();
+            preventable.unpreventable = false;
+            let base = describe_effect_impl(&Effect::new(preventable));
+            return format!("{}. The damage can't be prevented", base.trim_end_matches('.'));
+        }
         if let Value::PowerOf(source) | Value::ToughnessOf(source) = &deal_damage.amount {
             if matches!(
                 source.base(),
@@ -34643,6 +34653,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             if subject == "this source" {
                 subject = "this creature".to_string();
             } else if subject == "it" {
+                subject = "that creature".to_string();
+            } else if subject.eq_ignore_ascii_case("target creature") {
+                // Back-reference to an already-targeted creature.
                 subject = "that creature".to_string();
             }
             let mut target = describe_choose_spec(&deal_damage.target);
@@ -36855,6 +36868,16 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
         return prompt.description.clone();
     }
+    if let Some(turn_face_up) = effect.downcast_ref::<crate::effects::TurnFaceUpEffect>() {
+        let target = match turn_face_up.target.base() {
+            ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::SOURCE_EXILED_TAG => {
+                "the exiled card".to_string()
+            }
+            ChooseSpec::Tagged(_) => "it".to_string(),
+            other => describe_choose_spec(other),
+        };
+        return format!("Turn {target} face up");
+    }
     if let Some(retain) = effect.downcast_ref::<crate::effects::RetainManaUntilEndOfTurnEffect>() {
         return match retain.player {
             PlayerFilter::You => {
@@ -37082,8 +37105,26 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             return format!("{who} may choose new targets for the copy");
         }
         if let Some(decider) = may.decider.as_ref() {
-            let who = describe_player_filter(decider);
+            // A bare Opponent decider iterates every opponent: oracle says
+            // "each opponent may ..." with their-possessives.
+            let each_opponent = matches!(decider, PlayerFilter::Opponent);
+            let who = if each_opponent {
+                "each opponent".to_string()
+            } else {
+                describe_player_filter(decider)
+            };
             let mut inner = describe_effect_list(&may.effects);
+            if each_opponent {
+                inner = inner
+                    .replace("an opponent's library", "their library")
+                    .replace("an opponent's hand", "their hand")
+                    .replace("an opponent's graveyard", "their graveyard");
+                if let Some(rest) = inner.strip_prefix("an opponent may ") {
+                    inner = rest.to_string();
+                } else if let Some(rest) = inner.strip_prefix("An opponent may ") {
+                    inner = rest.to_string();
+                }
+            }
             let may_prefix = format!("{who} may ");
             if inner.starts_with(&may_prefix) {
                 inner = inner[may_prefix.len()..].to_string();
@@ -37789,6 +37830,15 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if cant.duration == Until::EndOfTurn
+            && matches!(
+                &cant.restriction,
+                crate::effect::Restriction::GainLife(PlayerFilter::DamagedPlayer)
+            )
+        {
+            return "If that player would gain life this turn, that player gains no life instead"
+                .to_string();
+        }
         if cant.duration == Until::EndOfTurn
             && let crate::effect::Restriction::MustBlockSpecificAttacker { blockers, attacker } =
                 &cant.restriction

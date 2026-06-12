@@ -636,12 +636,16 @@ pub(crate) fn compile_condition_from_predicate_ast(
             }
         }
         PredicateAst::SourceAttackedThisTurn => Condition::SourceAttackedThisTurn,
+        PredicateAst::SourceSuspected => Condition::SourceSuspected,
         PredicateAst::SourceCameUnderYourControlThisTurn => {
             Condition::SourceCameUnderYourControlThisTurn
         }
         PredicateAst::SourceAttackedOrBlockedThisTurn => Condition::SourceAttackedOrBlockedThisTurn,
         PredicateAst::SourceIsInZone(zone) => Condition::SourceIsInZone(*zone),
         PredicateAst::YouAttackedThisTurn => Condition::AttackedThisTurn,
+        PredicateAst::YouAttackedWithNOrMoreCreaturesThisTurn(count) => {
+            Condition::AttackedWithNOrMoreCreaturesThisTurn(*count)
+        }
         PredicateAst::YouAttackedWithExactlyNOtherCreaturesThisCombat(count) => {
             return Err(CardTextError::ParseError(format!(
                 "attack-count combat predicate should have been lowered into an exact attack trigger before condition compilation (count: {count})"

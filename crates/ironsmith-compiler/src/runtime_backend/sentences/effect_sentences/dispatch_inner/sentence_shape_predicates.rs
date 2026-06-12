@@ -335,7 +335,7 @@ fn parse_tap_then_damage_for_number_tapped_this_way(
         return Ok(None);
     }
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-        action: SubjectVerbActionAst::DealDamage { amount, target },
+        action: SubjectVerbActionAst::DealDamage { amount, target, .. },
         ..
     }) = &mut effects[1]
     else {
@@ -719,6 +719,23 @@ fn parse_effect_sentence_lexed_inner(
     }
 
     let sentence_words = crate::runtime_backend::token_word_refs(tokens);
+    // "If <player refs> would gain life this turn, that player gains no life
+    // instead." == a can't-gain-life window for those players (Flames of the
+    // Blood Hand). Intercept before leading-if splitting since the would-gain
+    // predicate isn't a state condition.
+    if sentence_words.first() == Some(&"if")
+        && sentence_words
+            .windows(5)
+            .any(|window| window == ["would", "gain", "life", "this", "turn"])
+        && (sentence_words.ends_with(&["gains", "no", "life", "instead"])
+            || sentence_words.ends_with(&["gain", "no", "life", "instead"]))
+    {
+        return Ok(vec![EffectAst::subject_verb_cant(
+            crate::effect::Restriction::gain_life(crate::target::PlayerFilter::DamagedPlayer),
+            crate::effect::Until::EndOfTurn,
+            None,
+        )]);
+    }
     if let Some(effect) = parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(tokens)
     {
         return Ok(vec![effect]);

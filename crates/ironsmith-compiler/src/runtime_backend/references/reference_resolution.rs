@@ -2253,6 +2253,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
             | SubjectVerbActionAst::SearchLibrary { count_value: None, .. }
             | SubjectVerbActionAst::Cant { .. }
+            | SubjectVerbActionAst::TurnFaceUp { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
             SubjectVerbActionAst::CreateTokenCopy { count: amount, .. }
             | SubjectVerbActionAst::CreateTokenCopyFromSource { count: amount, .. } => {
@@ -2631,7 +2632,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::TicketCounters { count } => {
                 bind_unresolved_it_in_value(count, seed_tag)
             }
-            SubjectVerbActionAst::DealDamage { amount, target }
+            SubjectVerbActionAst::DealDamage { amount, target, .. }
             | SubjectVerbActionAst::DealDistributedDamage { amount, target } => {
                 bind_unresolved_it_in_value(amount, seed_tag)
                     + bind_unresolved_it_in_target(target, seed_tag)
@@ -3214,6 +3215,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             SubjectVerbActionAst::AdditionalPhases { .. } => 0,
             SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => 0,
             SubjectVerbActionAst::Learn => 0,
+            SubjectVerbActionAst::TurnFaceUp { .. } => 0,
             SubjectVerbActionAst::ShuffleLibrary => 0,
         },
         EffectAst::ForEachObject { filter, .. } => bind_unresolved_it_in_filter(filter, seed_tag),

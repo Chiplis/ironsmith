@@ -63316,7 +63316,6 @@ const STRICT_PARSE_REGRESSION_SUCCESS_CARDS: &[&str] = &[
 ];
 
 const STRICT_PARSE_REGRESSION_EXPECTED_FAILURE_CARDS: &[&str] = &[
-    "Gravecrawler",
     "Hancock, Ghoulish Mayor",
     "Lake of the Dead",
     "The Soul Stone",
@@ -63354,7 +63353,7 @@ strict_parse_card_test!(strict_parse_fatal_push, "Fatal Push");
 strict_parse_card_test!(strict_parse_feudkillers_verdict, "Feudkiller's Verdict");
 strict_parse_card_test!(strict_parse_gemstone_caverns, "Gemstone Caverns");
 strict_parse_card_test!(strict_parse_golgari_thug, "Golgari Thug");
-strict_parse_card_expected_fail_test!(strict_parse_gravecrawler, "Gravecrawler");
+strict_parse_card_test!(strict_parse_gravecrawler, "Gravecrawler");
 strict_parse_card_test!(strict_parse_grief, "Grief");
 strict_parse_card_test!(
     strict_parse_gwen_stacy_ghost_spider,
