@@ -8,7 +8,7 @@ import { pipeline } from "node:stream/promises";
 const ROOT = process.cwd();
 const DEFAULT_LOCALE = "es";
 const BULK_DATA_URL = "https://api.scryfall.com/bulk-data";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const USER_AGENT = "Ironsmith i18n asset builder (local development)";
 
 function parseArgs(argv) {
@@ -141,13 +141,35 @@ function normalizeText(text) {
   return String(text || "").replace(/\s+/g, " ").trim();
 }
 
+function wordTokens(text) {
+  return new Set(String(text || "").toLowerCase().match(/\p{L}{3,}/gu) || []);
+}
+
 // Scryfall marks not-yet-localized printings as lang:<locale> with a localized
-// printed_name but printed_text still in English (e.g. brand-new Commander
-// reprints). Treat such text as absent so a properly translated older printing
-// wins instead.
+// printed_name but printed_text still in English (e.g. brand-new sets and
+// Commander reprints), and that English text often differs slightly from the
+// current oracle wording (errata), so exact comparison is not enough. If most
+// of the printed text's words appear in the English oracle text, it is not a
+// translation — treat it as absent so a translated older printing wins instead.
+function looksUntranslated(englishTokens, printedText) {
+  const printedTokens = wordTokens(printedText);
+  if (printedTokens.size === 0) return false;
+  let shared = 0;
+  for (const token of printedTokens) {
+    if (englishTokens.has(token)) shared += 1;
+  }
+  return shared / printedTokens.size >= 0.6;
+}
+
 function localizedPrintedText(english, localizedCard) {
   const printedText = firstFaceValue(localizedCard, "printed_text");
-  if (!printedText || normalizeText(printedText) === english.textNorm) return "";
+  if (
+    !printedText
+    || normalizeText(printedText) === english.textNorm
+    || looksUntranslated(english.tokens, printedText)
+  ) {
+    return "";
+  }
   return printedText;
 }
 
@@ -308,11 +330,18 @@ for await (const card of streamBulkCards(bulkFile)) {
   if (englishByOracle.has(card.oracle_id)) continue;
   const name = firstFaceValue(card, "name");
   const textNorm = normalizeText(firstFaceValue(card, "oracle_text"));
+  // Multi-face cards are looked up by face name in the UI; register every
+  // face's route alongside the full-name route.
+  const faceRoutes = (Array.isArray(card.card_faces) ? card.card_faces : [])
+    .map((face) => routeKey(face?.name))
+    .filter(Boolean);
   englishByOracle.set(card.oracle_id, {
     oracleId: card.oracle_id,
     name,
     route: routeKey(name),
+    faceRoutes,
     textNorm,
+    tokens: wordTokens(textNorm),
     parens: parenGroupCount(textNorm),
   });
 }
@@ -349,6 +378,10 @@ const nameEntries = [];
 for (const { payload } of byOracle.values()) {
   oracleEntries.push([payload.oracleId, payload]);
   nameEntries.push([payload.route, payload]);
+  const english = englishByOracle.get(payload.oracleId);
+  for (const faceRoute of english?.faceRoutes || []) {
+    if (faceRoute !== payload.route) nameEntries.push([faceRoute, payload]);
+  }
 }
 const oracleBuckets = await writeBuckets(path.join(outRoot, "by-oracle"), oracleEntries);
 const nameBuckets = await writeBuckets(path.join(outRoot, "by-name"), nameEntries);

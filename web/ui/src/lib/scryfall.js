@@ -489,6 +489,22 @@ function parenGroupCount(text) {
   return (String(text || "").match(/\(/g) || []).length;
 }
 
+function wordTokens(text) {
+  return new Set(String(text || "").toLowerCase().match(/\p{L}{3,}/gu) || []);
+}
+
+// True when most of the text's words appear in the English oracle text —
+// i.e. it is English data mislabeled with a target language, not a translation.
+function looksUntranslated(englishTokens, text) {
+  const tokens = wordTokens(text);
+  if (tokens.size === 0) return false;
+  let shared = 0;
+  for (const token of tokens) {
+    if (englishTokens.has(token)) shared += 1;
+  }
+  return shared / tokens.size >= 0.6;
+}
+
 function localizedCardPayload(card, locale) {
   if (!card || typeof card !== "object") return null;
   // Only the printed_* fields are localized; name/type_line/oracle_text are
@@ -540,15 +556,15 @@ export async function fetchScryfallLocalizedCardTranslation(cardName, locale) {
     if (!response.ok) return null;
     const payload = await response.json();
     // Scryfall marks not-yet-localized printings as lang:<locale> with a
-    // localized printed_name but printed_text still in English; treat that
-    // text as absent so a properly translated older printing wins instead.
-    const englishTextNorm = String(firstFaceValue(englishCard, "oracle_text") || "")
-      .replace(/\s+/g, " ")
-      .trim();
+    // localized printed_name but printed_text still in English — often with
+    // wording that drifted from the current oracle text, so compare by word
+    // overlap rather than equality. Treat such text as absent so a properly
+    // translated older printing wins instead.
+    const englishTokens = wordTokens(firstFaceValue(englishCard, "oracle_text"));
     const candidates = (payload?.data || [])
       .map((card) => localizedCardPayload(card, targetLang))
       .map((card) => (
-        card && card.oracleText && card.oracleText.replace(/\s+/g, " ").trim() === englishTextNorm
+        card && card.oracleText && looksUntranslated(englishTokens, card.oracleText)
           ? { ...card, oracleText: "" }
           : card
       ))

@@ -28,7 +28,9 @@ function cardI18nBucketUrl(locale, kind, key) {
 }
 
 async function fetchJsonOrNull(url) {
-  const response = await fetch(url, { cache: "force-cache" });
+  // No force-cache: bucket URLs are stable across asset rebuilds, so they must
+  // revalidate (ETag/304) or browsers would keep stale translations forever.
+  const response = await fetch(url);
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Card translation fetch failed: HTTP ${response.status}`);
   const payload = await response.json();
