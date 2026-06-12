@@ -2439,7 +2439,18 @@ impl StaticAbilityKind for GrantAbility {
                 ]
                 .iter()
                 .any(|suffix| lower_subject.contains(suffix));
-                if !already_quantified && !scoped {
+                // Subtype-qualified anthems stay bare in oracle ("Cleric
+                // creatures have vigilance"); only generic nouns quantify.
+                let generic_noun_subject = matches!(
+                    lower_subject.split_whitespace().next(),
+                    Some(
+                        "creature" | "creatures" | "permanent" | "permanents" | "artifact"
+                            | "artifacts" | "enchantment" | "enchantments" | "land" | "lands"
+                            | "planeswalker" | "planeswalkers" | "card" | "cards" | "token"
+                            | "tokens" | "nonland" | "nontoken" | "nonbasic"
+                    )
+                );
+                if !already_quantified && !scoped && generic_noun_subject {
                     format!(
                         "All {} {verb} {ability_text}",
                         lowercase_first_ascii(&subject)

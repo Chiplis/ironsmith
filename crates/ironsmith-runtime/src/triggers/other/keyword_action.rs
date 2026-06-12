@@ -328,13 +328,30 @@ impl TriggerMatcher for KeywordActionTrigger {
             return format!("Whenever {subject} exploits {object}");
         }
 
+        // Oracle names the cycled object: "Whenever a player cycles a card".
+        let object_suffix = if self.action == KeywordActionKind::Cycle {
+            " a card"
+        } else {
+            ""
+        };
         match &self.player {
-            PlayerFilter::You => format!("Whenever you {}", self.action.infinitive()),
-            PlayerFilter::Opponent => {
-                format!("Whenever an opponent {}", self.action.third_person())
+            PlayerFilter::You => {
+                format!("Whenever you {}{object_suffix}", self.action.infinitive())
             }
-            PlayerFilter::Any => format!("Whenever a player {}", self.action.third_person()),
-            _ => format!("Whenever a player {}", self.action.third_person()),
+            PlayerFilter::Opponent => {
+                format!(
+                    "Whenever an opponent {}{object_suffix}",
+                    self.action.third_person()
+                )
+            }
+            PlayerFilter::Any => format!(
+                "Whenever a player {}{object_suffix}",
+                self.action.third_person()
+            ),
+            _ => format!(
+                "Whenever a player {}{object_suffix}",
+                self.action.third_person()
+            ),
         }
     }
 }

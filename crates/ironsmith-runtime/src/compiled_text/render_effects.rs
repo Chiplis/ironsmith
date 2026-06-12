@@ -18935,6 +18935,7 @@ fn describe_trigger_surface_with_frequency(
     }
 
     let mut trigger_surface = describe_this_attacks_or_dies_trigger(&triggered.trigger)
+        .or_else(|| describe_this_blocks_or_becomes_blocked_by_trigger(&triggered.trigger))
         .unwrap_or_else(|| triggered.trigger.display());
     if matches!(
         trigger_frequency,
@@ -18943,6 +18944,34 @@ fn describe_trigger_surface_with_frequency(
         trigger_surface.push_str(" for the first time each turn");
     }
     trigger_surface
+}
+
+/// "Whenever this creature blocks or becomes blocked by a creature" — an
+/// OrTrigger pairing this-blocks-object with this-becomes-blocked-by-object
+/// over the same filter compacts to the oracle's joint surface.
+fn describe_this_blocks_or_becomes_blocked_by_trigger(
+    trigger: &crate::triggers::Trigger,
+) -> Option<String> {
+    let or_trigger = trigger.downcast_ref::<crate::triggers::OrTrigger>()?;
+    let [first, second] = or_trigger.triggers.as_slice() else {
+        return None;
+    };
+    let blocks = first
+        .downcast_ref::<crate::triggers::ThisBlocksObjectTrigger>()
+        .or_else(|| second.downcast_ref::<crate::triggers::ThisBlocksObjectTrigger>())?;
+    let blocked_by = first
+        .downcast_ref::<crate::triggers::ThisBecomesBlockedByObjectTrigger>()
+        .or_else(|| {
+            second.downcast_ref::<crate::triggers::ThisBecomesBlockedByObjectTrigger>()
+        })?;
+    if blocks.blocked_filter != blocked_by.blocker_filter {
+        return None;
+    }
+    let filter_text =
+        with_indefinite_article(&blocks.blocked_filter.description());
+    Some(format!(
+        "Whenever this creature blocks or becomes blocked by {filter_text}"
+    ))
 }
 
 fn describe_this_attacks_or_dies_trigger(trigger: &crate::triggers::Trigger) -> Option<String> {

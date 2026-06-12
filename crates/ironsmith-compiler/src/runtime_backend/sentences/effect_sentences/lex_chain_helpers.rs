@@ -142,6 +142,10 @@ const VERB_SHAPES: &[VerbShapeEntry] = &[
         verb: Verb::Tap,
     },
     VerbShapeEntry {
+        words: &["unattaches", "unattach"],
+        verb: Verb::Unattach,
+    },
+    VerbShapeEntry {
         words: &["attaches", "attach"],
         verb: Verb::Attach,
     },
