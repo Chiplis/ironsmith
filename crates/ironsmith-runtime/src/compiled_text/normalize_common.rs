@@ -11490,12 +11490,41 @@ pub(super) fn describe_condition(condition: &Condition) -> String {
     }
 
     match condition {
-        Condition::YouControl(filter) => format!("you control {}", filter.description()),
+        Condition::YouControl(filter) => {
+            // Lieutenant wording: "if you control your commander".
+            if filter.is_commander
+                && filter.owner == Some(PlayerFilter::You)
+                && filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+            {
+                "you control your commander".to_string()
+            } else {
+                format!("you control {}", filter.description())
+            }
+        }
         Condition::OpponentControls(filter) => {
             format!("an opponent controls {}", filter.description())
         }
         Condition::PlayerControls { player, filter } => {
             let subject = describe_player_filter(player);
+            // Lieutenant wording: "if you control your commander".
+            if filter.is_commander
+                && matches!(player, PlayerFilter::You)
+                && filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+                && filter.owner.as_ref().is_none_or(|owner| *owner == PlayerFilter::You)
+            {
+                return "you control your commander".to_string();
+            }
+            // Lieutenant wording: "if you control your commander".
+            if filter.is_commander
+                && matches!(player, PlayerFilter::You)
+                && filter.card_types.is_empty()
+                && filter.subtypes.is_empty()
+                && filter.owner.as_ref().is_none_or(|owner| *owner == PlayerFilter::You)
+            {
+                return "you control your commander".to_string();
+            }
             if matches!(
                 filter.zone,
                 Some(

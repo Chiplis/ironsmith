@@ -1138,6 +1138,8 @@ fn may_causative_clause(inner: &str) -> Option<String> {
         (" has ", "have"),
         (" loses ", "lose"),
         (" reveals ", "reveal"),
+        (" fights ", "fight"),
+        (" deals ", "deal"),
     ];
     replacements.iter().find_map(|(from, to)| {
         lower.find(from).and_then(|idx| {

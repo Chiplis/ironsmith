@@ -61,6 +61,11 @@ pub fn check_and_apply_sbas_with(
         let had_legend_decisions = !legend_specs.is_empty();
         for (player, spec) in legend_specs {
             let keep_id: ObjectId = make_decision(game, decision_maker, player, None, spec);
+            if decision_maker.awaiting_choice() {
+                // The prompt was only surfaced; committing the fallback here would
+                // advance local state past a choice the replay log doesn't contain yet.
+                return Ok(());
+            }
             apply_legend_rule_choice(game, keep_id);
         }
 
@@ -182,11 +187,15 @@ pub fn put_triggers_on_stack_with_dm(
     }
 
     let mut controller_order = players_in_apnap_order(game);
-    for controller in grouped.keys().copied() {
-        if !controller_order.contains(&controller) {
-            controller_order.push(controller);
-        }
-    }
+    // Controllers outside APNAP order (players who have left the game) are appended
+    // in index order — HashMap key order would differ across peers.
+    let mut extra_controllers: Vec<PlayerId> = grouped
+        .keys()
+        .copied()
+        .filter(|controller| !controller_order.contains(controller))
+        .collect();
+    extra_controllers.sort_by_key(|controller| controller.index());
+    controller_order.extend(extra_controllers);
 
     for (controller_index, controller) in controller_order.iter().copied().enumerate() {
         let Some(triggers) = grouped.remove(&controller) else {
@@ -1308,6 +1317,56 @@ mod tests {
                 ctx.requirements
             );
             vec![Target::Object(self.target)]
+        }
+    }
+
+    struct PendingLegendChoiceDm {
+        object_prompts: usize,
+    }
+
+    impl DecisionMaker for PendingLegendChoiceDm {
+        fn awaiting_choice(&self) -> bool {
+            true
+        }
+
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            _ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.object_prompts += 1;
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn legend_rule_choice_is_not_committed_while_awaiting_decision() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+
+        let legend = crate::cards::CardDefinitionBuilder::new(
+            crate::ids::CardId::from_raw(91_200),
+            "Pending Legend",
+        )
+        .supertypes(vec![crate::types::Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+        .build();
+        let first = game.create_object_from_definition(&legend, alice, Zone::Battlefield);
+        let second = game.create_object_from_definition(&legend, alice, Zone::Battlefield);
+
+        let mut trigger_queue = TriggerQueue::new();
+        let mut dm = PendingLegendChoiceDm { object_prompts: 0 };
+        check_and_apply_sbas_with(&mut game, &mut trigger_queue, &mut dm)
+            .expect("SBA check should surface the legend prompt without failing");
+
+        assert_eq!(dm.object_prompts, 1);
+        for id in [first, second] {
+            assert_eq!(
+                game.object(id).map(|object| object.zone),
+                Some(Zone::Battlefield),
+                "no legend may be killed by the fallback while the choice is pending"
+            );
         }
     }
 

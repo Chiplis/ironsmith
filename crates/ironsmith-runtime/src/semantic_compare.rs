@@ -1085,6 +1085,11 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         // Group back-reference vs the renderer's for-each surface.
         ("those creatures", "each creature"),
         ("Those creatures", "Each creature"),
+        ("those cards", "them"),
+        ("Those cards", "Them"),
+        // The just-chosen color/type back-reference.
+        ("the chosen color", "that color"),
+        ("the chosen type", "that type"),
         // "deals damage ... to each of two target creatures" — full damage
         // to every target; the count alone carries the same meaning.
         ("to each of two", "to two"),

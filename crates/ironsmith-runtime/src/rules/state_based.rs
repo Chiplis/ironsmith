@@ -588,8 +588,6 @@ fn check_legend_rule_with_view(
     view: &crate::derived_view::DerivedGameView<'_>,
     actions: &mut Vec<StateBasedAction>,
 ) {
-    use std::collections::HashMap;
-
     if game.battlefield.iter().copied().any(|obj_id| {
         view.object_has_static_ability_id(obj_id, StaticAbilityId::LegendRuleDoesntApply)
     }) {
@@ -598,7 +596,9 @@ fn check_legend_rule_with_view(
 
     // Group legendary permanents by current controller and current name. Copy effects and
     // other continuous effects can make an object legendary or change its name.
-    let mut legends: HashMap<(PlayerId, String), Vec<ObjectId>> = HashMap::new();
+    // Groups preserve battlefield order: violation order feeds the decision-prompt
+    // order, which must be identical on every peer for multiplayer replay.
+    let mut legends: Vec<((PlayerId, String), Vec<ObjectId>)> = Vec::new();
 
     for &obj_id in &game.battlefield {
         let Some(chars) = view.calculated_characteristics(obj_id) else {
@@ -607,9 +607,28 @@ fn check_legend_rule_with_view(
 
         if chars.supertypes.contains(&Supertype::Legendary) {
             let key = (chars.controller, chars.name);
-            legends.entry(key).or_default().push(obj_id);
+            if let Some((_, group)) = legends.iter_mut().find(|(existing, _)| *existing == key) {
+                group.push(obj_id);
+            } else {
+                legends.push((key, vec![obj_id]));
+            }
         }
     }
+
+    // Simultaneous choices by different players happen in APNAP order (rule 101.4).
+    let turn_order = &game.turn_store.turn_order;
+    let active_position = turn_order
+        .iter()
+        .position(|&player| player == game.turn.active_player)
+        .unwrap_or(0);
+    let apnap_position = |player: PlayerId| {
+        turn_order
+            .iter()
+            .position(|&candidate| candidate == player)
+            .map(|position| (position + turn_order.len() - active_position) % turn_order.len())
+            .unwrap_or(usize::MAX)
+    };
+    legends.sort_by_key(|&((player, _), _)| apnap_position(player));
 
     // Find violations (more than one legendary with same name under same controller)
     for ((player, name), permanents) in legends {
@@ -1054,6 +1073,50 @@ mod tests {
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(power, toughness))
             .build()
+    }
+
+    fn legendary_creature_definition(card_id: u32, name: &str) -> crate::cards::CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(CardId::from_raw(card_id), name)
+            .supertypes(vec![crate::types::Supertype::Legendary])
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(2, 2))
+            .build()
+    }
+
+    #[test]
+    fn legend_rule_violations_use_stable_apnap_order() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let alice_legend = legendary_creature_definition(401, "Alice Twin");
+        let bob_legend = legendary_creature_definition(402, "Bob Twin");
+        game.create_object_from_definition(&alice_legend, alice, Zone::Battlefield);
+        game.create_object_from_definition(&alice_legend, alice, Zone::Battlefield);
+        game.create_object_from_definition(&bob_legend, bob, Zone::Battlefield);
+        game.create_object_from_definition(&bob_legend, bob, Zone::Battlefield);
+
+        // Bob is the active player, so APNAP puts his violation first.
+        game.turn.active_player = bob;
+
+        let expected = vec![
+            (bob, "Bob Twin".to_string()),
+            (alice, "Alice Twin".to_string()),
+        ];
+        // Violation order feeds decision-prompt order, which multiplayer replay
+        // consumes positionally — it must be identical on every check.
+        for _ in 0..50 {
+            let order: Vec<(PlayerId, String)> = check_state_based_actions(&game)
+                .into_iter()
+                .filter_map(|action| match action {
+                    StateBasedAction::LegendRuleViolation { player, name, .. } => {
+                        Some((player, name))
+                    }
+                    _ => None,
+                })
+                .collect();
+            assert_eq!(order, expected);
+        }
     }
 
     #[test]
