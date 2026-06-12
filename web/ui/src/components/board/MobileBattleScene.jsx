@@ -32,7 +32,7 @@ import MobileViewToggle from "@/components/board/mobile/MobileViewToggle";
 import MobileStackRail from "@/components/board/mobile/MobileStackRail";
 
 const DEFAULT_TOPBAR_HEIGHT = MOBILE_OPPONENT_HUD_HEIGHT_PX;
-const DEFAULT_CONTROL_BAND_HEIGHT = 30;
+const DEFAULT_CONTROL_BAND_HEIGHT = 24;
 const DEFAULT_SELF_HUD_HEIGHT = MOBILE_SELF_HUD_HEIGHT_PX;
 const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
@@ -809,7 +809,7 @@ export default function MobileBattleScene({
           mobileBattlePortalTarget={actionStackElement}
           mobileBattleDockInline
           mobileBattleDockHidden={actionPopoverState != null}
-          mobileBattleDockOrientation="vertical"
+          mobileBattleDockOrientation="horizontal"
         />
 
         {actionPopoverState ? (

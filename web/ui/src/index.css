@@ -56,6 +56,10 @@
 
 /* Always dark - this is a game UI. High fantasy: warm tavern / guildhall palette. */
 :root {
+  /* Resolved safe-area insets, readable from JS via getComputedStyle
+     (useMobileBattleLayout's readSafeAreaInset expects these names). */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
   --radius: 0.125rem;
   --background: #1a120a;
   --foreground: #f1e4c4;
@@ -1974,6 +1978,51 @@
   text-wrap: pretty;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
+}
+
+/* Compact stack tiles (mobile stack rail): full-bleed art, name over a scrim. */
+.game-card.stack-card--compact {
+  border-radius: 8px;
+  border: 1px solid rgba(var(--player-accent-rgb, 134, 173, 211), 0.45);
+  background: linear-gradient(180deg, rgba(15, 24, 38, 0.96), rgba(8, 13, 22, 0.96));
+}
+
+.game-card.stack-card--compact.stack-card-active {
+  border-color: var(--player-accent, #f3b25a);
+}
+
+.stack-card-compact-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: saturate(1.05) brightness(0.92);
+}
+
+.stack-card-compact-scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 9, 15, 0.04) 32%, rgba(5, 9, 15, 0.9) 80%);
+}
+
+.stack-card-compact-name {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  bottom: 2px;
+  z-index: 2;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
+  color: #f2f7ff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
 .game-card.hand-card {
@@ -14022,7 +14071,10 @@ select::-ms-expand {
     padding-left: var(--mobile-battle-scene-padding, 8px);
     padding-right: var(--mobile-battle-scene-padding, 8px);
     padding-top: max(env(safe-area-inset-top, 0px), 2px);
-    padding-bottom: max(env(safe-area-inset-bottom, 0px), 2px);
+    /* Extra bottom clearance keeps the hand fan's touch surface out of the
+       iOS home-indicator gesture zone — drags starting there get swallowed
+       as app-switcher swipes. */
+    padding-bottom: calc(max(env(safe-area-inset-bottom, 0px), 2px) + 6px);
     overflow: hidden;
   }
   .mobile-mtga-scene-row {
@@ -14217,14 +14269,14 @@ select::-ms-expand {
     text-align: center;
   }
 
-  /* Phase strip + turn action stack (one row) ------------------ */
+  /* Phase strip + turn action stack (one slim row) -------------- */
   .mobile-mtga-control-row {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 8px;
     width: 100%;
-    min-height: 28px;
-    height: var(--mobile-battle-control-height, 30px);
+    min-height: 20px;
+    height: var(--mobile-battle-control-height, 24px);
   }
   .mobile-mtga-phase-strip {
     display: flex;
@@ -14236,12 +14288,13 @@ select::-ms-expand {
   }
   .mobile-mtga-phase-cell {
     display: inline-flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
+    gap: 3px;
     flex: 1 1 auto;
-    min-width: 26px;
-    padding: 1px 0;
+    min-width: 20px;
+    padding: 0 2px;
     color: #b9c8d8;
     background: rgba(11, 18, 27, 0.65);
     border: 1px solid rgba(170, 208, 245, 0.16);
@@ -14252,13 +14305,19 @@ select::-ms-expand {
   }
   .mobile-mtga-phase-cell--compact {
     flex: 0 0 auto;
-    min-width: 22px;
+    min-width: 18px;
   }
-  .mobile-mtga-phase-cell-short {
+  /* Icon-only cells; the current phase also spells out its name. */
+  .mobile-mtga-phase-cell-label {
+    display: none;
     font-size: 9px;
     font-weight: 700;
     letter-spacing: 0.04em;
     line-height: 1;
+    white-space: nowrap;
+  }
+  .mobile-mtga-phase-cell--active .mobile-mtga-phase-cell-label {
+    display: inline;
   }
   .mobile-mtga-phase-cell--active {
     color: #fff0ca;
@@ -14281,39 +14340,38 @@ select::-ms-expand {
 
   .mobile-mtga-turn-action-stack {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: stretch;
     gap: 4px;
-    flex: 0 0 auto;
-    min-width: 88px;
-    max-width: 110px;
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 60%;
     height: 100%;
   }
-  /* When the existing MobileDecisionDock renders into the action stack with
-     orientation="vertical", layout its action buttons as a column. */
-  .mobile-mtga-turn-action-stack .mobile-decision-dock,
-  .mobile-decision-dock--vertical {
-    width: 100%;
+  /* MobileDecisionDock renders into the action stack with
+     orientation="horizontal": buttons sit side by side in the slim row. */
+  .mobile-mtga-turn-action-stack .mobile-decision-dock {
+    width: auto;
     height: 100%;
   }
-  .mobile-mtga-turn-action-stack .mobile-decision-dock-actions,
-  .mobile-decision-dock-actions--vertical {
+  .mobile-mtga-turn-action-stack .mobile-decision-dock-actions {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: stretch;
     gap: 4px;
-    width: 100%;
+    width: auto;
     height: 100%;
   }
   .mobile-mtga-turn-action-stack .mobile-decision-primary-button,
   .mobile-mtga-turn-action-stack .mobile-decision-secondary-button {
-    width: 100%;
-    height: 24px;
-    min-height: 24px;
-    padding: 0 8px;
+    width: auto;
+    height: 100%;
+    min-height: 0;
+    padding: 0 10px;
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.02em;
+    white-space: nowrap;
     color: #efe2be;
     background: linear-gradient(180deg, rgba(28, 38, 52, 0.95), rgba(12, 18, 26, 0.95));
     border: 1px solid rgba(170, 208, 245, 0.28);
@@ -14323,6 +14381,16 @@ select::-ms-expand {
   .mobile-mtga-turn-action-stack .mobile-decision-primary-button {
     border-color: rgba(243, 178, 90, 0.6);
     background: linear-gradient(180deg, rgba(46, 38, 22, 0.95), rgba(28, 22, 12, 0.95));
+  }
+  .mobile-mtga-turn-action-stack .mobile-decision-primary-subtitle {
+    display: inline-block;
+    max-width: 96px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.8;
   }
 
   /* Battlefield bands ----------------------------------------- */
@@ -14358,8 +14426,14 @@ select::-ms-expand {
   /* Hand fan -------------------------------------------------- */
   .mobile-mtga-hand-fan {
     width: 100%;
-    height: var(--mobile-mtga-hand-peek-height, 24px);
+    height: var(--mobile-mtga-hand-peek-height, 34px);
     overflow: visible;
+    /* Cards overflow the fan downward toward the screen edge. Clip everything
+       below the fan's bottom edge (hit-testing follows clip-path) so a drag
+       can't start inside iOS's home-indicator gesture zone, where the OS
+       steals the swipe for the app switcher. Generous top/side insets keep
+       the fanned + selected-preview card states visible. */
+    clip-path: inset(-400px -60px 0 -60px);
     transition: height 220ms ease-out;
     cursor: pointer;
     position: relative;

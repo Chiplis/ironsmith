@@ -21,6 +21,7 @@ export default function StackCard({
   onClick,
   reorderControls = null,
   entryMotion = "default",
+  variant = "default",
 }) {
   const { state } = useGame();
   const name = entry.name || `Object#${entry.id}`;
@@ -84,6 +85,46 @@ export default function StackCard({
     cancelMotion(motionRef.current);
     motionRef.current = null;
   }, []);
+
+  // Compact tiles (mobile stack rail): full-bleed art with the name over a
+  // bottom scrim — the default layout's 16px title can't fit a ~56px tile.
+  if (variant === "compact") {
+    return (
+      <div
+        ref={rootRef}
+        className={cn(
+          "game-card stack-card stack-card--compact overflow-hidden",
+          onClick ? "cursor-pointer" : "cursor-default",
+          isActive && "stack-card-active",
+          isLeaving && "pointer-events-none",
+          className
+        )}
+        data-object-id={entry.id}
+        data-card-name={name}
+        onClick={() => onClick?.(entry.inspect_object_id ?? entry.id, {
+          source: "stack",
+          stackEntry: entry,
+        })}
+        style={stackAccentStyle}
+      >
+        {artUrl && (
+          <img
+            className="stack-card-compact-art"
+            src={artUrl}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        )}
+        <div className="stack-card-compact-scrim" aria-hidden="true" />
+        <PlayerStackAlert
+          visible={showStackAlert}
+          className="absolute right-1 top-1 z-[3]"
+        />
+        <div className="stack-card-compact-name">{name}</div>
+      </div>
+    );
+  }
 
   return (
     <div

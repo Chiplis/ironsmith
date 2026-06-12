@@ -1,5 +1,7 @@
 import { createContext, useContext } from "react";
+import { Loader2 } from "lucide-react";
 import { ComicTooltip } from "@/components/ui/comic-tooltip";
+import { useGame } from "@/context/GameContext";
 import { cn } from "@/lib/utils";
 
 const PeerWaitContext = createContext(null);
@@ -114,8 +116,26 @@ function peerWaitButtonDetail(peerWait) {
 
 export function PeerWaitButtonContent({ className = "", peerWait: peerWaitProp = null }) {
   const contextPeerWait = useContext(PeerWaitContext);
+  const { inspectorDebug } = useGame();
   const peerWait = peerWaitProp || contextPeerWait;
   const detail = peerWaitButtonDetail(peerWait);
+
+  // Outside debug mode the crypto round-trips are an implementation detail:
+  // show a plain spinner instead of the per-operation labels.
+  if (!inspectorDebug) {
+    return (
+      <span
+        className={cn(
+          "peer-wait-button-content inline-flex h-full w-full min-w-0 items-center justify-center",
+          className
+        )}
+      >
+        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <span className="sr-only">{peerWaitTitle(peerWait)}</span>
+      </span>
+    );
+  }
+
   return (
     <span
       className={cn(

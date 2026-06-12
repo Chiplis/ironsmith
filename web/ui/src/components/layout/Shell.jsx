@@ -5,6 +5,7 @@ import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
 import { MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL } from "@/lib/decklists";
 import useViewportLayout from "@/hooks/useViewportLayout";
+import useTabAttention from "@/hooks/useTabAttention";
 import Topbar from "./Topbar";
 import LobbyOverlay from "./LobbyOverlay";
 import AddCardBar from "./AddCardBar";
@@ -28,6 +29,7 @@ export default function Shell() {
     semanticThreshold,
     joinLobby,
   } = useGame();
+  useTabAttention();
   const [playerNames, setPlayerNames] = useState("Alice,Bob,Charlie,Diana");
   const [startingLife, setStartingLife] = useState(20);
   const [logOpen, setLogOpen] = useState(false);

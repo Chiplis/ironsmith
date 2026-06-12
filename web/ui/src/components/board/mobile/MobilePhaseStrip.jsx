@@ -6,14 +6,14 @@ import { useMobileBattle } from "@/context/MobileBattleContext";
 import { cn } from "@/lib/utils";
 
 const PHASE_CELLS = [
-  { key: "Untap", short: "Up", label: "Untap", Icon: Sparkles },
-  { key: "Upkeep", short: "Uk", label: "Upkeep", Icon: Eye },
-  { key: "Draw", short: "Dr", label: "Draw", Icon: BookOpen },
-  { key: "Main", short: "M1", label: "Main 1", Icon: Zap },
-  { key: "Combat", short: "Cb", label: "Combat", Icon: Swords },
-  { key: "Main2", short: "M2", label: "Main 2", Icon: Zap },
-  { key: "End", short: "End", label: "End", Icon: MoonStar },
-  { key: "Cleanup", short: "Cl", label: "Cleanup", Icon: Brush },
+  { key: "Untap", label: "Untap", Icon: Sparkles },
+  { key: "Upkeep", label: "Upkeep", Icon: Eye },
+  { key: "Draw", label: "Draw", Icon: BookOpen },
+  { key: "Main", label: "Main 1", Icon: Zap },
+  { key: "Combat", label: "Combat", Icon: Swords },
+  { key: "Main2", label: "Main 2", Icon: Zap },
+  { key: "End", label: "End", Icon: MoonStar },
+  { key: "Cleanup", label: "Cleanup", Icon: Brush },
 ];
 
 const COMPACT_PHASE_KEYS = new Set(["Untap", "Cleanup"]);
@@ -33,7 +33,7 @@ export default function MobilePhaseStrip({ className }) {
       aria-label="Turn phases"
     >
       {PHASE_CELLS.map((cell) => {
-        const { key, short, label } = cell;
+        const { key, label } = cell;
         const PhaseIcon = cell.Icon;
         const isActive = activeKey === key;
         const isStopped = phaseStops?.has?.(key);
@@ -53,8 +53,8 @@ export default function MobilePhaseStrip({ className }) {
             aria-pressed={isStopped}
             onClick={() => togglePhaseStop?.(key)}
           >
-            <PhaseIcon className="size-3.5" aria-hidden="true" />
-            <span className="mobile-mtga-phase-cell-short">{short}</span>
+            <PhaseIcon className="size-3" aria-hidden="true" />
+            <span className="mobile-mtga-phase-cell-label">{label}</span>
             {isStopped ? (
               <span className="mobile-mtga-phase-cell-stop-dot" aria-hidden="true" />
             ) : null}

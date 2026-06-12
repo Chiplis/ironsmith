@@ -53,6 +53,7 @@ function MobileStackRailEntry({
         showStackAlert={showStackAlert}
         className="mobile-mtga-stack-rail-card"
         entryMotion="mobile-stack"
+        variant="compact"
       />
     </div>
   );

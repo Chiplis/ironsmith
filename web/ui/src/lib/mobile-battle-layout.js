@@ -7,8 +7,8 @@ const MOBILE_SECTION_GAP_PX = 6;
 const MOBILE_BOTTOM_PEEK_HEIGHT_PX = 46;
 const MOBILE_BOTTOM_BAR_HEIGHT_PX = 0;
 const MOBILE_TOP_BUFFER_PX = 2;
-const MOBILE_CONTROL_BAND_MIN_HEIGHT_PX = 28;
-const MOBILE_CONTROL_BAND_MAX_HEIGHT_PX = 72;
+const MOBILE_CONTROL_BAND_MIN_HEIGHT_PX = 20;
+const MOBILE_CONTROL_BAND_MAX_HEIGHT_PX = 32;
 const MOBILE_TOP_STATUS_FALLBACK_PX = 30;
 const MOBILE_BACK_ROW_VISIBLE_RATIO = 0.78;
 
@@ -16,9 +16,11 @@ const MOBILE_BACK_ROW_VISIBLE_RATIO = 0.78;
 export const MOBILE_OPPONENT_HUD_HEIGHT_PX = 38;
 export const MOBILE_SELF_HUD_HEIGHT_PX = 38;
 export const MOBILE_MANA_POOL_HEIGHT_PX = 18;
-export const MOBILE_PHASE_STRIP_HEIGHT_PX = 30;
+export const MOBILE_PHASE_STRIP_HEIGHT_PX = 24;
 export const MOBILE_TURN_ACTION_STACK_WIDTH_PX = 96;
-export const MOBILE_HAND_PEEK_HEIGHT_PX = 24;
+// Tall enough that the visible card sliver clears the iOS home-indicator
+// gesture zone at the bottom of the landscape screen (see .mobile-mtga-hand-fan).
+export const MOBILE_HAND_PEEK_HEIGHT_PX = 34;
 export const MOBILE_HAND_FANNED_HEIGHT_PX = 92;
 export const MOBILE_STACK_RAIL_WIDTH_PX = 56;
 
