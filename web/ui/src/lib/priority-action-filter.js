@@ -32,3 +32,11 @@ export function filterPriorityActionGroups(
     return false;
   });
 }
+
+// Mana abilities clutter the default priority strip (every untapped land adds
+// one); keep them reachable by selecting the permanent instead. Groups are
+// homogeneous in action kind, so the first action decides. During an active
+// mana payment the strip is how mana gets floated, so nothing is hidden then.
+export function withoutManaAbilityActionGroups(actionGroups = []) {
+  return actionGroups.filter((group) => group?.firstAction?.kind !== "activate_mana_ability");
+}

@@ -513,6 +513,87 @@ mod tests {
     }
 
     #[test]
+    fn test_compute_legal_actions_hides_activated_ability_without_potential_mana() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let sink = CardDefinitionBuilder::new(CardId::from_raw(700_950), "Mana Sink Probe")
+            .card_types(vec![CardType::Artifact])
+            .parse_text("{B}{B}: Draw a card.")
+            .expect("activated ability text should parse");
+        let sink_id = game.create_object_from_definition(&sink, alice, Zone::Battlefield);
+
+        let activations_for_sink = |game: &GameState| {
+            compute_legal_actions(game, alice)
+                .into_iter()
+                .filter(|action| {
+                    matches!(
+                        action,
+                        LegalAction::ActivateAbility { source, .. } if *source == sink_id
+                    )
+                })
+                .count()
+        };
+
+        assert_eq!(
+            activations_for_sink(&game),
+            0,
+            "an ability costing {{B}}{{B}} should be hidden with no mana available"
+        );
+
+        let swamp = CardDefinitionBuilder::new(CardId::from_raw(700_951), "Swamp")
+            .card_types(vec![CardType::Land])
+            .parse_text("{T}: Add {B}.")
+            .expect("swamp mana text should parse");
+        game.create_object_from_definition(&swamp, alice, Zone::Battlefield);
+        game.create_object_from_definition(&swamp, alice, Zone::Battlefield);
+
+        assert_eq!(
+            activations_for_sink(&game),
+            1,
+            "two untapped Swamps make {{B}}{{B}} potentially payable"
+        );
+    }
+
+    #[test]
+    fn test_compute_legal_actions_counts_floating_mana_for_activated_ability() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        game.turn.phase = Phase::FirstMain;
+        game.turn.step = None;
+        game.turn.active_player = alice;
+        game.turn.priority_player = Some(alice);
+
+        let sink = CardDefinitionBuilder::new(CardId::from_raw(700_952), "Mana Sink Probe")
+            .card_types(vec![CardType::Artifact])
+            .parse_text("{B}{B}: Draw a card.")
+            .expect("activated ability text should parse");
+        let sink_id = game.create_object_from_definition(&sink, alice, Zone::Battlefield);
+
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Black, 2);
+
+        let actions = compute_legal_actions(&game, alice);
+        assert!(
+            actions.iter().any(|action| {
+                matches!(
+                    action,
+                    LegalAction::ActivateAbility { source, .. } if *source == sink_id
+                )
+            }),
+            "floating {{B}}{{B}} should keep the ability visible"
+        );
+    }
+
+    #[test]
     fn test_compute_legal_actions_with_land() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -3515,6 +3596,12 @@ mod tests {
                 .build();
             game.create_object_from_card(&mountain, alice, Zone::Battlefield);
         }
+        // The bare test lands have no mana abilities, so float the craft mana
+        // directly — ability affordability now prechecks potential mana.
+        game.player_mut(alice)
+            .expect("Alice exists")
+            .mana_pool
+            .add(ManaSymbol::Red, 5);
 
         let material_specs = [
             (

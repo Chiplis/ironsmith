@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   collectSelectedPriorityActionIndices,
   filterPriorityActionGroups,
+  withoutManaAbilityActionGroups,
 } from "../src/lib/priority-action-filter.js";
 
 test("selected battlefield object only matches actions for that exact object family", () => {
@@ -33,4 +34,22 @@ test("selected battlefield object only matches actions for that exact object fam
 
   const visible = filterPriorityActionGroups(groups, selectedObjectFamilyIds, selectedActionIndices);
   assert.deepEqual(visible.map((group) => group.key), ["tap"]);
+});
+
+test("withoutManaAbilityActionGroups drops only mana-ability groups", () => {
+  const groups = [
+    { key: "tap-w", firstAction: { kind: "activate_mana_ability" } },
+    { key: "play", firstAction: { kind: "play_land" } },
+    { key: "yawgmoth", firstAction: { kind: "activate_ability" } },
+    { key: "cast", firstAction: { kind: "cast_spell" } },
+  ];
+
+  const visible = withoutManaAbilityActionGroups(groups);
+  assert.deepEqual(visible.map((group) => group.key), ["play", "yawgmoth", "cast"]);
+});
+
+test("withoutManaAbilityActionGroups tolerates malformed groups", () => {
+  assert.deepEqual(withoutManaAbilityActionGroups([]), []);
+  const odd = [{ key: "no-first-action" }, null];
+  assert.deepEqual(withoutManaAbilityActionGroups(odd), odd);
 });

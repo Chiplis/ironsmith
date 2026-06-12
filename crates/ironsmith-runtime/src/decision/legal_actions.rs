@@ -1250,7 +1250,7 @@ fn activation_cost_component_precheck_with_view(
     source: ObjectId,
     cost: &crate::costs::Cost,
     reason: crate::costs::PaymentReason,
-    _view: &DerivedGameView<'_>,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     if let Some(amount) = cost.life_amount() {
         return game.can_pay_life_with_reason(controller, amount, reason);
@@ -1282,8 +1282,11 @@ fn activation_cost_component_precheck_with_view(
         return false;
     }
 
-    if cost.mana_cost_ref().is_some() {
-        return true;
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        // The mana need not be floated yet, but the player must at least be
+        // able to produce it: hide abilities whose mana cost can't possibly
+        // be paid right now (pool + potential mana from mana abilities).
+        return view.can_potentially_pay_with_reason(controller, Some(source), mana_cost, 0, reason);
     }
     if cost.is_remove_counters() {
         return true;
@@ -1612,7 +1615,7 @@ fn activation_cost_is_payable_with_view(
     controller: PlayerId,
     source: ObjectId,
     cost: &crate::costs::Cost,
-    _view: &DerivedGameView<'_>,
+    view: &DerivedGameView<'_>,
 ) -> bool {
     let reason = crate::costs::PaymentReason::ActivateAbility;
     if game
@@ -1622,11 +1625,11 @@ fn activation_cost_is_payable_with_view(
         return false;
     }
 
-    if cost.mana_cost_ref().is_some() {
-        // Ability actions should remain visible before mana is floated, even when
-        // cost modifiers reprice the mana portion. The payment flow will enforce
-        // the actual mana payment later.
-        return true;
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        // The cost arriving here is already repriced by cost modifiers, and
+        // the mana need not be floated yet — but the player must at least be
+        // able to produce it (pool + potential mana from mana abilities).
+        return view.can_potentially_pay_with_reason(controller, Some(source), mana_cost, 0, reason);
     }
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);

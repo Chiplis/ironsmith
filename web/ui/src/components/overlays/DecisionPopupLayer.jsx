@@ -20,6 +20,7 @@ import useDeclareAttackersButtonTransition from "@/hooks/useDeclareAttackersButt
 import {
   collectSelectedPriorityActionIndices,
   filterPriorityActionGroups,
+  withoutManaAbilityActionGroups,
 } from "@/lib/priority-action-filter";
 import {
   buildObjectControllerById,
@@ -1688,14 +1689,28 @@ function MobileBattleDecisionLayer({
     if (selectedObjectId == null) return new Set();
     return collectSelectedPriorityActionIndices(otherActions, selectedObjectFamilyIds);
   }, [otherActions, selectedObjectFamilyIds, selectedObjectId]);
+  const manaPaymentActive = Boolean(state?.mana_payment);
   const visibleActionGroups = useMemo(() => {
-    if (selectedObjectId == null) return actionGroups;
+    if (selectedObjectId == null) {
+      // Mana abilities only surface in the default strip while a payment is
+      // in progress; otherwise they're reachable by selecting the permanent.
+      return isPriorityDecision && !manaPaymentActive
+        ? withoutManaAbilityActionGroups(actionGroups)
+        : actionGroups;
+    }
     return filterPriorityActionGroups(
       actionGroups,
       selectedObjectFamilyIds,
       selectedActionIndices,
     );
-  }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId]);
+  }, [
+    actionGroups,
+    isPriorityDecision,
+    manaPaymentActive,
+    selectedActionIndices,
+    selectedObjectFamilyIds,
+    selectedObjectId,
+  ]);
   const showPriorityAdvanceButton = !!passAction;
   const hasCustomPassLabel = !!passAction?.label && passAction.label !== "Pass priority";
   const passAdvanceLabel = showPriorityAdvanceButton
@@ -2497,13 +2512,26 @@ function PriorityBar({ anchor = null, inline = false, selectedObjectId = null })
     return collectSelectedPriorityActionIndices(otherActions, selectedObjectFamilyIds);
   }, [otherActions, selectedObjectFamilyIds, selectedObjectId]);
   const visibleActionGroups = useMemo(() => {
-    if (selectedObjectId == null) return actionGroups;
+    if (selectedObjectId == null) {
+      // Mana abilities only surface in the default strip while a payment is
+      // in progress; otherwise they're reachable by selecting the permanent.
+      return isPriorityDecision && !manaPayment
+        ? withoutManaAbilityActionGroups(actionGroups)
+        : actionGroups;
+    }
     return filterPriorityActionGroups(
       actionGroups,
       selectedObjectFamilyIds,
       selectedActionIndices,
     );
-  }, [actionGroups, selectedActionIndices, selectedObjectFamilyIds, selectedObjectId]);
+  }, [
+    actionGroups,
+    isPriorityDecision,
+    manaPayment,
+    selectedActionIndices,
+    selectedObjectFamilyIds,
+    selectedObjectId,
+  ]);
   const priorityActionCount = visibleActionGroups.length;
   const triggerPriorityAction = useCallback(
     (action) => {
