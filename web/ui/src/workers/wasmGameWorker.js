@@ -705,6 +705,13 @@ function enqueueCall(task) {
 
 function handleCall(msg) {
   const { id, method, args = [] } = msg;
+  if (!/^(snapshot|uiState|last\w*Perf|exportSyncCheckpoint|exportPublicAuditCheckpoint|autocompleteCardNames|getCardSemanticScore|cardsMeetingThreshold)$/.test(method)) {
+    try {
+      console.debug(`[ironsmith] worker call: ${method} ${JSON.stringify(args).slice(0, 240)}`);
+    } catch {
+      console.debug(`[ironsmith] worker call: ${method}`);
+    }
+  }
   const enqueuedAt = nowMs();
   pendingCallCount += 1;
   enqueueCall(async () => {

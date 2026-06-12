@@ -6388,8 +6388,8 @@ test("full UI PeerJS guest Claws of Gix sacrificing itself stays synced", { time
           }));
         }).catch((err) => ({ error: String(err?.message || err) }));
         const dispatchEntries = (page) => (page.__peerHarnessConsole || [])
-          .filter((entry) => /synced dispatch:start|synced dispatch:success|synced dispatch:failed|Cheat detected|dry_run_apply_action|action_quorum|apply_action|crypto_material_request:received|crypto_material_request:authorize/.test(String(entry)))
-          .slice(-60);
+          .filter((entry) => /worker call|synced dispatch:start|synced dispatch:success|synced dispatch:failed|Cheat detected|dry_run_apply_action|action_quorum|apply_action|crypto_material_request:received|crypto_material_request:authorize/.test(String(entry)))
+          .slice(-80);
         assert.fail(`guest Claws of Gix activation should stay synced (progress: ${lastProgress})
 host transcript: ${JSON.stringify(await transcriptActions(hostPage), null, 2)}
 guest transcript: ${JSON.stringify(await transcriptActions(guestPage), null, 2)}

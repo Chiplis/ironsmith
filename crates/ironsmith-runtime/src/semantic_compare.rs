@@ -1090,9 +1090,6 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         // The just-chosen color/type back-reference.
         ("the chosen color", "that color"),
         ("the chosen type", "that type"),
-        // One-turn durations: "X until end of turn" == "X this turn"
-        // (CR 514.2 — both expire in the cleanup step).
-        ("until end of turn", "this turn"),
         // "deals damage ... to each of two target creatures" — full damage
         // to every target; the count alone carries the same meaning.
         ("to each of two", "to two"),

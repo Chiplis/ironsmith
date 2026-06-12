@@ -377,6 +377,15 @@ impl WasmGame {
     fn finish_hidden_card_reveal(&mut self, recompute_decision: bool) -> Result<JsValue, JsValue> {
         self.last_crypto_requirements.clear();
         self.pending_crypto_audit_before = None;
+        // A staged cast/activation owns the pending decision: recomputing here
+        // would discard the chain prompt and advance to a fresh priority
+        // decision while priority_state still holds the staged action, so the
+        // chain's remaining decision commands (synced from the actor) would no
+        // longer match the pending decision and the peer would flag a cheat.
+        let mid_action_chain = self.priority_state.pending_activation.is_some()
+            || self.priority_state.pending_cast.is_some()
+            || self.pending_live_continuation.is_some();
+        let recompute_decision = recompute_decision && !mid_action_chain;
         if !recompute_decision && self.rebuild_stale_priority_decision() {
             return self.snapshot();
         }
