@@ -16889,7 +16889,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             && first_choose.filter.owner.as_ref() == Some(&first_choose.chooser)
             && second_choose.chooser == PlayerFilter::You
             && choose_exact_count(second_choose) == Some(1)
-            && choose_references_tag(second_choose, &first_choose.tag)
+            && (choose_references_tag(second_choose, &first_choose.tag)
+                || (choose_primary_zone(second_choose) == Some(Zone::Hand)
+                    && second_choose.filter.owner.as_ref() == Some(&first_choose.chooser)))
             && discard.player == first_choose.chooser
             && !discard.random
             && !discard.any_number

@@ -5765,6 +5765,142 @@ guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-12
   }
 });
 
+test("full UI PeerJS cancelling an in-progress cast stays synced", { timeout: 240000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const hostDeck = deckUrlParam("60 Gitaxian Probe");
+    const guestDeck = deckUrlParam("60 Lightning Bolt");
+    hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=Chiplis&deck=${hostDeck}`, "host-cancel-ui");
+    await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
+    await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+    await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
+    await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+
+    const lobbyCode = (await visibleBodyText(hostPage)).match(
+      /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+    )?.[0];
+    assert.ok(lobbyCode, "expected the full UI to create a cancel-cast lobby code");
+
+    guestPage = await openFullUiPage(
+      guestContext,
+      `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=Alice&deck=${guestDeck}`,
+      "guest-cancel-ui",
+    );
+    await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+    await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
+    await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
+      state: "detached",
+      timeout: 60000,
+    }).catch(() => {});
+    await sleep(8000);
+    await Promise.all([
+      hostPage.keyboard.press("Escape").catch(() => {}),
+      guestPage.keyboard.press("Escape").catch(() => {}),
+    ]);
+    await sleep(500);
+
+    const hostDecisionKind = async () =>
+      hostPage.evaluate(() => String(window.__ironsmithE2E?.snapshot?.()?.state?.decision?.kind || ""));
+
+    let castProbe = false;
+    let castInProgress = false;
+    let cancelled = false;
+    let lastCombinedText = "";
+
+    for (let step = 0; step < 80 && !cancelled; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      assertNoSyncFailureText(combinedText, "Cancelling an in-progress cast should stay synced");
+      assert.doesNotMatch(
+        combinedText,
+        /Cheat detected|unknown variant `cancel_decision`|does not match pending decision|invalid command payload/i,
+        `Cancelling an in-progress cast should not trip cheat detection or a payload error
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-40), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-40), null, 2)}`
+      );
+
+      // Once Gitaxian Probe is mid-cast (the caster faces its target/payment
+      // decision before the spell is on the stack), cancel it and confirm both
+      // peers roll back in sync.
+      if (castProbe && !castInProgress) {
+        const kind = await hostDecisionKind();
+        if (kind === "targets" || /STACK[\s\S]*Gitaxian Probe/i.test(hostText)) {
+          castInProgress = true;
+          await hostPage.evaluate(() => window.__ironsmithE2E?.cancelDecision?.());
+          await sleep(4000);
+          cancelled = true;
+          break;
+        }
+      }
+
+      if (!castProbe && await clickLocalButton(hostPage, "host-cast-cancel", /GITAXIAN PROBE/i)) {
+        castProbe = true;
+        await sleep(2500);
+        continue;
+      }
+
+      if (!castProbe) {
+        const hostAdvanced = await clickLocalButton(hostPage, "host-setup-cancel", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (hostAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+        const guestAdvanced = await clickLocalButton(guestPage, "guest-setup-cancel", /KEEP HAND|PREGAME|UPKEEP|DRAW|PASS PRIORITY|RESOLVE/i);
+        if (guestAdvanced) {
+          await sleep(3500);
+          continue;
+        }
+      }
+
+      await sleep(1000);
+    }
+
+    assert.equal(castProbe, true, `expected host to cast Gitaxian Probe\n${lastCombinedText}`);
+    assert.equal(castInProgress, true, `expected Gitaxian Probe to reach a cancelable mid-cast decision\n${lastCombinedText}`);
+
+    // After the synced cancel both peers must agree: the spell is off the stack
+    // and back in the caster's hand, with no sync failure or cheat flag.
+    const settledHost = await visibleBodyText(hostPage);
+    const settledGuest = await visibleBodyText(guestPage);
+    const settledText = `${settledHost}\n${settledGuest}`;
+    assertNoSyncFailureText(settledText, "Cancelled cast should leave both peers synced");
+    assert.doesNotMatch(
+      settledText,
+      /Cheat detected|unknown variant `cancel_decision`|does not match pending decision|invalid command payload/i,
+      `Cancelled cast should not trip cheat detection
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-60), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-60), null, 2)}`
+    );
+    const stackHasProbe = await hostPage.evaluate(() =>
+      ((window.__ironsmithE2E?.snapshot?.()?.state?.stack_preview) || [])
+        .some((entry) => /Gitaxian Probe/i.test(JSON.stringify(entry)))
+    );
+    assert.equal(stackHasProbe, false, `expected Gitaxian Probe off the stack after cancel\n${settledText}`);
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("full UI PeerJS Mishra's Bauble shows the targeted player's library top card to its controller", { timeout: 300000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);

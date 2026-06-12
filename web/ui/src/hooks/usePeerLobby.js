@@ -573,6 +573,15 @@ function isForfeitCommand(command) {
   return command?.type === "forfeit_player";
 }
 
+// Commands that are not engine decision commands: the WASM `UiCommand` enum
+// cannot deserialize them, so they must never be routed through engine dispatch
+// (previewCryptoRequirements/dispatch). They produce no hidden-card material —
+// `cancel_decision` is a local rollback and `forfeit_player` removes a seat.
+function isNonDispatchSyncCommand(command) {
+  const type = String(command?.type || "");
+  return type === "cancel_decision" || type === "forfeit_player";
+}
+
 function isActionTimeoutForfeitCommand(command) {
   const reason = String(command?.reason || "");
   return isForfeitCommand(command)
@@ -9475,6 +9484,13 @@ export function usePeerLobby({
   async function previewRequirementsForCommand(command) {
     const currentGame = gameRef.current;
     if (!currentGame || typeof currentGame.previewCryptoRequirements !== "function") {
+      return [];
+    }
+    // cancel_decision / forfeit_player are not engine decision commands: routing
+    // them through previewCryptoRequirements (which dispatches the command) would
+    // throw "invalid command payload: unknown variant ...". They never produce
+    // hidden-card material, so they have no crypto requirements.
+    if (isNonDispatchSyncCommand(command)) {
       return [];
     }
     const requirements = await currentGame.previewCryptoRequirements(command);

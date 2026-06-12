@@ -2458,6 +2458,7 @@ export function GameProvider({ children }) {
       auditTranscript: () => exportAuditTranscript?.({ includeLiveCheckpoint: false }) || null,
       dispatch: (command, label) => dispatch(command, label),
       submitMultiplayerCommand: (command, label) => submitMultiplayerCommand(command, label),
+      cancelDecision: () => cancelDecision(),
     };
     window.__ironsmithE2E = e2eApi;
     return () => {
@@ -2467,6 +2468,7 @@ export function GameProvider({ children }) {
     };
   }, [
     canStartHostedMatch,
+    cancelDecision,
     dispatch,
     loading,
     multiplayer,
