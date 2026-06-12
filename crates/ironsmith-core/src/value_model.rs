@@ -290,6 +290,9 @@ pub enum Restriction {
     LoseGame(PlayerFilter),
     WinGame(PlayerFilter),
     BecomeMonarch(PlayerFilter),
+    /// "[Players/You] don't lose unspent [color] mana as steps and phases end."
+    /// A color of `None` retains the player's whole mana pool.
+    LoseUnspentMana(PlayerFilter, Option<crate::color::Color>),
     PreventDamage,
     Attack(ObjectFilter),
     AttackPlayerOrPlaneswalkersControlledBy {
@@ -426,6 +429,10 @@ impl Restriction {
 
     pub fn gain_life(filter: PlayerFilter) -> Self {
         Self::GainLife(filter)
+    }
+
+    pub fn lose_unspent_mana(filter: PlayerFilter, color: Option<crate::color::Color>) -> Self {
+        Self::LoseUnspentMana(filter, color)
     }
 
     pub fn search_libraries(filter: PlayerFilter) -> Self {

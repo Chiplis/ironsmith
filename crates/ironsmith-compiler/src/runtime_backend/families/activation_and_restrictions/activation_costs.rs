@@ -845,7 +845,7 @@ pub(crate) fn parse_cant_clauses(
     if activation_cost_shape_matches_words(&normalized_words, IF_PREFIX_PATTERN) {
         return Ok(None);
     }
-    if is_mana_retention_cant_clause(&normalized_words) {
+    if is_one_shot_mana_retention_cant_clause(&normalized_words) {
         return Ok(None);
     }
     if let Some((_, remainder)) = parse_restriction_duration(tokens)?
@@ -859,6 +859,11 @@ pub(crate) fn parse_cant_clauses(
         if is_mana_retention_cant_clause(&remainder_words) {
             return Ok(None);
         }
+    }
+    // "Players/You don't lose unspent [color] mana as steps and phases end."
+    // Parsed before the and-splitting below tears apart "steps and phases end".
+    if let Some(ability) = parse_unspent_mana_retention_static(tokens, &normalized_words) {
+        return Ok(Some(vec![ability]));
     }
     if activation_cost_shape_matches_words(
         &normalized_words,
@@ -1024,6 +1029,41 @@ fn is_mana_retention_cant_clause(words: &[&str]) -> bool {
         || activation_cost_shape_matches_words(rest, LOSE_THIS_MANA_STEPS_PATTERN)
 }
 
+/// "You don't lose this mana as steps and phases end" — the duration-scoped
+/// one-shot variant handled by the effect path, not a static restriction.
+fn is_one_shot_mana_retention_cant_clause(words: &[&str]) -> bool {
+    let Some((&"you", rest)) = words.split_first() else {
+        return false;
+    };
+    let rest = match rest {
+        ["dont", tail @ ..] | ["don't", tail @ ..] | ["do", "not", tail @ ..] => tail,
+        _ => return false,
+    };
+    activation_cost_shape_matches_words(rest, LOSE_THIS_MANA_STEPS_PATTERN)
+}
+
+/// "Players/You don't lose unspent [color] mana as steps and phases end."
+/// (Upwelling, Omnath Locus of Mana, Leyline Tyrant.)
+fn parse_unspent_mana_retention_static(
+    tokens: &[OwnedLexToken],
+    words: &[&str],
+) -> Option<StaticAbility> {
+    let (subject, rest): (PlayerFilter, &[&str]) = match words {
+        ["you", rest @ ..] => (PlayerFilter::You, rest),
+        ["players", rest @ ..] | ["each", "player", rest @ ..] => (PlayerFilter::Any, rest),
+        _ => return None,
+    };
+    let rest = match rest {
+        ["dont", tail @ ..] | ["don't", tail @ ..] | ["do", "not", tail @ ..] => tail,
+        _ => return None,
+    };
+    let color = parse_unspent_mana_retention_tail(rest)?;
+    Some(StaticAbility::restriction(
+        crate::effect::Restriction::lose_unspent_mana(subject, color),
+        format_negated_restriction_display(tokens),
+    ))
+}
+
 pub(crate) fn parse_cant_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -1062,8 +1102,11 @@ pub(crate) fn parse_cant_clause(
         .iter()
         .map(String::as_str)
         .collect::<Vec<_>>();
-    if is_mana_retention_cant_clause(&normalized) {
+    if is_one_shot_mana_retention_cant_clause(&normalized) {
         return Ok(None);
+    }
+    if let Some(ability) = parse_unspent_mana_retention_static(tokens, &normalized) {
+        return Ok(Some(ability));
     }
 
     if let Some(rest) = slice_strip_prefix(

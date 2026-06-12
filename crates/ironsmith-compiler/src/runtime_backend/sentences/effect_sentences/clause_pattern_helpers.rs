@@ -596,6 +596,17 @@ const CLAUSE_MANIFEST_TOP_THAT_PLAYER_LIBRARY_PATTERN: ClauseShape<'static> = cl
             ],
         ]
 );
+const CLAUSE_ITS_CONTROLLER_MANIFESTS_TOP_PATTERN: ClauseShape<'static> = clause_shape!(
+    exact_any
+        & [
+            &[
+                "its", "controller", "manifests", "the", "top", "card", "of", "their", "library"
+            ],
+            &[
+                "that", "player", "manifests", "the", "top", "card", "of", "their", "library"
+            ],
+        ]
+);
 const CLAUSE_POPULATE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["populate"]);
 const CLAUSE_MELD_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["meld"]);
 const CLAUSE_MELD_SUBJECT_PATTERN: ClauseShape<'static> =
@@ -3134,6 +3145,12 @@ pub(crate) fn parse_keyword_mechanic_clause(
     }
 
     if CLAUSE_MANIFEST_TOP_THAT_PLAYER_LIBRARY_PATTERN.matches_words(&clause_words) {
+        return Ok(Some(EffectAst::subject_verb_manifest_top_card(
+            PlayerAst::ThatPlayerOrTargetController,
+        )));
+    }
+
+    if CLAUSE_ITS_CONTROLLER_MANIFESTS_TOP_PATTERN.matches_words(&clause_words) {
         return Ok(Some(EffectAst::subject_verb_manifest_top_card(
             PlayerAst::ThatPlayerOrTargetController,
         )));

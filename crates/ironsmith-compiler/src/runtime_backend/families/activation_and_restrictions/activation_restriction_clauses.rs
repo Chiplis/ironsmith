@@ -1126,6 +1126,30 @@ fn is_mana_retention_tail(words: &[&str]) -> bool {
         || activation_restriction_shape_matches_words(words, LOSE_THIS_MANA_STEPS_PATTERN)
 }
 
+/// Parse "lose unspent [color] mana as steps [and phases end]" tails.
+/// Returns `Some(color)` on a match; the inner option is the retained color
+/// scope (`None` retains the whole pool).
+pub(crate) fn parse_unspent_mana_retention_tail(
+    words: &[&str],
+) -> Option<Option<crate::color::Color>> {
+    let rest = match words {
+        ["lose", "unspent", rest @ ..] => rest,
+        _ => return None,
+    };
+    let (color, rest) = match rest {
+        ["mana", rest @ ..] => (None, rest),
+        [color_word, "mana", rest @ ..] => {
+            (Some(crate::color::Color::from_name(color_word)?), rest)
+        }
+        _ => return None,
+    };
+    matches!(
+        rest,
+        ["as", "steps"] | ["as", "steps", "and", "phases", "end"]
+    )
+    .then_some(color)
+}
+
 pub(crate) fn parse_cant_cast_restriction_words(
     words: &[&str],
 ) -> Option<crate::effect::Restriction> {
@@ -2002,6 +2026,12 @@ pub(crate) fn parse_negated_object_restriction_clause(
 
     let player_subject = player_negated_restriction_subject(&subject_words);
     if let Some(player) = player_subject {
+        if let Some(color) = parse_unspent_mana_retention_tail(&remainder_words) {
+            return Ok(Some(ParsedCantRestriction {
+                restriction: Restriction::lose_unspent_mana(player, color),
+                target: None,
+            }));
+        }
         if is_mana_retention_tail(&remainder_words) {
             return Ok(None);
         }

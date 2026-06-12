@@ -884,6 +884,17 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
+            Restriction::LoseUnspentMana(filter, color) => {
+                for player in &game.players {
+                    if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {
+                        tracker
+                            .dont_lose_unspent_mana
+                            .entry(player.id)
+                            .or_default()
+                            .insert(*color);
+                    }
+                }
+            }
             Restriction::SearchLibraries(filter) => {
                 for player in &game.players {
                     if player.is_in_game() && player_matches_restriction_filter(player.id, filter) {

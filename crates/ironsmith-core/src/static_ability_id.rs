@@ -247,6 +247,7 @@ pub enum StaticAbilityId {
     ExileWouldDieInstead,
     ModifyDamageAmountReplacement,
     DoubleCountersReplacement,
+    AddCountersPlacementReplacement,
     DoubleTokenCreationReplacement,
     AddTokenCreationReplacement,
     CreaturesEnteringDontCauseAbilitiesToTrigger,
@@ -520,6 +521,7 @@ impl StaticAbilityId {
             | ExileWouldDieInstead
             | ModifyDamageAmountReplacement
             | DoubleCountersReplacement
+            | AddCountersPlacementReplacement
             | DoubleTokenCreationReplacement
             | AddTokenCreationReplacement
             | CreaturesEnteringDontCauseAbilitiesToTrigger

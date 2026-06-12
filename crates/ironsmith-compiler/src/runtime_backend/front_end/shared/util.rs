@@ -3236,6 +3236,15 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     let filter_words = &words[filter_start..filter_end];
+    if matches!(
+        filter_words,
+        ["creatures", "in", "your", "party"] | ["creature", "in", "your", "party"]
+    ) {
+        return Some((
+            Value::PartySize(crate::target::PlayerFilter::You),
+            filter_end,
+        ));
+    }
     // Token-backed metric probes are evaluated up front so the aggregate-scope
     // dispatch is gated through shared-util shape helpers. The probes are a
     // superset of the precondition enforced by `parse_aggregate_scope_value_words`

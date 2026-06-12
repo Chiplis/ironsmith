@@ -708,6 +708,11 @@ pub struct CantEffectTracker {
     /// Permanents that can't phase out.
     /// Example: "Target permanent can't phase out."
     pub cant_phase_out: HashSet<ObjectId>,
+
+    /// Players who don't lose unspent mana as steps and phases end.
+    /// A `None` entry retains the whole pool; `Some(color)` retains that color.
+    /// Example: Upwelling, Kruphix (all mana); Omnath, Locus of Mana (green)
+    pub dont_lose_unspent_mana: HashMap<PlayerId, HashSet<Option<crate::color::Color>>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -965,6 +970,12 @@ impl CantEffectTracker {
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
         self.cant_phase_out.extend(other.cant_phase_out);
+        for (player, scopes) in other.dont_lose_unspent_mana {
+            self.dont_lose_unspent_mana
+                .entry(player)
+                .or_default()
+                .extend(scopes);
+        }
     }
 
     /// Clear all tracked "can't" effects.
@@ -1010,6 +1021,16 @@ impl CantEffectTracker {
         self.cant_be_countered.clear();
         self.cant_transform.clear();
         self.cant_phase_out.clear();
+        self.dont_lose_unspent_mana.clear();
+    }
+
+    /// Mana-retention scopes for a player, if any.
+    /// `Some` containing `None` means the whole pool is retained.
+    pub fn retained_mana_scopes(
+        &self,
+        player: PlayerId,
+    ) -> Option<&HashSet<Option<crate::color::Color>>> {
+        self.dont_lose_unspent_mana.get(&player)
     }
 
     /// Check if a player can gain life.
@@ -8183,9 +8204,45 @@ impl GameState {
 
     /// Empties all players' mana pools.
     /// Called at the end of each step and phase per MTG rules.
+    /// Players covered by a "don't lose unspent mana" effect (Upwelling,
+    /// Kruphix, Omnath) keep the retained portion of their pool.
     pub fn empty_mana_pools(&mut self) {
-        for player in &mut self.players {
-            player.mana_pool.empty();
+        let retention: Vec<Option<HashSet<Option<crate::color::Color>>>> = self
+            .players
+            .iter()
+            .map(|player| {
+                self.effect_store
+                    .cant_effects
+                    .retained_mana_scopes(player.id)
+                    .cloned()
+            })
+            .collect();
+        for (player, scopes) in self.players.iter_mut().zip(retention) {
+            let Some(scopes) = scopes else {
+                player.mana_pool.empty();
+                player.restricted_mana.clear();
+                continue;
+            };
+            if scopes.contains(&None) {
+                continue;
+            }
+            let pool = &mut player.mana_pool;
+            if !scopes.contains(&Some(crate::color::Color::White)) {
+                pool.white = 0;
+            }
+            if !scopes.contains(&Some(crate::color::Color::Blue)) {
+                pool.blue = 0;
+            }
+            if !scopes.contains(&Some(crate::color::Color::Black)) {
+                pool.black = 0;
+            }
+            if !scopes.contains(&Some(crate::color::Color::Red)) {
+                pool.red = 0;
+            }
+            if !scopes.contains(&Some(crate::color::Color::Green)) {
+                pool.green = 0;
+            }
+            pool.colorless = 0;
             player.restricted_mana.clear();
         }
     }

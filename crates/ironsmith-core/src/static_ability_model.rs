@@ -483,6 +483,13 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         counter_type: Option<CounterType>,
         display: String,
     },
+    AddCountersPlacementReplacement {
+        filter: ObjectFilter,
+        player_filter: Option<PlayerFilter>,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        display: String,
+    },
     DoubleTokenCreationReplacement {
         controller: PlayerFilter,
         display: String,
@@ -1448,6 +1455,19 @@ where
                 filter,
                 player_filter,
                 counter_type,
+                display,
+            },
+            StaticAbilityPayload::AddCountersPlacementReplacement {
+                filter,
+                player_filter,
+                counter_type,
+                additional,
+                display,
+            } => StaticAbilityPayload::AddCountersPlacementReplacement {
+                filter,
+                player_filter,
+                counter_type,
+                additional,
                 display,
             },
             StaticAbilityPayload::DoubleTokenCreationReplacement {
@@ -4026,6 +4046,26 @@ impl<
                 filter,
                 player_filter: None,
                 counter_type,
+                display,
+            },
+        }
+    }
+
+    pub fn add_counters_placement_replacement(
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::AddCountersPlacementReplacement),
+            label: display.clone(),
+            payload: StaticAbilityPayload::AddCountersPlacementReplacement {
+                filter,
+                player_filter: None,
+                counter_type,
+                additional,
                 display,
             },
         }

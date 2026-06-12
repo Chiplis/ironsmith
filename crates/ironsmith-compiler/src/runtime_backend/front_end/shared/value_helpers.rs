@@ -535,6 +535,12 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
         return Some(value);
     }
+    if matches!(
+        filter_words.as_slice(),
+        ["creatures", "in", "your", "party"] | ["creature", "in", "your", "party"]
+    ) {
+        return Some(Value::PartySize(PlayerFilter::You));
+    }
     if let Some(value) = parse_aggregate_scope_value_lexed(&filter_tokens) {
         return Some(value);
     }
@@ -791,6 +797,12 @@ pub(crate) fn parse_equal_to_number_of_filter_value_lexed(
     }
     if let Some(value) = parse_cards_discarded_this_turn_count_value(filter_tokens) {
         return Some(value);
+    }
+    if matches!(
+        filter_words.as_slice(),
+        ["creatures", "in", "your", "party"] | ["creature", "in", "your", "party"]
+    ) {
+        return Some(Value::PartySize(PlayerFilter::You));
     }
     if let Some(value) = parse_aggregate_scope_value_lexed(filter_tokens) {
         return Some(value);

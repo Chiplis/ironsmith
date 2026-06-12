@@ -169,6 +169,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::you_gain_life_during_turn(during_turn)
         }
         TriggerSpec::PlayerLosesLife(player) => Trigger::player_loses_life(player),
+        TriggerSpec::OpponentsEachLoseExactLife { amount } => {
+            Trigger::opponents_each_lose_exact_life(amount)
+        }
         TriggerSpec::PlayerLosesGame(player) => Trigger::player_loses_game(player),
         TriggerSpec::PlayerLosesLifeDuringTurn {
             player,
@@ -512,6 +515,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
         TriggerSpec::SpellCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::PlayerLosesLife(_)
+        | TriggerSpec::OpponentsEachLoseExactLife { .. }
         | TriggerSpec::PlayerLosesGame(_)
         | TriggerSpec::PlayerLosesLifeDuringTurn { .. }
         | TriggerSpec::PlayerDrawsCard(_)

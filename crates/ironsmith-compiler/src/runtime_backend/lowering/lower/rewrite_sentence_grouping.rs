@@ -2,6 +2,7 @@ use super::*;
 
 const MAX_SPEED_CONDITION_LABEL: &str = "__max_speed_condition";
 const CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX: &str = "__control_color_pair_permanent_";
+const CONTROL_SUBTYPE_PERMANENT_CONDITION_PREFIX: &str = "__control_subtype_permanent_";
 const STATION_THRESHOLD_CONDITION_PREFIX: &str = "__station_threshold_";
 
 pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::ConditionExpr {
@@ -18,6 +19,21 @@ pub(crate) fn condition_for_chosen_option_label(label: &str) -> crate::Condition
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: crate::effect::Value::Fixed(threshold),
         };
+    }
+    if let Some(subtype_name) = label.strip_prefix(CONTROL_SUBTYPE_PERMANENT_CONDITION_PREFIX) {
+        if let Some(subtype) =
+            crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(subtype_name)
+        {
+            let filter = ObjectFilter::permanent()
+                .you_control()
+                .with_subtype(subtype);
+            return crate::ConditionExpr::CountComparison {
+                count: crate::static_abilities::AnthemCountExpression::MatchingFilter(filter),
+                comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+                display: Some(format!("you control a {subtype}")),
+            };
+        }
+        return crate::ConditionExpr::SourceChosenOption(label.to_string());
     }
     if let Some(color_pair) = label.strip_prefix(CONTROL_COLOR_PAIR_PERMANENT_CONDITION_PREFIX) {
         let Some((left_name, right_name)) = color_pair.split_once('_') else {

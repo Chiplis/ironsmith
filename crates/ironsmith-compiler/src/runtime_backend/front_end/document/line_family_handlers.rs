@@ -666,15 +666,41 @@ pub(super) fn run_assign_damage_as_unblocked_enchanted_creature_controller_line_
 pub(super) fn run_graveyard_cast_control_condition_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    if !line_starts_with_words(ctx.line, GRAVEYARD_CAST_CONTROL_PREFIX)
-        || !line_ends_with_words(ctx.line, &["permanent"])
-    {
+    if !line_starts_with_words(ctx.line, GRAVEYARD_CAST_CONTROL_PREFIX) {
         return Ok(None);
     }
 
     let words = TokenWordView::new(&ctx.line.tokens);
     let prefix_len = GRAVEYARD_CAST_CONTROL_PREFIX.len();
-    if words.len() != prefix_len + 4
+
+    // "...as long as you control a Zombie." (Gravecrawler)
+    if words.len() == prefix_len + 1 {
+        let subtype_word = words.get(prefix_len).unwrap_or_default();
+        if crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(&subtype_word)
+            .is_none()
+        {
+            return Ok(None);
+        }
+        let permission_line =
+            rewrite_line_normalized(ctx.line, "You may cast this card from your graveyard.")?;
+        let Some(mut static_cst) = parse_static_line_cst(&permission_line)? else {
+            return Err(CardTextError::ParseError(format!(
+                "parser could not lower graveyard-cast control condition line: '{}'",
+                ctx.line.info.raw_line
+            )));
+        };
+        static_cst.chosen_option_label = Some(format!(
+            "__control_subtype_permanent_{}",
+            subtype_word.to_ascii_lowercase()
+        ));
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Static(static_cst),
+            ctx.idx + 1,
+        )));
+    }
+
+    if !line_ends_with_words(ctx.line, &["permanent"])
+        || words.len() != prefix_len + 4
         || !words.at_is(prefix_len + 1, "or")
         || !words.at_is(prefix_len + 3, "permanent")
     {

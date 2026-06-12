@@ -134,7 +134,11 @@ pub fn advance_priority_with_dm(
         perf.total_ms = total_started_at.elapsed_ms();
         perf.result_kind = "game_over_winner".to_string();
         store_priority_advance_perf(perf);
-        return Ok(GameProgress::GameOver(GameResult::Winner(remaining[0])));
+        let winner = remaining[0];
+        if let Some(player) = game.player_mut(winner) {
+            player.has_won = true;
+        }
+        return Ok(GameProgress::GameOver(GameResult::Winner(winner)));
     }
     perf.game_over_check_ms = game_over_started_at.elapsed_ms();
 

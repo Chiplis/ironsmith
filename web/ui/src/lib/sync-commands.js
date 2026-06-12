@@ -9,7 +9,7 @@ function stableStringify(value) {
   return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
 }
 
-function sameActionRef(left, right) {
+export function sameActionRef(left, right) {
   if (!left || !right) return false;
   return stableStringify(left) === stableStringify(right);
 }

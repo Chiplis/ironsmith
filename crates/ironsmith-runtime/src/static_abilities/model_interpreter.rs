@@ -1414,6 +1414,18 @@ impl StaticAbilityModelInterpreter {
                     display.clone(),
                 ),
             },
+            ironsmith_core::StaticAbilityPayload::AddCountersPlacementReplacement {
+                filter,
+                counter_type,
+                additional,
+                display,
+                ..
+            } => StaticAbility::add_counters_placement_replacement(
+                filter.clone(),
+                *counter_type,
+                *additional,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::DoubleTokenCreationReplacement {
                 controller,
                 display,

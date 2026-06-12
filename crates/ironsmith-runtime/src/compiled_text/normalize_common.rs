@@ -6800,6 +6800,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         Some(PlayerFilter::Teammate) => Some("a teammate controls"),
         Some(PlayerFilter::Specific(_)) => Some("that player controls"),
         Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they control"),
+        Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
+            Some("they control")
+        }
         _ => None,
     };
     if let Some(suffix) = controller_suffix {
@@ -6827,6 +6830,9 @@ pub(super) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
             Some(PlayerFilter::Teammate) => Some("a teammate owns"),
             Some(PlayerFilter::Specific(_)) => Some("that player owns"),
             Some(PlayerFilter::Target(_)) | Some(PlayerFilter::IteratedPlayer) => Some("they own"),
+            Some(PlayerFilter::TaggedPlayer(_)) | Some(PlayerFilter::ChosenPlayer) => {
+                Some("they own")
+            }
             _ => None,
         }
     };
@@ -10605,6 +10611,26 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::GainLife(filter) => {
             format!("{} can't gain life", describe_player_set_filter(filter))
+        }
+        crate::effect::Restriction::LoseUnspentMana(filter, color) => {
+            let subject = describe_player_set_filter(filter);
+            let dont = if subject.eq_ignore_ascii_case("you") {
+                "don't"
+            } else {
+                "doesn't"
+            };
+            let subject = if subject.eq_ignore_ascii_case("each player") {
+                "players don't".to_string()
+            } else {
+                format!("{subject} {dont}")
+            };
+            match color {
+                Some(color) => format!(
+                    "{subject} lose unspent {} mana as steps and phases end",
+                    color.name()
+                ),
+                None => format!("{subject} lose unspent mana as steps and phases end"),
+            }
         }
         crate::effect::Restriction::SearchLibraries(filter) => {
             format!(

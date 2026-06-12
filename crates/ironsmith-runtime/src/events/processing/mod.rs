@@ -657,13 +657,27 @@ fn tied_replacements_are_duplicate_regeneration_shields(
     let Some(first) = effects.first() else {
         return false;
     };
+    // NOTE: `ReplacementAction::Instead` payloads can never compare equal via
+    // `==` (runtime `Effect` deliberately implements `PartialEq` as
+    // always-false), so identical shields are recognized by their debug
+    // representation. Shields with extra follow-up effects (Debt of Loyalty)
+    // render differently and are intentionally NOT deduplicated.
+    let same_instead_payload = |effect: &ReplacementEffect| match (
+        &effect.replacement,
+        &first.replacement,
+    ) {
+        (ReplacementAction::Instead(a), ReplacementAction::Instead(b)) => {
+            a.len() == b.len() && format!("{a:?}") == format!("{b:?}")
+        }
+        _ => false,
+    };
     effects.len() > 1
         && effects.iter().all(|effect| {
             game.effect_store.replacement_effects.is_one_shot(effect.id)
                 && effect.source == first.source
                 && effect.controller == first.controller
                 && effect.priority_override == first.priority_override
-                && effect.replacement == first.replacement
+                && same_instead_payload(effect)
                 && effect
                     .matcher
                     .as_ref()
@@ -1755,12 +1769,54 @@ fn process_destroy_inner(
             EventOutcome::Replaced
         }
 
-        TraitEventResult::NeedsChoice { .. } => {
-            debug_assert!(
-                false,
-                "process_with_dm returned NeedsChoice for destroy event"
-            );
-            EventOutcome::Prevented
+        TraitEventResult::NeedsChoice {
+            applicable_effects,
+            event: boxed_event,
+            ..
+        } => {
+            // The decision maker deferred the tie-break. Returning Prevented
+            // here while damage stays marked would wedge the SBA loop, so
+            // apply the first tied effect (rule-equivalent for the common
+            // duplicate-shield case) instead of refusing the destruction.
+            let chosen = applicable_effects.first().copied().and_then(|effect_id| {
+                game.effect_store
+                    .replacement_effects
+                    .get_effect(effect_id)
+                    .cloned()
+                    .map(|effect| (effect_id, effect))
+            });
+            let Some((effect_id, chosen_effect)) = chosen else {
+                return EventOutcome::Prevented;
+            };
+            let apply_result = apply_trait_replacement(game, *boxed_event, &chosen_effect);
+            consume_one_shot_if_applied(game, effect_id, &apply_result);
+            match apply_result {
+                TraitApplyResult::Replaced(effects) => {
+                    let effect_source = source.unwrap_or(chosen_effect.source);
+                    let mut ctx =
+                        ExecutionContext::new(effect_source, chosen_effect.controller, dm);
+                    for effect in effects {
+                        let _ = execute_effect(game, &effect, &mut ctx);
+                    }
+                    EventOutcome::Replaced
+                }
+                TraitApplyResult::Prevented => EventOutcome::Prevented,
+                // Modified/Unchanged destroy events proceed as plain destruction.
+                TraitApplyResult::Modified(_) | TraitApplyResult::Unchanged(_) => {
+                    let moved = game.move_object_with_snapshot(
+                        permanent,
+                        Zone::Graveyard,
+                        cause.clone(),
+                        None,
+                    );
+                    if moved.is_some() {
+                        EventOutcome::Proceed(Zone::Graveyard)
+                    } else {
+                        EventOutcome::Prevented
+                    }
+                }
+                TraitApplyResult::NeedsInteraction { .. } => EventOutcome::Prevented,
+            }
         }
 
         TraitEventResult::NeedsInteraction { .. } => {

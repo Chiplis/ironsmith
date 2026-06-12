@@ -14378,6 +14378,32 @@ select::-ms-expand {
     align-items: flex-start;
     justify-content: center;
   }
+  /* The fan never scrolls — overlap absorbs hand size (mirrors the
+     .mobile-battle-self-hand / .hand-reveal-shell scopes). Without these the
+     Tailwind overflow-x-auto on .hand-zone-scroll turns the fan into a
+     horizontal scroller whose pans cancel card drags. */
+  .mobile-mtga-hand-fan .hand-zone-viewport-mobile-fan,
+  .mobile-mtga-hand-fullscreen .hand-zone-viewport-mobile-fan {
+    overflow: visible;
+  }
+  .mobile-mtga-hand-fan .hand-zone-scroll-mobile-fan,
+  .mobile-mtga-hand-fullscreen .hand-zone-scroll-mobile-fan {
+    overflow-x: visible;
+    overflow-y: visible;
+    touch-action: pan-x;
+  }
+  .mobile-mtga-hand-fan .hand-zone-row-mobile-fan,
+  .mobile-mtga-hand-fullscreen .hand-zone-row-mobile-fan {
+    align-items: flex-end;
+    justify-content: center;
+    overflow: visible;
+  }
+  .game-card.hand-card--mobile-draggable,
+  .game-card.hand-card--mobile-draggable * {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+  }
 
   /* Hand fullscreen ------------------------------------------- */
   .mobile-mtga-hand-fullscreen {

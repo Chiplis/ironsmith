@@ -23,6 +23,7 @@ import {
   normalizeZoneViews,
 } from "@/lib/stack-targets";
 import { samePlayerId } from "@/lib/player-display";
+import { sameActionRef } from "@/lib/sync-commands";
 
 const HAND_PEEK_HEIGHT_DEFAULT = 46;
 const HAND_REVEAL_HEIGHT_DEFAULT = 164;
@@ -739,7 +740,6 @@ export default function Workspace({
   const [transientInspectorPreviews, setTransientInspectorPreviews] = useState([]);
   const [transientInspectorPreviewIndex, setTransientInspectorPreviewIndex] = useState(0);
   const [opponentsZoneHostRect, setOpponentsZoneHostRect] = useState(null);
-  const [myZoneHostRect, setMyZoneHostRect] = useState(null);
   const workspaceRef = useRef(null);
   const previousStackIdsRef = useRef([]);
   const previousZoneTransitionSnapshotRef = useRef(null);
@@ -769,7 +769,6 @@ export default function Workspace({
   const HAND_PEEK_HEIGHT = tabletCompactViewport ? 40 : (smallDesktopViewport ? 44 : (largeDesktopViewport ? 52 : HAND_PEEK_HEIGHT_DEFAULT));
   const HAND_REVEAL_HEIGHT = tabletCompactViewport ? 140 : (smallDesktopViewport ? 152 : (largeDesktopViewport ? 180 : HAND_REVEAL_HEIGHT_DEFAULT));
   const HAND_COLLAPSED_SHELL_HEIGHT = HAND_PEEK_HEIGHT;
-  const showSideDocks = !nonDesktopViewport && !tabletCompactViewport && !smallDesktopViewport;
   const showTopDock = !nonDesktopViewport && !tabletCompactViewport;
   const showRematchSideboarding = multiplayer?.rematch?.phase === "sideboarding";
 
@@ -1173,7 +1172,6 @@ export default function Workspace({
 
     const measureDockTop = () => {
       const opponentsEl = root.querySelector("[data-opponents-zones]");
-      const myZoneEl = root.querySelector("[data-my-zone]");
       if (!opponentsEl) {
         setOpponentsZoneHostRect(null);
         return;
@@ -1189,22 +1187,6 @@ export default function Workspace({
         || currentRect.top !== nextOpponentsRect.top
         || currentRect.height !== nextOpponentsRect.height
           ? nextOpponentsRect
-          : currentRect
-      ));
-      if (!myZoneEl) {
-        setMyZoneHostRect(null);
-        return;
-      }
-      const myZoneRect = myZoneEl.getBoundingClientRect();
-      const nextMyZoneRect = {
-        top: Math.round(myZoneRect.top),
-        height: Math.round(myZoneRect.height),
-      };
-      setMyZoneHostRect((currentRect) => (
-        currentRect == null
-        || currentRect.top !== nextMyZoneRect.top
-        || currentRect.height !== nextMyZoneRect.height
-          ? nextMyZoneRect
           : currentRect
       ));
     };
@@ -1412,9 +1394,12 @@ export default function Workspace({
         return;
       }
 
-      // Check if dropped over the table area (anywhere above the hand)
+      // Check if dropped over the table area (anywhere above the hand). On
+      // mobile the whole scene carries [data-drop-zone], so only the explicit
+      // mobile drop targets count there — otherwise a small drag that starts
+      // and ends inside the hand fan would play the card.
       const el = document.elementFromPoint(e.clientX, e.clientY);
-      const isOverTable = !!el?.closest("[data-drop-zone]");
+      const isOverTable = !nonDesktopViewport && !!el?.closest("[data-drop-zone]");
 
       let isOverMobileSelfZoneDropTarget = false;
       if (nonDesktopViewport) {
@@ -1466,8 +1451,34 @@ export default function Workspace({
         return;
       }
 
-      // Multiple possible actions: pin inspector to this card while actions
-      // remain available in the action strip.
+      // Multiple possible actions. On mobile, surface them as an anchored
+      // popover at the drop point; on desktop, pin the inspector to this card
+      // while actions remain available in the action strip.
+      if (nonDesktopViewport) {
+        const liveActions = (currentDecision.actions || []).filter((live) =>
+          ds.actions.some((held) => sameActionRef(held?.action_ref, live?.action_ref))
+        );
+        if (liveActions.length === 0) {
+          return;
+        }
+        window.dispatchEvent(new CustomEvent("ironsmith:mobile-card-actions", {
+          detail: {
+            objectId: ds.objectId,
+            cardName: ds.cardName,
+            actions: liveActions,
+            anchorRect: {
+              left: e.clientX,
+              top: e.clientY,
+              right: e.clientX,
+              bottom: e.clientY,
+              width: 0,
+              height: 0,
+            },
+          },
+        }));
+        clearHover();
+        return;
+      }
       const hasCurrentAction = ds.actions.some((action) =>
         currentActionIndices.has(Number(action?.index))
       );
@@ -1675,7 +1686,6 @@ export default function Workspace({
                 transientInspectorPreviewCount={transientInspectorPreviews.length}
                 onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
                 onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
                 suppressFallback={suppressFallbackInspector}
                 inline
                 inlineDockPlacement="top"
@@ -1705,7 +1715,6 @@ export default function Workspace({
               transientInspectorPreviewCount={transientInspectorPreviews.length}
               onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
               onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-              onInspectObject={handleInspectObject}
               suppressFallback={suppressFallbackInspector}
               inline
               inlineDockPlacement="top"
@@ -1713,54 +1722,6 @@ export default function Workspace({
               inlineFillWidth
               allowTopInlinePlacement
             />
-          </div>
-        </div>
-      )}
-      {!showRematchSideboarding && !showMiddleInspectorDock && showSideDocks && !deckLoadingMode && opponentsZoneHostRect != null && (
-        <div
-          className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
-          style={{
-            top: `${opponentsZoneHostRect.top}px`,
-            height: `${opponentsZoneHostRect.height}px`,
-          }}
-        >
-          <div className="pointer-events-none relative flex h-full shrink-0 items-start gap-1.5 self-start overflow-visible">
-            <RightRail
-              pinnedObjectId={pinnedInspectorObjectId}
-              transientInspectorPreview={activeTransientInspectorPreview}
-              transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-              transientInspectorPreviewCount={transientInspectorPreviews.length}
-              onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-              onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-              onInspectObject={handleInspectObject}
-              suppressFallback={suppressFallbackInspector}
-              inline
-              inlineDockPlacement="top"
-              inlineHostSide="left"
-              inlineExpandedSide="left"
-              inlineFillHeight
-              allowTopInlinePlacement
-            />
-            {inspectorDebug && (
-              <RightRail
-                pinnedObjectId={pinnedInspectorObjectId}
-                transientInspectorPreview={activeTransientInspectorPreview}
-                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-                transientInspectorPreviewCount={transientInspectorPreviews.length}
-                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
-                suppressFallback={suppressFallbackInspector}
-                inline
-                inlineDockPlacement="top"
-                inlineHostSide="left"
-                inlineExpandedSide="left"
-                inlineFillHeight
-                allowTopInlinePlacement
-                dockRole="opposite"
-                inspectorVariant="debug"
-              />
-            )}
           </div>
         </div>
       )}
@@ -1814,7 +1775,6 @@ export default function Workspace({
                 transientInspectorPreviewCount={transientInspectorPreviews.length}
                 onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
                 onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
                 suppressFallback={suppressFallbackInspector}
                 inline
                 allowTopInlinePlacement={showTopLeftInspectorDock}
@@ -1828,57 +1788,9 @@ export default function Workspace({
                 transientInspectorPreviewCount={transientInspectorPreviews.length}
                 onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
                 onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
                 suppressFallback={suppressFallbackInspector}
                 inline
                 allowTopInlinePlacement={showTopLeftInspectorDock}
-                dockRole="opposite"
-                inspectorVariant="debug"
-              />
-            )}
-          </div>
-        </div>
-      )}
-      {!showMiddleInspectorDock && showSideDocks && !deckLoadingMode && myZoneHostRect != null && (
-        <div
-          className="pointer-events-none fixed inset-x-0 z-30 flex items-start justify-start overflow-visible px-2"
-          style={{
-            top: `${myZoneHostRect.top}px`,
-            height: `${myZoneHostRect.height}px`,
-          }}
-        >
-          <div className="pointer-events-none relative flex h-full shrink-0 items-start gap-1.5 self-start overflow-visible">
-            <RightRail
-              pinnedObjectId={pinnedInspectorObjectId}
-              transientInspectorPreview={activeTransientInspectorPreview}
-              transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-              transientInspectorPreviewCount={transientInspectorPreviews.length}
-              onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-              onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-              onInspectObject={handleInspectObject}
-              suppressFallback={suppressFallbackInspector}
-              inline
-              inlineHostSide="left"
-              inlineExpandedSide="left"
-              inlineFillHeight
-              allowTopInlinePlacement={showTopLeftInspectorDock}
-            />
-            {inspectorDebug && (
-              <RightRail
-                pinnedObjectId={pinnedInspectorObjectId}
-                transientInspectorPreview={activeTransientInspectorPreview}
-                transientInspectorPreviewIndex={transientInspectorPreviewIndex}
-                transientInspectorPreviewCount={transientInspectorPreviews.length}
-                onShowPreviousTransientInspectorPreview={showPreviousTransientInspectorPreview}
-                onShowNextTransientInspectorPreview={showNextTransientInspectorPreview}
-                onInspectObject={handleInspectObject}
-                suppressFallback={suppressFallbackInspector}
-                inline
-                inlineHostSide="left"
-                inlineExpandedSide="left"
-                inlineFillHeight
-                allowTopInlinePlacement={showTopLeftInspectorDock}
-                dockRole="opposite"
                 inspectorVariant="debug"
               />
             )}

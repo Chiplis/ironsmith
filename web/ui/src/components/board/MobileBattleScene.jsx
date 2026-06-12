@@ -3,10 +3,8 @@ import { X } from "lucide-react";
 import { useGame } from "@/context/GameContext";
 import { useCombatArrows } from "@/context/useCombatArrows";
 import { MobileBattleProvider } from "@/context/MobileBattleContext";
-import DecisionPopupLayer, {
-  MobileDecisionActionList,
-  MobileDecisionSheet,
-} from "@/components/overlays/DecisionPopupLayer";
+import DecisionPopupLayer from "@/components/overlays/DecisionPopupLayer";
+import ActionPopover from "@/components/overlays/ActionPopover";
 import HoverArtOverlay from "@/components/right-rail/HoverArtOverlay";
 import useMobileBattleLayout from "@/hooks/useMobileBattleLayout";
 import {
@@ -16,6 +14,7 @@ import {
   MOBILE_STACK_RAIL_WIDTH_PX,
 } from "@/lib/mobile-battle-layout";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
+import { sameActionRef } from "@/lib/sync-commands";
 import { partitionBattlefieldCards } from "@/lib/battlefield-layout";
 import { normalizePhaseStep } from "@/lib/constants";
 import { usePointerClickGuard } from "@/lib/usePointerClickGuard";
@@ -39,12 +38,6 @@ const DEFAULT_HAND_PEEK_HEIGHT = MOBILE_HAND_PEEK_HEIGHT_PX;
 const MOBILE_CARD_TAP_MAX_DISTANCE_SQ = 16 * 16;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_X = 14;
 const MOBILE_OPPONENT_CARD_HIT_SLOP_Y = 18;
-
-function stripActionPrefix(label = "") {
-  const activateMatch = String(label).match(/^Activate\s+.+?:\s*(.+)$/i);
-  if (activateMatch) return activateMatch[1];
-  return String(label);
-}
 
 function collectCardObjectIds(card) {
   const ids = [Number(card?.id)];
@@ -74,9 +67,13 @@ function collectActivatableActionsForCard(card, activatableMap) {
   return actions;
 }
 
-function buildActivatableMap(decision) {
+function buildActivatableMap(decision, perspective) {
   const map = new Map();
-  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) return map;
+  if (
+    decision?.kind !== "priority"
+    || !samePlayerId(decision.player, perspective)
+    || !Array.isArray(decision.actions)
+  ) return map;
   for (const action of decision.actions) {
     if (
       (action.kind === "activate_ability"
@@ -160,7 +157,10 @@ export default function MobileBattleScene({
   const opponentManaPool = activeOpponent?.mana_pool || null;
   const selfManaPool = me?.mana_pool || null;
 
-  const activatableMap = useMemo(() => buildActivatableMap(state?.decision), [state?.decision]);
+  const activatableMap = useMemo(
+    () => buildActivatableMap(state?.decision, state?.perspective),
+    [state?.decision, state?.perspective]
+  );
 
   const decisionIdentity = useMemo(() => {
     const decision = state?.decision || null;
@@ -347,10 +347,16 @@ export default function MobileBattleScene({
       if (!current) return current;
       if (current.decisionIdentity !== decisionIdentity) return null;
       if (state?.decision?.kind !== "priority") return null;
-      const indices = new Set((state?.decision?.actions || []).map((a) => Number(a?.index)));
-      const next = (current.actions || []).filter((a) => indices.has(Number(a?.index)));
+      // Re-resolve by action_ref so the popover reflects the live decision's
+      // labels/refs; index equality alone can pair up unrelated actions.
+      const liveActions = state?.decision?.actions || [];
+      const next = (current.actions || [])
+        .map((held) => liveActions.find((live) => sameActionRef(live?.action_ref, held?.action_ref)))
+        .filter(Boolean);
       if (next.length === 0) return null;
-      return { ...current, actions: next };
+      const unchanged = next.length === current.actions.length
+        && next.every((action, actionIndex) => action === current.actions[actionIndex]);
+      return unchanged ? current : { ...current, actions: next };
     });
   }, [decisionIdentity, state?.decision]);
 
@@ -366,27 +372,49 @@ export default function MobileBattleScene({
       ? actions
       : collectActivatableActionsForCard(card, activatableMap);
     if (resolved.length === 0 || state?.decision?.kind !== "priority") return false;
+    const objectId = Number(card?.id);
+    if (actionPopoverState?.objectId === objectId) {
+      setActionPopoverState(null);
+      return false;
+    }
     const normalizedAnchor = anchorRect
       ? { left: anchorRect.left, top: anchorRect.top, right: anchorRect.right, bottom: anchorRect.bottom, width: anchorRect.width, height: anchorRect.height }
       : null;
-    setActionPopoverState((current) => {
-      if (current?.objectId === Number(card?.id)) return null;
-      return {
-        objectId: Number(card?.id),
-        cardName: card?.name || "Actions",
-        anchorRect: normalizedAnchor,
-        actions: resolved,
-        decisionIdentity,
-      };
+    setActionPopoverState({
+      objectId,
+      cardName: card?.name || "Actions",
+      anchorRect: normalizedAnchor,
+      actions: resolved,
+      decisionIdentity,
     });
     onInspect?.(null);
     return true;
-  }, [activatableMap, decisionIdentity, onInspect, selectedObjectId, state?.decision?.kind]);
+  }, [actionPopoverState?.objectId, activatableMap, decisionIdentity, onInspect, selectedObjectId, state?.decision?.kind]);
 
   const inspectHeldObject = useCallback(({ card }) => {
     closeActionPopover();
     requestInspectObject(card?.id ?? null);
   }, [closeActionPopover, requestInspectObject]);
+
+  // A hand-card drop with several possible plays surfaces them as an anchored
+  // popover at the drop point (dispatched by Workspace's drop handler).
+  useEffect(() => {
+    const onMobileCardActions = (event) => {
+      const detail = event?.detail || null;
+      const actions = Array.isArray(detail?.actions) ? detail.actions : [];
+      if (!detail || actions.length === 0) return;
+      if (selectedObjectId != null || state?.decision?.kind !== "priority") return;
+      setActionPopoverState({
+        objectId: Number(detail.objectId),
+        cardName: detail.cardName || "Actions",
+        anchorRect: detail.anchorRect || null,
+        actions,
+        decisionIdentity,
+      });
+    };
+    window.addEventListener("ironsmith:mobile-card-actions", onMobileCardActions);
+    return () => window.removeEventListener("ironsmith:mobile-card-actions", onMobileCardActions);
+  }, [decisionIdentity, selectedObjectId, state?.decision?.kind]);
 
   const handlePopoverAction = useCallback((action) => {
     if (!action) return;
@@ -601,12 +629,6 @@ export default function MobileBattleScene({
     cm.onTargetAreaClick(playerId, null);
   }, [activeOpponent, combatModeRef]);
 
-  const opponentBandCaptureEnabled = Boolean(
-    activeOpponent
-    && combatModeRef.current?.onTargetAreaClick
-    && combatModeRef.current?.selectedAttacker != null
-  );
-
   // --- Player-target taps --------------------------------------------------
   const dispatchPlayerChoice = useCallback((player) => {
     if (!canPickTargets || !player) return;
@@ -713,10 +735,14 @@ export default function MobileBattleScene({
             onPointerUpCapture={handleOpponentBandPointerUpCapture}
             onPointerCancelCapture={handleOpponentBandPointerCancelCapture}
             onPointerLeave={handleOpponentBandPointerLeave}
-            onClickCapture={opponentBandCaptureEnabled ? handleOpponentBandClickCapture : undefined}
+            onClickCapture={handleOpponentBandClickCapture}
           />
 
-          <section ref={controlBandRef} className="mobile-mtga-control-row">
+          <section
+            ref={controlBandRef}
+            className="mobile-mtga-control-row"
+            data-mobile-hand-drop-target="battlefield"
+          >
             <MobilePhaseStrip />
             <MobileTurnActionStack ref={setActionStackElement} />
           </section>
@@ -787,25 +813,27 @@ export default function MobileBattleScene({
         />
 
         {actionPopoverState ? (
-          <MobileDecisionSheet
-            eyebrow="Your Action"
+          <ActionPopover
+            key={String(actionPopoverState.objectId)}
+            anchorRect={actionPopoverState.anchorRect || {
+              left: window.innerWidth / 2,
+              right: window.innerWidth / 2,
+              top: window.innerHeight * 0.55,
+              bottom: window.innerHeight * 0.55,
+              width: 0,
+              height: 0,
+            }}
+            actions={actionPopoverState.actions}
             title={actionPopoverState.cardName}
-            subtitle={`${actionPopoverState.actions.length} action${actionPopoverState.actions.length === 1 ? "" : "s"}`}
-            onClose={closeActionPopover}
-            closeLabel="Close action menu"
-            inline={false}
-            className="mobile-decision-sheet--action-list mobile-mtga-action-menu-sheet"
-            bodyClassName="mobile-decision-sheet-body--action-list"
-          >
-            <MobileDecisionActionList
-              items={actionPopoverState.actions.map((action) => ({
-                key: String(action.index),
-                label: stripActionPrefix(action.label || "Action"),
-                onClick: () => handlePopoverAction(action),
-              }))}
-              emptyText="No available actions."
-            />
-          </MobileDecisionSheet>
+            variant="game"
+            onAction={handlePopoverAction}
+            onClose={() => {
+              const closingObjectId = actionPopoverState.objectId;
+              setActionPopoverState((current) => (
+                current?.objectId === closingObjectId ? null : current
+              ));
+            }}
+          />
         ) : null}
 
         {mobileViewMode === "hand" ? (
@@ -822,7 +850,6 @@ export default function MobileBattleScene({
             ref={inspectOverlayRef}
             className="mobile-battle-inspect-overlay"
             data-card-inspector="true"
-            data-mobile-hand-drop-target="inspector"
             role="dialog"
             aria-modal="true"
             aria-label="Card inspector"
@@ -847,7 +874,6 @@ export default function MobileBattleScene({
                   displayMode="inspector"
                   availableInspectorWidth={360}
                   availableInspectorHeight={228}
-                  hideOwnershipMetadata
                   minInspectorTextScale={0.54}
                   minInspectorTitleScale={0.46}
                   onInspectorAccentChange={null}

@@ -1085,6 +1085,12 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         // Group back-reference vs the renderer's for-each surface.
         ("those creatures", "each creature"),
         ("Those creatures", "Each creature"),
+        // "deals damage ... to each of two target creatures" — full damage
+        // to every target; the count alone carries the same meaning.
+        ("to each of two", "to two"),
+        ("to each of three", "to three"),
+        ("to each of four", "to four"),
+        ("to each of up to", "to up to"),
         // The shuffled library is implicit: modern oracle says "Then
         // shuffle." where older templating says "shuffles their library".
         ("shuffle your library", "shuffle"),
@@ -3650,6 +3656,16 @@ fn normalize_self_reference_nouns(text: &str) -> String {
                         .starts_with(noun)
                     {
                         let after_noun = after_lead + noun.len();
+                        // Possessive: "this creature's power" matches the
+                        // card-name rewrite's "this power" surface.
+                        for possessive in ["'s ", "’s "] {
+                            if text[after_noun..].starts_with(possessive) {
+                                normalized.push_str(&lead[..4]);
+                                normalized.push(' ');
+                                idx = after_noun + possessive.len();
+                                continue 'outer;
+                            }
+                        }
                         let next = text[after_noun..].chars().next();
                         let is_word_end = next
                             .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '\'' && c != '’');

@@ -6788,6 +6788,53 @@ fn dance_of_the_manse_x_five_returns_without_animation() {
 }
 
 #[test]
+fn lethal_damage_with_two_regeneration_shields_resolves_without_looping() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let creature = create_creature(&mut game, "Shielded Skeleton", alice, 1, 1);
+
+    let regenerate = crate::effects::RegenerateEffect::new(
+        crate::target::ChooseSpec::SpecificObject(creature),
+        crate::effect::Until::EndOfTurn,
+    );
+    let mut ctx = crate::effects::ExecutionContext::new_default(creature, alice);
+    for _ in 0..2 {
+        crate::effects::execute_effect(
+            &mut game,
+            &crate::effect::Effect::new(regenerate.clone()),
+            &mut ctx,
+        )
+        .expect("regeneration shield should apply");
+    }
+
+    game.mark_damage(creature, 3);
+    let mut trigger_queue = TriggerQueue::new();
+    check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBA processing should terminate");
+
+    let object = game.object(creature).expect("creature should survive");
+    assert_eq!(object.zone, Zone::Battlefield, "regeneration should save it");
+    assert!(game.is_tapped(creature), "regeneration taps the creature");
+    assert_eq!(
+        game.damage_on(creature),
+        0,
+        "regeneration clears marked damage"
+    );
+
+    game.mark_damage(creature, 3);
+    check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBA processing should terminate");
+    let object = game.object(creature).expect("creature should survive twice");
+    assert_eq!(object.zone, Zone::Battlefield);
+
+    game.mark_damage(creature, 3);
+    check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBA processing should terminate");
+    assert!(
+        game.object(creature)
+            .is_none_or(|object| object.zone == Zone::Graveyard),
+        "with no shields left, lethal damage should destroy the creature"
+    );
+}
+
+#[test]
 fn regeneration_count_tracks_used_shields_until_cleanup() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

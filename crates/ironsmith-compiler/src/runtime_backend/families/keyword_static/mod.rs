@@ -1483,11 +1483,11 @@ const LESS_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["less"]);
 const MORE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["more"]);
 const SPELL_OR_SPELLS_WORD_PATTERN: ClauseShape<'static> =
     clause_shape!(exact_any & [&["spell"], &["spells"]]);
+// Compared against article-stripped words; do not include "a"/"an"/"the".
 const GENERIC_DOUBLE_COUNTERS_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
             "if",
-            "an",
             "effect",
             "would",
             "put",
@@ -1496,7 +1496,6 @@ const GENERIC_DOUBLE_COUNTERS_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> =
             "more",
             "counters",
             "on",
-            "a",
             "permanent",
             "you",
             "control",
@@ -1567,8 +1566,9 @@ const TWICE_THAT_MANY_PLUS_ONE_COUNTERS_TAIL_PATTERN: ClauseShape<'static> = cla
 const DOUBLE_TOKEN_CREATION_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> = clause_shape!(
     exact_any
         & [
+            // Compared against article-stripped words; do not include "a"/"an"/"the".
             &[
-                "if", "an", "effect", "would", "create", "one", "or", "more", "tokens", "under",
+                "if", "effect", "would", "create", "one", "or", "more", "tokens", "under",
                 "your", "control", "it", "creates", "twice", "that", "many", "of", "those",
                 "tokens", "instead",
             ],
@@ -1579,6 +1579,9 @@ const DOUBLE_TOKEN_CREATION_UNDER_YOUR_CONTROL_PATTERN: ClauseShape<'static> = c
             ],
         ]
 );
+const THAT_MANY_PLUS_TAIL_PATTERN: ClauseShape<'static> =
+    clause_shape!(suffix & ["instead"]; contains_phrases & [&["that", "many", "plus"]]);
+const THAT_MANY_WORDS_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["that", "many"]);
 const YOU_CREATE_ONE_OR_MORE_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["if", "you", "would", "create", "one", "or", "more"]);
 const TREASURE_WORD_PATTERN: ClauseShape<'static> = clause_shape!(exact & ["treasure"]);
@@ -1625,8 +1628,9 @@ const DOESNT_WORD_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words & [&["doesnt", "doesn"]]);
 const DOES_NOT_PHRASE_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_phrases & [&["does", "not"]]);
+// Compared against article-stripped words; "the" is removed before matching.
 const YOU_START_THE_GAME_PREFIX_PATTERN: ClauseShape<'static> =
-    clause_shape!(prefix & ["you", "start", "the", "game"]);
+    clause_shape!(prefix & ["you", "start", "game"]);
 const ADDITIONAL_LIFE_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_words & ["additional", "life"]);
 const BUYBACK_COSTS_COST_PREFIX_PATTERN: ClauseShape<'static> =
@@ -1956,8 +1960,9 @@ const ACTIVATE_ABILITIES_OF_PREFIX_PATTERN: ClauseShape<'static> =
     clause_shape!(prefix & ["to", "activate", "abilities", "of"]);
 const ABILITY_OR_ABILITIES_MARKER_PATTERN: ClauseShape<'static> =
     clause_shape!(contains_any_words & [&["ability", "abilities"]]);
+// Compared against article-stripped words; "the" is removed before matching.
 const OTHER_THAN_FIRST_PATTERN: ClauseShape<'static> =
-    clause_shape!(contains_phrases & [&["other", "than", "the", "first"]]);
+    clause_shape!(contains_phrases & [&["other", "than", "first"]]);
 const OTHER_WORD_MARKER_PATTERN: ClauseShape<'static> = clause_shape!(contains_words & ["other"]);
 const YOU_DREW_CARDS_DYNAMIC_PREFIX_PATTERN: ClauseShape<'static> = clause_shape!(
     prefix_any
@@ -9636,9 +9641,34 @@ pub(crate) fn parse_double_counters_replacement_line(
     }
 
     let prefix_len = 10usize;
-    if !PLUS_ONE_COUNTERS_WOULD_BE_PUT_PREFIX_PATTERN.matches_non_article_tokens(tokens)
-        || !TWICE_THAT_MANY_PLUS_ONE_COUNTERS_TAIL_PATTERN.matches_non_article_tokens(tokens)
+    if !PLUS_ONE_COUNTERS_WOULD_BE_PUT_PREFIX_PATTERN.matches_non_article_tokens(tokens) {
+        return Ok(None);
+    }
+
+    // "..., that many plus N [+1/+1 counters] are put on it instead."
+    // (Hardened Scales, Conclave Mentor.)
+    if THAT_MANY_PLUS_TAIL_PATTERN.matches_non_article_tokens(tokens)
+        && let Some(plus_idx) = find_index(tokens, |token| PLUS_WORD_PATTERN.matches_token(token))
+        && plus_idx >= 2
+        && plus_idx > prefix_len
+        && THAT_MANY_WORDS_PATTERN
+            .matches(LexedClause::new(trim_lexed_commas(&tokens[plus_idx - 2..plus_idx])))
+        && let Some(additional) = tokens
+            .get(plus_idx + 1)
+            .and_then(|token| parse_named_number(token.parser_text()))
     {
+        let that_idx = plus_idx - 2;
+        let filter_tokens = trim_lexed_commas(&tokens[prefix_len..that_idx]);
+        let filter = parse_object_filter_lexed(&filter_tokens, false)?;
+        return Ok(Some(StaticAbility::add_counters_placement_replacement(
+            filter,
+            Some(crate::object::CounterType::PlusOnePlusOne),
+            additional,
+            display_text_for_tokens(tokens, true),
+        )));
+    }
+
+    if !TWICE_THAT_MANY_PLUS_ONE_COUNTERS_TAIL_PATTERN.matches_non_article_tokens(tokens) {
         return Ok(None);
     }
 

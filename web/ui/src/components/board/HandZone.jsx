@@ -44,7 +44,9 @@ function buildPlayableMaps(state, player) {
   const extraPlayable = new Map();  // objectId → { name, card, actions[], fromZone, glowKind }
 
   const actions =
-    state?.decision?.kind === "priority" && Array.isArray(state?.decision?.actions)
+    state?.decision?.kind === "priority"
+    && samePlayerId(state?.decision?.player, state?.perspective)
+    && Array.isArray(state?.decision?.actions)
       ? state.decision.actions
       : [];
 
@@ -512,8 +514,11 @@ export default function HandZone({
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    // React nulls event.currentTarget after dispatch, so the deferred
+    // pointerup/cancel closures below need their own reference.
+    const captureTarget = e.currentTarget;
     try {
-      e.currentTarget?.setPointerCapture?.(e.pointerId);
+      captureTarget?.setPointerCapture?.(e.pointerId);
     } catch {
       // Touch browsers can reject capture during rapid gesture changes.
     }
@@ -536,7 +541,7 @@ export default function HandZone({
         dt.dragging = true;
         if (
           dragScrollLockRef.current == null
-          && isVerticalRail
+          && (isVerticalRail || isMobileFan)
           && me.pointerType !== "mouse"
           && handScrollRef.current
         ) {
@@ -563,7 +568,7 @@ export default function HandZone({
         return;
       }
       try {
-        e.currentTarget?.releasePointerCapture?.(ue.pointerId);
+        captureTarget?.releasePointerCapture?.(ue.pointerId);
       } catch {
         // No-op if capture was never established.
       }
@@ -580,7 +585,7 @@ export default function HandZone({
         return;
       }
       try {
-        e.currentTarget?.releasePointerCapture?.(ce.pointerId);
+        captureTarget?.releasePointerCapture?.(ce.pointerId);
       } catch {
         // No-op if capture was never established.
       }
@@ -744,6 +749,7 @@ export default function HandZone({
             onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
             onMouseEnter={() => handleHoverEnter(card.id)}
             onMouseLeave={handleHoverLeave}
+            className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
             style={{
               ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
               scrollSnapAlign: isRoulette ? "start" : undefined,
@@ -782,6 +788,7 @@ export default function HandZone({
           onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
           onMouseEnter={() => handleHoverEnter(extra.id)}
           onMouseLeave={handleHoverLeave}
+          className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
           style={{
             ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
             scrollSnapAlign: isRoulette ? "start" : undefined,

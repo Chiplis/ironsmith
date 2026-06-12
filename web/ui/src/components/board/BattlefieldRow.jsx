@@ -33,6 +33,8 @@ const ABSOLUTE_MIN_CARD_WIDTH = 10;
 const ABSOLUTE_MIN_CARD_HEIGHT = 14;
 const EMPTY_PAPER_SLOT_COLUMNS = 6;
 const MOBILE_OBJECT_LONG_PRESS_MS = 380;
+const MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS = 700;
+const MOBILE_LONG_PRESS_MOVE_CANCEL_DISTANCE_SQ = 16 * 16;
 const MOBILE_BOTTOM_BACK_ROW_TRANSLATE_Y_PX = 32;
 const MOBILE_BOTTOM_MIN_VISIBLE_BACK_ROW_RATIO = 0.6;
 const MOBILE_BOTTOM_BACK_ROW_SCALE = 0.96;
@@ -937,6 +939,9 @@ export default function BattlefieldRow({
     timer: null,
     cardId: null,
     suppressCardId: null,
+    suppressedAt: 0,
+    startX: 0,
+    startY: 0,
   });
   const fitRafRef = useRef(null);
   const deferredFitRafRef = useRef(null);
@@ -1015,6 +1020,9 @@ export default function BattlefieldRow({
       timer: null,
       cardId: null,
       suppressCardId: preserveSuppressCardId ? current.suppressCardId : null,
+      suppressedAt: preserveSuppressCardId ? current.suppressedAt : 0,
+      startX: 0,
+      startY: 0,
     };
   }, []);
 
@@ -1662,11 +1670,15 @@ export default function BattlefieldRow({
   }, [combatModeRef, startDragArrow, updateDragArrow, endDragArrow, hoverCard, clearHover]);
 
   const handleCardSelectionClick = useCallback((event, card) => {
-    if (mobileCardPressRef.current.suppressCardId === String(card.id)) {
-      event.preventDefault();
-      event.stopPropagation();
+    const press = mobileCardPressRef.current;
+    if (press.suppressCardId === String(card.id)) {
+      const fresh = (performance.now() - press.suppressedAt) < MOBILE_LONG_PRESS_SUPPRESS_WINDOW_MS;
       clearMobileCardPress();
-      return;
+      if (fresh) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     }
 
     const cm = combatModeRef.current;
@@ -1807,6 +1819,9 @@ export default function BattlefieldRow({
           timer: null,
           cardId: String(card.id),
           suppressCardId: String(card.id),
+          suppressedAt: performance.now(),
+          startX: 0,
+          startY: 0,
         };
         onMobileCardLongPress({
           card,
@@ -1815,6 +1830,9 @@ export default function BattlefieldRow({
       }, MOBILE_OBJECT_LONG_PRESS_MS),
       cardId: String(card.id),
       suppressCardId: null,
+      suppressedAt: 0,
+      startX: event.clientX,
+      startY: event.clientY,
     };
   }, [
     clearMobileCardPress,
@@ -1826,6 +1844,16 @@ export default function BattlefieldRow({
 
   const handleCardPointerPressEnd = useCallback(() => {
     clearMobileCardPress({ preserveSuppressCardId: true });
+  }, [clearMobileCardPress]);
+
+  const handleCardPointerPressMove = useCallback((event) => {
+    const press = mobileCardPressRef.current;
+    if (!press.timer) return;
+    const dx = event.clientX - press.startX;
+    const dy = event.clientY - press.startY;
+    if ((dx * dx) + (dy * dy) > MOBILE_LONG_PRESS_MOVE_CANCEL_DISTANCE_SQ) {
+      clearMobileCardPress({ preserveSuppressCardId: true });
+    }
   }, [clearMobileCardPress]);
 
   return (
@@ -1972,6 +2000,7 @@ export default function BattlefieldRow({
             suppressTooltip={suppressTooltip}
             onClick={isLayoutHold ? undefined : ((event) => handleCardSelectionClick(event, card))}
             onPointerDown={isLayoutHold ? undefined : ((event) => handleCardPointerPressStart(event, card, isCombatCandidate))}
+            onPointerMove={isLayoutHold ? undefined : handleCardPointerPressMove}
             onPointerUp={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerCancel={isLayoutHold ? undefined : handleCardPointerPressEnd}
             onPointerLeave={isLayoutHold ? undefined : handleCardPointerPressEnd}

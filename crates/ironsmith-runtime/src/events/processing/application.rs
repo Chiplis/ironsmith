@@ -45,6 +45,17 @@ pub(super) fn apply_trait_replacement(
             }
         }
 
+        ReplacementAction::AddCountersToPlacement {
+            counter_type,
+            additional,
+        } => {
+            let modified = apply_trait_add_counters_to_placement(&event, *counter_type, *additional);
+            match modified {
+                Some(e) => TraitApplyResult::Modified(e),
+                None => TraitApplyResult::Unchanged(event),
+            }
+        }
+
         ReplacementAction::ChangeDestination(new_zone) => {
             let modified = apply_trait_change_destination(&event, *new_zone);
             match modified {
@@ -696,6 +707,40 @@ fn apply_trait_double_counters(event: &Event, counter_type: Option<CounterType>)
                 }
             }
             changed.then(|| event.rewrap(doubled))
+        }
+        _ => None,
+    }
+}
+
+fn apply_trait_add_counters_to_placement(
+    event: &Event,
+    counter_type: Option<CounterType>,
+    additional: u32,
+) -> Option<Event> {
+    use crate::events::{EnterBattlefieldEvent, PutCountersEvent, downcast_event};
+
+    match event.kind() {
+        EventKind::PutCounters => {
+            let put_counters = downcast_event::<PutCountersEvent>(event.inner())?;
+            if counter_type.is_none_or(|ct| ct == put_counters.counter_type)
+                && put_counters.count > 0
+            {
+                Some(event.rewrap(put_counters.with_additional(additional)))
+            } else {
+                None
+            }
+        }
+        EventKind::EnterBattlefield => {
+            let etb = downcast_event::<EnterBattlefieldEvent>(event.inner())?;
+            let mut increased = etb.clone();
+            let mut changed = false;
+            for (existing_type, count) in &mut increased.enters_with_counters {
+                if *count > 0 && counter_type.is_none_or(|ct| ct == *existing_type) {
+                    *count = count.saturating_add(additional);
+                    changed = true;
+                }
+            }
+            changed.then(|| event.rewrap(increased))
         }
         _ => None,
     }

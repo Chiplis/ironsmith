@@ -8680,6 +8680,79 @@ fn rewrite_grammar_draw_replacement_exile_top_and_play_probe_matches_static_shap
 }
 
 #[test]
+fn rewrite_grammar_branching_evolution_counter_line_matches_static_shape() {
+    let tokens = lex_line(
+        "If one or more +1/+1 counters would be put on a creature you control, twice that many +1/+1 counters are put on it instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify counter-doubling static line");
+
+    let parsed = super::keyword_static::parse_double_counters_replacement_line(&tokens)
+        .expect("counter-doubling static line should parse");
+    assert!(
+        matches!(
+            parsed,
+            Some(ref ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::DoubleCountersReplacement
+        ),
+        "got {parsed:?}"
+    );
+}
+
+#[test]
+fn rewrite_grammar_hardened_scales_counter_line_matches_static_shape() {
+    let tokens = lex_line(
+        "If one or more +1/+1 counters would be put on a creature you control, that many plus one +1/+1 counters are put on it instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify additive counter replacement line");
+
+    let parsed = super::keyword_static::parse_double_counters_replacement_line(&tokens)
+        .expect("additive counter replacement line should parse");
+    assert!(
+        matches!(
+            parsed,
+            Some(ref ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::AddCountersPlacementReplacement
+        ),
+        "got {parsed:?}"
+    );
+}
+
+#[test]
+fn party_size_value_parses_from_equal_to_clause() {
+    let lexed = lex_line(
+        "You gain life equal to the number of creatures in your party.",
+        0,
+    )
+    .expect("lex should succeed");
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("gain-life party sentence should parse");
+    let debug = format!("{parsed:?}");
+    assert!(debug.contains("PartySize"), "{debug}");
+}
+
+#[test]
+fn rewrite_grammar_doubling_season_token_line_matches_static_shape() {
+    let tokens = lex_line(
+        "If an effect would create one or more tokens under your control, it creates twice that many of those tokens instead.",
+        0,
+    )
+    .expect("rewrite lexer should classify token-doubling static line");
+
+    let parsed = super::keyword_static::parse_double_token_creation_replacement_line(&tokens)
+        .expect("token-doubling static line should parse");
+    assert!(
+        matches!(
+            parsed,
+            Some(ref ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::DoubleTokenCreationReplacement
+        ),
+        "got {parsed:?}"
+    );
+}
+
+#[test]
 fn rewrite_grammar_token_creation_replacement_probe_matches_static_shape() {
     let tokens = lex_line(
         "If you would create one or more Treasure tokens, instead create those tokens plus an additional Treasure token.",

@@ -1618,6 +1618,31 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
+    // Generic "X if <predicate>" fallback: clauses like "play the exiled card
+    // without paying its mana cost if you attacked with three or more
+    // creatures this turn" have no known leading verb, but the head parses on
+    // its own and the tail is a recognizable predicate. Only attempted where
+    // the clause would otherwise be a hard no-verb error.
+    if find_verb(tokens).is_none()
+        && let Some(if_idx) = (1..tokens.len()).rev().find(|idx| {
+            tokens[*idx]
+                .as_word()
+                .is_some_and(|word| word.eq_ignore_ascii_case("if"))
+        })
+        && let Some(predicate) =
+            crate::runtime_backend::grammar::structure::parse_trailing_if_predicate_lexed(
+                &tokens[if_idx..],
+            )
+        && let Ok(head_effect) = parse_effect_clause(&trim_commas(&tokens[..if_idx]))
+    {
+        parser_trace("parse_effect_clause:trailing-if-fallback", tokens);
+        return Ok(EffectAst::Conditional {
+            predicate,
+            if_true: vec![head_effect],
+            if_false: Vec::new(),
+        });
+    }
+
     let (verb, verb_idx) = find_verb(tokens).ok_or_else(|| {
         let clause = render_lower_words(tokens);
         let known_verbs = [

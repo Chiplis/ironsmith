@@ -123,9 +123,13 @@ function collectCardObjectIds(card) {
   return ids.filter((id) => Number.isFinite(id));
 }
 
-function buildActivatableMap(decision) {
+function buildActivatableMap(decision, perspective) {
   const activatableMap = new Map();
-  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
+  if (
+    decision?.kind !== "priority"
+    || !samePlayerId(decision.player, perspective)
+    || !Array.isArray(decision.actions)
+  ) {
     return activatableMap;
   }
 
@@ -324,7 +328,7 @@ export default function MyZone({
     && samePlayerId(state?.decision?.player, state?.perspective);
 
   // Build activatable map from decision actions (activate_ability + activate_mana_ability)
-  const activatableMap = buildActivatableMap(state?.decision);
+  const activatableMap = buildActivatableMap(state?.decision, state?.perspective);
 
   const handleCardClick = (_e, card) => {
     if (canPickTargetFromBoard && !shouldHandleClick(_e)) return;

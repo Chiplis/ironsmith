@@ -1316,6 +1316,111 @@ pub(crate) fn parse_sentence_you_and_player_each_gain_or_lose_life(
     parse_you_and_player_each_gain_or_lose_life_sentence(clause)
 }
 
+/// "You and that player each create three 1/1 white Spirit creature tokens
+/// with flying." — joint-subject token creation: parse the verb phrase once
+/// and emit one copy per subject.
+pub(crate) fn parse_you_and_player_each_create_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let optional_each = [LexPattern::word("each")];
+    let action_boundaries: &[&[&str]] = &[&["each"], &["create"], &["creates"]];
+    let atoms = [
+        LexPattern::role_capture(
+            "subject",
+            LexCaptureRole::Subject,
+            LexCaptureKind::UntilPhrase(&["and"]),
+        ),
+        LexPattern::word("and"),
+        LexPattern::role_capture(
+            "object",
+            LexCaptureRole::Object,
+            LexCaptureKind::UntilAnyPhrase(action_boundaries),
+        ),
+        LexPattern::optional(&optional_each),
+        LexPattern::role_capture(
+            "verb",
+            LexCaptureRole::Action,
+            LexCaptureKind::OneOf(&["create", "creates"]),
+        ),
+        LexPattern::role_capture(
+            "amount",
+            LexCaptureRole::Amount,
+            LexCaptureKind::OneOrMoreWords,
+        ),
+    ];
+    let pattern = LexPattern::new(&atoms);
+    let Some(matched) = clause.match_pattern(pattern) else {
+        return Ok(None);
+    };
+    parse_you_and_player_each_create_sentence_matched(clause, &matched)
+}
+
+pub(crate) fn parse_you_and_player_each_create_sentence_matched(
+    clause: SubjectVerbPrimitiveClause<'_>,
+    matched: &LexPatternMatch<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject)
+    else {
+        return Ok(None);
+    };
+    if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
+        return Ok(None);
+    }
+    let Some(object_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Object) else {
+        return Ok(None);
+    };
+    let Some(other_player) = parse_registry_player_object_clause(object_clause) else {
+        return Ok(None);
+    };
+    let Some(verb_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Action) else {
+        return Ok(None);
+    };
+    let Some(amount_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Amount) else {
+        return Ok(None);
+    };
+
+    let mut sub_tokens = verb_clause.tokens().to_vec();
+    sub_tokens.extend_from_slice(amount_clause.tokens());
+    let Ok(parsed) =
+        crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            &sub_tokens,
+        )
+    else {
+        return Ok(None);
+    };
+    let [EffectAst::SubjectVerb(template)] = parsed.as_slice() else {
+        return Ok(None);
+    };
+
+    fn with_subject_player(
+        template: &SubjectVerbEffectAst,
+        player: PlayerAst,
+    ) -> SubjectVerbEffectAst {
+        let mut copy = template.clone();
+        copy.subject.player = player;
+        // Token creation carries its creator inside the action.
+        if let SubjectVerbActionAst::CreateTokenWithMods {
+            player: action_player,
+            ..
+        } = &mut copy.action
+        {
+            *action_player = player;
+        }
+        copy
+    }
+
+    Ok(Some(vec![
+        EffectAst::SubjectVerb(with_subject_player(template, PlayerAst::You)),
+        EffectAst::SubjectVerb(with_subject_player(template, other_player)),
+    ]))
+}
+
+pub(crate) fn parse_sentence_you_and_player_each_create(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    parse_you_and_player_each_create_sentence(clause)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

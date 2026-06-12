@@ -102,15 +102,31 @@ impl DiesDamagedByThisTurnTrigger {
                             ctx.source_id,
                             ctx.game.object(ctx.source_id).map(|obj| obj.stable_id),
                         ),
-                    DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => ctx
-                        .game
-                        .turn_store
-                        .turn_history
-                        .creature_was_damaged_by_source_attached_to_this_turn(
-                            victim_id,
-                            victim_stable_id,
-                            ctx.source_id,
-                        ),
+                    // "Equipped/enchanted creature" is read when the trigger
+                    // condition is checked: damage dealt this turn by the
+                    // creature this source is attached to NOW counts, even if
+                    // the attachment happened after the damage (Unscythe).
+                    DamagerSource::EquippedCreature | DamagerSource::EnchantedCreature => {
+                        let damager = ctx
+                            .game
+                            .object(ctx.source_id)
+                            .and_then(|obj| obj.attached_to.as_ref())
+                            .and_then(|target| match target {
+                                crate::object::AttachmentTarget::Object(id) => Some(*id),
+                                _ => None,
+                            });
+                        damager.is_some_and(|damager| {
+                            ctx.game
+                                .turn_store
+                                .turn_history
+                                .creature_was_damaged_by_source_identity_this_turn(
+                                    victim_id,
+                                    victim_stable_id,
+                                    damager,
+                                    ctx.game.object(damager).map(|obj| obj.stable_id),
+                                )
+                        })
+                    }
                 }
             })
             .count() as u32
@@ -180,7 +196,7 @@ mod tests {
     }
 
     #[test]
-    fn equipped_creature_damage_trigger_uses_damage_time_attachment() {
+    fn equipped_creature_damage_trigger_uses_current_attachment() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = PlayerId::from_index(0);
         let equipment = create_equipment(&mut game, alice);
@@ -235,7 +251,10 @@ mod tests {
             ),
             ProvNodeId::default(),
         );
-        assert!(trigger.matches(&later_dies, &ctx));
+        assert!(
+            !trigger.matches(&later_dies, &ctx),
+            "damage dealt by a creature that is no longer equipped should not count"
+        );
 
         let original_snapshot = crate::snapshot::ObjectSnapshot::from_object(
             game.object(original_equipped).unwrap(),
@@ -252,8 +271,8 @@ mod tests {
             ProvNodeId::default(),
         );
         assert!(
-            !trigger.matches(&original_dies, &ctx),
-            "reattaching the Equipment after damage should not make earlier damage count"
+            trigger.matches(&original_dies, &ctx),
+            "damage dealt this turn by the currently equipped creature counts even if it was dealt before the Equipment was attached"
         );
     }
 }

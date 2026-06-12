@@ -899,6 +899,50 @@ fn parse_permanent_spells_from_among_tagged_tokens<'a>(
     None
 }
 
+/// "a [creature] spell from among cards exiled with this <source-type>"
+/// (Prosper window grants, e.g. "Until end of turn, you may cast a spell from
+/// among cards exiled with this enchantment without paying its mana cost.")
+fn parse_spell_from_among_source_exiled_tokens<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken], Option<ObjectFilter>)> {
+    let words = token_word_refs(tokens);
+    let (filter, phrase_words) = if words.len() >= 9
+        && words[0] == "a"
+        && words[1] == "spell"
+        && words[2..8] == ["from", "among", "cards", "exiled", "with", "this"]
+    {
+        (None, 9usize)
+    } else if words.len() >= 10
+        && words[0] == "a"
+        && words[1] == "creature"
+        && words[2] == "spell"
+        && words[3..9] == ["from", "among", "cards", "exiled", "with", "this"]
+    {
+        (Some(ObjectFilter::creature()), 10usize)
+    } else {
+        return None;
+    };
+    if !matches!(
+        words[phrase_words - 1],
+        "enchantment" | "artifact" | "creature" | "permanent" | "card" | "land"
+    ) {
+        return None;
+    }
+    let rest_idx = if words.len() == phrase_words {
+        tokens.len()
+    } else {
+        token_index_for_word_index(tokens, phrase_words)?
+    };
+    Some((
+        TaggedPermissionTarget {
+            tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
+            as_copy: false,
+        },
+        &tokens[rest_idx..],
+        filter,
+    ))
+}
+
 fn parse_once_each_turn_graveyard_cast_rest_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> Option<OnceEachTurnGraveyardCastRest<'a>> {
@@ -2083,6 +2127,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
     if let Some((target_ref, tagged_tail_tokens, filter)) =
         parse_permanent_spells_from_among_tagged_tokens(rest_tokens)
             .map(|(target_ref, tail, filter)| (target_ref, tail, Some(filter)))
+            .or_else(|| parse_spell_from_among_source_exiled_tokens(rest_tokens))
             .or_else(|| {
                 parse_tagged_cast_or_play_target_tokens(rest_tokens)
                     .map(|(target_ref, tail)| (target_ref, tail, None))

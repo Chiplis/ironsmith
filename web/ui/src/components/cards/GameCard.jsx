@@ -796,6 +796,7 @@ export default function GameCard({
   onClick,
   onContextMenu,
   onPointerDown,
+  onPointerMove,
   onPointerUp,
   onPointerCancel,
   onPointerLeave,
@@ -1304,6 +1305,7 @@ export default function GameCard({
       onClick={debouncedOnClick}
       onContextMenu={onContextMenu}
       onPointerDown={debouncedOnPointerDown}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
       onPointerLeave={onPointerLeave}

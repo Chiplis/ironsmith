@@ -292,6 +292,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::PlayerLosesLife { player } => {
             crate::triggers::Trigger::player_loses_life(player)
         }
+        TriggerKind::OpponentsEachLoseExactLife { amount } => {
+            crate::triggers::Trigger::opponents_each_lose_exact_life(amount)
+        }
         TriggerKind::PlayerLosesGame { player } => {
             crate::triggers::Trigger::player_loses_game(player)
         }

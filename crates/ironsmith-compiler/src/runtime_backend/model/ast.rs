@@ -230,6 +230,9 @@ pub(crate) enum TriggerSpec {
     YouGainLife,
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
+    OpponentsEachLoseExactLife {
+        amount: u32,
+    },
     PlayerLosesGame(PlayerFilter),
     PlayerLosesLifeDuringTurn {
         player: PlayerFilter,

@@ -12226,9 +12226,8 @@ fn parse_this_blocks_or_becomes_blocked_by_filtered_creature_delayed_destroy() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("blocks creature with power 1 or less")
-            && joined.contains("becomes blocked by creature with power 1 or less")
-            && joined.contains("end of combat"),
+        joined.contains("blocks or becomes blocked by a creature with power 1 or less")
+            && joined.contains("destroy this creature at end of combat"),
         "expected rendered trigger/effect to preserve blocker filter and delay, got {joined}"
     );
 }

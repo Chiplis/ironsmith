@@ -3,7 +3,7 @@ import { useGame } from "@/context/GameContext";
 import useScryfallImageUrl from "@/hooks/useScryfallImageUrl";
 import { ManaCostIcons, SymbolText } from "@/lib/mana-symbols";
 import { getPlayerAccent } from "@/lib/player-colors";
-import { getVisibleStackObjects, getVisibleTopStackObject } from "@/lib/stack-targets";
+import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 import { animate, cancelMotion, uiSpring } from "@/lib/motion/anime";
 import { uiFontStack } from "@/lib/ui-fonts";
@@ -213,7 +213,7 @@ function stackStableIdCandidates(stackObject) {
   return candidates;
 }
 
-function buildObjectNameMaps(state) {
+function buildObjectNameMaps(state, visibleStackObjects) {
   const byId = new Map();
   const byStableId = new Map();
   const players = state?.players || [];
@@ -235,6 +235,10 @@ function buildObjectNameMaps(state) {
       setObjectName(byId, card.id, card.name);
       setObjectName(byStableId, card.stable_id, card.name);
     }
+    for (const card of player?.sideboard_cards || []) {
+      setObjectName(byId, card.id, card.name);
+      setObjectName(byStableId, card.stable_id, card.name);
+    }
     for (const card of player?.battlefield || []) {
       setObjectName(byId, card.id, card.name);
       setObjectName(byStableId, card.stable_id, card.name);
@@ -251,7 +255,12 @@ function buildObjectNameMaps(state) {
     }
   }
 
-  for (const stackObject of getVisibleStackObjects(state)) {
+  for (const card of state?.viewed_cards?.cards || []) {
+    setObjectName(byId, card?.id, card?.name);
+    setObjectName(byStableId, card?.stable_id, card?.name);
+  }
+
+  for (const stackObject of visibleStackObjects || getVisibleStackObjects(state)) {
     for (const candidateId of [stackObject.id, stackObject.inspect_object_id]) {
       setObjectName(byId, candidateId, stackObject.name);
     }
@@ -362,6 +371,13 @@ function InspectorArtImageLayers({
   useEffect(() => {
     activeImageUrlRef.current = activeImageUrl;
   }, [activeImageUrl]);
+
+  // When the card has no art at all, drop the previous card's layers instead
+  // of letting them linger behind the empty backdrop.
+  if (!imageUrl && (activeImageUrl !== "" || outgoingImageUrl != null)) {
+    setActiveImageUrl("");
+    setOutgoingImageUrl(null);
+  }
 
   useEffect(() => {
     if (!imageUrl) {
@@ -585,9 +601,10 @@ export default function HoverArtOverlay({
   const { locale, t } = useI18n();
   const debugInspector = inspectorVariant === "debug";
   const compactTopbarLayout = compact && compactLayout === "topbar";
+  const visibleStackObjects = useMemo(() => getVisibleStackObjects(state), [state]);
   const { byId: objectNameById, byStableId: objectNameByStableId } = useMemo(
-    () => buildObjectNameMaps(state),
-    [state]
+    () => buildObjectNameMaps(state, visibleStackObjects),
+    [state, visibleStackObjects]
   );
   const previewCard = transientPreview?.card && typeof transientPreview.card === "object"
     ? transientPreview.card
@@ -640,31 +657,35 @@ export default function HoverArtOverlay({
     [objectIdNum, state]
   );
   const detailsObjectIdKey = Number.isFinite(detailsObjectIdNum) ? String(detailsObjectIdNum) : null;
+  // Cached details are only valid for the state snapshot they were fetched
+  // against — P/T, counters, and zone all change under a stable object id.
   useEffect(() => {
     if (!game || detailsObjectIdNum == null || !detailsObjectIdKey) return;
-    if (Object.prototype.hasOwnProperty.call(detailsCache, detailsObjectIdKey)) return;
+    const cachedEntry = detailsCache[detailsObjectIdKey];
+    if (cachedEntry && cachedEntry.state === state) return;
 
     let active = true;
     game.objectDetails(BigInt(detailsObjectIdNum))
       .then((details) => {
         if (!active) return;
         setDetailsCache((prev) => {
-          if (Object.prototype.hasOwnProperty.call(prev, detailsObjectIdKey)) return prev;
-          return { ...prev, [detailsObjectIdKey]: details || null };
+          const next = {};
+          for (const [key, entry] of Object.entries(prev)) {
+            if (entry?.state === state) next[key] = entry;
+          }
+          next[detailsObjectIdKey] = { state, value: details || null };
+          return next;
         });
       })
       .catch(() => {
-        if (!active) return;
-        setDetailsCache((prev) => {
-          if (Object.prototype.hasOwnProperty.call(prev, detailsObjectIdKey)) return prev;
-          return { ...prev, [detailsObjectIdKey]: null };
-        });
+        // Keep any stale entry; a transient failure must not blank this
+        // object's details for the rest of the session.
       });
 
     return () => {
       active = false;
     };
-  }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache]);
+  }, [game, detailsObjectIdNum, detailsObjectIdKey, detailsCache, state]);
 
   useEffect(() => {
     if (typeof document === "undefined" || !document.fonts?.load) return undefined;
@@ -685,17 +706,17 @@ export default function HoverArtOverlay({
     };
   }, [inspectorMeasureFont]);
 
-  const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey] || null) : null;
+  const details = detailsObjectIdKey ? (detailsCache[detailsObjectIdKey]?.value ?? null) : null;
   const cardSnapshot = useMemo(
     () => findCardSnapshotForObjectId(state, objectIdNum),
     [objectIdNum, state]
   );
   const hoveredStackObject = useMemo(
-    () => getVisibleStackObjects(state).find((entry) => (
+    () => visibleStackObjects.find((entry) => (
       String(entry.id) === String(objectIdNum)
       || String(entry.inspect_object_id) === String(objectIdNum)
     )),
-    [state, objectIdNum]
+    [visibleStackObjects, objectIdNum]
   );
   const isFullArtMode = displayMode === "full-art";
   const artStackObject = useMemo(() => {
@@ -730,7 +751,8 @@ export default function HoverArtOverlay({
     || hoveredStackObject?.effect_text
     || null;
   const manaCost = details?.mana_cost || cardSnapshot?.mana_cost || previewManaCost || hoveredStackObject?.mana_cost || null;
-  const isBattle = String(details?.type_line || previewTypeLine || "").toLowerCase().includes("battle");
+  const typeLine = String(details?.type_line || previewTypeLine || hoveredStackObject?.type_line || "").trim() || null;
+  const isBattle = String(typeLine || "").toLowerCase().includes("battle");
   const statsText = useMemo(() => {
     if (details?.power != null && details?.toughness != null) {
       return `${details.power}/${details.toughness}`;
@@ -759,7 +781,6 @@ export default function HoverArtOverlay({
     [cardSnapshot?.counters, details?.counters, previewCard?.counters]
   );
 
-  const typeLine = String(details?.type_line || previewTypeLine || hoveredStackObject?.type_line || "").trim() || null;
   const typeLineDisplay = String(
     details?.type_line_display
     || previewTypeLine
@@ -800,8 +821,13 @@ export default function HoverArtOverlay({
   ]);
   const artObjectName = stableLinkedObjectName || objectName;
   const imageUrl = useScryfallImageUrl(artObjectName, "art_crop");
+  // Forget past failures whenever the art URL changes so a transient network
+  // error doesn't blacklist a card's art for the whole session.
+  if (failedImageUrl != null && failedImageUrl !== imageUrl) {
+    setFailedImageUrl(null);
+  }
   const imageErrored = !!imageUrl && failedImageUrl === imageUrl;
-  const topStackObject = getVisibleTopStackObject(state);
+  const topStackObject = visibleStackObjects[0] || null;
   const detailCompiledText = Array.isArray(details?.compiled_text) ? details.compiled_text : null;
   const detailAbilities = Array.isArray(details?.abilities) ? details.abilities : null;
   const detailStableId = details?.stable_id != null ? String(details.stable_id) : null;
@@ -816,7 +842,7 @@ export default function HoverArtOverlay({
     () => buildObjectFamilyIds(state, objectIdNum),
     [state, objectIdNum]
   );
-  const groupedCardCount = objectFamilyIds.size > 0
+  const groupedCardCount = objectFamilyIds.size > 1
     ? objectFamilyIds.size
     : Math.max(
       1,
@@ -1151,8 +1177,6 @@ export default function HoverArtOverlay({
     : (inspectorScaleSession.key === inspectorScaleSessionKey ? inspectorScaleSession.scale : 1);
   const activeInspectorTitleScale = displayMode !== "inspector"
     ? 1
-    : !displayManaCost
-      ? 1
     : (
       inspectorTitleScaleSession.key === inspectorTitleScaleSessionKey
         ? inspectorTitleScaleSession.scale
@@ -1301,7 +1325,7 @@ export default function HoverArtOverlay({
   ) : null;
 
   useLayoutEffect(() => {
-    if (displayMode !== "inspector" || !displayObjectName || !displayManaCost) return undefined;
+    if (displayMode !== "inspector" || !displayObjectName) return undefined;
 
     const banner = inspectorTitleRef.current;
     const titleHost = banner?.parentElement;
@@ -1522,7 +1546,9 @@ export default function HoverArtOverlay({
         : 1;
       const preferredWidth = Number(resolvedPreferredInspectorWidth);
       const availableWidth = Number(availableInspectorWidth);
-      let nextScale = baseScale;
+      // Recompute from 1 each pass (instead of ratcheting down from the
+      // session scale) so the text recovers when the inspector regains space.
+      let nextScale = 1;
 
       if (
         Number.isFinite(preferredWidth)
@@ -1542,6 +1568,14 @@ export default function HoverArtOverlay({
         nextScale = Math.min(nextScale, Math.max(
           minInspectorTextScale,
           baseScale * (clientHeight / scrollHeight)
+        ));
+      } else if (clientHeight > 0 && scrollHeight > 0 && baseScale < 1) {
+        // Content fits at the shrunken scale; grow back toward the fill
+        // estimate, conservatively — wrapping makes height nonlinear in
+        // font size, so overshooting would oscillate.
+        nextScale = Math.min(nextScale, Math.max(
+          baseScale,
+          Math.min(1, baseScale * (clientHeight / scrollHeight) * 0.95)
         ));
       }
 
@@ -1662,9 +1696,7 @@ export default function HoverArtOverlay({
     ? 52
     : (
       16
-      + Math.max(
-        inspectorHeaderRowReserve
-      )
+      + inspectorHeaderRowReserve
       + (displayTypeLineBadges.length > 0 ? ((18 * inspectorScale) + 10) : 0)
       + (hasTopLeftMetadata ? 10 * inspectorScale : 0)
     );
@@ -1827,6 +1859,9 @@ export default function HoverArtOverlay({
         clone.style.width = "max-content";
         clone.style.maxWidth = "none";
         clone.style.whiteSpace = "nowrap";
+        // Measure at the unscaled font size; measuring at the current scale
+        // feeds the shrunken width back into the preferred-width loop.
+        clone.style.fontSize = `${INSPECTOR_RULES_FONT_SIZE}px`;
         clone.style.visibility = "hidden";
         clone.style.pointerEvents = "none";
         clone.style.contain = "layout style paint";

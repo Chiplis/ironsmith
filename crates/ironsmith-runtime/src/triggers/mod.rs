@@ -692,6 +692,14 @@ impl Trigger {
         Self::new(PlayerLosesLifeTrigger::new(player))
     }
 
+    /// "Whenever one or more opponents each lose exactly N life" trigger.
+    pub fn opponents_each_lose_exact_life(amount: u32) -> Self {
+        Self::new(PlayerLosesLifeTrigger::exact_amount(
+            PlayerFilter::Opponent,
+            amount,
+        ))
+    }
+
     /// Create a "whenever [player] loses the game" trigger.
     pub fn player_loses_game(player: PlayerFilter) -> Self {
         Self::new(PlayerLosesGameTrigger::new(player))

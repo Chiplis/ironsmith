@@ -119,9 +119,13 @@ function collectCardObjectIds(card) {
   return ids.filter((id) => Number.isFinite(id));
 }
 
-function buildActivatableMap(decision) {
+function buildActivatableMap(decision, perspective) {
   const activatableMap = new Map();
-  if (decision?.kind !== "priority" || !Array.isArray(decision.actions)) {
+  if (
+    decision?.kind !== "priority"
+    || !samePlayerId(decision.player, perspective)
+    || !Array.isArray(decision.actions)
+  ) {
     return activatableMap;
   }
 
@@ -400,7 +404,7 @@ function OpponentSlot({
     legalTargetPlayerIds.has(Number(player.id)) || legalTargetPlayerIds.has(Number(player.index));
   const canPickTargetFromBoard = state?.decision?.kind === "targets"
     && samePlayerId(state?.decision?.player, state?.perspective);
-  const activatableMap = buildActivatableMap(state?.decision);
+  const activatableMap = buildActivatableMap(state?.decision, state?.perspective);
   const activeAttackerId = (
     combatMode?.mode === "attackers"
       ? Number(combatMode?.selectedAttacker ?? dragArrow?.fromId ?? NaN)

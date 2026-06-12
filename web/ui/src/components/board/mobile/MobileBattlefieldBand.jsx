@@ -36,6 +36,7 @@ export default function MobileBattlefieldBand({
         onPointerCancelCapture,
         onPointerLeave,
         onClickCapture,
+        "data-mobile-hand-drop-target": "battlefield",
       }
     : { "data-mobile-hand-drop-target": "battlefield" };
 

@@ -188,6 +188,13 @@ pub enum ReplacementAction {
     /// Double counters of the matching type on counter-placement events.
     DoubleCounters { counter_type: Option<CounterType> },
 
+    /// Add extra counters of the matching type to counter-placement events
+    /// ("that many plus one ... counters are put on it instead").
+    AddCountersToPlacement {
+        counter_type: Option<CounterType>,
+        additional: u32,
+    },
+
     /// Add an additional effect
     Additionally(Vec<Effect>),
 

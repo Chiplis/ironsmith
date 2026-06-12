@@ -2564,4 +2564,106 @@ mod live_action_rollback_tests {
             other => panic!("expected Mystical Tutor search prompt, got {other:?}"),
         }
     }
+
+    #[test]
+    fn double_regeneration_shield_bolt_resolution_terminates() {
+        let _id_counter_guard = crate::test_id_counter_guard();
+        let alice = PlayerId::from_index(0);
+        let mut wasm = WasmGame::new();
+        wasm.initialize_empty_match(vec!["Alice".to_string(), "Bob".to_string()], 20, 1);
+        wasm.game.turn.active_player = alice;
+        wasm.game.turn.priority_player = Some(alice);
+        wasm.game.turn.turn_number = 1;
+        wasm.game.turn.phase = Phase::FirstMain;
+        wasm.game.turn.step = None;
+        wasm.runner = Some(ironsmith::turn_runner::TurnRunner::from_state_for_sync(
+            ironsmith::turn_runner::TurnState::FirstMainPriority,
+        ));
+        wasm.runner_awaiting_priority = true;
+        wasm.priority_state.restore_priority_tracker_for_sync(0, 2);
+
+        let skeleton_def = ironsmith_registry::compile_to_runtime_definition(
+            "Probe Skeleton",
+            "Type: Creature — Skeleton\nPower/Toughness: 1/1\n{0}: Regenerate this creature.",
+            false,
+        )
+        .expect("Probe Skeleton should compile");
+        let skeleton_id =
+            wasm.game
+                .create_object_from_definition(&skeleton_def, alice, Zone::Battlefield);
+        let skeleton_stable = wasm
+            .game
+            .object(skeleton_id)
+            .expect("skeleton should exist")
+            .stable_id;
+
+        let bolt_def = ironsmith_registry::compile_to_runtime_definition(
+            "Probe Bolt",
+            "Mana Cost: {0}\nType: Instant\nProbe Bolt deals 3 damage to any target.",
+            false,
+        )
+        .expect("Probe Bolt should compile");
+        let _bolt_id = wasm
+            .game
+            .create_object_from_definition(&bolt_def, alice, Zone::Hand);
+
+        wasm.pending_decision = Some(DecisionContext::Priority(PriorityContext::new(
+            alice,
+            compute_legal_actions(&wasm.game, alice),
+        )));
+
+        // Put two regeneration shields on the skeleton via its {0} ability.
+        for _ in 0..2 {
+            dispatch_priority_action_matching(&mut wasm, |action| {
+                matches!(action, LegalAction::ActivateAbility { .. })
+            });
+            dispatch_pass_priority(&mut wasm);
+            dispatch_pass_priority(&mut wasm);
+        }
+        assert!(
+            wasm.game.stack_is_empty(),
+            "both regeneration activations should have resolved"
+        );
+
+        dispatch_priority_action_matching(&mut wasm, |action| {
+            matches!(action, LegalAction::CastSpell { .. })
+        });
+        if matches!(wasm.pending_decision, Some(DecisionContext::Targets(_))) {
+            let pending_ctx = wasm
+                .pending_decision
+                .take()
+                .expect("expected pending target decision");
+            let command = UiCommand::SelectTargets {
+                targets: vec![crate::TargetInput::Object {
+                    object: skeleton_id.0,
+                }],
+            };
+            if wasm.pending_live_continuation.is_some() {
+                wasm.dispatch_live_priority_continuation(pending_ctx, command)
+                    .expect("target selection should dispatch");
+            } else {
+                wasm.dispatch_live_priority_response(pending_ctx, command)
+                    .expect("target selection should dispatch");
+            }
+        }
+        dispatch_pass_priority(&mut wasm);
+        dispatch_pass_priority(&mut wasm);
+
+        let survivor = wasm
+            .game
+            .find_object_by_stable_id(skeleton_stable)
+            .expect("skeleton should still be tracked");
+        let object = wasm.game.object(survivor).expect("skeleton object");
+        assert_eq!(
+            object.zone,
+            Zone::Battlefield,
+            "a regeneration shield should save the skeleton from lethal damage"
+        );
+        assert!(wasm.game.is_tapped(survivor), "regeneration taps");
+        assert_eq!(
+            wasm.game.damage_on(survivor),
+            0,
+            "regeneration clears damage"
+        );
+    }
 }

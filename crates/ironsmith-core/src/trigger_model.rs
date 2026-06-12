@@ -199,6 +199,10 @@ pub enum TriggerKind {
     PlayerLosesLife {
         player: PlayerFilter,
     },
+    /// "Whenever one or more opponents each lose exactly N life"
+    OpponentsEachLoseExactLife {
+        amount: u32,
+    },
     PlayerLosesGame {
         player: PlayerFilter,
     },
@@ -813,6 +817,12 @@ impl Trigger {
     }
     pub fn player_loses_life(player: PlayerFilter) -> Self {
         Self::typed("player_loses_life", TriggerKind::PlayerLosesLife { player })
+    }
+    pub fn opponents_each_lose_exact_life(amount: u32) -> Self {
+        Self::typed(
+            "opponents_each_lose_exact_life",
+            TriggerKind::OpponentsEachLoseExactLife { amount },
+        )
     }
     pub fn player_loses_game(player: PlayerFilter) -> Self {
         Self::typed("player_loses_game", TriggerKind::PlayerLosesGame { player })

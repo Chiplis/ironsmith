@@ -122,7 +122,7 @@ export default function MobileStackRail({
 }) {
   const { state } = useGame();
   const stackIds = useMemo(
-    () => objects.map((entry) => String(entry?.id)).filter(Boolean),
+    () => objects.map((entry) => (entry?.id != null ? String(entry.id) : null)).filter(Boolean),
     [objects]
   );
   const { newIds } = useNewCards(stackIds);
@@ -141,9 +141,9 @@ export default function MobileStackRail({
 
   if (!objects.length) return null;
 
-  // Stack convention: top of stack is the *last* element in `objects`. Render top-first
-  // so the most-recently-cast item is at the top of the rail (matches MTGA).
-  const topFirst = [...objects].reverse();
+  // getVisibleStackObjects is already top-first (index 0 is the top / resolving
+  // object — see getVisibleTopStackObject), matching the desktop panels.
+  const topFirst = objects;
   const visible = topFirst.slice(0, RAIL_VISIBLE_LIMIT);
   const overflow = topFirst.length - visible.length;
 

@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import HoverArtOverlay from "./HoverArtOverlay";
 import { useHover } from "@/context/HoverContext";
 import { useGame } from "@/context/GameContext";
@@ -168,24 +168,8 @@ function canPersistPinnedInspector(location) {
   return true;
 }
 
-function preferredInlinePlacement(location) {
-  if (location?.viewVisibility === "private") {
-    return { dock: "bottom", side: "right" };
-  }
-  if (location?.viewVisibility === "public") {
-    return { dock: "top", side: "right" };
-  }
-  return {
-    dock: location?.side === "self" && location?.zone !== "stack" ? "top" : "bottom",
-    side: "right",
-  };
-}
-
-function fixedInlinePlacementForVariant(inspectorVariant) {
-  if (inspectorVariant === "debug") {
-    return { dock: "bottom", side: "right" };
-  }
-  return { dock: "top", side: "right" };
+function fixedInlineDockForVariant(inspectorVariant) {
+  return inspectorVariant === "debug" ? "bottom" : "top";
 }
 
 function linkedInspectorLocationPriority(location) {
@@ -284,7 +268,6 @@ export default function RightRail({
   inspectorBottomOffset = DEFAULT_INSPECTOR_BOTTOM_OFFSET,
   inline = false,
   inlineDockPlacement = "bottom",
-  inlineHostSide = "right",
   inlineExpandedSide = "right",
   inlineExpandedAnchor = "bottom",
   inlineExpandedMaxHeight = null,
@@ -292,7 +275,6 @@ export default function RightRail({
   inlineFillWidth = false,
   inlineFillHeight = false,
   allowTopInlinePlacement = false,
-  dockRole = "primary",
   inspectorVariant = "normal",
 }) {
   const { state } = useGame();
@@ -312,7 +294,10 @@ export default function RightRail({
     : null;
   const hasTransientInspectorPreview = Boolean(transientInspectorPreview?.card);
   const stackObjects = getVisibleStackObjects(state);
-  const hasStackEntries = stackObjects.length > 0 || (state?.stack_preview || []).length > 0;
+  // stackObjects also contains the lingering resolving object; "real" entries
+  // are only what the stack panel itself still renders.
+  const hasRealStackEntries =
+    (state?.stack_objects || []).length > 0 || (state?.stack_preview || []).length > 0;
   const topStackObject = stackObjects[0];
   const topStackObjectId = topStackObject
     ? String(topStackObject.inspect_object_id ?? topStackObject.id)
@@ -363,48 +348,12 @@ export default function RightRail({
   const transientPreviewSuppressedByHover = relevantHoveredObjectId != null;
   const hasActiveTransientInspectorPreview =
     hasTransientInspectorPreview && !transientPreviewSuppressedByHover;
-  const selectedObjectLocation = useMemo(() => {
-    if (hasActiveTransientInspectorPreview) {
-      return locateObjectInState(state, transientPreviewObjectId);
-    }
-    const isCastingSpellFocus = (
-      focusedDecision
-      && validSelectedObjectId != null
-      && resolvingCastObjectId != null
-      && String(validSelectedObjectId) === String(resolvingCastObjectId)
-      && decision?.player != null
-    );
-    if (isCastingSpellFocus) {
-      return {
-        side: Number(decision.player) === Number(state?.perspective) ? "self" : "opponent",
-        zone: "casting",
-      };
-    }
-    return locateObjectInState(state, validSelectedObjectId);
-  }, [
-    decision?.player,
-    focusedDecision,
-    hasActiveTransientInspectorPreview,
-    resolvingCastObjectId,
-    state,
-    transientPreviewObjectId,
-    validSelectedObjectId,
-  ]);
-  const forcedInlinePlacement = inline ? fixedInlinePlacementForVariant(inspectorVariant) : null;
-  const preferredPlacement = useMemo(
-    () => forcedInlinePlacement ?? preferredInlinePlacement(selectedObjectLocation),
-    [forcedInlinePlacement, selectedObjectLocation]
-  );
-  const resolvedInlineDockPlacement = (
-    preferredPlacement.dock === "top" && !allowTopInlinePlacement
-      ? "bottom"
-      : preferredPlacement.dock
-  );
-  const activeDockPlacement = !forcedInlinePlacement && dockRole === "opposite"
-    ? (resolvedInlineDockPlacement === "top" ? "bottom" : "top")
-    : resolvedInlineDockPlacement;
+  const inlineDock = fixedInlineDockForVariant(inspectorVariant);
+  const activeDockPlacement = inlineDock === "top" && !allowTopInlinePlacement
+    ? "bottom"
+    : inlineDock;
   const suppressDirectResolvingCastInspector =
-    !hasStackEntries
+    !hasRealStackEntries
     &&
     !focusedDecision
     && pinnedInspectorObjectId == null
@@ -431,17 +380,19 @@ export default function RightRail({
     ? Math.max(0, Number(renderedTransientInspectorPreview?.inspectorRevealDelayMs) || 0)
     : 0;
   const inspectorShellShaderRevealDurationMs = 780;
-  const shouldShowRail = shouldShowInspector && (
-    !inline
-    || (
-      inlineDockPlacement === activeDockPlacement
-      && inlineHostSide === preferredPlacement.side
-    )
-  );
+  const shouldShowRail = shouldShowInspector
+    && (!inline || inlineDockPlacement === activeDockPlacement);
   const anchorExpandedInlineToTop = inlineExpandedAnchor === "top";
+  const [viewportSizeTick, setViewportSizeTick] = useState(0);
+  useEffect(() => {
+    const handleResize = () => setViewportSizeTick((tick) => tick + 1);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const baseInlineWidthPx = useMemo(() => {
     return Math.min(INSPECTOR_INLINE_MAX_WIDTH_PX, viewportInspectorTargetWidthPx());
-  }, []);
+    // viewportSizeTick re-reads the window-size-dependent helpers on resize.
+  }, [viewportSizeTick]);
   const expandedInlineWidth = useMemo(() => {
     const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
     const baseWidth = Math.max(baseInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
@@ -469,7 +420,7 @@ export default function RightRail({
     }
 
     return Math.max(baseWidth, Math.min(preferredWidth, preferredWidthCap));
-  }, [baseInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth]);
+  }, [baseInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth, viewportSizeTick]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;

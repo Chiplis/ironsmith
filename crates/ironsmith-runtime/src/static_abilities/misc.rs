@@ -3936,6 +3936,66 @@ impl StaticAbilityKind for DoubleCountersReplacement {
     }
 }
 
+/// "If one or more [type] counters would be put on a [filter], that many plus
+/// N are put on it instead." (Hardened Scales, Conclave Mentor.)
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddCountersPlacementReplacement {
+    pub filter: ObjectFilter,
+    pub player_filter: Option<PlayerFilter>,
+    pub counter_type: Option<CounterType>,
+    pub additional: u32,
+    pub display: String,
+}
+
+impl AddCountersPlacementReplacement {
+    pub fn new(
+        filter: ObjectFilter,
+        counter_type: Option<CounterType>,
+        additional: u32,
+        display: String,
+    ) -> Self {
+        Self {
+            filter,
+            player_filter: None,
+            counter_type,
+            additional,
+            display,
+        }
+    }
+}
+
+impl StaticAbilityKind for AddCountersPlacementReplacement {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::AddCountersPlacementReplacement
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn generate_replacement_effect(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+    ) -> Option<ReplacementEffect> {
+        Some(ReplacementEffect::with_matcher(
+            source,
+            controller,
+            WouldPutCountersOrEnterWithCountersMatcher {
+                ability_source: source,
+                controller,
+                filter: self.filter.clone(),
+                player_filter: self.player_filter.clone(),
+                counter_type: self.counter_type,
+            },
+            ReplacementAction::AddCountersToPlacement {
+                counter_type: self.counter_type,
+                additional: self.additional,
+            },
+        ))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoubleTokenCreationReplacement {
     pub controller: PlayerFilter,

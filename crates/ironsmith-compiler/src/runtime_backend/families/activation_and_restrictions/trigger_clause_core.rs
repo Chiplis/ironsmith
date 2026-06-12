@@ -3742,6 +3742,14 @@ pub(crate) fn parse_trigger_clause_lexed(
         return Ok(TriggerSpec::YouGainLifeDuringTurn(PlayerFilter::You));
     }
 
+    // "one or more opponents each lose exactly N life" (Ob Nixilis, Captive Kingpin)
+    if let ["one", "or", "more", "opponents", "each", "lose", "exactly", amount, "life"] =
+        words.as_slice()
+        && let Some(amount) = parse_named_number(amount)
+    {
+        return Ok(TriggerSpec::OpponentsEachLoseExactLife { amount });
+    }
+
     if trigger_clause_shape_matches_words(&words, LOSE_LIFE_TRIGGER_SUFFIX) {
         let subject = &words[..words.len().saturating_sub(2)];
         if let Some(player) = parse_trigger_subject_player_filter(subject) {

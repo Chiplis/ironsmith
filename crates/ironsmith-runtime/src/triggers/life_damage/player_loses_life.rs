@@ -10,6 +10,9 @@ use crate::triggers::{TriggerEvent, describe_player_filter_subject};
 pub struct PlayerLosesLifeTrigger {
     pub player: PlayerFilter,
     pub during_turn: Option<PlayerFilter>,
+    /// Trigger only when the life-loss event is for exactly this much life
+    /// ("Whenever one or more opponents each lose exactly 1 life").
+    pub exact_amount: Option<u32>,
 }
 
 impl PlayerLosesLifeTrigger {
@@ -17,6 +20,7 @@ impl PlayerLosesLifeTrigger {
         Self {
             player,
             during_turn: None,
+            exact_amount: None,
         }
     }
 
@@ -24,6 +28,15 @@ impl PlayerLosesLifeTrigger {
         Self {
             player,
             during_turn: Some(during_turn),
+            exact_amount: None,
+        }
+    }
+
+    pub fn exact_amount(player: PlayerFilter, amount: u32) -> Self {
+        Self {
+            player,
+            during_turn: None,
+            exact_amount: Some(amount),
         }
     }
 }
@@ -46,6 +59,11 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
         if !player_matches {
             return false;
         }
+        if let Some(exact) = self.exact_amount
+            && e.amount != exact
+        {
+            return false;
+        }
         if let Some(during_turn) = &self.during_turn {
             let active_player = ctx.game.turn.active_player;
             return match during_turn {
@@ -60,6 +78,13 @@ impl TriggerMatcher for PlayerLosesLifeTrigger {
     }
 
     fn display(&self) -> String {
+        if let Some(exact) = self.exact_amount {
+            let subject = match &self.player {
+                PlayerFilter::Opponent => "one or more opponents each".to_string(),
+                other => describe_player_filter_subject(other),
+            };
+            return format!("Whenever {subject} lose exactly {exact} life");
+        }
         let base = match &self.player {
             PlayerFilter::You => "Whenever you lose life".to_string(),
             _ => format!(

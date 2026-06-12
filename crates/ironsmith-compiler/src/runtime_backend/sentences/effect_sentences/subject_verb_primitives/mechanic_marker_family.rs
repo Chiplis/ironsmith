@@ -407,6 +407,32 @@ const SHARED_DRAW_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
         LexCaptureKind::OneOrMoreWords,
     ),
 ];
+const SHARED_CREATE_ACTION_BOUNDARIES: &[&[&str]] = &[&["each"], &["create"], &["creates"]];
+const SHARED_CREATE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
+    LexPattern::optional(OPTIONAL_LEADING_CONNECTOR_PATTERN_ATOMS),
+    LexPattern::role_capture(
+        "subject",
+        LexCaptureRole::Subject,
+        LexCaptureKind::UntilPhrase(&["and"]),
+    ),
+    LexPattern::word("and"),
+    LexPattern::role_capture(
+        "object",
+        LexCaptureRole::Object,
+        LexCaptureKind::UntilAnyPhrase(SHARED_CREATE_ACTION_BOUNDARIES),
+    ),
+    LexPattern::optional(SHARED_DRAW_OPTIONAL_EACH),
+    LexPattern::role_capture(
+        "verb",
+        LexCaptureRole::Action,
+        LexCaptureKind::OneOf(&["create", "creates"]),
+    ),
+    LexPattern::role_capture(
+        "amount",
+        LexCaptureRole::Amount,
+        LexCaptureKind::OneOrMoreWords,
+    ),
+];
 const SHARED_LIFE_ACTION_BOUNDARIES: &[&[&str]] =
     &[&["each"], &["gain"], &["gains"], &["lose"], &["loses"]];
 const SHARED_LIFE_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[
@@ -693,6 +719,19 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         SHARED_LIFE_PATTERN_ATOMS,
         parse_sentence_you_and_player_each_gain_or_lose_life,
         parse_you_and_player_each_gain_or_lose_life_sentence_matched
+    ),
+    primitive_with_pattern_parser!(
+        "you-and-player-each-create",
+        96,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("you"),
+            LexRuleHeadHint::Single("and"),
+            LexRuleHeadHint::Single("then"),
+        ],
+        SHARED_CREATE_PATTERN_ATOMS,
+        parse_sentence_you_and_player_each_create,
+        parse_you_and_player_each_create_sentence_matched
     ),
     primitive_with_pattern_parser!(
         "choose-player-to-effect",

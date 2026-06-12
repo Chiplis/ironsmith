@@ -17613,7 +17613,17 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     let compact_has_scaffolding =
         compact_trimmed.contains("tagged cards") || compact_trimmed.contains("tagged '");
     let mut parts = Vec::with_capacity(effects.len());
-    for effect in effects {
+    let mut effect_idx = 0usize;
+    while effect_idx < effects.len() {
+        let effect = &effects[effect_idx];
+        if effect_idx + 1 < effects.len()
+            && let Some(joint) =
+                describe_joint_subject_pair(effect, &effects[effect_idx + 1])
+        {
+            parts.push(lowercase_first(&joint));
+            effect_idx += 2;
+            continue;
+        }
         let rendered = describe_effect(effect);
         let trimmed = rendered.trim();
         if trimmed.is_empty()
@@ -17630,6 +17640,7 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
             return None;
         }
         parts.push(lowercase_first(trimmed.trim_end_matches('.')));
+        effect_idx += 1;
     }
 
     let last = parts.pop()?;
@@ -17639,6 +17650,132 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         format!("{}, then {last}", parts.join(", "))
     };
     Some(cleanup_decompiled_text(&body))
+}
+
+/// "You and that player each <verb> ..." for adjacent same-payload effects
+/// whose only difference is the affected player (you + a back-reference).
+fn describe_joint_subject_pair(first: &Effect, second: &Effect) -> Option<String> {
+    fn joint_other_surface(player: &PlayerFilter) -> Option<&'static str> {
+        match player {
+            PlayerFilter::DamagedPlayer
+            | PlayerFilter::TaggedPlayer(_)
+            | PlayerFilter::ChosenPlayer => Some("that player"),
+            PlayerFilter::Target(inner) if **inner == PlayerFilter::Opponent => {
+                Some("target opponent")
+            }
+            PlayerFilter::Target(inner) if **inner == PlayerFilter::Any => Some("target player"),
+            _ => None,
+        }
+    }
+
+    if let Some(first_gain) =
+        unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::GainLifeEffect>()
+        && let Some(second_gain) =
+            unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::GainLifeEffect>()
+        && first_gain.amount == second_gain.amount
+        && matches!(&first_gain.player, ChooseSpec::Player(PlayerFilter::You))
+        && let ChooseSpec::Player(second_player) = &second_gain.player
+        && let Some(other) = joint_other_surface(second_player)
+    {
+        return Some(format!(
+            "You and {other} each gain {}",
+            describe_life_amount_phrase(&first_gain.amount)
+        ));
+    }
+
+    // "Target creature you control deals damage equal to its power to each
+    // of two other target creatures" — tagged target prelude + execute-with-
+    // source power damage compact to the oracle's single sentence.
+    if let Some(first_tagged) = first.downcast_ref::<crate::effects::TaggedEffect>()
+        && let Some(target_only) = first_tagged
+            .effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && let Some(second_exec) = unwrap_basic_tag_wrappers(second)
+            .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        && matches!(&second_exec.source, ChooseSpec::Tagged(tag) if *tag == first_tagged.tag)
+        && let Some(damage) = second_exec
+            .effect
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+        && matches!(
+            &damage.amount,
+            Value::PowerOf(spec)
+                if matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if *tag == first_tagged.tag)
+        )
+    {
+        let source_text = describe_choose_spec(&target_only.target);
+        let raw_target = describe_choose_spec(&damage.target);
+        let target_text = if let Some((count_word, rest)) = raw_target.split_once(" target other ")
+        {
+            format!("each of {count_word} other target {rest}")
+        } else {
+            raw_target
+        };
+        return Some(format!(
+            "{} deals damage equal to its power to {target_text}",
+            capitalize_first(&source_text)
+        ));
+    }
+
+    // "deals X damage to each creature and each player" — for-each-creature
+    // damage followed by for-each-player damage with the same amount.
+    if let Some(for_each) =
+        unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::ForEachObject>()
+        && let [inner] = for_each.effects.as_slice()
+        && let Some(first_damage) =
+            unwrap_basic_tag_wrappers(inner).downcast_ref::<crate::effects::DealDamageEffect>()
+        && matches!(first_damage.target, ChooseSpec::Iterated)
+        && for_each.filter.card_types == [CardType::Creature]
+        && for_each.filter.controller.is_none()
+        && for_each.filter.subtypes.is_empty()
+        && for_each.filter.tagged_constraints.is_empty()
+        && let Some(for_players) =
+            unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::ForPlayersEffect>()
+        && for_players.filter == PlayerFilter::Any
+        && let [player_inner] = for_players.effects.as_slice()
+        && let Some(second_damage) = unwrap_basic_tag_wrappers(player_inner)
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+        && second_damage.amount == first_damage.amount
+        && matches!(
+            &second_damage.target,
+            ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+        )
+    {
+        return Some(format!(
+            "this deals {} damage to each creature and each player",
+            describe_value(&first_damage.amount)
+        ));
+    }
+
+    if let Some(first_create) =
+        unwrap_basic_tag_wrappers(first).downcast_ref::<crate::effects::CreateTokenEffect>()
+        && let Some(second_create) =
+            unwrap_basic_tag_wrappers(second).downcast_ref::<crate::effects::CreateTokenEffect>()
+        && first_create.count == second_create.count
+        && first_create.controller == PlayerFilter::You
+        && let Some(other) = joint_other_surface(&second_create.controller)
+    {
+        // Compare the rendered token descriptions (after the count word) so
+        // instance-specific token ids don't break the pairing.
+        let first_rendered = describe_effect(first);
+        let first_body = first_rendered
+            .trim()
+            .trim_end_matches('.')
+            .strip_prefix("Create ")?
+            .to_string();
+        let second_rendered = describe_effect(second);
+        let second_lower = second_rendered.to_ascii_lowercase();
+        let creates_idx = second_lower.find("creates ")?;
+        let second_body = second_rendered[creates_idx + "creates ".len()..]
+            .trim_end_matches('.')
+            .to_string();
+        let description_after_count =
+            |body: &str| body.split_once(' ').map(|(_, rest)| rest.to_ascii_lowercase());
+        if description_after_count(&first_body)? == description_after_count(&second_body)? {
+            return Some(format!("You and {other} each create {first_body}"));
+        }
+    }
+
+    None
 }
 
 pub(super) fn describe_false_only_conditional(
@@ -18162,7 +18299,13 @@ pub(super) fn describe_tagged_target_then_power_damage(
         ));
     }
 
-    let target_text = describe_choose_spec(&deal.target);
+    let raw_target = describe_choose_spec(&deal.target);
+    // Multi-target full damage reads "each of two other target creatures".
+    let target_text = if let Some((count_word, rest)) = raw_target.split_once(" target other ") {
+        format!("each of {count_word} other target {rest}")
+    } else {
+        raw_target
+    };
     Some(format!(
         "{source_text} deals damage equal to its power to {target_text}"
     ))
@@ -34393,6 +34536,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
             } else if target == "it" {
                 target = "that creature".to_string();
             }
+            // Multi-target full damage reads "each of two other target
+            // creatures" in oracle.
+            if let Some((count_word, rest)) = target.clone().split_once(" target other ") {
+                target = format!("each of {count_word} other target {rest}");
+            }
 
             if matches!(
                 with_source.source.base(),
@@ -34502,6 +34650,11 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 target = "this creature".to_string();
             } else if target == "it" {
                 target = "that creature".to_string();
+            }
+            // Multi-target full damage reads "each of two other target
+            // creatures" in oracle.
+            if let Some((count_word, rest)) = target.clone().split_once(" target other ") {
+                target = format!("each of {count_word} other target {rest}");
             }
             let stat = if matches!(&deal_damage.amount, Value::ToughnessOf(_)) {
                 "toughness"
@@ -39249,7 +39402,9 @@ pub(super) fn describe_effect_impl(effect: &Effect) -> String {
                 .split(|c: char| !c.is_ascii_alphanumeric() && c != '\'')
                 .any(|word| word == "it")
                 || delayed_lower.contains("that creature")
-                || delayed_lower.contains("that permanent");
+                || delayed_lower.contains("that permanent")
+                || delayed_lower.contains("this creature")
+                || delayed_lower.contains("this permanent");
             if single_clause && back_references {
                 return format!("{delayed_text} at end of combat");
             }
