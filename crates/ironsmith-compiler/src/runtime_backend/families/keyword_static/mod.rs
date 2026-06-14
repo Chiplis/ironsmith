@@ -1096,10 +1096,7 @@ const THIS_SPELL_TARGETS_PREFIX_PATTERN: ClauseShape<'static> =
 const CONDITIONAL_SPELL_KEYWORD_WORDS: &[&str] = &["flash", "cascade"];
 const CONDITIONAL_SOURCE_SPELL_KEYWORD_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(&["this", "spell", "has"]),
-    LexPattern::action(
-        "keyword",
-        LexCaptureKind::OneOf(CONDITIONAL_SPELL_KEYWORD_WORDS),
-    ),
+    LexPattern::action("keyword", LexCaptureKind::OneOf(CONDITIONAL_SPELL_KEYWORD_WORDS)),
     LexPattern::phrase(&["as", "long", "as"]),
     LexPattern::condition("condition", LexCaptureKind::OneOrMoreWords),
 ]);
@@ -3374,9 +3371,7 @@ fn title_case_count_as_card_name(words: &[&str]) -> String {
         .join(" ")
 }
 
-fn parse_count_as_card_named_for_spell_effect_line(
-    tokens: &[OwnedLexToken],
-) -> Option<StaticAbility> {
+fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let clause = LexedClause::new(tokens);
     if !COUNT_AS_CARD_NAMED_GRAVEYARD_PREFIX_PATTERN.matches(clause) {
         return None;
@@ -3789,10 +3784,7 @@ fn parse_activated_abilities_cost_increase_spec(
             LexCaptureKind::OneOf(ACTIVATED_ABILITY_COST_VERB_WORDS),
         ),
         LexPattern::phrase(ADDITIONAL_COST_PHRASE),
-        LexPattern::modifier(
-            "additional_cost",
-            LexCaptureKind::UntilPhrase(TO_ACTIVATE_PHRASE),
-        ),
+        LexPattern::modifier("additional_cost", LexCaptureKind::UntilPhrase(TO_ACTIVATE_PHRASE)),
         LexPattern::phrase(TO_ACTIVATE_PHRASE),
     ]);
 
@@ -4078,9 +4070,7 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     idx += 1;
 
     let mut additional = 1usize;
-    let count_token_idx = words
-        .token_index_for_word_index(idx)
-        .unwrap_or(tokens.len());
+    let count_token_idx = words.token_index_for_word_index(idx).unwrap_or(tokens.len());
     if let Some((count, used)) = parse_number(&tokens[count_token_idx..]) {
         additional = count as usize;
         idx += used;
@@ -4162,18 +4152,14 @@ pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Opt
 
     let mut idx = 1usize;
     let mut count = 1u32;
-    let count_token_idx = words
-        .token_index_for_word_index(idx)
-        .unwrap_or(tokens.len());
+    let count_token_idx = words.token_index_for_word_index(idx).unwrap_or(tokens.len());
     if let Some((value, used)) = parse_number(&tokens[count_token_idx..]) {
         count = value;
         let used_end = count_token_idx.saturating_add(used).min(tokens.len());
         idx += LexedClause::new(&tokens[count_token_idx..used_end]).word_len();
     }
 
-    let tail_token_idx = words
-        .token_index_for_word_or_end(idx)
-        .unwrap_or(tokens.len());
+    let tail_token_idx = words.token_index_for_word_or_end(idx).unwrap_or(tokens.len());
     if WARD_DISCARD_HAND_TAIL_PATTERN.matches(LexedClause::new(&tokens[tail_token_idx..])) {
         return Some(TotalCost::from_cost(crate::costs::Cost::discard_hand()));
     }
@@ -4651,8 +4637,7 @@ pub(crate) fn parse_enters_tapped_with_choose_color_line(
                 render_token_slice(tokens)
             ))
         })?;
-    let tapped_token_idx = words
-        .token_index_for_word_index(tapped_word_idx)
+    let tapped_token_idx = words.token_index_for_word_index(tapped_word_idx)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unable to map tapped keyword in enters-tapped clause (clause: '{}')",
@@ -4919,8 +4904,7 @@ pub(crate) fn parse_source_is_chosen_color_line(
         _ => "This",
     };
 
-    let tail_start = words
-        .token_index_for_word_or_end(is_idx + 1)
+    let tail_start = words.token_index_for_word_or_end(is_idx + 1)
         .unwrap_or(tokens.len());
     let chosen_color_tail = LexedClause::new(&tokens[tail_start..]);
     if !CHOSEN_COLOR_TAIL_PATTERN.matches(chosen_color_tail) {
@@ -6367,8 +6351,8 @@ pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     };
 
     let tail = &tokens[used..];
-    let attack_you =
-        CREATURES_CAN_ATTACK_YOU_EACH_COMBAT_TAIL_PATTERN.matches_non_article_tokens(tail);
+    let attack_you = CREATURES_CAN_ATTACK_YOU_EACH_COMBAT_TAIL_PATTERN
+        .matches_non_article_tokens(tail);
     let ability = if attack_you {
         StaticAbility::max_attackers_can_attack_you_each_combat(maximum as usize)
     } else if CREATURES_CAN_ATTACK_EACH_COMBAT_TAIL_PATTERN.matches_non_article_tokens(tail) {
@@ -10118,8 +10102,8 @@ pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
         return Ok(None);
     };
     let head_tokens = trim_lexed_commas(head_tokens);
-    let head_matches =
-        MANA_VALUE_INSTEAD_OF_MANA_COST_GRANT_PREFIX_PATTERN.matches(LexedClause::new(head_tokens));
+    let head_matches = MANA_VALUE_INSTEAD_OF_MANA_COST_GRANT_PREFIX_PATTERN
+        .matches(LexedClause::new(head_tokens));
     if !head_matches {
         return Ok(None);
     }

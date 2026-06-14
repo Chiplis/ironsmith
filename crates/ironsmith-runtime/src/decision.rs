@@ -513,7 +513,7 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_legal_actions_hides_activated_ability_without_potential_mana() {
+    fn test_compute_legal_actions_surfaces_activated_ability_before_mana_payment() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
 
@@ -542,8 +542,8 @@ mod tests {
 
         assert_eq!(
             activations_for_sink(&game),
-            0,
-            "an ability costing {{B}}{{B}} should be hidden with no mana available"
+            1,
+            "an ability costing {{B}}{{B}} should still surface before mana is floated"
         );
 
         let swamp = CardDefinitionBuilder::new(CardId::from_raw(700_951), "Swamp")

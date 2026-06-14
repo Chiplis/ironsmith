@@ -828,6 +828,84 @@ fn wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
     None
 }
 
+fn describe_power_damage_exchange_clause(effects: &[Effect]) -> Option<String> {
+    fn power_value_references(value: &Value, spec: &ChooseSpec) -> bool {
+        matches!(
+            value.unhinted(),
+            Value::PowerOf(power_spec) if power_spec.unhinted() == spec.unhinted()
+        )
+    }
+
+    fn demonstrative_reference_for_target(spec: &ChooseSpec) -> Option<&'static str> {
+        let ChooseSpec::Target(inner) = spec.unhinted() else {
+            return None;
+        };
+        let ChooseSpec::Object(filter) = inner.unhinted() else {
+            return None;
+        };
+        if filter.card_types.contains(&CardType::Creature) {
+            Some("that creature")
+        } else if filter.card_types.contains(&CardType::Artifact) {
+            Some("that artifact")
+        } else if filter.card_types.contains(&CardType::Enchantment) {
+            Some("that enchantment")
+        } else if filter.card_types.contains(&CardType::Planeswalker) {
+            Some("that planeswalker")
+        } else if filter.card_types.contains(&CardType::Battle) {
+            Some("that battle")
+        } else if filter.card_types.contains(&CardType::Land) {
+            Some("that land")
+        } else {
+            Some("that permanent")
+        }
+    }
+
+    let [first_effect, tagged_target_effect, reciprocal_effect] = effects else {
+        return None;
+    };
+    let first_exec = first_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    let first_damage = first_exec
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !power_value_references(&first_damage.amount, &first_exec.source) {
+        return None;
+    }
+
+    let tagged = tagged_target_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let target_only = tagged
+        .effect
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if first_damage.target.unhinted() != target_only.target.unhinted() {
+        return None;
+    }
+
+    let reciprocal_exec =
+        reciprocal_effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>()?;
+    if !matches!(&reciprocal_exec.source, ChooseSpec::Tagged(tag) if tag == &tagged.tag) {
+        return None;
+    }
+    let reciprocal_damage = reciprocal_exec
+        .effect
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if !matches!(
+        reciprocal_damage.amount.unhinted(),
+        Value::PowerOf(power_spec)
+            if matches!(power_spec.unhinted(), ChooseSpec::Tagged(tag) if tag == &tagged.tag)
+    ) {
+        return None;
+    }
+    if reciprocal_damage.target.unhinted() != first_exec.source.unhinted() {
+        return None;
+    }
+
+    let source_text = describe_choose_spec(&first_exec.source);
+    let target_text = describe_choose_spec(&first_damage.target);
+    let reciprocal_source = demonstrative_reference_for_target(&target_only.target)?;
+    Some(format!(
+        "{source_text} deals damage equal to its power to {target_text}, then {reciprocal_source} deals damage equal to its power to {source_text}"
+    ))
+}
+
 fn describe_copy_tagged_then_may_cast_copy(effects: &[Effect]) -> Option<String> {
     let [copy_effect, may_effect] = effects else {
         return None;
@@ -6238,6 +6316,9 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
 
     if let Some(compact) = describe_gain_life_then_distribute_creatures_died_counters(effects) {
         return compact;
+    }
+    if let Some(compact) = describe_power_damage_exchange_clause(effects) {
+        return capitalize_first(&compact);
     }
     if let Some(compact) = describe_turn_start_hand_condition_effects(effects) {
         return compact;
@@ -17496,6 +17577,9 @@ pub(super) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
     if let Some(compact) = describe_choose_color_then_chosen_color_mana(&effect_refs) {
+        return Some(compact);
+    }
+    if let Some(compact) = describe_power_damage_exchange_clause(effects) {
         return Some(compact);
     }
     if let Some(compact) = describe_move_to_battlefield_with_additional_counters(effects) {

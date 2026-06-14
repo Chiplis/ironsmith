@@ -961,15 +961,14 @@ fn lower_rewrite_triggered_to_chunk_impl(
     if full_parse_tokens_contain_full_party_instead(full_parse_tokens)
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
-        let effect_tokens = if FULL_PARTY_CONDITION_PATTERN
-            .matches_word_slice(&token_word_refs(effect_parse_tokens))
-        {
-            effect_parse_tokens
+        let effect_tokens;
+        if FULL_PARTY_CONDITION_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens)) {
+            effect_tokens = effect_parse_tokens;
         } else {
-            split_once_at_comma_tokens(full_parse_tokens)
+            effect_tokens = split_once_at_comma_tokens(full_parse_tokens)
                 .map(|(_, rest)| rest)
-                .unwrap_or(effect_parse_tokens)
-        };
+                .unwrap_or(effect_parse_tokens);
+        }
         let effects = parse_effect_sentences_lexed(effect_tokens)?;
         if !effects.is_empty() {
             return apply_chosen_option_to_triggered_chunk(

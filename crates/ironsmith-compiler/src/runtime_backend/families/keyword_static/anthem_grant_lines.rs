@@ -1676,10 +1676,13 @@ pub(crate) fn parse_granted_keyword_static_line(
         let ignore_keyword_reminder =
             anthem_shape_matches_words(&keyword_words, ANTHEM_IGNORED_REMINDER_KEYWORD_PATTERN);
         if !ignore_keyword_reminder {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported trailing granted-keyword clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
+            if parse_ability_line(&keyword_tokens).is_some() {
+                return Err(CardTextError::ParseError(format!(
+                    "unsupported trailing granted-keyword clause (clause: '{}')",
+                    clause_words.join(" ")
+                )));
+            }
+            return Ok(None);
         }
     }
 
