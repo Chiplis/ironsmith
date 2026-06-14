@@ -92,7 +92,6 @@ struct AdditionalLandPlayClause<'a> {
     count_tokens: &'a [OwnedLexToken],
 }
 
-
 fn clause_matches_any_phrase(clause: LexedClause<'_>, phrases: &[&[&str]]) -> bool {
     LexPattern::new(&[LexPattern::any_phrase(phrases)]).matches_clause(clause)
 }
@@ -237,8 +236,7 @@ const ALLOW_ANY_COLOR_FOR_CAST_SUFFIXES: &[&[&str]] = &[
         "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
     ],
     &[
-        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "those",
-        "spells",
+        "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "those", "spells",
     ],
     &[
         "and", "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "it",
@@ -911,7 +909,11 @@ fn parse_permanent_spells_from_among_tagged_tokens<'a>(
 /// among cards exiled with this enchantment without paying its mana cost.")
 fn parse_spell_from_among_source_exiled_tokens<'a>(
     tokens: &'a [OwnedLexToken],
-) -> Option<(TaggedPermissionTarget, &'a [OwnedLexToken], Option<ObjectFilter>)> {
+) -> Option<(
+    TaggedPermissionTarget,
+    &'a [OwnedLexToken],
+    Option<ObjectFilter>,
+)> {
     let words = token_word_refs(tokens);
     let (filter, phrase_words) = if words.len() >= 9
         && words[0] == "a"

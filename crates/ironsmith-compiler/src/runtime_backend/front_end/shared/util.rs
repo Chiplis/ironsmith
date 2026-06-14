@@ -4294,8 +4294,12 @@ mod tests {
             ChooseSpec::SurfaceHinted { hints, .. } => hints
                 .iter()
                 .find_map(|hint| match hint {
-                    ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::FullName(text))
-                    | ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ShortName(text))
+                    ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::FullName(
+                        text,
+                    ))
+                    | ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ShortName(
+                        text,
+                    ))
                     | ChooseSpecSurfaceHint::SourceReference(
                         SourceReferenceSurface::ThisPermanentType(text),
                     ) => Some(text.clone()),

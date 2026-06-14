@@ -1268,7 +1268,48 @@ fn unique_legal_candidate_by_hidden_ref(
         .filter(|candidate| hidden_ref_matches_object(game, candidate.id, hidden_ref))
         .map(|candidate| candidate.id);
     let Some(first) = matches.next() else {
-        return Err(JsValue::from_str("hidden object reference is not legal"));
+        let truncate = |raw: &str| raw.chars().take(12).collect::<String>();
+        let candidate_summary: Vec<String> = ctx
+            .candidates
+            .iter()
+            .map(|candidate| {
+                let hidden = game.hidden_card_info(candidate.id);
+                format!(
+                    "id={} legal={} zone={} slot={} pslot={} c={} pc={}",
+                    candidate.id.0,
+                    candidate.legal,
+                    game.object(candidate.id)
+                        .map(|object| zone_name(object.zone))
+                        .unwrap_or_else(|| "gone".to_string()),
+                    hidden.map(|info| info.slot as i32).unwrap_or(-1),
+                    hidden
+                        .and_then(|info| info.public_slot)
+                        .map(|slot| slot as i32)
+                        .unwrap_or(-1),
+                    hidden
+                        .map(|info| truncate(&info.commitment))
+                        .unwrap_or_default(),
+                    hidden
+                        .and_then(|info| info.public_commitment.as_deref())
+                        .map(truncate)
+                        .unwrap_or_default(),
+                )
+            })
+            .collect();
+        return Err(JsValue::from_str(&format!(
+            "hidden object reference is not legal (ref owner={:?} zone={:?} slot={:?} pslot={:?} c={} pc={}; candidates: [{}])",
+            hidden_ref.owner,
+            hidden_ref.zone,
+            hidden_ref.slot,
+            hidden_ref.public_slot,
+            hidden_ref.commitment.as_deref().map(truncate).unwrap_or_default(),
+            hidden_ref
+                .public_commitment
+                .as_deref()
+                .map(truncate)
+                .unwrap_or_default(),
+            candidate_summary.join("; "),
+        )));
     };
     if matches.next().is_some() {
         return Err(JsValue::from_str(

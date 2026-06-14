@@ -32,7 +32,11 @@ impl EffectExecutor for ScaleXValueEffect {
             Err(err) => return Err(err),
         };
 
-        let Some(entry) = game.stack.iter_mut().find(|entry| entry.object_id == object_id) else {
+        let Some(entry) = game
+            .stack
+            .iter_mut()
+            .find(|entry| entry.object_id == object_id)
+        else {
             return Ok(EffectOutcome::target_invalid());
         };
         let Some(x_value) = entry.x_value else {
@@ -93,7 +97,14 @@ mod tests {
 
         effect.execute(&mut game, &mut ctx).unwrap();
 
-        assert_eq!(game.stack.iter().find(|entry| entry.object_id == spell).unwrap().x_value, Some(6));
+        assert_eq!(
+            game.stack
+                .iter()
+                .find(|entry| entry.object_id == spell)
+                .unwrap()
+                .x_value,
+            Some(6)
+        );
         assert_eq!(game.object(spell).unwrap().x_value, Some(6));
     }
 
@@ -113,8 +124,8 @@ mod tests {
         tags.insert(TagKey::from("triggering"), vec![snapshot]);
 
         let mut decision_maker = NoopDecisionMaker;
-        let mut ctx = ExecutionContext::new(spell, alice, &mut decision_maker)
-            .with_tagged_objects(tags);
+        let mut ctx =
+            ExecutionContext::new(spell, alice, &mut decision_maker).with_tagged_objects(tags);
         let effect = ScaleXValueEffect::new(ChooseSpec::Tagged(TagKey::from("triggering")), 2);
 
         effect.execute(&mut game, &mut ctx).unwrap();
@@ -148,6 +159,13 @@ mod tests {
         let outcome = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(outcome.status, OutcomeStatus::Impossible);
-        assert_eq!(game.stack.iter().find(|entry| entry.object_id == spell).unwrap().x_value, None);
+        assert_eq!(
+            game.stack
+                .iter()
+                .find(|entry| entry.object_id == spell)
+                .unwrap()
+                .x_value,
+            None
+        );
     }
 }

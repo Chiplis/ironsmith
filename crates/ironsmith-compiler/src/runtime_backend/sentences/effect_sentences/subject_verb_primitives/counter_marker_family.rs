@@ -306,7 +306,9 @@ fn counter_marker_enters_as_creature_predicate_matches(predicate_words: &[&str])
     word_slice_eq_any(&predicate_words, ENTERS_AS_CREATURE_PREDICATE_CLAUSES)
 }
 
-fn counter_marker_battlefield_destination_word_index(base_destination_words: &[&str]) -> Option<usize> {
+fn counter_marker_battlefield_destination_word_index(
+    base_destination_words: &[&str],
+) -> Option<usize> {
     if !word_slice_contains_word(&base_destination_words, BATTLEFIELD_WORD) {
         return None;
     }

@@ -2240,9 +2240,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("LookAtObjects")
                 .field("filter", filter)
                 .finish(),
-            Self::LookAtTarget { target } => {
-                f.debug_tuple("LookAtTarget").field(target).finish()
-            }
+            Self::LookAtTarget { target } => f.debug_tuple("LookAtTarget").field(target).finish(),
             Self::PutIntoHand { object } => f.debug_tuple("PutIntoHand").field(object).finish(),
             Self::MayMoveToZone { target, zone } => f
                 .debug_struct("MayMoveToZone")
@@ -2549,7 +2547,11 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("face_down", face_down)
                 .field("controller", controller)
                 .finish(),
-            Self::ExileUntilSourceLeaves { target, face_down, all } => f
+            Self::ExileUntilSourceLeaves {
+                target,
+                face_down,
+                all,
+            } => f
                 .debug_struct("ExileUntilSourceLeaves")
                 .field("target", target)
                 .field("face_down", face_down)
@@ -2961,7 +2963,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::CreateTokenCopy { .. } => f.write_str("CreateTokenCopy"),
             Self::CreateTokenCopyFromSource { .. } => f.write_str("CreateTokenCopyFromSource"),
-            Self::CreateTokenWithMods { name, count, player, .. } => f
+            Self::CreateTokenWithMods {
+                name,
+                count,
+                player,
+                ..
+            } => f
                 .debug_struct("CreateTokenWithMods")
                 .field("name", name)
                 .field("count", count)
@@ -3357,10 +3364,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::SkipMainPhasesThisTurn => f.write_str("SkipMainPhasesThisTurn"),
             Self::SkipCombatPhasesThisTurn => f.write_str("SkipCombatPhasesThisTurn"),
             Self::SkipDrawStep => f.write_str("SkipDrawStep"),
-            Self::AdditionalPhases { phases } => f
-                .debug_tuple("AdditionalPhases")
-                .field(phases)
-                .finish(),
+            Self::AdditionalPhases { phases } => {
+                f.debug_tuple("AdditionalPhases").field(phases).finish()
+            }
             Self::PlayFromGraveyardUntilEot => f.write_str("PlayFromGraveyardUntilEot"),
             Self::ControlPlayer { player, duration } => f
                 .debug_struct("ControlPlayer")
@@ -3402,10 +3408,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Detain { target } => f.debug_tuple("Detain").field(target).finish(),
             Self::Goad { target } => f.debug_tuple("Goad").field(target).finish(),
             Self::Suspect { target } => f.debug_tuple("Suspect").field(target).finish(),
-            Self::ClearSuspected { target } => f
-                .debug_tuple("ClearSuspected")
-                .field(target)
-                .finish(),
+            Self::ClearSuspected { target } => {
+                f.debug_tuple("ClearSuspected").field(target).finish()
+            }
             Self::RemoveFromCombat { target } => {
                 f.debug_tuple("RemoveFromCombat").field(target).finish()
             }

@@ -940,9 +940,7 @@ fn rewrite_self_replacement_referent_phrase(default_text: &str, replacement_text
     {
         replacement = replacement.replacen("target creature", "that creature", 1);
     }
-    if default_text
-        .to_ascii_lowercase()
-        .contains("target player")
+    if default_text.to_ascii_lowercase().contains("target player")
         && replacement.starts_with("target player ")
     {
         replacement = replacement.replacen("target player", "that player", 1);
@@ -1053,22 +1051,28 @@ fn describe_mill_count_override_self_replacement(
 
     let replacement_count = super::normalize_common::describe_value(&replacement_mill.count);
     let mut replacement = rewrite_self_replacement_referent_phrase(default_text, replacement_text);
-    replacement = replacement
-        .trim_end_matches('.')
-        .replace(&format!("{replacement_count} cards"), "twice that many cards");
-    Some(format!("{default_text}. If {condition_text}, {replacement} instead"))
+    replacement = replacement.trim_end_matches('.').replace(
+        &format!("{replacement_count} cards"),
+        "twice that many cards",
+    );
+    Some(format!(
+        "{default_text}. If {condition_text}, {replacement} instead"
+    ))
 }
 
 fn mill_count_is_twice_default(default_count: &Value, replacement_count: &Value) -> bool {
     matches!(replacement_count, Value::Scaled(inner, 2) if inner.as_ref() == default_count)
-        || matches!((default_count, replacement_count), (Value::X, Value::XTimes(2)))
+        || matches!(
+            (default_count, replacement_count),
+            (Value::X, Value::XTimes(2))
+        )
 }
 
 fn single_mill_effect(effects: &[Effect]) -> Option<&crate::effects::MillEffect> {
     let mut found = None;
     for effect in effects {
-        let Some(mill) = unwrap_basic_render_wrapper(effect)
-            .downcast_ref::<crate::effects::MillEffect>()
+        let Some(mill) =
+            unwrap_basic_render_wrapper(effect).downcast_ref::<crate::effects::MillEffect>()
         else {
             continue;
         };

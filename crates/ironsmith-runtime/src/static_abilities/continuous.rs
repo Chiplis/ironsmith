@@ -231,7 +231,10 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
             && !base.contains(" or ")
             && !base.contains(" and ")
             && !base.contains(' ')
-            && base.chars().next().is_some_and(|ch| ch.is_ascii_alphabetic());
+            && base
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_alphabetic());
         let subject = pluralize_subject_clause(&subject);
         return if prefix_all {
             format!("All {subject}")
@@ -851,9 +854,7 @@ fn describe_anthem_for_each_graveyard_count_expression(
     expr: &AnthemCountExpression,
 ) -> Option<String> {
     match expr {
-        AnthemCountExpression::MatchingFilter(filter)
-            if filter.zone == Some(Zone::Graveyard) =>
-        {
+        AnthemCountExpression::MatchingFilter(filter) if filter.zone == Some(Zone::Graveyard) => {
             Some(strip_article(filter.description()))
         }
         _ => None,
@@ -1095,7 +1096,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                     crate::target::PlayerFilter::Opponent => {
                         "unless an opponent is the monarch".to_string()
                     }
-                    crate::target::PlayerFilter::Any => "unless a player is the monarch".to_string(),
+                    crate::target::PlayerFilter::Any => {
+                        "unless a player is the monarch".to_string()
+                    }
                     crate::target::PlayerFilter::NotYou => {
                         "unless another player is the monarch".to_string()
                     }
@@ -1966,7 +1969,9 @@ impl StaticAbilityKind for Anthem {
                     signed_toughness(*power, *toughness),
                 )
             }
-            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness)) if power == toughness => {
+            (AnthemValue::Dynamic(power), AnthemValue::Dynamic(toughness))
+                if power == toughness =>
+            {
                 format!(
                     "{subject} {verb} +X/+X, where X is {}",
                     crate::compiled_text::describe_value(power),
@@ -2444,10 +2449,25 @@ impl StaticAbilityKind for GrantAbility {
                 let generic_noun_subject = matches!(
                     lower_subject.split_whitespace().next(),
                     Some(
-                        "creature" | "creatures" | "permanent" | "permanents" | "artifact"
-                            | "artifacts" | "enchantment" | "enchantments" | "land" | "lands"
-                            | "planeswalker" | "planeswalkers" | "card" | "cards" | "token"
-                            | "tokens" | "nonland" | "nontoken" | "nonbasic"
+                        "creature"
+                            | "creatures"
+                            | "permanent"
+                            | "permanents"
+                            | "artifact"
+                            | "artifacts"
+                            | "enchantment"
+                            | "enchantments"
+                            | "land"
+                            | "lands"
+                            | "planeswalker"
+                            | "planeswalkers"
+                            | "card"
+                            | "cards"
+                            | "token"
+                            | "tokens"
+                            | "nonland"
+                            | "nontoken"
+                            | "nonbasic"
                     )
                 );
                 if !already_quantified && !scoped && generic_noun_subject {

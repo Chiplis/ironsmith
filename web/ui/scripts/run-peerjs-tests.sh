@@ -63,6 +63,7 @@ FULL_UI_TESTS=(
   "full UI PeerJS Gitaxian Probe shows the targeted player's hand to the caster"
   "full UI PeerJS Mishra's Bauble shows the targeted player's library top card to its controller"
   "full UI PeerJS guest Mishra's Bauble shows the host's library top card to its controller"
+  "full UI PeerJS guest Claws of Gix sacrificing itself stays synced"
   "full UI PeerJS Tainted Pact resolution reveals choices and stays synced"
 )
 

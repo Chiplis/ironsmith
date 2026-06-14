@@ -2132,11 +2132,7 @@ pub(crate) fn lower_activation_cost_cst(
                 other,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                if *random
-                    || name.is_some()
-                    || *other
-                    || filter.is_some()
-                    || !supertypes.is_empty()
+                if *random || name.is_some() || *other || filter.is_some() || !supertypes.is_empty()
                 {
                     let card_filter = if let Some(filter) = filter {
                         Some(filter.clone())

@@ -86,7 +86,9 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
 
 fn normalize_scored_compiled_line(line: String) -> String {
     let lower = line.to_ascii_lowercase();
-    if lower == "destroy all nonbasic lands. for each land destroyed this way, its controller may search its controller's library for a basic land card. for each tagged 'searched' object, put them onto the battlefield. if you do, shuffle that player's library" {
+    if lower
+        == "destroy all nonbasic lands. for each land destroyed this way, its controller may search its controller's library for a basic land card. for each tagged 'searched' object, put them onto the battlefield. if you do, shuffle that player's library"
+    {
         return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
     }
     if lower.contains("counter target noncreature spell unless its controller pays")
@@ -422,10 +424,7 @@ fn finalize_ast_surface_line(line: String) -> String {
         && lower.contains("draw half x cards, rounded down")
     {
         line = line.replace("on him", "on this creature");
-        line = line.replace(
-            "on Him",
-            "on this creature",
-        );
+        line = line.replace("on Him", "on this creature");
     }
     if lower.contains("this equipment gets +x/+0 until end of turn")
         && lower.contains("where x is the number of times this ability has resolved this turn")

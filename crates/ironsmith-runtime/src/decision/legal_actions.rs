@@ -1286,7 +1286,13 @@ fn activation_cost_component_precheck_with_view(
         // The mana need not be floated yet, but the player must at least be
         // able to produce it: hide abilities whose mana cost can't possibly
         // be paid right now (pool + potential mana from mana abilities).
-        return view.can_potentially_pay_with_reason(controller, Some(source), mana_cost, 0, reason);
+        return view.can_potentially_pay_with_reason(
+            controller,
+            Some(source),
+            mana_cost,
+            0,
+            reason,
+        );
     }
     if cost.is_remove_counters() {
         return true;
@@ -1480,12 +1486,7 @@ fn activation_precheck_with_view(
         let reason = crate::costs::PaymentReason::ActivateAbility;
         let costs = activated.mana_cost.costs();
         if !activation_printed_costs_precheck_with_view(
-            game,
-            controller,
-            source,
-            costs,
-            reason,
-            view,
+            game, controller, source, costs, reason, view,
         ) {
             if let Some(perf_ctx) = perf_ctx {
                 perf_ctx.add_precheck_ms(started_at.elapsed_ms());
@@ -1550,14 +1551,7 @@ fn activation_precheck_with_view(
 
     let reason = crate::costs::PaymentReason::ActivateAbility;
     let costs = activated.mana_cost.costs();
-    if !activation_printed_costs_precheck_with_view(
-        game,
-        controller,
-        source,
-        costs,
-        reason,
-        view,
-    ) {
+    if !activation_printed_costs_precheck_with_view(game, controller, source, costs, reason, view) {
         if let Some(perf_ctx) = perf_ctx {
             perf_ctx.add_precheck_ms(started_at.elapsed_ms());
         }
@@ -1629,7 +1623,13 @@ fn activation_cost_is_payable_with_view(
         // The cost arriving here is already repriced by cost modifiers, and
         // the mana need not be floated yet — but the player must at least be
         // able to produce it (pool + potential mana from mana abilities).
-        return view.can_potentially_pay_with_reason(controller, Some(source), mana_cost, 0, reason);
+        return view.can_potentially_pay_with_reason(
+            controller,
+            Some(source),
+            mana_cost,
+            0,
+            reason,
+        );
     }
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
         return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);

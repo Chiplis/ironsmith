@@ -2696,7 +2696,10 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                 "Activate mana ability".to_string()
             }
             crate::special_actions::SpecialAction::UnlockRoomDoor { room_id } => {
-                let name = game.object(*room_id).map(|o| o.name.as_str()).unwrap_or("?");
+                let name = game
+                    .object(*room_id)
+                    .map(|o| o.name.as_str())
+                    .unwrap_or("?");
                 let cost_prefix = crate::special_actions::room_unlock_cost_display(game, *room_id)
                     .map(|cost| format!("{cost}: "))
                     .unwrap_or_default();

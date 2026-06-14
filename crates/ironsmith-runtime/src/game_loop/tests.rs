@@ -109,10 +109,12 @@ fn resolve_will_kenrith_loyalty_ability(
             }
             _ => None,
         })
-        .unwrap_or_else(|| panic!("Will Kenrith should have loyalty ability matching {cost_markers:?}"));
+        .unwrap_or_else(|| {
+            panic!("Will Kenrith should have loyalty ability matching {cost_markers:?}")
+        });
 
-    let mut ctx = crate::effects::ExecutionContext::new_default(source, controller)
-        .with_targets(targets);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(source, controller).with_targets(targets);
     for effect in activated.effects.flattened_default_effects() {
         crate::effects::execute_effect(game, effect, &mut ctx)
             .expect("Will Kenrith loyalty ability effect should resolve");
@@ -1215,12 +1217,18 @@ fn feast_of_the_victorious_dead_gains_life_and_distributes_counters_for_creature
         "Feast should gain life equal to the number of creatures that died this turn"
     );
     assert_eq!(
-        game.counter_count(first_survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        game.counter_count(
+            first_survivor_id,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
         1,
         "Feast should distribute the first counter to a controlled creature"
     );
     assert_eq!(
-        game.counter_count(second_survivor_id, crate::object::CounterType::PlusOnePlusOne),
+        game.counter_count(
+            second_survivor_id,
+            crate::object::CounterType::PlusOnePlusOne
+        ),
         1,
         "Feast should distribute the second counter to another controlled creature"
     );
@@ -2397,9 +2405,16 @@ fn aether_refinery_activation_pays_energy_and_creates_paid_size_construct() {
         0,
         "the activation should get two energy after replacement, then spend the chosen two"
     );
-    assert!(game.is_tapped(refinery_id), "activation cost should tap Aether Refinery");
+    assert!(
+        game.is_tapped(refinery_id),
+        "activation cost should tap Aether Refinery"
+    );
     let tokens = aetherborn_tokens_controlled_by(&game, alice);
-    assert_eq!(tokens.len(), 1, "paying energy should create one Aetherborn token");
+    assert_eq!(
+        tokens.len(),
+        1,
+        "paying energy should create one Aetherborn token"
+    );
     let token_id = tokens[0];
     assert_eq!(game.current_power(token_id), Some(2));
     assert_eq!(game.current_toughness(token_id), Some(2));
@@ -6812,7 +6827,11 @@ fn lethal_damage_with_two_regeneration_shields_resolves_without_looping() {
     check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBA processing should terminate");
 
     let object = game.object(creature).expect("creature should survive");
-    assert_eq!(object.zone, Zone::Battlefield, "regeneration should save it");
+    assert_eq!(
+        object.zone,
+        Zone::Battlefield,
+        "regeneration should save it"
+    );
     assert!(game.is_tapped(creature), "regeneration taps the creature");
     assert_eq!(
         game.damage_on(creature),
@@ -6822,7 +6841,9 @@ fn lethal_damage_with_two_regeneration_shields_resolves_without_looping() {
 
     game.mark_damage(creature, 3);
     check_and_apply_sbas(&mut game, &mut trigger_queue).expect("SBA processing should terminate");
-    let object = game.object(creature).expect("creature should survive twice");
+    let object = game
+        .object(creature)
+        .expect("creature should survive twice");
     assert_eq!(object.zone, Zone::Battlefield);
 
     game.mark_damage(creature, 3);
@@ -8624,7 +8645,12 @@ fn aligned_heart_triggers_only_on_second_spell_and_token_prowess_branches() {
     );
 
     let mut prowess_queue = TriggerQueue::new();
-    queue_aligned_heart_spell_cast(&mut game, alice, vec![CardType::Instant], &mut prowess_queue);
+    queue_aligned_heart_spell_cast(
+        &mut game,
+        alice,
+        vec![CardType::Instant],
+        &mut prowess_queue,
+    );
     assert_eq!(
         prowess_queue.entries.len(),
         1,
@@ -10188,8 +10214,8 @@ fn all_of_history_all_at_once_adds_time_counters_to_each_eligible_object() {
         mode_index: 0,
         prompts: 0,
     };
-    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
-        .with_decision_maker(&mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(spell_id, alice).with_decision_maker(&mut dm);
     crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
         .expect("All of History, All at Once time travel add branch should execute");
 
@@ -10218,7 +10244,10 @@ fn all_of_history_all_at_once_adds_time_counters_to_each_eligible_object() {
         1,
         "time travel should not affect exiled cards without time counters"
     );
-    assert_eq!(dm.prompts, 2, "time travel should offer one choice per eligible object");
+    assert_eq!(
+        dm.prompts, 2,
+        "time travel should offer one choice per eligible object"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -10241,8 +10270,8 @@ fn all_of_history_all_at_once_removes_time_counters_from_each_eligible_object() 
         mode_index: 1,
         prompts: 0,
     };
-    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
-        .with_decision_maker(&mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(spell_id, alice).with_decision_maker(&mut dm);
     crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
         .expect("All of History, All at Once time travel remove branch should execute");
 
@@ -10256,7 +10285,10 @@ fn all_of_history_all_at_once_removes_time_counters_from_each_eligible_object() 
         1,
         "time travel should remove one time counter from each eligible suspended card when chosen"
     );
-    assert_eq!(dm.prompts, 2, "time travel should offer one remove choice per eligible object");
+    assert_eq!(
+        dm.prompts, 2,
+        "time travel should offer one remove choice per eligible object"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -10279,8 +10311,8 @@ fn all_of_history_all_at_once_can_leave_eligible_objects_unchanged() {
         mode_index: 2,
         prompts: 0,
     };
-    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
-        .with_decision_maker(&mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(spell_id, alice).with_decision_maker(&mut dm);
     crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
         .expect("All of History, All at Once time travel skip branch should execute");
 
@@ -10294,7 +10326,10 @@ fn all_of_history_all_at_once_can_leave_eligible_objects_unchanged() {
         2,
         "time travel should let you leave an eligible suspended card unchanged"
     );
-    assert_eq!(dm.prompts, 2, "time travel should offer one skip choice per eligible object");
+    assert_eq!(
+        dm.prompts, 2,
+        "time travel should offer one skip choice per eligible object"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -10312,8 +10347,8 @@ fn all_of_history_all_at_once_does_nothing_when_no_objects_are_eligible() {
         mode_index: 0,
         prompts: 0,
     };
-    let mut ctx = crate::effects::ExecutionContext::new_default(spell_id, alice)
-        .with_decision_maker(&mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new_default(spell_id, alice).with_decision_maker(&mut dm);
     crate::effects::execute_effect(&mut game, all_of_history_time_travel_effect(&def), &mut ctx)
         .expect("All of History, All at Once should resolve with no eligible objects");
 
@@ -10322,7 +10357,10 @@ fn all_of_history_all_at_once_does_nothing_when_no_objects_are_eligible() {
         1,
         "time travel should not alter non-time counters on otherwise ineligible permanents"
     );
-    assert_eq!(dm.prompts, 0, "time travel should not ask for choices with no eligible objects");
+    assert_eq!(
+        dm.prompts, 0,
+        "time travel should not ask for choices with no eligible objects"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -19870,7 +19908,10 @@ fn resculpt_strict_parser_and_compiled_text_regression() {
 #[test]
 fn resculpt_targets_artifacts_and_creatures_but_not_other_permanents() {
     let def = resculpt_definition();
-    let effects = def.spell_effect.as_ref().expect("Resculpt should be a spell");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("Resculpt should be a spell");
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
@@ -19934,9 +19975,7 @@ fn resculpt_exiles_target_and_gives_elemental_to_targets_controller() {
     );
     let target_stable = game.object(target).expect("target exists").stable_id;
 
-    game.push_to_stack(
-        StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target)]),
-    );
+    game.push_to_stack(StackEntry::new(spell_id, alice).with_targets(vec![Target::Object(target)]));
     resolve_stack_entry(&mut game).expect("Resculpt should resolve");
 
     let exiled_target = game
@@ -23070,7 +23109,8 @@ fn duplicant_enters_trigger_targets_nontoken_creatures_only() {
         .kind = ObjectKind::Token;
 
     let triggered = duplicant_enters_trigger(&duplicant);
-    let requirements = extract_target_requirements(&game, &triggered.effects, alice, Some(duplicant_id));
+    let requirements =
+        extract_target_requirements(&game, &triggered.effects, alice, Some(duplicant_id));
     assert_eq!(
         requirements.len(),
         1,
@@ -30170,23 +30210,26 @@ fn cast_tormented_thoughts_targeting_player(
         progress = match progress {
             GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::Targets(_),
-            ) => {
-                apply_priority_response_with_dm(
-                    game,
-                    trigger_queue,
-                    &mut state,
-                    &PriorityResponse::Targets(vec![Target::Player(target_player)]),
-                    &mut dm,
-                )
-                .expect("Tormented Thoughts should accept target player")
-            }
+            ) => apply_priority_response_with_dm(
+                game,
+                trigger_queue,
+                &mut state,
+                &PriorityResponse::Targets(vec![Target::Player(target_player)]),
+                &mut dm,
+            )
+            .expect("Tormented Thoughts should accept target player"),
             GameProgress::NeedsDecisionCtx(
                 crate::decisions::context::DecisionContext::SelectOptions(ctx),
             ) => {
                 let sacrifice_cost_index = ctx
                     .options
                     .iter()
-                    .find(|option| option.description.to_ascii_lowercase().contains("sacrifice"))
+                    .find(|option| {
+                        option
+                            .description
+                            .to_ascii_lowercase()
+                            .contains("sacrifice")
+                    })
                     .map(|option| option.index)
                     .unwrap_or_else(|| {
                         panic!(
@@ -30230,8 +30273,15 @@ fn cast_tormented_thoughts_targeting_player(
         };
     }
 
-    assert_eq!(game.stack.len(), 1, "Tormented Thoughts should be on the stack");
-    let stack_entry = game.stack.last().expect("Tormented Thoughts should be stacked");
+    assert_eq!(
+        game.stack.len(),
+        1,
+        "Tormented Thoughts should be on the stack"
+    );
+    let stack_entry = game
+        .stack
+        .last()
+        .expect("Tormented Thoughts should be stacked");
     assert_eq!(stack_entry.targets, vec![Target::Player(target_player)]);
     let sacrificed = stack_entry
         .tagged_objects
@@ -33793,12 +33843,8 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
         })
         .expect("Rakdos should have a sacrifice trigger");
     let effects = triggered.effects.flattened_default_effects();
-    let target_requirements = super::targeting::extract_target_requirements(
-        &game,
-        &effects,
-        alice,
-        Some(rakdos_id),
-    );
+    let target_requirements =
+        super::targeting::extract_target_requirements(&game, &effects, alice, Some(rakdos_id));
     assert_eq!(
         target_requirements.len(),
         1,
@@ -33840,7 +33886,9 @@ fn rakdos_the_muscle_trigger_exiles_mana_value_cards_and_grants_next_end_step_an
             .expect("Bob exists")
             .library
             .iter()
-            .any(|&id| game.object(id).is_some_and(|object| object.name == "Rakdos Library Spare")),
+            .any(|&id| game
+                .object(id)
+                .is_some_and(|object| object.name == "Rakdos Library Spare")),
         "Rakdos should leave the third library card behind"
     );
 
@@ -39826,13 +39874,8 @@ fn increasing_confusion_flashback_mills_twice_x_and_exiles_spell() {
     let bob = PlayerId::from_index(1);
     add_filler_cards_to_library(&mut game, bob, 8);
 
-    let spell_id = put_increasing_confusion_on_stack(
-        &mut game,
-        alice,
-        bob,
-        3,
-        CastingMethod::Alternative(0),
-    );
+    let spell_id =
+        put_increasing_confusion_on_stack(&mut game, alice, bob, 3, CastingMethod::Alternative(0));
     let spell_stable = game
         .object(spell_id)
         .expect("Increasing Confusion on stack")
@@ -42671,7 +42714,10 @@ fn will_kenrith_plus_two_sets_base_pt_and_removes_abilities_until_next_turn() {
     }
 
     assert_eq!(
-        (game.calculated_power(untouched), game.calculated_toughness(untouched)),
+        (
+            game.calculated_power(untouched),
+            game.calculated_toughness(untouched)
+        ),
         (Some(5), Some(5)),
         "Will Kenrith +2 should not affect creatures beyond the two selected targets"
     );
@@ -42684,7 +42730,10 @@ fn will_kenrith_plus_two_sets_base_pt_and_removes_abilities_until_next_turn() {
     game.turn.turn_number += 1;
     game.turn.active_player = bob;
     assert_eq!(
-        (game.calculated_power(first), game.calculated_toughness(first)),
+        (
+            game.calculated_power(first),
+            game.calculated_toughness(first)
+        ),
         (Some(0), Some(3)),
         "Will Kenrith +2 should last through other players' turns"
     );
@@ -42692,7 +42741,10 @@ fn will_kenrith_plus_two_sets_base_pt_and_removes_abilities_until_next_turn() {
     game.turn.turn_number += 1;
     game.turn.active_player = alice;
     assert_eq!(
-        (game.calculated_power(first), game.calculated_toughness(first)),
+        (
+            game.calculated_power(first),
+            game.calculated_toughness(first)
+        ),
         (Some(4), Some(4)),
         "Will Kenrith +2 should expire when Will's controller reaches their next turn"
     );
@@ -42712,12 +42764,10 @@ fn will_kenrith_minus_two_draws_and_reduces_only_target_players_matching_spells_
     let will = game.create_object_from_definition(&will_def, alice, Zone::Battlefield);
 
     for idx in 0..2 {
-        let draw_card = CardDefinitionBuilder::new(
-            CardId::new(),
-            format!("Will Kenrith Bob Draw Probe {idx}"),
-        )
-        .card_types(vec![CardType::Instant])
-        .build();
+        let draw_card =
+            CardDefinitionBuilder::new(CardId::new(), format!("Will Kenrith Bob Draw Probe {idx}"))
+                .card_types(vec![CardType::Instant])
+                .build();
         game.create_object_from_definition(&draw_card, bob, Zone::Library);
     }
     let bob_hand_before = game.player(bob).expect("bob exists").hand.len();
@@ -42778,14 +42828,26 @@ fn will_kenrith_minus_two_draws_and_reduces_only_target_players_matching_spells_
     );
 
     for (spell_id, expected, message) in [
-        (bob_instant, "{2}", "target player's instant should be reduced"),
-        (bob_sorcery, "{2}", "target player's sorcery should be reduced"),
+        (
+            bob_instant,
+            "{2}",
+            "target player's instant should be reduced",
+        ),
+        (
+            bob_sorcery,
+            "{2}",
+            "target player's sorcery should be reduced",
+        ),
         (
             bob_planeswalker,
             "{2}",
             "target player's planeswalker should be reduced",
         ),
-        (bob_creature, "{4}", "target player's creature should not be reduced"),
+        (
+            bob_creature,
+            "{4}",
+            "target player's creature should not be reduced",
+        ),
         (
             alice_instant,
             "{4}",
@@ -42798,7 +42860,10 @@ fn will_kenrith_minus_two_draws_and_reduces_only_target_players_matching_spells_
             &game,
             caster,
             spell,
-            spell.mana_cost.as_ref().expect("spell should have mana cost"),
+            spell
+                .mana_cost
+                .as_ref()
+                .expect("spell should have mana cost"),
         );
         assert_eq!(cost.to_oracle(), expected, "{message}");
     }
@@ -42856,7 +42921,10 @@ fn will_kenrith_minus_eight_gives_emblem_to_target_player() {
         command_zone_before + 1,
         "Will Kenrith -8 should create one emblem"
     );
-    let emblem_id = *game.command_zone.last().expect("emblem should be in command zone");
+    let emblem_id = *game
+        .command_zone
+        .last()
+        .expect("emblem should be in command zone");
     let emblem = game.object(emblem_id).expect("emblem object should exist");
     assert_eq!(emblem.kind, ObjectKind::Emblem);
     assert_eq!(
@@ -56891,8 +56959,8 @@ fn scroll_of_isildur_chapters_two_and_three_target_tap_stun_and_draw_count() {
         Zone::Battlefield,
     );
     for idx in 0..4 {
-        let card = CardBuilder::new(CardId::from_raw(993_010 + idx), &format!("Draw Card {idx}"))
-            .build();
+        let card =
+            CardBuilder::new(CardId::from_raw(993_010 + idx), &format!("Draw Card {idx}")).build();
         game.create_object_from_card(&card, alice, Zone::Library);
     }
     let initial_hand_size = game.player(alice).expect("Alice exists").hand.len();

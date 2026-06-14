@@ -662,15 +662,13 @@ fn tied_replacements_are_duplicate_regeneration_shields(
     // always-false), so identical shields are recognized by their debug
     // representation. Shields with extra follow-up effects (Debt of Loyalty)
     // render differently and are intentionally NOT deduplicated.
-    let same_instead_payload = |effect: &ReplacementEffect| match (
-        &effect.replacement,
-        &first.replacement,
-    ) {
-        (ReplacementAction::Instead(a), ReplacementAction::Instead(b)) => {
-            a.len() == b.len() && format!("{a:?}") == format!("{b:?}")
-        }
-        _ => false,
-    };
+    let same_instead_payload =
+        |effect: &ReplacementEffect| match (&effect.replacement, &first.replacement) {
+            (ReplacementAction::Instead(a), ReplacementAction::Instead(b)) => {
+                a.len() == b.len() && format!("{a:?}") == format!("{b:?}")
+            }
+            _ => false,
+        };
     effects.len() > 1
         && effects.iter().all(|effect| {
             game.effect_store.replacement_effects.is_one_shot(effect.id)

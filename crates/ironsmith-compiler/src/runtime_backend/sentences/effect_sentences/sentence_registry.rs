@@ -1,4 +1,3 @@
-use crate::runtime_backend::lexer::{OwnedLexToken, word_slice_eq_any};
 use super::super::rule_engine::LexClauseView;
 use super::sentence_unsupported::diagnose_sentence_unsupported_lexed;
 use super::{
@@ -10,6 +9,7 @@ use super::{
     subject_verb_special_recognizers::SUBJECT_VERB_PRE_DIAGNOSTIC_INDEX_LEXED,
 };
 use crate::cards::builders::{CardTextError, EffectAst};
+use crate::runtime_backend::lexer::{OwnedLexToken, word_slice_eq_any};
 use crate::runtime_backend::util::parse_number_word_u32;
 
 const X_CANT_BE_ZERO_WORDS: &[&[&str]] = &[&["x", "cant", "be", "0"], &["x", "can't", "be", "0"]];

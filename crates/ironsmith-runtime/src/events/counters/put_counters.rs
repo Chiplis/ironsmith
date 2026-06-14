@@ -184,7 +184,10 @@ mod tests {
             .as_any()
             .downcast_ref::<PutCountersEvent>()
             .unwrap();
-        assert_eq!(replaced_counters.target, Target::Object(ObjectId::from_raw(2)));
+        assert_eq!(
+            replaced_counters.target,
+            Target::Object(ObjectId::from_raw(2))
+        );
     }
 
     #[test]

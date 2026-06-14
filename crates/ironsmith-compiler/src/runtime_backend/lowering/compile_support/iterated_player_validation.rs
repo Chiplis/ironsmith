@@ -150,11 +150,7 @@ fn validate_effect_for_iterated_player(
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
         // IfEffect can bind IteratedPlayer from PlayerCounts recorded by its antecedent.
         validate_effects_for_iterated_player(&if_effect.then, true, context)?;
-        return validate_effects_for_iterated_player(
-            &if_effect.else_,
-            true,
-            context,
-        );
+        return validate_effects_for_iterated_player(&if_effect.else_, true, context);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
         return validate_effects_for_iterated_player(

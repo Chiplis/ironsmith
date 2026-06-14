@@ -48,16 +48,14 @@ fn pay_selected_cost(
     decision_maker: &mut impl DecisionMaker,
 ) -> Result<(), GameLoopError> {
     let processing_mode = cost.processing_mode();
-    let effective_choice_tag = choice_tag
-        .cloned()
-        .or_else(|| match &processing_mode {
-            crate::costs::CostProcessingMode::ExileFromHand { .. }
-            | crate::costs::CostProcessingMode::ExileFromGraveyard { .. }
-            | crate::costs::CostProcessingMode::ExileObjects { .. } => {
-                Some(crate::tag::TagKey::from("exile_cost"))
-            }
-            _ => None,
-        });
+    let effective_choice_tag = choice_tag.cloned().or_else(|| match &processing_mode {
+        crate::costs::CostProcessingMode::ExileFromHand { .. }
+        | crate::costs::CostProcessingMode::ExileFromGraveyard { .. }
+        | crate::costs::CostProcessingMode::ExileObjects { .. } => {
+            Some(crate::tag::TagKey::from("exile_cost"))
+        }
+        _ => None,
+    });
     let preserve_chosen_snapshot = matches!(
         processing_mode,
         crate::costs::CostProcessingMode::SacrificeTarget { .. }
@@ -551,7 +549,14 @@ pub(super) fn add_any_color_pool_options(
 ) {
     use crate::mana::ManaSymbol;
 
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::White, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::White,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {W} from mana pool".to_string(),
@@ -559,7 +564,14 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::Blue, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::Blue,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {U} from mana pool".to_string(),
@@ -567,7 +579,14 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::Black, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::Black,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {B} from mana pool".to_string(),
@@ -575,7 +594,14 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::Red, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::Red,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {R} from mana pool".to_string(),
@@ -583,7 +609,14 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::Green, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::Green,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {G} from mana pool".to_string(),
@@ -591,7 +624,14 @@ pub(super) fn add_any_color_pool_options(
         });
         *index += 1;
     }
-    if pool_symbol_count_with_reason(game, player, ManaSymbol::Colorless, payment_source, payment_reason) > 0 {
+    if pool_symbol_count_with_reason(
+        game,
+        player,
+        ManaSymbol::Colorless,
+        payment_source,
+        payment_reason,
+    ) > 0
+    {
         options.push(ManaPipPaymentOption {
             index: *index,
             description: "Use {C} from mana pool".to_string(),
@@ -1431,19 +1471,14 @@ pub(super) fn execute_pip_payment_action(
 ) -> Result<bool, GameLoopError> {
     match action {
         ManaPipPaymentAction::UseFromPool(symbol) => {
-            let spent_info = spend_pool_symbol_with_reason(
-                game,
-                player,
-                *symbol,
-                source,
-                payment_reason,
-            )
-            .ok_or_else(|| {
-                GameLoopError::InvalidState(format!(
-                    "Not enough {} mana in the pool",
-                    crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle()
-                ))
-            })?;
+            let spent_info =
+                spend_pool_symbol_with_reason(game, player, *symbol, source, payment_reason)
+                    .ok_or_else(|| {
+                        GameLoopError::InvalidState(format!(
+                            "Not enough {} mana in the pool",
+                            crate::mana::ManaCost::from_symbols(vec![*symbol]).to_oracle()
+                        ))
+                    })?;
             if let Some(spent) = mana_spent_to_cast.as_deref_mut() {
                 track_spent_mana_symbol(spent, spent_info.symbol);
             }
@@ -4184,7 +4219,9 @@ pub(super) fn finalize_spell_cast(
             .iter()
             .enumerate()
             .filter_map(|(idx, effect)| {
-                if effect.player != caster || effect.is_expired(current_turn, game.turn.active_player) {
+                if effect.player != caster
+                    || effect.is_expired(current_turn, game.turn.active_player)
+                {
                     return None;
                 }
                 let mut cast_filter = effect.filter.clone();

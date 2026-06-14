@@ -138,8 +138,7 @@ pub use damage::{
     PreventNextTimeDamageSource, PreventNextTimeDamageTarget,
     RedirectAllDamageThisTurnToTargetEffect, RedirectNextDamageDestination,
     RedirectNextDamageToTargetEffect, RedirectNextTimeDamageDestination,
-    RedirectNextTimeDamageSource,
-    RedirectNextTimeDamageToSourceEffect,
+    RedirectNextTimeDamageSource, RedirectNextTimeDamageToSourceEffect,
 };
 pub use delayed::{
     ExileTaggedWhenSourceLeavesEffect, SacrificeSourceWhenTaggedLeavesEffect,
@@ -162,9 +161,9 @@ pub use permanents::{
     ConspireCostEffect, ConvertEffect, CrewCostEffect, DetainEffect, EarthbendEffect, EvolveEffect,
     ExertCostEffect, FlipEffect, GrantObjectAbilityEffect, MeldEffect, MonstrosityEffect,
     NinjutsuCostEffect, NinjutsuEffect, PhaseInEffect, PhaseOutEffect, PutStickerEffect,
-    ReconfigureEffect, RegenerateEffect, RenownEffect, TurnFaceUpEffect, SaddleCostEffect, SneakCostEffect,
+    ReconfigureEffect, RegenerateEffect, RenownEffect, SaddleCostEffect, SneakCostEffect,
     SolveCaseEffect, SoulbondPairEffect, SuspectEffect, TapEffect, TransformEffect,
-    UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UntapEffect,
+    TurnFaceUpEffect, UmbraArmorEffect, UnattachObjectsEffect, UnearthEffect, UntapEffect,
 };
 pub use player::{
     AdditionalLandPlaysEffect, AdditionalPhase, AdditionalPhasesEffect, BecomeMonarchEffect,

@@ -1,8 +1,8 @@
 use super::super::activation_and_restrictions::parse_single_word_keyword_action;
 use super::super::lexer::{
     LexedClause, OwnedLexToken, word_slice_at_is, word_slice_ends_with, word_slice_ends_with_any,
-    word_slice_eq_any, word_slice_find_any_word, word_slice_find_phrase_start, word_slice_find_word,
-    word_slice_starts_with,
+    word_slice_eq_any, word_slice_find_any_word, word_slice_find_phrase_start,
+    word_slice_find_word, word_slice_starts_with,
 };
 use super::super::object_filters::parse_simple_object_filter_words;
 use super::super::util::{
@@ -91,7 +91,9 @@ fn parse_next_spell_keyword_action_words(words: &[&str]) -> Option<KeywordAction
     }
 }
 
-fn next_spell_split_cast_suffix<'a>(words: &'a [&'a str]) -> Option<(&'a [&'a str], &'a [&'a str])> {
+fn next_spell_split_cast_suffix<'a>(
+    words: &'a [&'a str],
+) -> Option<(&'a [&'a str], &'a [&'a str])> {
     if !word_slice_ends_with_any(words, SHARED_CAST_SUFFIXES) {
         return None;
     }

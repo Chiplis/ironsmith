@@ -47,6 +47,15 @@ impl EffectExecutor for SearchLibraryEffect {
                 .player(player_id)
                 .map(|player| player.library.clone())
                 .unwrap_or_default();
+            let search_viewer = game.controlling_player_for(chooser_id);
+            view_hidden_candidate_objects(
+                game,
+                ctx,
+                search_viewer,
+                &library_cards,
+                "Search library",
+                false,
+            );
 
             offer_library_search_casts(game, ctx, player_id)?;
             if ctx.decision_maker.awaiting_choice() {
@@ -135,7 +144,6 @@ impl EffectExecutor for SearchLibraryEffect {
 
                 if still_in_library {
                     if self.reveal {
-                        let search_viewer = game.controlling_player_for(chooser_id);
                         view_hidden_candidate_objects(
                             game,
                             ctx,
@@ -359,13 +367,16 @@ mod tests {
             .execute(&mut game, &mut ctx)
             .expect("search should resolve");
 
-        assert_eq!(dm.calls.len(), 1);
-        let call = &dm.calls[0];
-        assert_eq!(call.viewer, alice);
-        assert_eq!(call.subject, alice);
-        assert_eq!(call.zone, Zone::Library);
-        assert!(!call.public);
-        assert_eq!(call.cards, vec![first, second]);
+        assert!(
+            dm.calls.iter().any(|call| {
+                call.viewer == alice
+                    && call.subject == alice
+                    && call.zone == Zone::Library
+                    && !call.public
+                    && call.cards == vec![first, second]
+            }),
+            "search should privately expose the searchable library to the searching player"
+        );
     }
 
     #[test]

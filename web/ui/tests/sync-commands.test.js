@@ -230,8 +230,6 @@ test("select object sync metadata comes from decision candidates, not prompt tex
       zone: "hand",
       slot: 3,
       commitment: "slot-3",
-      public_slot: 8,
-      public_commitment: "position-8",
     },
   ]);
   assert.equal(
@@ -267,6 +265,80 @@ test("resolveSyncedCommand preserves aligned select object identity metadata", (
           zone: "hand",
           slot: 3,
           commitment: "slot-3",
+        },
+      ],
+    },
+  );
+});
+
+test("resolveSyncedCommand strips private identity from public library ziffle hidden refs", () => {
+  assert.deepEqual(
+    resolveSyncedCommand({
+      type: "select_objects",
+      object_ids: [11],
+      object_hidden_refs: [
+        {
+          owner: "1",
+          zone: "library",
+          slot: "29",
+          commitment: "private-slot-29",
+          public_slot: "58",
+          public_commitment: "ziffle:deckhash:58",
+        },
+      ],
+    }),
+    {
+      type: "select_objects",
+      object_ids: [11],
+      object_hidden_refs: [
+        {
+          owner: 1,
+          zone: "library",
+          public_slot: 58,
+          public_commitment: "ziffle:deckhash:58",
+        },
+      ],
+    },
+  );
+});
+
+test("resolveSyncedCommand keeps non-library ziffle refs private", () => {
+  assert.deepEqual(
+    resolveSyncedCommand({
+      type: "select_objects",
+      object_ids: [11, 12],
+      object_hidden_refs: [
+        {
+          owner: "1",
+          zone: "hand",
+          slot: "1",
+          commitment: "ziffle:deckhash:1",
+          public_slot: "58",
+          public_commitment: "ziffle:old-library:58",
+        },
+        {
+          owner: "1",
+          zone: "hand",
+          public_slot: "1",
+          public_commitment: "ziffle:deckhash:1",
+        },
+      ],
+    }),
+    {
+      type: "select_objects",
+      object_ids: [11, 12],
+      object_hidden_refs: [
+        {
+          owner: 1,
+          zone: "hand",
+          slot: 1,
+          commitment: "ziffle:deckhash:1",
+        },
+        {
+          owner: 1,
+          zone: "hand",
+          slot: 1,
+          commitment: "ziffle:deckhash:1",
         },
       ],
     },

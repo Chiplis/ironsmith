@@ -1,5 +1,17 @@
 export const MAX_SUPPORTED_ZIFFLE_DECK_COUNT = 100;
-export const ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD = 4000;
+const DEFAULT_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD = 4000;
+
+function readZiffleEnvNumber(name, fallback) {
+  const raw = String(import.meta.env?.[name] || "").trim();
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+export const ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD = readZiffleEnvNumber(
+  "VITE_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD",
+  DEFAULT_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD,
+);
 export const MAX_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS =
   MAX_SUPPORTED_ZIFFLE_DECK_COUNT * ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD;
 

@@ -22,12 +22,12 @@ use super::super::lexer::{
     word_slice_strip_any_prefix,
 };
 use super::super::token_primitives::{slice_contains, str_strip_suffix};
+use super::super::util::trim_edge_punctuation_tokens;
 use super::conditions::{
     ControlConditionOptions, parse_control_condition, parse_control_relation_tail_clause,
 };
 use super::filters::parse_spell_filter_with_grammar_entrypoint;
 use super::primitives;
-use super::super::util::trim_edge_punctuation_tokens;
 use crate::runtime_backend::sentences::effect_sentences::clause_pattern_helpers::{
     ClauseShape, clause_shape,
 };
@@ -58,7 +58,9 @@ pub(crate) enum FlyingBlockRestrictionKind {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DoesntUntapDuringUntapStepSpec<'a> {
-    Source { tail_tokens: &'a [OwnedLexToken] },
+    Source {
+        tail_tokens: &'a [OwnedLexToken],
+    },
     Attached {
         subject_tokens: &'a [OwnedLexToken],
         tail_tokens: &'a [OwnedLexToken],

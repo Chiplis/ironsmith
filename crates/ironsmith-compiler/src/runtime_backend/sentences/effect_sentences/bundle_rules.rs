@@ -2139,8 +2139,8 @@ fn parse_regenerate_then_gain_control_if_regenerates_bundle(
         return None;
     }
     let after_gain_control = after_you + 2;
-    let idx =
-        after_gain_control + usize::from(second_words.get(after_gain_control).copied() == Some("of"));
+    let idx = after_gain_control
+        + usize::from(second_words.get(after_gain_control).copied() == Some("of"));
 
     let if_idx = (0..second_words.len()).find(|idx| {
         word_slice_starts_with_any(&second_words[*idx..], REGENERATES_THIS_WAY_PREFIXES)

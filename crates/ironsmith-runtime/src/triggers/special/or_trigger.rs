@@ -1,11 +1,11 @@
 //! Or trigger combinator - matches if any of the inner triggers match.
 
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
     AbilityActivatedTrigger, SpellCastTrigger, ThisAttacksTrigger, TransformsTrigger, Trigger,
     TriggerEvent, ZoneChangeTrigger, ZonePattern,
 };
-use crate::target::{ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
 
 /// A trigger that matches if any of the inner triggers match.

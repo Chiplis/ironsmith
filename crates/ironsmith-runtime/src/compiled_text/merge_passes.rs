@@ -818,7 +818,10 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         if idx + 1 < lines.len()
             && let Some((left_subject, left_verb, left_rest)) =
                 split_subject_predicate_clause(&lines[idx])
-            && matches!(left_verb, "gets" | "get" | "has" | "have" | "gains" | "gain")
+            && matches!(
+                left_verb,
+                "gets" | "get" | "has" | "have" | "gains" | "gain"
+            )
         {
             let right = lines[idx + 1].trim().trim_end_matches('.');
             let cant_prefix = format!("{left_subject} can't ");

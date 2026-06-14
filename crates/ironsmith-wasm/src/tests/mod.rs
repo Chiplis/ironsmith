@@ -7954,4 +7954,3 @@ fn snapshot_uses_exile_look_permissions_instead_of_card_ownership() {
     assert_eq!(bob_view.exile_cards.len(), 1);
     assert_eq!(bob_view.exile_cards[0].name, "Hidden card");
 }
-

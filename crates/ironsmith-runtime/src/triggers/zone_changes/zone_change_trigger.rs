@@ -271,9 +271,10 @@ impl ZoneChangeTrigger {
             filter.all_card_types.is_empty()
                 && filter.card_types.is_empty()
                 && !filter.subtypes.is_empty()
-                && filter.subtypes.iter().all(|subtype| {
-                    crate::types::Subtype::all_creature_types().contains(subtype)
-                })
+                && filter
+                    .subtypes
+                    .iter()
+                    .all(|subtype| crate::types::Subtype::all_creature_types().contains(subtype))
         }
 
         fn subject_is_always_creature(filter: &ObjectFilter) -> bool {

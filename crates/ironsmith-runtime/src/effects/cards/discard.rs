@@ -295,7 +295,8 @@ impl EffectExecutor for DiscardEffect {
             successful_discards.into_iter().enumerate()
         {
             discard_events.push(crate::triggers::TriggerEvent::new_with_provenance(
-                DiscardEvent::with_cause(card_id, player_id, cause.clone()).with_destination(final_zone),
+                DiscardEvent::with_cause(card_id, player_id, cause.clone())
+                    .with_destination(final_zone),
                 ctx.provenance,
             ));
             let mut event = CardDiscardedEvent::with_cause(player_id, card_id, cause.clone())

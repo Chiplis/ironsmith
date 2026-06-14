@@ -1094,7 +1094,10 @@ fn post_rule_future_zone_and_self_replacement(
         {
             let (default_effects, carried_player) =
                 default_effects_for_self_replacement(state.effects, previous);
-            if let Some(mill_count) = default_effects.iter().rev().find_map(mill_count_from_effect)
+            if let Some(mill_count) = default_effects
+                .iter()
+                .rev()
+                .find_map(mill_count_from_effect)
             {
                 replace_mill_event_amounts_with_value(&mut if_true, &mill_count);
             }
@@ -1194,7 +1197,10 @@ fn replace_event_amount_with_value(value: &mut Value, replacement: &Value) {
             *value = replacement.clone();
         }
         Value::EventValueOffset(crate::effect::EventValueSpec::Amount, offset) => {
-            *value = Value::Add(Box::new(replacement.clone()), Box::new(Value::Fixed(*offset)));
+            *value = Value::Add(
+                Box::new(replacement.clone()),
+                Box::new(Value::Fixed(*offset)),
+            );
         }
         Value::Add(left, right) | Value::Min(left, right) => {
             replace_event_amount_with_value(left, replacement);

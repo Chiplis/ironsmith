@@ -587,8 +587,14 @@ fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model_regression
         ChooseSpec::WithCount(inner, count) => (inner.as_ref(), count),
         other => panic!("expected counted distribution target, got {other:?}"),
     };
-    assert_eq!(target_count.min, 0, "Feast should allow zero distribution targets");
-    assert_eq!(target_count.max, None, "Feast should allow any number of distribution targets");
+    assert_eq!(
+        target_count.min, 0,
+        "Feast should allow zero distribution targets"
+    );
+    assert_eq!(
+        target_count.max, None,
+        "Feast should allow any number of distribution targets"
+    );
     assert_eq!(
         put_counters.target_count,
         Some(*target_count),
@@ -996,7 +1002,8 @@ fn katara_seeking_revenge_counts_lesson_cards_in_its_controllers_graveyard() {
         .power_toughness(PowerToughness::fixed(3, 3))
         .parse_text(oracle_text)
         .expect("Katara oracle text should parse for runtime P/T check");
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let katara = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -1495,7 +1502,10 @@ fn staff_of_the_storyteller_noncreature_token_does_not_add_story_counter() {
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
 
     assert!(
-        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        trigger_queue
+            .entries
+            .iter()
+            .all(|entry| entry.source != staff),
         "Staff should not trigger from creating a noncreature token"
     );
     assert_eq!(
@@ -1611,7 +1621,10 @@ fn staff_of_the_storyteller_noncreature_token_copy_does_not_add_story_counter() 
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
 
     assert!(
-        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        trigger_queue
+            .entries
+            .iter()
+            .all(|entry| entry.source != staff),
         "Staff should not trigger from creating a noncreature token copy"
     );
     assert_eq!(
@@ -1644,7 +1657,10 @@ fn staff_of_the_storyteller_opponent_creature_token_copy_does_not_add_story_coun
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
 
     assert!(
-        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        trigger_queue
+            .entries
+            .iter()
+            .all(|entry| entry.source != staff),
         "Staff should not trigger from creature token copies created by an opponent"
     );
     assert_eq!(
@@ -1665,11 +1681,8 @@ fn staff_of_the_storyteller_opponent_creature_token_does_not_add_story_counter()
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
     let staff = game.create_object_from_definition(&def, alice, Zone::Battlefield);
-    let effect = crate::effect::Effect::new(CreateTokenEffect::new(
-        soldier,
-        1,
-        PlayerFilter::Opponent,
-    ));
+    let effect =
+        crate::effect::Effect::new(CreateTokenEffect::new(soldier, 1, PlayerFilter::Opponent));
     let mut ctx = crate::effects::ExecutionContext::new_default(staff, alice);
 
     crate::effects::execute_effect(&mut game, &effect, &mut ctx)
@@ -1678,7 +1691,10 @@ fn staff_of_the_storyteller_opponent_creature_token_does_not_add_story_counter()
     crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
 
     assert!(
-        trigger_queue.entries.iter().all(|entry| entry.source != staff),
+        trigger_queue
+            .entries
+            .iter()
+            .all(|entry| entry.source != staff),
         "Staff should not trigger from creature tokens created by an opponent"
     );
     assert_eq!(
@@ -2131,7 +2147,11 @@ fn stolen_strategy_runtime_exiles_each_opponents_top_card_and_grants_cast_permis
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
     let stolen_strategy = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -2209,9 +2229,7 @@ fn stolen_strategy_runtime_exiles_each_opponents_top_card_and_grants_cast_permis
         Zone::Exile
     );
     assert_eq!(
-        game.object(charlie_exiled)
-            .expect("charlie exiled")
-            .zone,
+        game.object(charlie_exiled).expect("charlie exiled").zone,
         Zone::Exile
     );
 
@@ -2620,10 +2638,9 @@ fn nicol_bolas_has_object_named_in_zone(
     name: &str,
     zone: Zone,
 ) -> bool {
-    game.objects_in_zone(zone).into_iter().any(|id| {
-        game.object(id)
-            .is_some_and(|object| object.name == name)
-    })
+    game.objects_in_zone(zone)
+        .into_iter()
+        .any(|id| game.object(id).is_some_and(|object| object.name == name))
 }
 
 #[test]
@@ -2647,7 +2664,11 @@ fn nicol_bolas_dragon_god_plus_one_each_opponent_exiles_own_hand_card_or_permane
             };
 
             assert_eq!(ctx.min, 1, "each opponent should choose exactly one object");
-            assert_eq!(ctx.max, Some(1), "each opponent should choose exactly one object");
+            assert_eq!(
+                ctx.max,
+                Some(1),
+                "each opponent should choose exactly one object"
+            );
             for candidate in &ctx.candidates {
                 assert!(candidate.legal, "all surfaced candidates should be legal");
                 let object = game
@@ -2661,7 +2682,9 @@ fn nicol_bolas_dragon_god_plus_one_each_opponent_exiles_own_hand_card_or_permane
                 );
             }
             assert!(
-                ctx.candidates.iter().any(|candidate| candidate.id == choice),
+                ctx.candidates
+                    .iter()
+                    .any(|candidate| candidate.id == choice),
                 "expected chosen object to be among candidates for {ctx:?}"
             );
             self.prompts.push(ctx.player);
@@ -2675,7 +2698,11 @@ fn nicol_bolas_dragon_god_plus_one_each_opponent_exiles_own_hand_card_or_permane
     let bob = PlayerId::from_index(1);
     let charlie = PlayerId::from_index(2);
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
     let source = game.create_object_from_definition(&nicol, alice, Zone::Battlefield);
@@ -2753,9 +2780,7 @@ fn nicol_bolas_dragon_god_plus_one_each_opponent_exiles_own_hand_card_or_permane
         "Nicol Bolas's controller should not choose or exile a card"
     );
     assert_eq!(
-        game.object(alice_permanent)
-            .expect("alice permanent")
-            .zone,
+        game.object(alice_permanent).expect("alice permanent").zone,
         Zone::Battlefield,
         "Nicol Bolas's controller should not choose or exile a permanent"
     );
@@ -2771,16 +2796,17 @@ fn nicol_bolas_minus_eight_effects(def: &CardDefinition) -> Vec<Effect> {
                         .effects
                         .flattened_default_effects()
                         .into_iter()
-                        .any(|effect| {
-                            format!("{effect:#?}").contains("LoseTheGameEffect")
-                        }) => Some(
-                activated
-                    .effects
-                    .flattened_default_effects()
-                    .into_iter()
-                    .cloned()
-                    .collect(),
-            ),
+                        .any(|effect| format!("{effect:#?}").contains("LoseTheGameEffect")) =>
+            {
+                Some(
+                    activated
+                        .effects
+                        .flattened_default_effects()
+                        .into_iter()
+                        .cloned()
+                        .collect(),
+                )
+            }
             _ => None,
         })
         .expect("Nicol Bolas should have a -8 lose-the-game loyalty ability")
@@ -2836,11 +2862,12 @@ fn nicol_bolas_dragon_god_minus_eight_respects_legendary_creature_or_planeswalke
         "opponent with a legendary creature should not lose the game"
     );
 
-    let legendary_planeswalker = CardDefinitionBuilder::new(CardId::new(), "Bolas Test Legendwalker")
-        .supertypes(vec![Supertype::Legendary])
-        .card_types(vec![CardType::Planeswalker])
-        .loyalty(3)
-        .build();
+    let legendary_planeswalker =
+        CardDefinitionBuilder::new(CardId::new(), "Bolas Test Legendwalker")
+            .supertypes(vec![Supertype::Legendary])
+            .card_types(vec![CardType::Planeswalker])
+            .loyalty(3)
+            .build();
     let mut planeswalker_protected_game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let planeswalker_protected_source =
@@ -2851,7 +2878,8 @@ fn nicol_bolas_dragon_god_minus_eight_respects_legendary_creature_or_planeswalke
         Zone::Battlefield,
     );
     let mut dm = crate::decision::SelectFirstDecisionMaker;
-    let mut ctx = crate::effects::ExecutionContext::new(planeswalker_protected_source, alice, &mut dm);
+    let mut ctx =
+        crate::effects::ExecutionContext::new(planeswalker_protected_source, alice, &mut dm);
     for effect in &minus_eight_effects {
         crate::effects::execute_effect(&mut planeswalker_protected_game, effect, &mut ctx)
             .expect("Nicol Bolas -8 should resolve");
@@ -9977,7 +10005,8 @@ fn realmwright_strict_parser_and_compiled_text_regression() {
         "expected Realmwright choose-basic-land-type as-enters wording, got {rendered}"
     );
     assert!(
-        rendered.contains("Lands you control are the chosen type in addition to their other types."),
+        rendered
+            .contains("Lands you control are the chosen type in addition to their other types."),
         "expected Realmwright chosen basic land type static wording, got {rendered}"
     );
 }
@@ -12330,7 +12359,9 @@ fn captain_howler_sea_scourge_parses_strictly_and_renders_discard_count_pump() {
         "expected compiled text to cover the discarded-this-way pump clause, got {rendered}"
     );
     assert!(
-        rendered.contains("Whenever that creature deals combat damage to a player this turn, you draw a card"),
+        rendered.contains(
+            "Whenever that creature deals combat damage to a player this turn, you draw a card"
+        ),
         "expected compiled text to keep the delayed trigger tied to that creature, got {rendered}"
     );
 }
@@ -12347,7 +12378,8 @@ fn captain_howler_sea_scourge_discard_batch_pumps_once_for_each_discarded_card()
     let other_creature_def = CardDefinitionBuilder::new(CardId::new(), "Other Attacker")
         .card_types(vec![CardType::Creature])
         .build();
-    let other_creature = game.create_object_from_definition(&other_creature_def, alice, Zone::Battlefield);
+    let other_creature =
+        game.create_object_from_definition(&other_creature_def, alice, Zone::Battlefield);
     let draw_card = CardDefinitionBuilder::new(CardId::new(), "Captain Draw Card")
         .card_types(vec![CardType::Creature])
         .build();
@@ -12428,12 +12460,14 @@ fn captain_howler_sea_scourge_discard_batch_pumps_once_for_each_discarded_card()
         .iter()
         .filter(|entry| entry.source == captain)
         .count();
-    for trigger in delayed_triggers.into_iter().filter(|entry| entry.source == captain) {
+    for trigger in delayed_triggers
+        .into_iter()
+        .filter(|entry| entry.source == captain)
+    {
         delayed_queue.add(trigger);
     }
     assert_eq!(
-        delayed_count,
-        1,
+        delayed_count, 1,
         "Captain Howler's delayed trigger should fire when the pumped creature hits a player"
     );
     crate::game_loop::put_triggers_on_stack(&mut game, &mut delayed_queue)
@@ -12471,7 +12505,10 @@ fn captain_howler_sea_scourge_does_not_trigger_when_no_cards_are_discarded() {
             .filter(|trigger| trigger.source == captain)
             .count();
     }
-    assert_eq!(captain_triggers, 0, "no discarded cards should mean no trigger");
+    assert_eq!(
+        captain_triggers, 0,
+        "no discarded cards should mean no trigger"
+    );
     assert_eq!(game.calculated_power(captain), Some(5));
 }
 
@@ -14286,7 +14323,9 @@ fn nightscape_battlemage_runtime_branches_use_matching_kicker_labels() {
             .find_map(|ability| match &ability.kind {
                 AbilityKind::Triggered(triggered)
                     if triggered.intervening_if.as_ref()
-                        == Some(&crate::effect::Condition::ThisSpellPaidLabel(label.to_string())) =>
+                        == Some(&crate::effect::Condition::ThisSpellPaidLabel(
+                            label.to_string(),
+                        )) =>
                 {
                     Some(triggered.effects.clone())
                 }
@@ -20139,15 +20178,12 @@ fn rampaging_cyclops_parses_blocker_count_static_condition() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rampaging Cyclops")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(4, 4))
-        .parse_text(
-            "This creature gets -2/-0 as long as two or more creatures are blocking it.",
-        )
+        .parse_text("This creature gets -2/-0 as long as two or more creatures are blocking it.")
         .expect("Rampaging Cyclops should parse strictly");
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert_eq!(
-        rendered,
-        "This creature gets -2/-0 as long as two or more creatures are blocking it.",
+        rendered, "This creature gets -2/-0 as long as two or more creatures are blocking it.",
         "expected Rampaging Cyclops compiled text to preserve its blocker-count condition"
     );
 
@@ -23280,7 +23316,8 @@ fn carry_away_unattaches_enchanted_equipment_and_controls_it() {
 
     assert_eq!(game.controller_of_id(equipment_id), Some(alice));
     assert_eq!(
-        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        game.object(equipment_id)
+            .and_then(|equipment| equipment.attached_to),
         Some(crate::object::AttachmentTarget::Object(creature_id)),
         "test setup should start with the enchanted Equipment attached to the creature"
     );
@@ -23290,7 +23327,8 @@ fn carry_away_unattaches_enchanted_equipment_and_controls_it() {
     assert_eq!(game.controller_of_id(equipment_id), Some(alice));
     assert_eq!(game.controller_of_id(creature_id), Some(bob));
     assert_eq!(
-        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        game.object(equipment_id)
+            .and_then(|equipment| equipment.attached_to),
         None,
         "Carry Away should unattach the enchanted Equipment from the creature"
     );
@@ -23310,7 +23348,8 @@ fn carry_away_does_not_detach_aura_when_equipment_is_already_unattached() {
     assert_eq!(game.controller_of_id(equipment_id), Some(alice));
     assert_eq!(game.controller_of_id(creature_id), Some(bob));
     assert_eq!(
-        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        game.object(equipment_id)
+            .and_then(|equipment| equipment.attached_to),
         None,
         "test setup should start with unattached enchanted Equipment"
     );
@@ -23319,7 +23358,8 @@ fn carry_away_does_not_detach_aura_when_equipment_is_already_unattached() {
 
     assert_eq!(game.controller_of_id(equipment_id), Some(alice));
     assert_eq!(
-        game.object(equipment_id).and_then(|equipment| equipment.attached_to),
+        game.object(equipment_id)
+            .and_then(|equipment| equipment.attached_to),
         None,
         "already-unattached Equipment should remain unattached"
     );
@@ -24802,7 +24842,10 @@ fn radiant_kavu_activation_cost_and_source_filter_prevention_runtime() {
     }
     activate_radiant_kavu(&mut game, alice, kavu_id);
     assert_eq!(
-        game.player(alice).expect("Alice should exist").mana_pool.total(),
+        game.player(alice)
+            .expect("Alice should exist")
+            .mana_pool
+            .total(),
         0,
         "Radiant Kavu activation should spend {{R}}{{G}}{{W}}"
     );
@@ -31378,10 +31421,7 @@ fn create_aberrant_return_graveyard_permanent(
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
-fn battlefield_object_named(
-    game: &crate::game_state::GameState,
-    name: &str,
-) -> Option<ObjectId> {
+fn battlefield_object_named(game: &crate::game_state::GameState, name: &str) -> Option<ObjectId> {
     game.battlefield.iter().copied().find(|id| {
         game.object(*id)
             .is_some_and(|object| object.name == name && object.zone == Zone::Battlefield)
@@ -38673,9 +38713,7 @@ fn glissa_sunseeker_conditional_destroy_effect(def: &CardDefinition) -> Effect {
         .expect("Glissa Sunseeker should have a conditional destroy effect")
 }
 
-fn glissa_sunseeker_target_only_effect(
-    def: &CardDefinition,
-) -> &crate::effects::TargetOnlyEffect {
+fn glissa_sunseeker_target_only_effect(def: &CardDefinition) -> &crate::effects::TargetOnlyEffect {
     def.abilities
         .iter()
         .find_map(|ability| match &ability.kind {
@@ -38845,7 +38883,8 @@ fn glissa_sunseeker_leaves_artifact_when_unspent_mana_differs() {
 
     resolve_glissa_conditional_destroy(&mut game, glissa_id, alice, artifact_id);
     assert!(
-        game.objects_in_zone(Zone::Battlefield).contains(&artifact_id),
+        game.objects_in_zone(Zone::Battlefield)
+            .contains(&artifact_id),
         "Glissa Sunseeker should leave the artifact on the battlefield when unspent mana differs"
     );
     assert!(
@@ -40247,9 +40286,11 @@ fn niambi_draw_activated_ability(def: &CardDefinition) -> &crate::ability::Activ
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Activated(activated)
-                if activated.effects.flattened_default_effects().iter().any(|effect| {
-                    effect.downcast_ref::<DrawCardsEffect>().is_some()
-                }) =>
+                if activated
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .any(|effect| effect.downcast_ref::<DrawCardsEffect>().is_some()) =>
             {
                 Some(activated)
             }
@@ -40263,13 +40304,18 @@ fn niambi_enter_triggered_ability(def: &CardDefinition) -> &crate::ability::Trig
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Triggered(triggered)
-                if triggered.effects.flattened_default_effects().iter().any(|effect| {
-                    effect.downcast_ref::<IfEffect>().is_some_and(|if_effect| {
-                        if_effect.then.iter().any(|effect| {
-                            effect.downcast_ref::<GainLifeEffect>().is_some()
+                if triggered
+                    .effects
+                    .flattened_default_effects()
+                    .iter()
+                    .any(|effect| {
+                        effect.downcast_ref::<IfEffect>().is_some_and(|if_effect| {
+                            if_effect
+                                .then
+                                .iter()
+                                .any(|effect| effect.downcast_ref::<GainLifeEffect>().is_some())
                         })
-                    })
-                }) =>
+                    }) =>
             {
                 Some(triggered)
             }
@@ -40379,7 +40425,11 @@ fn niambi_esteemed_speaker_activation_cost_requires_and_discards_legendary_card(
         3,
         "after discarding one legendary card, Niambi should draw two cards"
     );
-    assert_eq!(player.library.len(), 0, "Niambi should draw both library cards");
+    assert_eq!(
+        player.library.len(),
+        0,
+        "Niambi should draw both library cards"
+    );
 }
 
 #[test]
@@ -41301,7 +41351,11 @@ fn tormented_thoughts_strict_parser_and_compiled_text_regression() {
         .expect("Tormented Thoughts should have spell effects")
         .flattened_default_effects()
         .into_iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>().cloned())
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DiscardEffect>()
+                .cloned()
+        })
         .expect("Tormented Thoughts should lower to a discard effect");
     assert!(
         matches!(
@@ -45482,9 +45536,7 @@ fn mindstorm_crown_strict_parser_and_compiled_text_regression() {
     );
 }
 
-fn mindstorm_crown_triggered_ability(
-    def: &CardDefinition,
-) -> &crate::ability::TriggeredAbility {
+fn mindstorm_crown_triggered_ability(def: &CardDefinition) -> &crate::ability::TriggeredAbility {
     def.abilities
         .iter()
         .find_map(|ability| match &ability.kind {
@@ -45513,10 +45565,8 @@ fn create_mindstorm_crown_test_card(
 fn mindstorm_crown_draws_when_hand_was_empty_at_turn_start() {
     let def = parse_oracle_card_definition("Mindstorm Crown");
     let triggered = mindstorm_crown_triggered_ability(&def);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let crown_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     create_mindstorm_crown_test_card(&mut game, 91_001, alice, Zone::Library);
@@ -45552,10 +45602,8 @@ fn mindstorm_crown_draws_when_hand_was_empty_at_turn_start() {
 fn mindstorm_crown_deals_damage_when_hand_had_card_at_turn_start() {
     let def = parse_oracle_card_definition("Mindstorm Crown");
     let triggered = mindstorm_crown_triggered_ability(&def);
-    let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string()],
-        20,
-    );
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let alice = PlayerId::from_index(0);
     let crown_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     create_mindstorm_crown_test_card(&mut game, 91_101, alice, Zone::Library);
@@ -48331,7 +48379,11 @@ fn parse_oracle_defensive_formation_strict_and_renders_combat_assignment_clause(
 #[test]
 fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_attacking_them() {
     let mut game = crate::game_state::GameState::new(
-        vec!["Alice".to_string(), "Bob".to_string(), "Charlie".to_string()],
+        vec![
+            "Alice".to_string(),
+            "Bob".to_string(),
+            "Charlie".to_string(),
+        ],
         20,
     );
     let alice = PlayerId::from_index(0);
@@ -48356,10 +48408,12 @@ fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_a
     };
 
     let mut attacking_alice = crate::combat_state::CombatState::default();
-    attacking_alice.attackers.push(crate::combat_state::AttackerInfo {
-        creature: attacker,
-        target: crate::combat_state::AttackTarget::Player(alice),
-    });
+    attacking_alice
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: crate::combat_state::AttackTarget::Player(alice),
+        });
     attacking_alice
         .blockers
         .insert(attacker, vec![alice_blocker_a, alice_blocker_b]);
@@ -48385,10 +48439,12 @@ fn defensive_formation_defending_player_orders_damage_assignment_for_creatures_a
     );
 
     let mut attacking_charlie = crate::combat_state::CombatState::default();
-    attacking_charlie.attackers.push(crate::combat_state::AttackerInfo {
-        creature: attacker,
-        target: crate::combat_state::AttackTarget::Player(charlie),
-    });
+    attacking_charlie
+        .attackers
+        .push(crate::combat_state::AttackerInfo {
+            creature: attacker,
+            target: crate::combat_state::AttackTarget::Player(charlie),
+        });
     attacking_charlie
         .blockers
         .insert(attacker, vec![charlie_blocker_a, charlie_blocker_b]);
@@ -53936,8 +53992,9 @@ fn parse_oracle_berg_strider_etb_snow_rider_regression() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered
-            .contains("When this creature enters, tap target artifact or creature an opponent controls."),
+        rendered.contains(
+            "When this creature enters, tap target artifact or creature an opponent controls."
+        ),
         "expected Berg Strider ETB tap clause, got {rendered}"
     );
     assert!(
@@ -61680,25 +61737,25 @@ fn creeping_peeper_strict_parser_compiled_text_and_model_regression() {
 #[test]
 fn creeping_peeper_restricted_mana_runtime_branches() {
     let def = parse_oracle_card_definition("Creeping Peeper");
-    let restriction = def
-        .abilities
-        .iter()
-        .find_map(|ability| match &ability.kind {
-            AbilityKind::Activated(activated) => activated
-                .mana_usage_restrictions
-                .iter()
-                .find(|restriction| {
-                    matches!(
+    let restriction =
+        def.abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => activated
+                    .mana_usage_restrictions
+                    .iter()
+                    .find(|restriction| {
+                        matches!(
                         restriction,
                         crate::ability::ManaUsageRestriction::CastSpellOrUnlockDoorOrTurnFaceUp {
                             ..
                         }
                     )
-                })
-                .cloned(),
-            _ => None,
-        })
-        .expect("Creeping Peeper should carry its special mana usage restriction");
+                    })
+                    .cloned(),
+                _ => None,
+            })
+            .expect("Creeping Peeper should carry its special mana usage restriction");
 
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
@@ -72646,11 +72703,13 @@ fn disciple_of_perdition_modal_choice(def: &CardDefinition) -> &ChooseModeEffect
 fn disciple_of_perdition_exile_effect(
     effect: &crate::effect::Effect,
 ) -> Option<&crate::effects::ExileEffect> {
-    effect.downcast_ref::<crate::effects::ExileEffect>().or_else(|| {
-        effect
-            .downcast_ref::<TaggedEffect>()
-            .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
-    })
+    effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .or_else(|| {
+            effect
+                .downcast_ref::<TaggedEffect>()
+                .and_then(|tagged| tagged.effect.downcast_ref::<crate::effects::ExileEffect>())
+        })
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -72687,7 +72746,9 @@ fn disciple_of_perdition_strict_parser_and_compiled_text_regression() {
         .find_map(disciple_of_perdition_exile_effect)
         .expect("Disciple graveyard mode should contain a graveyard exile effect");
     let ChooseSpec::All(filter) = &exile.spec else {
-        panic!("Disciple should exile all cards in the targeted opponent's graveyard, got {exile:?}");
+        panic!(
+            "Disciple should exile all cards in the targeted opponent's graveyard, got {exile:?}"
+        );
     };
     assert_eq!(filter.zone, Some(Zone::Graveyard));
     assert_eq!(

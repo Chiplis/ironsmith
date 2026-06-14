@@ -961,15 +961,15 @@ fn lower_rewrite_triggered_to_chunk_impl(
     if full_parse_tokens_contain_full_party_instead(full_parse_tokens)
         && let Ok(trigger) = parse_trigger_clause_lexed(trigger_parse_tokens)
     {
-        let effect_tokens =
-            if FULL_PARTY_CONDITION_PATTERN.matches_word_slice(&token_word_refs(effect_parse_tokens))
-            {
-                effect_parse_tokens
-            } else {
-                split_once_at_comma_tokens(full_parse_tokens)
-                    .map(|(_, rest)| rest)
-                    .unwrap_or(effect_parse_tokens)
-            };
+        let effect_tokens = if FULL_PARTY_CONDITION_PATTERN
+            .matches_word_slice(&token_word_refs(effect_parse_tokens))
+        {
+            effect_parse_tokens
+        } else {
+            split_once_at_comma_tokens(full_parse_tokens)
+                .map(|(_, rest)| rest)
+                .unwrap_or(effect_parse_tokens)
+        };
         let effects = parse_effect_sentences_lexed(effect_tokens)?;
         if !effects.is_empty() {
             return apply_chosen_option_to_triggered_chunk(
@@ -1161,9 +1161,10 @@ fn combat_death_blocked_damage_amount_lexed(
 
 fn contains_ordered_word_phrase(words: &[&str], phrase: &[&str]) -> bool {
     words.windows(phrase.len()).any(|window| {
-        window.iter().zip(phrase.iter()).all(|(actual, expected)| {
-            actual.replace(['\'', '’'], "") == *expected
-        })
+        window
+            .iter()
+            .zip(phrase.iter())
+            .all(|(actual, expected)| actual.replace(['\'', '’'], "") == *expected)
     })
 }
 
@@ -1177,8 +1178,8 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
     if !contains_ordered_word_phrase(
         &trigger_words,
         &[
-            "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate",
-            "an", "ability",
+            "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate", "an",
+            "ability",
         ],
     ) {
         return Ok(None);
@@ -1204,10 +1205,7 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
     }
 
     let effect_words = token_word_refs(effect_parse_tokens);
-    if !contains_ordered_word_phrase(
-        &effect_words,
-        &["copy", "that", "spell", "or", "ability"],
-    ) {
+    if !contains_ordered_word_phrase(&effect_words, &["copy", "that", "spell", "or", "ability"]) {
         return Ok(None);
     }
 
@@ -2391,10 +2389,11 @@ pub(crate) fn try_lower_optional_waterbend_additional_cost(
         return Ok(None);
     }
 
-    let Some(generic) = stripped
-        .iter()
-        .find_map(|token| token.mana_group_inner().and_then(|inner| inner.parse::<u32>().ok()))
-    else {
+    let Some(generic) = stripped.iter().find_map(|token| {
+        token
+            .mana_group_inner()
+            .and_then(|inner| inner.parse::<u32>().ok())
+    }) else {
         return Ok(None);
     };
 

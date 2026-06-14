@@ -89,8 +89,7 @@ impl TriggerMatcher for AbilityActivatedTrigger {
         if let Some(obj) = ctx.game.object(e.source) {
             source_filter.matches(obj, &ctx.filter_ctx, ctx.game)
         } else if let Some(snapshot) = e.snapshot.as_ref() {
-            source_filter
-                .matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+            source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
         } else {
             false
         }

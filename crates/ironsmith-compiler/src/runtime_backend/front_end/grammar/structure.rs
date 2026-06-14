@@ -217,7 +217,6 @@ fn structure_words_contain_any(words: &[&str], candidates: &[&str]) -> bool {
     word_slice_contains_any_word(words, candidates)
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ModalHeaderChooseSpec {
     pub(crate) choose_idx: usize,

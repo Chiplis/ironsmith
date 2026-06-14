@@ -50,8 +50,7 @@ const REGISTRY_TARGET_OPPONENT_OBJECT_WORDS: &[&[&str]] =
     &[&["target", "opponent"], &["target", "opponents"]];
 const REGISTRY_TARGET_PLAYER_OBJECT_WORDS: &[&[&str]] =
     &[&["target", "player"], &["target", "players"]];
-const REGISTRY_THAT_PLAYER_OBJECT_WORDS: &[&[&str]] =
-    &[&["that", "player"], &["that", "players"]];
+const REGISTRY_THAT_PLAYER_OBJECT_WORDS: &[&[&str]] = &[&["that", "player"], &["that", "players"]];
 const PRIMITIVE_ROUTE_VERBS: &[(&[&str], &str)] = &[
     (&["choose"], "Choose"),
     (&["search"], "Search"),
@@ -1214,8 +1213,7 @@ pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let optional_each = [LexPattern::word("each")];
-    let action_boundaries: &[&[&str]] =
-        &[&["each"], &["gain"], &["gains"], &["lose"], &["loses"]];
+    let action_boundaries: &[&[&str]] = &[&["each"], &["gain"], &["gains"], &["lose"], &["loses"]];
     let atoms = [
         LexPattern::role_capture(
             "subject",
@@ -1251,8 +1249,7 @@ pub(crate) fn parse_you_and_player_each_gain_or_lose_life_sentence_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
     matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject)
-    else {
+    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
         return Ok(None);
     };
     if subject_clause.word_refs() != YOU_SUBJECT_WORDS {
@@ -1359,8 +1356,7 @@ pub(crate) fn parse_you_and_player_each_create_sentence_matched(
     clause: SubjectVerbPrimitiveClause<'_>,
     matched: &LexPatternMatch<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject)
-    else {
+    let Some(subject_clause) = clause.pattern_capture_role(matched, LexCaptureRole::Subject) else {
         return Ok(None);
     };
     if subject_clause.word_refs() != YOU_SUBJECT_WORDS {

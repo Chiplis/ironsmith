@@ -121,8 +121,7 @@ fn leading_have_introduces_causative_player(tokens: &[OwnedLexToken]) -> bool {
     let word = |idx: usize| tokens.get(idx).and_then(OwnedLexToken::as_word);
     word(0).is_some_and(|w| CHAIN_HAVE_OR_HAS_WORDS.contains(&w))
         && word(1).is_some_and(|w| matches!(w, "that" | "each" | "those" | "target" | "another"))
-        && word(2)
-            .is_some_and(|w| matches!(w, "player" | "players" | "opponent" | "opponents"))
+        && word(2).is_some_and(|w| matches!(w, "player" | "players" | "opponent" | "opponents"))
 }
 const CHAIN_TAP_ALL_OR_EACH_PREFIXES: &[&[&str]] = &[&["tap", "all"], &["tap", "each"]];
 const CHAIN_OR_UNTAP_ALL_EACH_PHRASES: &[&[&str]] =

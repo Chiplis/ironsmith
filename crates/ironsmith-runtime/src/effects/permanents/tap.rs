@@ -189,11 +189,9 @@ mod tests {
         filter.card_types = vec![CardType::Artifact, CardType::Creature, CardType::Land];
         filter.untapped = true;
 
-        let source = ChooseSpec::Source.with_surface_hint(
-            ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::ThisPermanentType(
-                "this artifact".to_string(),
-            )),
-        );
+        let source = ChooseSpec::Source.with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+            SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+        ));
         TapEffect::with_spec(ChooseSpec::Object(filter).with_count_value(
             ChoiceCount::dynamic_x(),
             Value::CountersOn(Box::new(source), Some(CounterType::Fade)),
@@ -415,8 +413,7 @@ mod tests {
         game.add_counters(tangle_wire, CounterType::Fade, 2);
         let alice_artifact =
             create_permanent(&mut game, "Alice Relic", alice, vec![CardType::Artifact]);
-        let bob_artifact =
-            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+        let bob_artifact = create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
         let bob_creature = create_creature(&mut game, "Bob Bear", bob);
         let bob_land = create_permanent(&mut game, "Bob Land", bob, vec![CardType::Land]);
 
@@ -445,8 +442,7 @@ mod tests {
 
         let tangle_wire =
             create_permanent(&mut game, "Tangle Wire", alice, vec![CardType::Artifact]);
-        let bob_artifact =
-            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+        let bob_artifact = create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
         let bob_creature = create_creature(&mut game, "Bob Bear", bob);
 
         let effect = tangle_wire_dynamic_tap_effect();
@@ -487,8 +483,7 @@ mod tests {
         game.add_counters(tangle_wire, CounterType::Fade, 3);
         let alice_artifact =
             create_permanent(&mut game, "Alice Relic", alice, vec![CardType::Artifact]);
-        let bob_artifact =
-            create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
+        let bob_artifact = create_permanent(&mut game, "Bob Relic", bob, vec![CardType::Artifact]);
 
         let effect = tangle_wire_dynamic_tap_effect();
         let mut ctx = ExecutionContext::new_default(tangle_wire, alice);

@@ -12917,11 +12917,7 @@ fn cycling_keyword_family_uses_shared_word_helper() {
 
     let relative = "crates/ironsmith-compiler/src/runtime_backend/families/keyword_families.rs";
     let content = read_repo_file(&root, relative);
-    let dispatcher = function_source(
-        &content,
-        "fn keyword_fallback_kind",
-        "mod additional_costs",
-    );
+    let dispatcher = function_source(&content, "fn keyword_fallback_kind", "mod additional_costs");
     for required in [
         "let clause = LexedClause::new(tokens)",
         "KEYWORD_FALLBACK_PREFIX_PATTERN.match_prefix(clause)",
@@ -16659,10 +16655,11 @@ fn combat_death_blocked_damage_special_case_uses_tokens() {
         "fn tokens_start_with_partner_dash_label",
     );
     assert!(
-        block_first_strike_helper
-            .contains("word_slice_starts_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PREFIX)")
-            && block_first_strike_helper
-                .contains("word_slice_ends_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_SUFFIX)"),
+        block_first_strike_helper.contains(
+            "word_slice_starts_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_PREFIX)"
+        ) && block_first_strike_helper.contains(
+            "word_slice_ends_with(&words, BLOCKS_OR_BECOMES_BLOCKED_FIRST_STRIKE_SUFFIX)"
+        ),
         "{lower_mod_relative} should classify blocks/becomes-blocked first-strike lines through token word matching"
     );
     for forbidden in [
@@ -17444,7 +17441,8 @@ fn full_party_triggered_special_case_uses_token_tail_split() {
         "fn looks_like_combined_spell_and_activation_tax",
     );
     assert!(
-        classifier.contains("FULL_PARTY_INSTEAD_PATTERN.matches_word_slice(&token_word_refs(tokens))"),
+        classifier
+            .contains("FULL_PARTY_INSTEAD_PATTERN.matches_word_slice(&token_word_refs(tokens))"),
         "{relative} should classify full-party replacement triggers from full parse tokens through clause shapes"
     );
     assert!(

@@ -3282,6 +3282,32 @@ async function verifyZifflePositionOpening({
   if (!ceremony) {
     throw new Error(`Ziffle opening at sequence ${seq} references an unknown shuffle ceremony`);
   }
+  const matchingCeremonyMaterial = (Array.isArray(ziffleCeremonies) ? ziffleCeremonies : []).find((entry) =>
+    Number(entry?.owner) === owner
+    && String(entry?.context || "") === proofContext
+    && String(entry?.deckHash || "") === String(proof.deckHash || ziffleDeckHashFromCommitment(positionCommitment))
+    && (
+      (Array.isArray(entry?.keys) && entry.keys.length > 0)
+      || (Array.isArray(entry?.steps) && entry.steps.length > 0)
+    )
+  );
+  const expectedKeyRoster = normalizeZiffleKeys(expectedZiffleKeys || []);
+  if (expectedKeyRoster.length === 0) {
+    throw new Error(`Ziffle opening at sequence ${seq} is missing the signed ziffle key roster`);
+  }
+  const ceremonyForProof = {
+    ...ceremony,
+    keys: Array.isArray(ceremony.keys) && ceremony.keys.length > 0
+      ? ceremony.keys
+      : (
+        Array.isArray(matchingCeremonyMaterial?.keys) && matchingCeremonyMaterial.keys.length > 0
+          ? matchingCeremonyMaterial.keys
+          : expectedZiffleKeys
+      ),
+    steps: Array.isArray(ceremony.steps) && ceremony.steps.length > 0
+      ? ceremony.steps
+      : (Array.isArray(matchingCeremonyMaterial?.steps) ? matchingCeremonyMaterial.steps : []),
+  };
   const ceremonyBefore = normalizeShuffleOrder(ceremony.beforeOrder ?? ceremony.before_order);
   const ceremonyAfter = normalizeShuffleOrder(ceremony.afterOrder ?? ceremony.after_order);
   const proofBefore = normalizeShuffleOrder(proof.beforeOrder ?? proof.before_order);
@@ -3292,7 +3318,7 @@ async function verifyZifflePositionOpening({
   ) {
     throw new Error(`Ziffle opening at sequence ${seq} reveals a different committed slot`);
   }
-  const proofCeremony = ziffleCeremonyFromOpeningProof(proof, ceremony, seq);
+  const proofCeremony = ziffleCeremonyFromOpeningProof(proof, ceremonyForProof, seq);
   const expectedPositionCommitment = ziffleRuntimeCommitment(proofCeremony.deckHash, position);
   if (positionCommitment && positionCommitment !== expectedPositionCommitment) {
     throw new Error(`Ziffle opening at sequence ${seq} position commitment mismatch`);
@@ -3305,10 +3331,10 @@ async function verifyZifflePositionOpening({
   }
   const proofKeys = Array.isArray(proof.keys) && proof.keys.length > 0
     ? proof.keys
-    : ceremony.keys || [];
-  const expectedKeysJson = canonicalJson(normalizeZiffleKeys(expectedZiffleKeys || []));
+    : ceremonyForProof.keys || [];
+  const expectedKeysJson = canonicalJson(expectedKeyRoster);
   if (
-    expectedKeysJson !== canonicalJson(normalizeZiffleKeys(ceremony.keys || []))
+    expectedKeysJson !== canonicalJson(normalizeZiffleKeys(ceremonyForProof.keys || []))
     || expectedKeysJson !== canonicalJson(normalizeZiffleKeys(proofKeys))
   ) {
     throw new Error(`Ziffle opening at sequence ${seq} is not bound to the signed ziffle key roster`);

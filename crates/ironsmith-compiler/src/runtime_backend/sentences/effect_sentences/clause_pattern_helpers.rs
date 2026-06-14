@@ -600,10 +600,26 @@ const CLAUSE_ITS_CONTROLLER_MANIFESTS_TOP_PATTERN: ClauseShape<'static> = clause
     exact_any
         & [
             &[
-                "its", "controller", "manifests", "the", "top", "card", "of", "their", "library"
+                "its",
+                "controller",
+                "manifests",
+                "the",
+                "top",
+                "card",
+                "of",
+                "their",
+                "library"
             ],
             &[
-                "that", "player", "manifests", "the", "top", "card", "of", "their", "library"
+                "that",
+                "player",
+                "manifests",
+                "the",
+                "top",
+                "card",
+                "of",
+                "their",
+                "library"
             ],
         ]
 );

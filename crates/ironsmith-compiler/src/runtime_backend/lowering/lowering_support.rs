@@ -138,7 +138,9 @@ fn carry_all_object_sweep_filter_to_it_followups(effects: &mut [EffectAst]) {
 
 fn discard_one_or_more_trigger_uses_event_count(trigger: &TriggerSpec) -> bool {
     match trigger {
-        TriggerSpec::WithIntro { trigger, .. } => discard_one_or_more_trigger_uses_event_count(trigger),
+        TriggerSpec::WithIntro { trigger, .. } => {
+            discard_one_or_more_trigger_uses_event_count(trigger)
+        }
         TriggerSpec::PlayerDiscardsCard { one_or_more, .. } => *one_or_more,
         _ => false,
     }
@@ -1628,16 +1630,8 @@ fn rewrite_validate_effect_for_iterated_player(
     }
     if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
         // IfEffect can bind IteratedPlayer from PlayerCounts recorded by its antecedent.
-        rewrite_validate_effects_for_iterated_player(
-            &if_effect.then,
-            true,
-            context,
-        )?;
-        return rewrite_validate_effects_for_iterated_player(
-            &if_effect.else_,
-            true,
-            context,
-        );
+        rewrite_validate_effects_for_iterated_player(&if_effect.then, true, context)?;
+        return rewrite_validate_effects_for_iterated_player(&if_effect.else_, true, context);
     }
     if let Some(repeat) = effect.downcast_ref::<crate::effects::RepeatProcessEffect>() {
         return rewrite_validate_effects_for_iterated_player(

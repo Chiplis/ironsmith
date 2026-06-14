@@ -87,7 +87,8 @@ fn predicate_counts_creatures_died_this_turn(predicate: &PredicateAst) -> bool {
 
 fn bind_event_amount_to_creatures_died_this_turn(value: &mut Value) {
     match value {
-        Value::EventValue(EventValueSpec::Amount) | Value::EventValue(EventValueSpec::LifeAmount) => {
+        Value::EventValue(EventValueSpec::Amount)
+        | Value::EventValue(EventValueSpec::LifeAmount) => {
             *value = Value::CreaturesDiedThisTurn;
         }
         Value::EventValueOffset(EventValueSpec::Amount, offset)
@@ -997,8 +998,7 @@ pub(crate) fn parse_triggered_line_lexed(
             .any(|window| window == phrase)
     };
     if contains_ordered_phrase(&[
-        "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate", "an",
-        "ability",
+        "you", "cast", "an", "instant", "or", "sorcery", "spell", "or", "activate", "an", "ability",
     ]) && contains_ordered_phrase(&[
         "that",
         "spells",
@@ -1010,9 +1010,11 @@ pub(crate) fn parse_triggered_line_lexed(
         "activation",
         "cost",
         "contains",
-    ]) && let Some(copy_word_idx) = normalized_token_words.windows(5).position(|window| {
-        window == ["copy", "that", "spell", "or", "ability"]
-    }) && let Some(effect_start) = TokenWordView::new(tokens).token_index_for_word_index(copy_word_idx)
+    ]) && let Some(copy_word_idx) = normalized_token_words
+        .windows(5)
+        .position(|window| window == ["copy", "that", "spell", "or", "ability"])
+        && let Some(effect_start) =
+            TokenWordView::new(tokens).token_index_for_word_index(copy_word_idx)
     {
         let mut spell_filter = ObjectFilter::instant_or_sorcery();
         spell_filter.has_x_in_cost = true;

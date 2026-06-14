@@ -3662,10 +3662,7 @@ fn normalize_self_reference_nouns(text: &str) -> String {
             if text[idx..].starts_with(lead) {
                 let after_lead = idx + lead.len();
                 for noun in SELF_NOUNS {
-                    if text[after_lead..]
-                        .to_ascii_lowercase()
-                        .starts_with(noun)
-                    {
+                    if text[after_lead..].to_ascii_lowercase().starts_with(noun) {
                         let after_noun = after_lead + noun.len();
                         // Possessive: "this creature's power" matches the
                         // card-name rewrite's "this power" surface.

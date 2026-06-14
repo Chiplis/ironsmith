@@ -45,16 +45,48 @@ const EXILE_THE_TOP_PREFIX: &[&str] = &["the", "top"];
 const EXILE_WITH_THAT_NAME_PHRASE: &[&str] = &["with", "that", "name"];
 const EXILE_CARD_FROM_THEIR_HAND_OR_PERMANENT_THEY_CONTROL_PHRASES: &[&[&str]] = &[
     &[
-        "a", "card", "from", "their", "hand", "or", "a", "permanent", "they", "control",
+        "a",
+        "card",
+        "from",
+        "their",
+        "hand",
+        "or",
+        "a",
+        "permanent",
+        "they",
+        "control",
     ],
     &[
-        "a", "card", "from", "their", "hand", "or", "permanent", "they", "control",
+        "a",
+        "card",
+        "from",
+        "their",
+        "hand",
+        "or",
+        "permanent",
+        "they",
+        "control",
     ],
     &[
-        "card", "from", "their", "hand", "or", "a", "permanent", "they", "control",
+        "card",
+        "from",
+        "their",
+        "hand",
+        "or",
+        "a",
+        "permanent",
+        "they",
+        "control",
     ],
     &[
-        "card", "from", "their", "hand", "or", "permanent", "they", "control",
+        "card",
+        "from",
+        "their",
+        "hand",
+        "or",
+        "permanent",
+        "they",
+        "control",
     ],
 ];
 
@@ -500,7 +532,10 @@ fn parse_attached_object_exile_bundle(
     {
         return Ok(None);
     }
-    if !word_slice_eq(&crate::runtime_backend::token_word_refs(attachment_target_tokens), &["it"]) {
+    if !word_slice_eq(
+        &crate::runtime_backend::token_word_refs(attachment_target_tokens),
+        &["it"],
+    ) {
         return Ok(None);
     }
 

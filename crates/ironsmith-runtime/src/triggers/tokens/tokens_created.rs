@@ -99,11 +99,8 @@ mod tests {
             CreateTokensEvent::with_token_cause(alice, 3, token, EventCause::effect()),
             ProvNodeId::default(),
         );
-        let trigger = TokensCreatedTrigger::new(
-            PlayerFilter::You,
-            ObjectFilter::creature().token(),
-            true,
-        );
+        let trigger =
+            TokensCreatedTrigger::new(PlayerFilter::You, ObjectFilter::creature().token(), true);
         let ctx = TriggerContext::for_source(ObjectId::from_raw(1), alice, &game);
 
         assert!(trigger.matches(&event, &ctx));
@@ -123,11 +120,8 @@ mod tests {
             CreateTokensEvent::with_token_cause(alice, 1, token, EventCause::effect()),
             ProvNodeId::default(),
         );
-        let trigger = TokensCreatedTrigger::new(
-            PlayerFilter::You,
-            ObjectFilter::creature().token(),
-            true,
-        );
+        let trigger =
+            TokensCreatedTrigger::new(PlayerFilter::You, ObjectFilter::creature().token(), true);
         let ctx = TriggerContext::for_source(ObjectId::from_raw(1), alice, &game);
 
         assert!(!trigger.matches(&event, &ctx));

@@ -2,7 +2,9 @@
 
 use crate::effect::{EffectOutcome, Value};
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_from_spec, resolve_value};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_player_from_spec, resolve_value,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::DamageTarget;
 use crate::events::damage::matchers::DamageToSelfMatcher;
@@ -100,15 +102,14 @@ impl EffectExecutor for RedirectNextDamageToTargetEffect {
             }
         };
 
-        let matcher: Box<dyn ReplacementMatcher> = if let Some(protected_target) =
-            &self.protected_target
-        {
-            Box::new(DamageToSpecificTargetMatcher::new(
-                resolve_damage_target_for_effect(game, ctx, protected_target)?,
-            ))
-        } else {
-            Box::new(DamageToSelfMatcher::new())
-        };
+        let matcher: Box<dyn ReplacementMatcher> =
+            if let Some(protected_target) = &self.protected_target {
+                Box::new(DamageToSpecificTargetMatcher::new(
+                    resolve_damage_target_for_effect(game, ctx, protected_target)?,
+                ))
+            } else {
+                Box::new(DamageToSelfMatcher::new())
+            };
 
         let replacement = ReplacementEffect::with_boxed_matcher(
             ctx.source,

@@ -354,26 +354,22 @@ pub(crate) fn parse_look_at_top_put_counted_into_hand_rest_bottom_with_kicker_ov
         return Ok(None);
     }
 
-    let kicked_looked_tag =
-        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-            sentences[sentence_idx + 2].lowered(),
-            "looked",
-        );
-    let base_looked_tag =
-        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-            sentences[sentence_idx + 1].lowered(),
-            "looked",
-        );
-    let kicked_chosen_tag =
-        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-            sentences[sentence_idx + 2].lowered(),
-            "chosen",
-        );
-    let base_chosen_tag =
-        crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-            sentences[sentence_idx + 1].lowered(),
-            "chosen",
-        );
+    let kicked_looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentences[sentence_idx + 2].lowered(),
+        "looked",
+    );
+    let base_looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentences[sentence_idx + 1].lowered(),
+        "looked",
+    );
+    let kicked_chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentences[sentence_idx + 2].lowered(),
+        "chosen",
+    );
+    let base_chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+        sentences[sentence_idx + 1].lowered(),
+        "chosen",
+    );
     Ok(Some(vec![
         first_effects[0].clone(),
         EffectAst::Conditional {
@@ -426,8 +422,7 @@ pub(crate) fn parse_look_at_top_may_put_match_onto_battlefield_then_if_not_put_i
         return Ok(None);
     }
 
-    let Some((look_player, count, reveal)) =
-        look_at_top_cards_player_count_reveal(first_effect)
+    let Some((look_player, count, reveal)) = look_at_top_cards_player_count_reveal(first_effect)
     else {
         return Ok(None);
     };
@@ -474,10 +469,12 @@ fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
     let hand_tag = helper_tag_for_tokens(choose_tokens, "chosen_hand");
 
     battlefield_filter.zone = Some(Zone::Library);
-    battlefield_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: looked_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    battlefield_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
 
     let mut hand_filter = ObjectFilter::tagged(looked_tag.clone());
     hand_filter.zone = Some(Zone::Library);
@@ -498,7 +495,8 @@ fn compose_look_at_top_may_put_onto_battlefield_or_into_hand_rest_bottom(
             relation: TaggedOpbjectRelation::SameStableId,
         });
 
-    let mut look = EffectAst::subject_verb_look_at_top_cards(look_player, count, looked_tag.clone());
+    let mut look =
+        EffectAst::subject_verb_look_at_top_cards(look_player, count, looked_tag.clone());
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action: SubjectVerbActionAst::LookAtTopCards { reveal: r, .. },
         ..

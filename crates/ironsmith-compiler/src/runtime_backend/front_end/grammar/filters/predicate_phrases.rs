@@ -1,7 +1,7 @@
+use super::super::super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::super::super::lex_patterns::{
     LexCaptureKind, LexCaptureRole, LexPattern, LexPatternAtom,
 };
-use super::super::super::leaf::{lower_activation_cost_cst, parse_activation_cost_tokens_rewrite};
 use super::super::super::lexer::{
     LexedClause, OwnedLexToken, TokenKind, TokenWordView, render_token_slice, token_slice_first_is,
     token_slice_words_eq,
@@ -1100,7 +1100,9 @@ fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {
     )
 }
 
-fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+fn parse_source_verbless_counted_counter_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     for source_len in 1..tokens.len() {
         let source_clause = LexedClause::new(&tokens[..source_len]);
         if !is_source_state_subject_clause(source_clause) {
@@ -2645,13 +2647,11 @@ fn demonstrative_descriptor_filter_tokens(
     let reference_end = reference.word_len;
     let tagged_that_enchantment = reference.tagged_that_enchantment;
 
-    let has_card = clause
-        .after_words(reference_end)
-        .is_some_and(|tail| {
-            tail.tokens()
-                .iter()
-                .any(|token| token_word_is(token, CARD_WORD))
-        });
+    let has_card = clause.after_words(reference_end).is_some_and(|tail| {
+        tail.tokens()
+            .iter()
+            .any(|token| token_word_is(token, CARD_WORD))
+    });
     let mut descriptor_start = reference_end;
     let mut negative = false;
     if clause_word_range_matches_any_phrase(clause, descriptor_start, DOESNT_HAVE_PHRASES) {
@@ -3581,15 +3581,17 @@ fn parse_player_cards_in_hand_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
         crate::effect::Comparison::GreaterThanOrEqual(count) if count >= 0 => {
             Some(cards_in_hand_or_more(player, count as u32, at_turn_start))
         }
-        crate::effect::Comparison::GreaterThan(count) if count >= -1 => {
-            Some(cards_in_hand_or_more(player, (count + 1) as u32, at_turn_start))
-        }
+        crate::effect::Comparison::GreaterThan(count) if count >= -1 => Some(
+            cards_in_hand_or_more(player, (count + 1) as u32, at_turn_start),
+        ),
         crate::effect::Comparison::LessThanOrEqual(count) if count >= 0 => {
             Some(cards_in_hand_or_fewer(player, count as u32, at_turn_start))
         }
-        crate::effect::Comparison::LessThan(count) if count > 0 => {
-            Some(cards_in_hand_or_fewer(player, (count - 1) as u32, at_turn_start))
-        }
+        crate::effect::Comparison::LessThan(count) if count > 0 => Some(cards_in_hand_or_fewer(
+            player,
+            (count - 1) as u32,
+            at_turn_start,
+        )),
         // "you have a card in hand" parses as Equal(1) but means "at least one";
         // map the count-or-more reading so the turn-start variant resolves.
         crate::effect::Comparison::Equal(count) if count >= 0 => {
@@ -4814,8 +4816,12 @@ fn parse_this_spell_paid_named_label_shape(tokens: &[OwnedLexToken]) -> Option<P
 
 fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let was_idx = tokens.iter().position(|token| token.is_word("was"))?;
-    if !tokens.get(was_idx + 1).is_some_and(|token| token.is_word("kicked"))
-        || !tokens.get(was_idx + 2).is_some_and(|token| token.is_word("with"))
+    if !tokens
+        .get(was_idx + 1)
+        .is_some_and(|token| token.is_word("kicked"))
+        || !tokens
+            .get(was_idx + 2)
+            .is_some_and(|token| token.is_word("with"))
     {
         return None;
     }
@@ -4846,8 +4852,7 @@ fn parse_this_spell_was_kicked_with_cost_shape(tokens: &[OwnedLexToken]) -> Opti
         .mana_cost()
         .map(|cost| cost.to_oracle())
         .unwrap_or_else(|| lowered_cost.display());
-    (!cost_text.is_empty())
-        .then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}")))
+    (!cost_text.is_empty()).then(|| PredicateAst::ThisSpellPaidLabel(format!("Kicker {cost_text}")))
 }
 
 fn parse_this_spell_was_kicked_shape(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
@@ -5898,9 +5903,7 @@ fn parse_counted_object_counter_constraint_clause(
     ))
 }
 
-fn parse_counted_source_exiled_objects_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_counted_source_exiled_objects_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let relation = parse_has_relation_clauses(tokens)?;
     let counted_object = relation.subject_clause;
     let (comparison, used) = predicate_quantity_prefix_tokens(counted_object.tokens())?;
@@ -6013,7 +6016,10 @@ fn single_subtype_descriptor_clause<'a>(
     let mut tokens = clause.trimmed().tokens();
     if !optional_suffix.is_empty()
         && tokens.len() >= optional_suffix.len()
-        && token_slice_words_eq(&tokens[tokens.len() - optional_suffix.len()..], optional_suffix)
+        && token_slice_words_eq(
+            &tokens[tokens.len() - optional_suffix.len()..],
+            optional_suffix,
+        )
     {
         tokens = &tokens[..tokens.len() - optional_suffix.len()];
     }

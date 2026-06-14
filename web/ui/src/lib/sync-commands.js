@@ -169,16 +169,38 @@ export function normalizeSelectObjectHiddenRef(hiddenRef) {
   if (Number.isSafeInteger(owner) && owner >= 0) normalized.owner = owner;
   const zone = String(hiddenRef.zone || "").trim();
   if (zone) normalized.zone = zone;
-  const slot = Number(hiddenRef.slot);
-  if (Number.isSafeInteger(slot) && slot >= 0) normalized.slot = slot;
-  const commitment = String(hiddenRef.commitment || "").trim();
-  if (commitment) normalized.commitment = commitment;
   const publicSlot = Number(hiddenRef.public_slot ?? hiddenRef.publicSlot);
-  if (Number.isSafeInteger(publicSlot) && publicSlot >= 0) normalized.public_slot = publicSlot;
   const publicCommitment = String(
     hiddenRef.public_commitment ?? hiddenRef.publicCommitment ?? ""
   ).trim();
-  if (publicCommitment) normalized.public_commitment = publicCommitment;
+  const hasPublicIdentity =
+    Number.isSafeInteger(publicSlot) && publicSlot >= 0
+    || Boolean(publicCommitment);
+  const slot = Number(hiddenRef.slot);
+  const commitment = String(hiddenRef.commitment || "").trim();
+  const hasPrivateIdentity =
+    Number.isSafeInteger(slot) && slot >= 0
+    || Boolean(commitment);
+  const usePublicLibraryIdentity = zone === "library" && hasPublicIdentity;
+  if (usePublicLibraryIdentity) {
+    if (Number.isSafeInteger(publicSlot) && publicSlot >= 0) normalized.public_slot = publicSlot;
+    if (publicCommitment) normalized.public_commitment = publicCommitment;
+  } else {
+    if (Number.isSafeInteger(slot) && slot >= 0) {
+      normalized.slot = slot;
+    } else if (publicCommitment.startsWith("ziffle:") && Number.isSafeInteger(publicSlot) && publicSlot >= 0) {
+      normalized.slot = publicSlot;
+    }
+    if (commitment) {
+      normalized.commitment = commitment;
+    } else if (publicCommitment.startsWith("ziffle:")) {
+      normalized.commitment = publicCommitment;
+    }
+    if (!hasPrivateIdentity && !publicCommitment.startsWith("ziffle:")) {
+      if (Number.isSafeInteger(publicSlot) && publicSlot >= 0) normalized.public_slot = publicSlot;
+      if (publicCommitment) normalized.public_commitment = publicCommitment;
+    }
+  }
   return Object.keys(normalized).length > 0 ? normalized : null;
 }
 

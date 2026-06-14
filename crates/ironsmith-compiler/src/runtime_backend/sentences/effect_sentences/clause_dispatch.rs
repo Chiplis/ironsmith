@@ -1592,7 +1592,8 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     // damage-can't-be-prevented window for the turn (Flames of the Blood Hand).
     if matches!(
         clause_words.as_slice(),
-        ["the", "damage", "cant", "be", "prevented"] | ["damage", "cant", "be", "prevented"]
+        ["the", "damage", "cant", "be", "prevented"]
+            | ["damage", "cant", "be", "prevented"]
             | ["that", "damage", "cant", "be", "prevented"]
     ) {
         return Ok(EffectAst::subject_verb_cant(
@@ -1605,8 +1606,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     // "Turn the exiled card face up." / "Turn it face up."
     if matches!(
         clause_words.as_slice(),
-        ["turn", "the", "exiled", "card", "face", "up"]
-            | ["turn", "exiled", "card", "face", "up"]
+        ["turn", "the", "exiled", "card", "face", "up"] | ["turn", "exiled", "card", "face", "up"]
     ) {
         return Ok(EffectAst::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -1646,7 +1646,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         ));
     }
 
-    if matches!(clause_words.as_slice(), ["double", "the", "value", "of", "x"]) {
+    if matches!(
+        clause_words.as_slice(),
+        ["double", "the", "value", "of", "x"]
+    ) {
         return Ok(EffectAst::subject_verb_scale_x_value(
             TargetAst::Tagged(TagKey::from("triggering"), span_from_tokens(tokens)),
             2,
@@ -1782,7 +1785,10 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
             let modifier_words = ClauseDispatchCompatWords::new(modifier_tail).to_word_refs();
             if modifier_words.len() == 11
                 && starts_with_until_end_of_turn(&modifier_words[1..])
-                && word_slice_eq(&modifier_words[5..], &["for", "each", "card", "discarded", "this", "way"])
+                && word_slice_eq(
+                    &modifier_words[5..],
+                    &["for", "each", "card", "discarded", "this", "way"],
+                )
                 && let Some(mod_token) = modifier_tail.first().and_then(OwnedLexToken::as_word)
                 && let Ok((power_per, toughness_per)) = parse_pt_modifier(mod_token)
             {

@@ -3743,8 +3743,17 @@ pub(crate) fn parse_trigger_clause_lexed(
     }
 
     // "one or more opponents each lose exactly N life" (Ob Nixilis, Captive Kingpin)
-    if let ["one", "or", "more", "opponents", "each", "lose", "exactly", amount, "life"] =
-        words.as_slice()
+    if let [
+        "one",
+        "or",
+        "more",
+        "opponents",
+        "each",
+        "lose",
+        "exactly",
+        amount,
+        "life",
+    ] = words.as_slice()
         && let Some(amount) = parse_named_number(amount)
     {
         return Ok(TriggerSpec::OpponentsEachLoseExactLife { amount });

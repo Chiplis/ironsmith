@@ -579,7 +579,6 @@ pub(crate) fn comma_or_separator<'a>(
     .parse_next(input)
 }
 
-
 /// Skip tokens that are noise words in mana clauses
 /// ("mana", "to", "your", "their", "its", "pool", articles).
 pub(crate) fn skip_mana_noise<'a>(input: &mut LexStream<'a>) -> Result<(), ErrMode<ContextError>> {

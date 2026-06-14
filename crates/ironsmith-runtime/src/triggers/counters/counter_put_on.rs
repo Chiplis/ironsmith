@@ -130,8 +130,17 @@ impl TriggerMatcher for CounterPutOnTrigger {
         fn recipient_with_article(description: String) -> String {
             let lower = description.to_ascii_lowercase();
             let has_determiner = [
-                "a ", "an ", "the ", "this ", "that ", "each ", "another ", "enchanted ",
-                "equipped ", "target ", "one ",
+                "a ",
+                "an ",
+                "the ",
+                "this ",
+                "that ",
+                "each ",
+                "another ",
+                "enchanted ",
+                "equipped ",
+                "target ",
+                "one ",
             ]
             .iter()
             .any(|prefix| lower.starts_with(prefix));

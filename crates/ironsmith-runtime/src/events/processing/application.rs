@@ -49,7 +49,8 @@ pub(super) fn apply_trait_replacement(
             counter_type,
             additional,
         } => {
-            let modified = apply_trait_add_counters_to_placement(&event, *counter_type, *additional);
+            let modified =
+                apply_trait_add_counters_to_placement(&event, *counter_type, *additional);
             match modified {
                 Some(e) => TraitApplyResult::Modified(e),
                 None => TraitApplyResult::Unchanged(event),

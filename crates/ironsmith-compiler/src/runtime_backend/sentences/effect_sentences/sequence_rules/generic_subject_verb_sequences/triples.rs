@@ -1112,16 +1112,18 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     if reveal_top {
         effects.push(EffectAst::subject_verb_reveal_tagged(looked_tag.clone()));
     }
-    effects.extend(compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
-        chooser,
-        filter,
-        looked_tag,
-        chosen_tag,
-        Zone::Library,
-        reveal_chosen,
-        Vec::new(),
-        choice_count,
-    ));
+    effects.extend(
+        compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
+            chooser,
+            filter,
+            looked_tag,
+            chosen_tag,
+            Zone::Library,
+            reveal_chosen,
+            Vec::new(),
+            choice_count,
+        ),
+    );
     Ok(Some(effects))
 }
 
@@ -1202,10 +1204,12 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
 
     if source_zone == Zone::Library {
         let mut in_chosen_filter = ObjectFilter::default();
-        in_chosen_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: TagKey::from(crate::cards::builders::IT_TAG),
-            relation: TaggedOpbjectRelation::SameStableId,
-        });
+        in_chosen_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(crate::cards::builders::IT_TAG),
+                relation: TaggedOpbjectRelation::SameStableId,
+            });
         effects.push(EffectAst::ForEachTagged {
             tag: looked_tag,
             effects: vec![EffectAst::Conditional {
@@ -1255,14 +1259,18 @@ fn compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
         let mut choose_filter = ObjectFilter::default();
         choose_filter.zone = Some(Zone::Library);
         choose_filter.card_types.push(*card_type);
-        choose_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: looked_tag.clone(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
-        });
-        choose_filter.tagged_constraints.push(TaggedObjectConstraint {
-            tag: chosen_tag.clone(),
-            relation: TaggedOpbjectRelation::IsNotTaggedObject,
-        });
+        choose_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: looked_tag.clone(),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+        choose_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: chosen_tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
 
         let choose = EffectAst::ChooseObjectsAcrossZones {
             filter: choose_filter,
@@ -2035,23 +2043,25 @@ pub(crate) fn parse_top_cards_for_each_card_type_among_spells_put_matching_into_
         EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
         EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
     ];
-    effects.extend(compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
-        player,
-        looked_tag,
-        chosen_tag,
-        &[
-            CardType::Artifact,
-            CardType::Battle,
-            CardType::Enchantment,
-            CardType::Instant,
-            CardType::Kindred,
-            CardType::Land,
-            CardType::Planeswalker,
-            CardType::Sorcery,
-        ],
-        Some(&spell_filter),
-        order,
-    ));
+    effects.extend(
+        compose_choose_from_looked_cards_for_each_card_type_into_hand_rest_on_bottom(
+            player,
+            looked_tag,
+            chosen_tag,
+            &[
+                CardType::Artifact,
+                CardType::Battle,
+                CardType::Enchantment,
+                CardType::Instant,
+                CardType::Kindred,
+                CardType::Land,
+                CardType::Planeswalker,
+                CardType::Sorcery,
+            ],
+            Some(&spell_filter),
+            order,
+        ),
+    );
     Ok(Some(effects))
 }
 
@@ -2412,10 +2422,12 @@ fn compose_choose_from_looked_cards_onto_battlefield_and_into_hand_rest_on_botto
     let kept_tag = helper_tag_for_tokens(choose_tokens, "kept");
 
     battlefield_filter.zone = Some(Zone::Library);
-    battlefield_filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: looked_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
+    battlefield_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
 
     hand_filter.zone = Some(Zone::Library);
     hand_filter.tagged_constraints.push(TaggedObjectConstraint {

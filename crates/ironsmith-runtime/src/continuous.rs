@@ -5164,9 +5164,11 @@ mod tests {
         let extracted = extract_static_abilities(&chars.abilities);
         assert!(extracted.iter().any(|a| a.id() == StaticAbilityId::Flying));
         assert!(extracted.iter().any(|a| a.id() == StaticAbilityId::Trample));
-        assert!(extracted
-            .iter()
-            .any(|a| a.id() == StaticAbilityId::Vigilance));
+        assert!(
+            extracted
+                .iter()
+                .any(|a| a.id() == StaticAbilityId::Vigilance)
+        );
     }
 
     #[test]

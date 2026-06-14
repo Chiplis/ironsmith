@@ -30,9 +30,8 @@ use super::super::lexer::{
     LexedClause, token_slice_at_is, token_slice_at_is_any, token_slice_first_is,
     token_slice_first_is_any, token_slice_starts_with, word_slice_contains_any_phrase,
     word_slice_contains_any_word, word_slice_contains_phrase, word_slice_contains_word,
-    word_slice_ends_with_any, word_slice_eq,
-    word_slice_eq_any, word_slice_find_any_phrase_start, word_slice_find_phrase_start,
-    word_slice_starts_with, word_slice_starts_with_any,
+    word_slice_ends_with_any, word_slice_eq, word_slice_eq_any, word_slice_find_any_phrase_start,
+    word_slice_find_phrase_start, word_slice_starts_with, word_slice_starts_with_any,
 };
 use super::super::object_filters::parse_object_filter;
 use super::super::token_primitives::{find_index, find_window_by, rfind_index, str_strip_suffix};

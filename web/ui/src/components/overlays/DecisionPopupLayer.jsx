@@ -59,6 +59,17 @@ function compactPriorityControlAdvanceLabel(label) {
   return arrowPrefix ? `→ ${compactBody}` : compactBody;
 }
 
+function safeInlineLabel(value, fallback = "") {
+  if (value == null || value === false) return fallback;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (typeof value === "object") {
+    return String(value.label || value.name || value.description || fallback || "");
+  }
+  return String(value);
+}
+
 function renderMobileBattlePortal(content, target = null) {
   if (typeof document === "undefined") return content;
   const candidateTarget = target?.current || target;
@@ -1364,6 +1375,9 @@ function MobileDecisionDock({
   const peerWait = useDeferredPeerWait(rawPeerWait);
   const peerWaiting = Boolean(peerWait);
   const peerWaitLocked = Boolean(rawPeerWait);
+  const primaryText = safeInlineLabel(primaryLabel, "Continue");
+  const primaryAdvanceText = safeInlineLabel(primaryAdvanceLabel);
+  const subtitleText = safeInlineLabel(subtitle);
 
   return (
     <div
@@ -1410,15 +1424,15 @@ function MobileDecisionDock({
             ) : (
               <>
                 <span className="mobile-decision-primary-label">
-                  {primaryLabel}
+                  {primaryText}
                 </span>
-                {primaryAdvanceLabel ? (
+                {primaryAdvanceText ? (
                   <span className="mobile-decision-primary-subtitle">
-                    {primaryAdvanceLabel}
+                    {primaryAdvanceText}
                   </span>
-                ) : subtitle ? (
+                ) : subtitleText ? (
                   <span className="mobile-decision-primary-subtitle">
-                    <SymbolText text={normalizeDecisionText(subtitle)} noWrap />
+                    <SymbolText text={normalizeDecisionText(subtitleText)} noWrap />
                   </span>
                 ) : null}
               </>
@@ -2277,6 +2291,7 @@ function PriorityControlStack({
 }) {
   const compactLandscapeViewport = typeof window !== "undefined"
     && window.matchMedia("(max-height: 480px) and (orientation: landscape)").matches;
+  const advanceLabelText = safeInlineLabel(advanceControlLabel);
   const checkboxLabelClass =
     "priority-control-toggle action-strip-toggle flex items-center gap-1.5 text-[11px] uppercase tracking-wider cursor-pointer transition-colors";
 
@@ -2291,9 +2306,9 @@ function PriorityControlStack({
         </div>
       )}
       <div className="priority-control-toggles flex items-center gap-3">
-        {advanceControlLabel ? (
-          <span className="priority-control-advance-label" title={advanceControlLabel}>
-            {advanceControlLabel}
+        {advanceLabelText ? (
+          <span className="priority-control-advance-label" title={advanceLabelText}>
+            {advanceLabelText}
           </span>
         ) : null}
         <label className={checkboxLabelClass}>

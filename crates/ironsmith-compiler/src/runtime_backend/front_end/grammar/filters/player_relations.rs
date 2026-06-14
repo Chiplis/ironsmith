@@ -342,7 +342,10 @@ fn parse_entered_battlefield_this_turn_shape(
     )?;
     let event_words: Vec<&str> = event.split(' ').collect();
     let contains_phrase = |phrase: &[&str]| {
-        !phrase.is_empty() && event_words.windows(phrase.len()).any(|window| window == phrase)
+        !phrase.is_empty()
+            && event_words
+                .windows(phrase.len())
+                .any(|window| window == phrase)
     };
     if contains_phrase(&["under", "your", "control"]) {
         return Some((Some(PlayerFilter::You), consumed));

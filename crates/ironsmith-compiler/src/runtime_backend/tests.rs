@@ -3839,10 +3839,10 @@ fn rewrite_value_expr_parses_half_rounded_forest_count_and_y_pt_modifier() {
     let up_words = [
         "half", "the", "number", "of", "forests", "you", "control", "rounded", "up",
     ];
-    let (down, down_used) = parse_value_expr_words(&down_words)
-        .expect("half rounded-down Forest count should parse");
-    let (up, up_used) = parse_value_expr_words(&up_words)
-        .expect("half rounded-up Forest count should parse");
+    let (down, down_used) =
+        parse_value_expr_words(&down_words).expect("half rounded-down Forest count should parse");
+    let (up, up_used) =
+        parse_value_expr_words(&up_words).expect("half rounded-up Forest count should parse");
 
     assert_eq!(down_used, down_words.len());
     assert_eq!(up_used, up_words.len());
@@ -3862,7 +3862,10 @@ fn rewrite_value_expr_parses_half_rounded_forest_count_and_y_pt_modifier() {
     .expect("Aspect-style anthem line should lex");
     let anthem = super::keyword_static::parse_anthem_line(&anthem_tokens)
         .expect("Aspect-style anthem line should parse without an error");
-    assert!(anthem.is_some(), "Aspect-style anthem line should match anthem parser");
+    assert!(
+        anthem.is_some(),
+        "Aspect-style anthem line should match anthem parser"
+    );
 }
 
 #[test]
@@ -5552,7 +5555,10 @@ fn rewrite_lexed_permission_helpers_preserve_until_next_end_step_any_color_cast_
         .expect("tagged permission clause should produce an effect");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("GrantPlayTaggedUntilYourNextTurn"), "{debug}");
+    assert!(
+        debug.contains("GrantPlayTaggedUntilYourNextTurn"),
+        "{debug}"
+    );
     assert!(debug.contains("allow_land: true"), "{debug}");
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
 }
@@ -10472,12 +10478,13 @@ fn rewrite_lexed_triggered_line_parses_stonebinders_familiar_trigger() {
 
 #[test]
 fn parse_trigger_clause_supports_you_discard_one_or_more_cards() {
-    let tokens = lex_line("you discard one or more cards", 0)
-        .expect("discard trigger clause should lex");
-    let parsed = super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
-        &tokens,
-    )
-    .expect("discard one-or-more trigger clause should parse");
+    let tokens =
+        lex_line("you discard one or more cards", 0).expect("discard trigger clause should lex");
+    let parsed =
+        super::activation_and_restrictions::trigger_clause_core::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("discard one-or-more trigger clause should parse");
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("PlayerDiscardsCard"), "{debug}");
@@ -10496,7 +10503,10 @@ fn parse_effect_sentence_supports_target_pump_for_each_card_discarded_this_way()
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("PumpForEach"), "{debug}");
-    assert!(debug.contains("EventValue") && debug.contains("Amount"), "{debug}");
+    assert!(
+        debug.contains("EventValue") && debug.contains("Amount"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -15575,7 +15585,10 @@ fn parse_trigger_clause_supports_one_or_more_creature_tokens_created_by_you() {
 
     assert_eq!(player, crate::target::PlayerFilter::You);
     assert!(one_or_more, "expected one-or-more count mode");
-    assert!(filter.token, "expected creature tokens to keep token filter");
+    assert!(
+        filter.token,
+        "expected creature tokens to keep token filter"
+    );
     assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
 }
 

@@ -649,7 +649,6 @@ pub(crate) fn split_lexed_once_on_period(
     split_lexed_once_on_delimiter(tokens, TokenKind::Period)
 }
 
-
 fn parse_turn_duration_phrase_inner<'a>(input: &mut LexedInput<'a>) -> WResult<TurnDurationPhrase> {
     dispatch! {peek(grammar::word_parser_text);
         "until" => alt((

@@ -128,14 +128,8 @@ fn parse_trailing_discard_unless_predicate(
         crate::runtime_backend::front_end::grammar::structure::parse_predicate_with_grammar_entrypoint_lexed(
             predicate_tokens,
         )?;
-    let discard = EffectAst::subject_verb_discard(
-        player,
-        count,
-        false,
-        any_number,
-        discard_filter,
-        None,
-    );
+    let discard =
+        EffectAst::subject_verb_discard(player, count, false, any_number, discard_filter, None);
 
     Ok(Some(EffectAst::Conditional {
         predicate: PredicateAst::Not(Box::new(predicate)),
@@ -169,9 +163,7 @@ fn parse_discard_count_prefix(tokens: &[OwnedLexToken]) -> Option<(Value, bool, 
     Some((value, any_number, used))
 }
 
-fn parse_discard_number_of_cards_equal_count(
-    tokens: &[OwnedLexToken],
-) -> Option<(Value, usize)> {
+fn parse_discard_number_of_cards_equal_count(tokens: &[OwnedLexToken]) -> Option<(Value, usize)> {
     let words = crate::runtime_backend::token_word_refs(tokens);
     let prefix_len = [
         &["a", "number", "of", "cards", "equal", "to"][..],

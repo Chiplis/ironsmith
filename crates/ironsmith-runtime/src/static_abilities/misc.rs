@@ -3855,17 +3855,18 @@ impl ReplacementMatcher for WouldPutCountersOrEnterWithCountersMatcher {
                     return false;
                 }
                 match put_counters.target {
-                    crate::game_state::Target::Object(object) => self.player_filter.is_none()
-                        && ctx.game.object(object).is_some_and(|obj| {
-                            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-                        }),
-                    crate::game_state::Target::Player(player) => self
-                        .player_filter
-                        .as_ref()
-                        .is_some_and(|filter| {
+                    crate::game_state::Target::Object(object) => {
+                        self.player_filter.is_none()
+                            && ctx.game.object(object).is_some_and(|obj| {
+                                self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+                            })
+                    }
+                    crate::game_state::Target::Player(player) => {
+                        self.player_filter.as_ref().is_some_and(|filter| {
                             player_ids_for_filter(ctx.game, filter.clone(), self.controller)
                                 .contains(&player)
-                        }),
+                        })
+                    }
                 }
             }
             EventKind::EnterBattlefield => {

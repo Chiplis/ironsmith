@@ -1885,7 +1885,9 @@ mod tests {
                     "Tangle Wire's active upkeep player should choose what they tap"
                 );
                 assert!(
-                    ctx.candidates.iter().any(|candidate| candidate.id == self.selected),
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.id == self.selected),
                     "expected selected permanent to be eligible: {:?}",
                     ctx.candidates
                 );
@@ -1901,11 +1903,8 @@ mod tests {
         game.turn.phase = crate::game_state::Phase::Beginning;
         game.turn.step = Some(crate::game_state::Step::Upkeep);
 
-        let tangle_wire = game.create_object_from_definition(
-            &tangle_wire_definition(),
-            alice,
-            Zone::Battlefield,
-        );
+        let tangle_wire =
+            game.create_object_from_definition(&tangle_wire_definition(), alice, Zone::Battlefield);
         game.add_counters(tangle_wire, CounterType::Fade, 1)
             .expect("Tangle Wire should accept fade counters");
         let alice_artifact = create_artifact(&mut game, "Alice Relic", alice);

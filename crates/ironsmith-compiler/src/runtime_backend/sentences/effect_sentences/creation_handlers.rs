@@ -23,9 +23,9 @@ use super::super::token_primitives::{
 };
 use super::super::util::{
     is_article, parse_card_type, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_number, parse_subtype_flexible, parse_target_phrase, parse_value,
-    source_choose_spec_for_surface, source_reference_surface_for_words, span_from_tokens,
-    token_index_for_word_index, trim_commas, value_contains_unbound_x,
+    parse_counter_type_word, parse_number, parse_subtype_flexible, parse_target_phrase,
+    parse_value, source_choose_spec_for_surface, source_reference_surface_for_words,
+    span_from_tokens, token_index_for_word_index, trim_commas, value_contains_unbound_x,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::conditionals::parse_subtype_word;

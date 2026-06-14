@@ -61,6 +61,23 @@ async function withTimeout(promise, ms) {
   }
 }
 
+async function withRejectingTimeout(promise, ms, label) {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`${label} timed out after ${ms}ms`)),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function freePort() {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -156,16 +173,25 @@ async function closePeerServer(child) {
   ]);
 }
 
-async function startHarnessServer(peerPort) {
+async function startHarnessServer(peerPort, envOverrides = {}) {
   const vitePort = await freePort();
-  process.env.VITE_PEER_HOST = "127.0.0.1";
-  process.env.VITE_PEER_PORT = String(peerPort);
-  process.env.VITE_PEER_PATH = "/peerjs";
-  process.env.VITE_PEER_KEY = "peerjs";
-  process.env.VITE_PEER_SECURE = "false";
-  process.env.VITE_PEER_HEARTBEAT_INTERVAL_MS = "500";
-  process.env.VITE_PEER_HEARTBEAT_TIMEOUT_MS = "2000";
-  process.env.VITE_E2E_TEST = "true";
+  const harnessEnv = {
+    VITE_PEER_HOST: "127.0.0.1",
+    VITE_PEER_PORT: String(peerPort),
+    VITE_PEER_PATH: "/peerjs",
+    VITE_PEER_KEY: "peerjs",
+    VITE_PEER_SECURE: "false",
+    VITE_PEER_HEARTBEAT_INTERVAL_MS: "500",
+    VITE_PEER_HEARTBEAT_TIMEOUT_MS: "2000",
+    VITE_E2E_TEST: "true",
+    ...envOverrides,
+  };
+  const previousEnv = new Map(
+    Object.keys(harnessEnv).map((key) => [key, process.env[key]])
+  );
+  for (const [key, value] of Object.entries(harnessEnv)) {
+    process.env[key] = String(value);
+  }
 
   const vite = await createViteServer({
     root: UI_ROOT,
@@ -180,6 +206,20 @@ async function startHarnessServer(peerPort) {
       watch: null,
     },
   });
+  const closeVite = vite.close.bind(vite);
+  vite.close = async (...args) => {
+    try {
+      return await closeVite(...args);
+    } finally {
+      for (const [key, value] of previousEnv.entries()) {
+        if (value == null) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+    }
+  };
   await vite.listen();
   return {
     vite,
@@ -396,7 +436,19 @@ async function waitForFullUiSnapshot(page, predicate, label, timeoutMs = 60000) 
   } catch {
     body = "<page unavailable>";
   }
-  assert.fail(`${label}\nLast snapshot: ${JSON.stringify(lastSnapshot, null, 2)}\nbody:\n${body}`);
+  let dom = null;
+  try {
+    dom = await page.evaluate(() => ({
+      readyState: document.readyState,
+      title: document.title,
+      hasHarness: Boolean(window.__ironsmithE2E?.snapshot),
+      bodyHtml: String(document.body?.innerHTML || "").slice(0, 2000),
+      rootHtml: String(document.querySelector("#root")?.innerHTML || "").slice(0, 2000),
+    }));
+  } catch (err) {
+    dom = { error: String(err?.message || err) };
+  }
+  assert.fail(`${label}\nLast snapshot: ${JSON.stringify(lastSnapshot, null, 2)}\nurl: ${page.url()}\nerrors: ${JSON.stringify(page.__peerHarnessErrors || [], null, 2)}\nconsole: ${JSON.stringify((page.__peerHarnessConsole || []).slice(-80), null, 2)}\ndom: ${JSON.stringify(dom, null, 2)}\nbody:\n${body}`);
 }
 
 async function waitForFullUiSync(hostPage, guestPage, label, timeoutMs = 60000) {
@@ -892,7 +944,7 @@ async function waitForVisibleBodyText(page, pattern, label, timeoutMs = 60000) {
     if (pattern.test(text)) return text;
     await sleep(500);
   }
-  assert.fail(`${label}\nLast body text:\n${text}`);
+  assert.fail(`${label}\nerrors: ${JSON.stringify(page.__peerHarnessErrors || [], null, 2)}\nconsole: ${JSON.stringify((page.__peerHarnessConsole || []).slice(-80), null, 2)}\nLast body text:\n${text}`);
 }
 
 function assertNoSyncFailureText(text, label = "unexpected sync failure") {
@@ -935,6 +987,48 @@ async function waitAndClickEnabledButton(page, label, textPattern, timeoutMs = 9
   );
 }
 
+async function submitFullUiMultiplayerCommand(page, command, label, options = {}) {
+  const attempts = Math.max(1, Number(options.routeRetryAttempts || 3));
+  const timeoutMs = Math.max(1000, Number(options.timeoutMs || 120000));
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await withRejectingTimeout(
+        page.evaluate(({ command: nextCommand, label: nextLabel }) => (
+          window.__ironsmithE2E.submitMultiplayerCommand(nextCommand, nextLabel)
+        ), { command, label }),
+        timeoutMs,
+        `${label || "multiplayer command"} submit`,
+      );
+    } catch (err) {
+      const message = String(err?.message || err || "");
+      const retryable =
+        /No direct ziffle route to peer/i.test(message)
+        || /Execution context was destroyed|navigation/i.test(message);
+      if (
+        attempt >= attempts
+        || !retryable
+      ) {
+        const detailedMessage = `${message}
+command: ${JSON.stringify(command, null, 2)}
+buttons: ${JSON.stringify(await buttonDebugText(page).catch(() => []), null, 2)}
+errors: ${JSON.stringify(page.__peerHarnessErrors || [], null, 2)}
+console: ${JSON.stringify((page.__peerHarnessConsole || []).slice(-80), null, 2)}
+body:
+${await visibleBodyText(page).catch(() => "<page unavailable>")}`;
+        throw new Error(detailedMessage, { cause: err });
+      }
+      await page.waitForLoadState("domcontentloaded", { timeout: 10000 }).catch(() => {});
+      await page.waitForFunction(
+        () => Boolean(window.__ironsmithE2E?.submitMultiplayerCommand),
+        null,
+        { timeout: 15000 }
+      ).catch(() => {});
+      await sleep(Math.max(500, Number(options.routeRetryDelayMs || 5000)));
+    }
+  }
+  return null;
+}
+
 async function captureFullUiStep(dir, index, slug, pages) {
   fs.mkdirSync(dir, { recursive: true });
   const prefix = String(index).padStart(2, "0");
@@ -962,11 +1056,11 @@ async function startFullUiPeerMatch({
   const hostDeck = deckUrlParam(hostDeckText);
   const guestDeck = deckUrlParam(guestDeckText);
   const hostPage = await openFullUiPage(hostContext, `${baseUrl}/?name=${encodeURIComponent(hostName)}&deck=${hostDeck}`, hostLabel);
-  await hostPage.getByText("CREATE LOBBY").first().waitFor({ timeout: 30000 });
+  await waitForVisibleBodyText(hostPage, /CREATE LOBBY/i, "host shows create lobby", 120000);
   await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).first().click();
-  await hostPage.getByText("Host or join").waitFor({ timeout: 10000 });
+  await waitForVisibleBodyText(hostPage, /Host or join/i, "host shows lobby chooser", 120000);
   await hostPage.getByRole("button").filter({ hasText: /CREATE LOBBY/i }).last().click();
-  await hostPage.getByText("Share this code").waitFor({ timeout: 40000 });
+  await waitForVisibleBodyText(hostPage, /Share this code/i, "host creates shareable lobby", 120000);
 
   const lobbyCode = (await visibleBodyText(hostPage)).match(
     /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
@@ -978,8 +1072,10 @@ async function startFullUiPeerMatch({
     `${baseUrl}/?lobby=${encodeURIComponent(lobbyCode)}&name=${encodeURIComponent(guestName)}&deck=${guestDeck}`,
     guestLabel,
   );
-  await hostPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
-  await guestPage.getByText("All players are ready").first().waitFor({ timeout: 70000 });
+  await Promise.all([
+    waitForVisibleBodyText(hostPage, /All players are ready/i, "host sees all players ready", 120000),
+    waitForVisibleBodyText(guestPage, /All players are ready/i, "guest sees all players ready", 120000),
+  ]);
 
   await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).click();
   await hostPage.getByRole("button").filter({ hasText: /START GAME/i }).waitFor({
@@ -6441,9 +6537,11 @@ ${combinedText}`);
         );
         if (candidate?.id != null) {
           lastProgress = "submitting sacrifice selection";
-          await guestPage.evaluate(({ command }) => (
-            window.__ironsmithE2E.submitMultiplayerCommand(command, "Selected 1 object(s)")
-          ), { command: { type: "select_objects", object_ids: [Number(candidate.id)] } });
+          await submitFullUiMultiplayerCommand(
+            guestPage,
+            { type: "select_objects", object_ids: [Number(candidate.id)] },
+            "Selected 1 object(s)",
+          );
           await sleep(3000);
           continue;
         }
@@ -6590,6 +6688,516 @@ ${lastCombinedText}`);
     await closePeerServer(peerServer);
   }
 });
+
+test("full UI PeerJS Urza's Saga chapter III search puts a 0-cost artifact onto the battlefield", { timeout: 420000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "20 Urza's Saga\n20 Mishra's Bauble\n20 Mind Stone",
+      guestDeckText: "60 Lightning Bolt",
+      hostName: "Chiplis",
+      guestName: "Alice",
+      hostLabel: "host-urzas-saga-ui",
+      guestLabel: "guest-urzas-saga-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-saga-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-saga-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    let playedSaga = false;
+    let sawSearchDecision = false;
+    let submittedSearchChoice = false;
+    let baubleOnBattlefield = false;
+    let searchCandidates = null;
+    let lastCombinedText = "";
+    let lastProgress = "start";
+
+    for (let step = 0; step < 200 && !baubleOnBattlefield; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      try {
+        assertNoSyncFailureText(combinedText, "Urza's Saga search should stay synced");
+        assert.doesNotMatch(
+          combinedText,
+          /Cheat detected|hidden object reference is not legal|invalid action sequence/i,
+        );
+      } catch {
+        const dispatchEntries = (page) => (page.__peerHarnessConsole || [])
+          .filter((entry) => /worker call|synced dispatch:start|synced dispatch:failed|Cheat detected|apply_action/.test(String(entry)))
+          .slice(-120);
+        const checkpointDigest = (page) => page.evaluate(async () => {
+          const checkpoint = await window.__ironsmithE2E?.publicCheckpoint?.();
+          return {
+            battlefield: checkpoint?.battlefield,
+            stack: (checkpoint?.stack || []).map((entry) => entry.sourceName ?? entry.source_name ?? entry.objectId ?? entry.object_id),
+            visibleObjects: (checkpoint?.objects || [])
+              .filter((object) => !/library|hand/i.test(String(object.zone || "")))
+              .map((object) => ({
+                id: object.id,
+                name: object.name,
+                zone: object.zone,
+                hidden: Boolean(object.hiddenCard || object.hidden_card),
+              })),
+          };
+        }).catch((err) => ({ error: String(err?.message || err) }));
+        assert.fail(`Urza's Saga search should stay synced (progress: ${lastProgress})
+search candidates: ${JSON.stringify(searchCandidates, null, 2)}
+host checkpoint: ${JSON.stringify(await checkpointDigest(hostPage), null, 2)}
+guest checkpoint: ${JSON.stringify(await checkpointDigest(guestPage), null, 2)}
+host dispatches: ${JSON.stringify(dispatchEntries(hostPage), null, 2)}
+guest dispatches: ${JSON.stringify(dispatchEntries(guestPage), null, 2)}
+body:
+${combinedText}`);
+      }
+
+      const board = await hostPage.evaluate(() => {
+        const snap = window.__ironsmithE2E?.snapshot?.();
+        const state = snap?.state || {};
+        const hostPlayer = (state.players || []).find((p) => Number(p.id) === 0) || {};
+        const battlefield = hostPlayer.battlefield || [];
+        return {
+          sagaOnBattlefield: battlefield.some((c) => /^Urza's Saga$/i.test(String(c.name || ""))),
+          baubleOnBattlefield: battlefield.some((c) => /^Mishra's Bauble$/i.test(String(c.name || ""))),
+          decisionKind: String(state.decision?.kind || ""),
+          decisionPlayer: state.decision?.player == null ? null : Number(state.decision.player),
+          decisionDescription: String(state.decision?.description || ""),
+          decisionSource: String(state.decision?.source_name || ""),
+          decisionCandidates: (state.decisionCandidates || []).map((entry) => ({
+            id: entry.id,
+            name: entry.name,
+            legal: entry.legal,
+          })),
+        };
+      });
+
+      if (board.baubleOnBattlefield) {
+        baubleOnBattlefield = true;
+        break;
+      }
+
+      // Chapter III search: choose the 0-cost Mishra's Bauble.
+      if (
+        board.decisionKind === "select_objects"
+        && board.decisionPlayer === 0
+        && /search|library|urza's saga/i.test(`${board.decisionDescription} ${board.decisionSource}`)
+        && !/discard|bottom/i.test(board.decisionDescription)
+        && !submittedSearchChoice
+      ) {
+        sawSearchDecision = true;
+        searchCandidates = board.decisionCandidates;
+        const candidate = board.decisionCandidates.find((entry) =>
+          entry.legal !== false && /^Mishra's Bauble$/i.test(String(entry.name || ""))
+        );
+        if (candidate?.id != null) {
+          lastProgress = "submitting search choice";
+          await hostPage.evaluate(({ command }) => (
+            window.__ironsmithE2E.submitMultiplayerCommand(command, "Selected 1 object(s)")
+          ), { command: { type: "select_objects", object_ids: [Number(candidate.id)] } });
+          submittedSearchChoice = true;
+          await sleep(4000);
+          continue;
+        }
+        lastProgress = `search decision visible without a legal Bauble candidate: ${JSON.stringify(board.decisionCandidates)}`;
+        await sleep(1000);
+        continue;
+      }
+
+      // Cleanup discards (hand size 8 while goldfishing): discard any card.
+      if (
+        board.decisionKind === "select_objects"
+        && /discard|bottom/i.test(board.decisionDescription)
+        && board.decisionPlayer != null
+      ) {
+        const actorPage = board.decisionPlayer === 0 ? hostPage : guestPage;
+        const candidate = await actorPage.evaluate(() => {
+          const snap = window.__ironsmithE2E?.snapshot?.();
+          const entry = (snap?.state?.decisionCandidates || []).find((c) => c.legal !== false);
+          return entry?.id == null ? null : { id: Number(entry.id) };
+        });
+        if (candidate?.id != null) {
+          lastProgress = `discarding for player ${board.decisionPlayer}`;
+          await submitFullUiMultiplayerCommand(
+            actorPage,
+            { type: "select_objects", object_ids: [candidate.id] },
+            "Discarded 1 card",
+          );
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (!playedSaga) {
+        const result = await clickLocalButton(hostPage, "host-play-saga", /PLAY URZA.S SAGA/i);
+        if (result) {
+          playedSaga = true;
+          lastProgress = "played Urza's Saga";
+          await sleep(3000);
+          continue;
+        }
+      }
+
+      // Advance turns until chapter III triggers (two draw steps after entry).
+      const advancePattern = /KEEP HAND|PREGAME|BEGIN GAME|UPKEEP|DRAW|MAIN|COMBAT|ATTACKERS|BLOCKERS|NO ATTACKERS|DONE|M2|END|CLEAN|PASS PRIORITY|RESOLVE/i;
+      const hostAdvanced = await clickLocalButton(hostPage, "host-advance-saga", advancePattern);
+      if (hostAdvanced) {
+        await sleep(2000);
+        continue;
+      }
+      const guestAdvanced = await clickLocalButton(guestPage, "guest-advance-saga", advancePattern);
+      if (guestAdvanced) {
+        await sleep(2000);
+        continue;
+      }
+      await sleep(1000);
+    }
+
+    const failureDetail = async () => `
+progress: ${lastProgress}
+search candidates: ${JSON.stringify(searchCandidates, null, 2)}
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}
+last body:
+${lastCombinedText}`;
+    assert.equal(playedSaga, true, `expected host to play Urza's Saga\n${await failureDetail()}`);
+    assert.equal(sawSearchDecision, true, `expected Urza's Saga chapter III search decision\n${await failureDetail()}`);
+    assert.equal(submittedSearchChoice, true, `expected to choose Mishra's Bauble from the search\n${await failureDetail()}`);
+    if (!baubleOnBattlefield) {
+      assert.fail(`expected Mishra's Bauble to be put onto the battlefield\n${await failureDetail()}`);
+    }
+    await sleep(4000);
+    const settledText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(settledText, "Urza's Saga search should stay synced after resolution");
+    assert.doesNotMatch(
+      settledText,
+      /Cheat detected|hidden object reference is not legal|invalid action sequence/i,
+      "Urza's Saga search should not trip the anticheat after resolution",
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
+test("full UI PeerJS guest Urza's Saga chapter III search puts a 0-cost artifact onto the battlefield", { timeout: 900000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort, {
+    VITE_MULTIPLAYER_PLAYER_CLOCK_MS: String(60 * 60 * 1000),
+    VITE_ZIFFLE_REVEAL_TOKEN_TIMEOUT_MS_PER_CARD: String(15 * 1000),
+  });
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  const guestContext = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    const match = await startFullUiPeerMatch({
+      baseUrl,
+      hostContext,
+      guestContext,
+      hostDeckText: "60 Lightning Bolt",
+      guestDeckText: "20 Urza's Saga\n12 Mishra's Bauble\n28 Lightning Bolt",
+      hostName: "Chiplis",
+      guestName: "Alice",
+      hostLabel: "host-guest-urzas-saga-ui",
+      guestLabel: "guest-guest-urzas-saga-ui",
+    });
+    hostPage = match.hostPage;
+    guestPage = match.guestPage;
+
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+    await waitAndClickLocalButton(hostPage, "host-keep-guest-saga-test", /KEEP HAND/i, 120000);
+    await sleep(2500);
+    const guestMulligan = await clickLocalButton(guestPage, "guest-mulligan-guest-saga-test", /MULLIGAN/i);
+    if (guestMulligan) {
+      await sleep(6000);
+    }
+    const guestKeep = await clickLocalButton(guestPage, "guest-keep-guest-saga-test", /KEEP HAND/i);
+    if (guestKeep) {
+      await sleep(3000);
+    }
+    await assertNoFullUiSyncFailures(hostPage, guestPage);
+
+    let playedSaga = false;
+    let sawSearchDecision = false;
+    let submittedSearchChoice = false;
+    let baubleOnBattlefield = false;
+    let searchCandidates = null;
+    let lastCombinedText = "";
+    let lastProgress = "start";
+
+    const failureDetail = async () => `
+progress: ${lastProgress}
+search candidates: ${JSON.stringify(searchCandidates, null, 2)}
+host buttons: ${JSON.stringify(await buttonDebugText(hostPage), null, 2)}
+guest buttons: ${JSON.stringify(await buttonDebugText(guestPage), null, 2)}
+host errors: ${JSON.stringify(hostPage.__peerHarnessErrors || [], null, 2)}
+guest errors: ${JSON.stringify(guestPage.__peerHarnessErrors || [], null, 2)}
+host console: ${JSON.stringify((hostPage.__peerHarnessConsole || []).slice(-80), null, 2)}
+guest console: ${JSON.stringify((guestPage.__peerHarnessConsole || []).slice(-80), null, 2)}
+last body:
+${lastCombinedText}`;
+
+    const searchDeadlineAt = Date.now() + 8 * 60 * 1000;
+    for (let step = 0; Date.now() < searchDeadlineAt && !baubleOnBattlefield; step += 1) {
+      const hostText = await visibleBodyText(hostPage);
+      const guestText = await visibleBodyText(guestPage);
+      const combinedText = `${hostText}\n${guestText}`;
+      lastCombinedText = combinedText;
+      try {
+        assertNoSyncFailureText(combinedText, "Urza's Saga search should stay synced");
+        assert.doesNotMatch(
+          combinedText,
+          /Cheat detected|hidden object reference is not legal|invalid action sequence/i,
+        );
+      } catch {
+        const dispatchEntries = (page) => (page.__peerHarnessConsole || [])
+          .filter((entry) => /worker call|synced dispatch:start|synced dispatch:failed|Cheat detected|apply_action/.test(String(entry)))
+          .slice(-120);
+        const checkpointDigest = (page) => page.evaluate(async () => {
+          const checkpoint = await window.__ironsmithE2E?.publicCheckpoint?.();
+          return {
+            battlefield: checkpoint?.battlefield,
+            stack: (checkpoint?.stack || []).map((entry) => entry.sourceName ?? entry.source_name ?? entry.objectId ?? entry.object_id),
+            visibleObjects: (checkpoint?.objects || [])
+              .filter((object) => !/library|hand/i.test(String(object.zone || "")))
+              .map((object) => ({
+                id: object.id,
+                name: object.name,
+                zone: object.zone,
+                hidden: Boolean(object.hiddenCard || object.hidden_card),
+              })),
+          };
+        }).catch((err) => ({ error: String(err?.message || err) }));
+        assert.fail(`Urza's Saga search should stay synced (progress: ${lastProgress})
+search candidates: ${JSON.stringify(searchCandidates, null, 2)}
+host checkpoint: ${JSON.stringify(await checkpointDigest(hostPage), null, 2)}
+guest checkpoint: ${JSON.stringify(await checkpointDigest(guestPage), null, 2)}
+host dispatches: ${JSON.stringify(dispatchEntries(hostPage), null, 2)}
+guest dispatches: ${JSON.stringify(dispatchEntries(guestPage), null, 2)}
+body:
+${combinedText}`);
+      }
+
+      let board = null;
+      try {
+        board = await withRejectingTimeout(
+          guestPage.evaluate(() => {
+            const snap = window.__ironsmithE2E?.snapshot?.();
+            const state = snap?.state || {};
+            const sagaPlayer = (state.players || []).find((p) => Number(p.id) === 1) || {};
+            const battlefield = sagaPlayer.battlefield || [];
+            return {
+              sagaOnBattlefield: battlefield.some((c) => /^Urza's Saga$/i.test(String(c.name || ""))),
+              baubleOnBattlefield: battlefield.some((c) => /^Mishra's Bauble$/i.test(String(c.name || ""))),
+              stackSources: (state.stack || []).map((entry) =>
+                String(entry.source_name || entry.sourceName || entry.name || "")
+              ),
+              decisionKind: String(state.decision?.kind || ""),
+              decisionPlayer: state.decision?.player == null ? null : Number(state.decision.player),
+              decisionDescription: String(state.decision?.description || ""),
+              decisionSource: String(state.decision?.source_name || ""),
+              decisionCandidates: (state.decisionCandidates || []).map((entry) => ({
+                id: entry.id,
+                name: entry.name,
+                legal: entry.legal,
+              })),
+            };
+          }),
+          30000,
+          "guest Urza's Saga board snapshot",
+        );
+      } catch (err) {
+        assert.fail(`failed to read guest Urza's Saga board snapshot: ${String(err?.message || err)}
+${await failureDetail()}`);
+      }
+
+      if (board.baubleOnBattlefield) {
+        baubleOnBattlefield = true;
+        break;
+      }
+
+      // Chapter III search: choose the 0-cost Mishra's Bauble.
+      const searchDecisionContext = [
+        board.decisionDescription,
+        board.decisionSource,
+        board.stackSources.join(" "),
+        combinedText,
+      ].join(" ");
+      if (
+        board.decisionKind === "select_objects"
+        && board.decisionPlayer === 1
+        && /search|library|urza's saga/i.test(searchDecisionContext)
+        && !/discard|bottom/i.test(board.decisionDescription)
+        && !submittedSearchChoice
+      ) {
+        sawSearchDecision = true;
+        searchCandidates = board.decisionCandidates;
+        const candidate = board.decisionCandidates.find((entry) =>
+          entry.legal !== false && /^Mishra's Bauble$/i.test(String(entry.name || ""))
+        );
+        if (candidate?.id != null) {
+          lastProgress = "submitting search choice";
+          await submitFullUiMultiplayerCommand(
+            guestPage,
+            { type: "select_objects", object_ids: [Number(candidate.id)] },
+            "Selected 1 object(s)",
+          );
+          submittedSearchChoice = true;
+          await sleep(4000);
+          continue;
+        }
+        lastProgress = `search decision visible without a legal Bauble candidate: ${JSON.stringify(board.decisionCandidates)}`;
+        await sleep(1000);
+        continue;
+      }
+
+      // Cleanup discards (hand size 8 while goldfishing): discard any card.
+      if (
+        board.decisionKind === "select_objects"
+        && /discard|bottom/i.test(board.decisionDescription)
+        && board.decisionPlayer != null
+      ) {
+        const actorPage = board.decisionPlayer === 0 ? hostPage : guestPage;
+        let candidate = null;
+        try {
+          candidate = await withRejectingTimeout(
+            actorPage.evaluate(() => {
+              const snap = window.__ironsmithE2E?.snapshot?.();
+              const entry = (snap?.state?.decisionCandidates || []).find((c) => c.legal !== false);
+              return entry?.id == null ? null : { id: Number(entry.id) };
+            }),
+            30000,
+            `discard candidate snapshot for player ${board.decisionPlayer}`,
+          );
+        } catch (err) {
+          assert.fail(`failed to read discard candidate snapshot: ${String(err?.message || err)}
+${await failureDetail()}`);
+        }
+        if (candidate?.id != null) {
+          lastProgress = `discarding for player ${board.decisionPlayer}`;
+          await submitFullUiMultiplayerCommand(
+            actorPage,
+            { type: "select_objects", object_ids: [candidate.id] },
+            "Discarded 1 card",
+          );
+          await sleep(2500);
+          continue;
+        }
+      }
+
+      if (
+        (board.decisionKind === "attackers" || board.decisionKind === "blockers")
+        && board.decisionPlayer != null
+      ) {
+        const actorPage = board.decisionPlayer === 0 ? hostPage : guestPage;
+        const commandType = board.decisionKind === "attackers" ? "declare_attackers" : "declare_blockers";
+        lastProgress = `declaring no ${board.decisionKind} for player ${board.decisionPlayer}`;
+        await submitFullUiMultiplayerCommand(
+          actorPage,
+          { type: commandType, declarations: [] },
+          board.decisionKind === "attackers" ? "Declared 0 attacker(s)" : "Declared 0 blocker(s)",
+        );
+        await sleep(1000);
+        continue;
+      }
+
+      if (!playedSaga) {
+        const result = await clickLocalButton(guestPage, "guest-play-saga", /PLAY URZA.S SAGA/i);
+        if (result) {
+          playedSaga = true;
+          lastProgress = "played Urza's Saga (guest)";
+          await sleep(3000);
+          continue;
+        }
+      }
+
+      // Advance turns until chapter III triggers (two draw steps after entry).
+      // Once Saga is on the stack, prefer stack/priority controls over phase
+      // controls so the trigger does not sit unresolved while the game drifts.
+      const advancePages = board.decisionPlayer === 0
+        ? [
+          { page: hostPage, label: "host" },
+          { page: guestPage, label: "guest" },
+        ]
+        : [
+          { page: guestPage, label: "guest" },
+          { page: hostPage, label: "host" },
+        ];
+      let advanced = null;
+      for (const pattern of [
+        /RESOLVE|PASS PRIORITY/i,
+        /KEEP HAND|PREGAME|BEGIN GAME|UPKEEP|DRAW|MAIN|COMBAT|ATTACKERS|BLOCKERS|NO ATTACKERS|DONE|M2|END|CLEAN/i,
+      ]) {
+        for (const { page, label } of advancePages) {
+          advanced = await clickLocalButton(page, `${label}-advance-guest-saga`, pattern);
+          if (advanced) break;
+        }
+        if (advanced) break;
+      }
+      if (advanced) {
+        lastProgress = `advanced via ${advanced.text}`;
+        await sleep(2000);
+        continue;
+      }
+      await sleep(1000);
+    }
+
+    assert.equal(playedSaga, true, `expected guest to play Urza's Saga\n${await failureDetail()}`);
+    assert.equal(sawSearchDecision, true, `expected Urza's Saga chapter III search decision\n${await failureDetail()}`);
+    assert.equal(submittedSearchChoice, true, `expected to choose Mishra's Bauble from the search\n${await failureDetail()}`);
+    if (!baubleOnBattlefield) {
+      assert.fail(`expected Mishra's Bauble to be put onto the battlefield\n${await failureDetail()}`);
+    }
+    await sleep(4000);
+    const settledText = `${await visibleBodyText(hostPage)}\n${await visibleBodyText(guestPage)}`;
+    assertNoSyncFailureText(settledText, "Urza's Saga search should stay synced after resolution");
+    assert.doesNotMatch(
+      settledText,
+      /Cheat detected|hidden object reference is not legal|invalid action sequence/i,
+      "Urza's Saga search should not trip the anticheat after resolution",
+    );
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 
 test("full UI PeerJS Tainted Pact resolution reveals choices and stays synced", { timeout: 240000 }, async () => {
   const peerPort = await freePort();

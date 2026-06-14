@@ -1572,10 +1572,7 @@ const MORE_LIFE_THAN_EACH_OTHER_PLAYER_PATTERN: LexPattern<'static> = LexPattern
     LexPattern::phrase(&["more", "life", "than"]),
     LexPattern::subject(
         "player",
-        LexCaptureKind::OneOfPhrase(&[
-            &["each", "other", "player"],
-            &["each", "other", "players"],
-        ]),
+        LexCaptureKind::OneOfPhrase(&[&["each", "other", "player"], &["each", "other", "players"]]),
     ),
 ]);
 const MORE_LIFE_THAN_EACH_OPPONENT_PATTERN: LexPattern<'static> = LexPattern::new(&[

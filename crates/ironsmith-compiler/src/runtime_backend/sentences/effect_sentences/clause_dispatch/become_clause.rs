@@ -559,9 +559,9 @@ pub(crate) fn parse_become_clause(
         if all_subtypes && !subtypes.is_empty() {
             // Plain "becomes a Bird Giant" replaces the creature subtypes
             // (CR 205.1b); only an explicit "in addition ..." tail adds.
-            let creature_subtypes_only = subtypes.iter().all(|subtype| {
-                crate::types::Subtype::all_creature_types().contains(subtype)
-            });
+            let creature_subtypes_only = subtypes
+                .iter()
+                .all(|subtype| crate::types::Subtype::all_creature_types().contains(subtype));
             if !had_addition_tail && creature_subtypes_only {
                 return Ok(EffectAst::subject_verb_set_creature_subtypes(
                     target, subtypes, duration,

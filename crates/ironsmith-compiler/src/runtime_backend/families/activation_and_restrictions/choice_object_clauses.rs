@@ -1099,7 +1099,9 @@ pub(crate) fn parse_choose_card_type_then_reveal_top_and_put_chosen_to_hand(
         return Ok(None);
     }
 
-    Ok(Some(vec![compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(first, count)]))
+    Ok(Some(vec![
+        compose_reveal_top_choose_card_type_put_to_hand_rest_bottom(first, count),
+    ]))
 }
 
 /// Composes the "choose a card type, reveal the top N, put all of that type into

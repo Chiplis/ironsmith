@@ -533,9 +533,10 @@ fn compile_subject_verb_effect(
             )
         }
         SubjectVerbActionAst::Learn => Ok((vec![Effect::learn()], Vec::new())),
-        SubjectVerbActionAst::EmitKeywordAction { action, amount } => {
-            Ok((vec![Effect::emit_keyword_action(*action, *amount)], Vec::new()))
-        }
+        SubjectVerbActionAst::EmitKeywordAction { action, amount } => Ok((
+            vec![Effect::emit_keyword_action(*action, *amount)],
+            Vec::new(),
+        )),
         SubjectVerbActionAst::Amass { subtype, amount } => {
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut effect = Effect::amass(*subtype, amount);
@@ -1520,10 +1521,7 @@ fn compile_subject_verb_effect(
             } else {
                 Effect::look_at_top_cards(player_filter, count.clone(), resolved_tag)
             };
-            Ok((
-                vec![effect],
-                subject.into_choices(),
-            ))
+            Ok((vec![effect], subject.into_choices()))
         }
         SubjectVerbActionAst::PutOntoBattlefield {
             target,
@@ -1548,7 +1546,11 @@ fn compile_subject_verb_effect(
                 push_choice(&mut all_choices, choice);
             }
             Ok((
-                vec![Effect::put_onto_battlefield(spec, *tapped, controller_filter)],
+                vec![Effect::put_onto_battlefield(
+                    spec,
+                    *tapped,
+                    controller_filter,
+                )],
                 all_choices,
             ))
         }
@@ -1556,7 +1558,9 @@ fn compile_subject_verb_effect(
             let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
             let player_filter = subject.clone_player_filter();
             let mut resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
-            resolved_filter.controller.get_or_insert(player_filter.clone());
+            resolved_filter
+                .controller
+                .get_or_insert(player_filter.clone());
             Ok((
                 vec![Effect::new(crate::effects::LookAtObjectsEffect::new(
                     resolved_filter,
@@ -1809,10 +1813,8 @@ fn compile_subject_verb_effect(
                     crate::effects::PreventNextTimeDamageSource::Choice
                 }
                 PreventNextTimeDamageSourceAst::Target(target) => {
-                    let (spec, _) = resolve_target_spec_with_choices(
-                        target,
-                        &current_reference_env(ctx),
-                    )?;
+                    let (spec, _) =
+                        resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
                     crate::effects::PreventNextTimeDamageSource::Target(spec)
                 }
                 PreventNextTimeDamageSourceAst::Filter(filter) => {
@@ -1823,9 +1825,10 @@ fn compile_subject_verb_effect(
                 }
             };
             let (target_spec, mut choices) = match target {
-                PreventNextTimeDamageTargetAst::AnyTarget => {
-                    (crate::effects::PreventNextTimeDamageTarget::AnyTarget, Vec::new())
-                }
+                PreventNextTimeDamageTargetAst::AnyTarget => (
+                    crate::effects::PreventNextTimeDamageTarget::AnyTarget,
+                    Vec::new(),
+                ),
                 PreventNextTimeDamageTargetAst::You => {
                     (crate::effects::PreventNextTimeDamageTarget::You, Vec::new())
                 }
@@ -1838,17 +1841,13 @@ fn compile_subject_verb_effect(
                     )
                 }
             };
-            let mut effect = crate::effects::PreventNextTimeDamageEffect::new(
-                source_spec,
-                target_spec,
-            );
+            let mut effect =
+                crate::effects::PreventNextTimeDamageEffect::new(source_spec, target_spec);
             let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
                 (Vec::new(), Vec::new())
             } else {
-                let mut follow_up_ctx = EffectLoweringContext::from_parts(
-                    ctx.id_gen_context(),
-                    ctx.lowering_frame(),
-                );
+                let mut follow_up_ctx =
+                    EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
                 follow_up_ctx.allow_life_event_value = true;
                 let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
                 ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
@@ -1875,10 +1874,8 @@ fn compile_subject_verb_effect(
             let (follow_up_effects, follow_up_choices) = if follow_up_effects.is_empty() {
                 (Vec::new(), Vec::new())
             } else {
-                let mut follow_up_ctx = EffectLoweringContext::from_parts(
-                    ctx.id_gen_context(),
-                    ctx.lowering_frame(),
-                );
+                let mut follow_up_ctx =
+                    EffectLoweringContext::from_parts(ctx.id_gen_context(), ctx.lowering_frame());
                 follow_up_ctx.allow_life_event_value = true;
                 let compiled = compile_effects(follow_up_effects, &mut follow_up_ctx)?;
                 ctx.apply_id_gen_context(follow_up_ctx.id_gen_context());
@@ -1935,11 +1932,7 @@ fn compile_subject_verb_effect(
                             .with_follow_up_effects(follow_up_effects.clone()),
                         )
                     } else {
-                        Effect::prevent_damage(
-                            amount.clone(),
-                            spec,
-                            duration.clone(),
-                        )
+                        Effect::prevent_damage(amount.clone(), spec, duration.clone())
                     }
                 })?;
                 if !follow_up_effects.is_empty() {
@@ -2198,11 +2191,13 @@ fn compile_subject_verb_effect(
         } => {
             let object_filter = resolve_it_tag(object_filter, &current_reference_env(ctx))?;
             compile_effect_for_target(target, ctx, |spec| {
-                Effect::new(crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
-                    player_filter.clone(),
-                    object_filter.clone(),
-                    spec,
-                ))
+                Effect::new(
+                    crate::effects::RedirectAllDamageThisTurnToTargetEffect::new(
+                        player_filter.clone(),
+                        object_filter.clone(),
+                        spec,
+                    ),
+                )
             })
         }
         SubjectVerbActionAst::PutOrRemoveCounters {
@@ -2417,7 +2412,9 @@ fn compile_subject_verb_effect(
                 tag.clone()
             };
             let player_filter = match player {
-                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(ObjectRef::tagged(resolved_tag.clone())),
+                PlayerAst::ItsOwner => {
+                    PlayerFilter::OwnerOf(ObjectRef::tagged(resolved_tag.clone()))
+                }
                 PlayerAst::ItsController => {
                     PlayerFilter::ControllerOf(ObjectRef::tagged(resolved_tag.clone()))
                 }
@@ -2648,7 +2645,11 @@ fn compile_subject_verb_effect(
                 Vec::new(),
             ))
         }
-        SubjectVerbActionAst::ExileUntilSourceLeaves { target, face_down, all } => {
+        SubjectVerbActionAst::ExileUntilSourceLeaves {
+            target,
+            face_down,
+            all,
+        } => {
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             if *all && let ChooseSpec::Object(filter) = spec {
@@ -2750,14 +2751,17 @@ fn compile_subject_verb_effect(
                     };
                     Effect::new(move_back)
                 } else {
-                    let mut effect =
-                        Effect::return_from_graveyard_to_battlefield(resolved_spec.clone(), *tapped);
+                    let mut effect = Effect::return_from_graveyard_to_battlefield(
+                        resolved_spec.clone(),
+                        *tapped,
+                    );
                     if let Some(as_aura) = as_aura {
-                        let mut return_effect = crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
-                            resolved_spec.clone(),
-                            *tapped,
-                        )
-                        .as_aura(as_aura.attachment_filter.clone());
+                        let mut return_effect =
+                            crate::effects::ReturnFromGraveyardToBattlefieldEffect::new(
+                                resolved_spec.clone(),
+                                *tapped,
+                            )
+                            .as_aura(as_aura.attachment_filter.clone());
                         if as_aura.remove_all_abilities {
                             return_effect = return_effect
                                 .as_aura_removing_all_abilities(as_aura.attachment_filter.clone());
@@ -2959,9 +2963,10 @@ fn compile_subject_verb_effect(
             if *zone != Zone::Battlefield
                 && let ChooseSpec::Object(filter) = spec.base()
                 && filter.zone == Some(Zone::Exile)
-                && filter.tagged_constraints.iter().any(|constraint| {
-                    constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
-                })
+                && filter
+                    .tagged_constraints
+                    .iter()
+                    .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG)
             {
                 spec = ChooseSpec::All(filter.clone());
             }
@@ -3290,9 +3295,9 @@ fn compile_subject_verb_effect(
                     ),
                     duration.clone(),
                 )
-                .with_additional_modification(crate::continuous::Modification::AddSubtypes(
-                    subtypes.clone(),
-                )),
+                .with_additional_modification(
+                    crate::continuous::Modification::AddSubtypes(subtypes.clone()),
+                ),
             )
         }),
         SubjectVerbActionAst::BecomeSaddledUntilEndOfTurn { target } => {
@@ -3897,7 +3902,9 @@ fn compile_subject_verb_effect(
                 .ok_or_else(|| CardTextError::ParseError(format!("unsupported token '{name}'")))?;
             token
                 .abilities
-                .extend(lower_granted_abilities_ast_to_object_abilities(granted_abilities)?);
+                .extend(lower_granted_abilities_ast_to_object_abilities(
+                    granted_abilities,
+                )?);
             let subject = LoweredSubject::resolve_actor(*action_player, ctx, true, true, true)?;
             let count = subject.resolve_object_refs_and_bind_player_refs_in_value(count, ctx)?;
             let player_filter = subject.clone_player_filter();
@@ -3943,8 +3950,9 @@ fn compile_subject_verb_effect(
                 .as_ref()
                 .map(|target| resolve_target_spec_with_choices(target, &current_reference_env(ctx)))
                 .transpose()?;
-            let needs_created_tag =
-                ctx.auto_tag_object_targets || attached_to.is_some() || resolved_dynamic_pt.is_some();
+            let needs_created_tag = ctx.auto_tag_object_targets
+                || attached_to.is_some()
+                || resolved_dynamic_pt.is_some();
             let mut created_tag: Option<String> = None;
             if needs_created_tag {
                 let tag = ctx.next_tag("created");
@@ -4281,11 +4289,13 @@ fn compile_subject_verb_effect(
         SubjectVerbActionAst::GrantAbilityToSource { ability, duration } => {
             let lowered = lower_parsed_ability(ability.clone())?;
             Ok((
-                vec![Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
-                    crate::target::ChooseSpec::Source,
-                    crate::continuous::Modification::AddAbilityGeneric(lowered.into_runtime()),
-                    duration.clone(),
-                ))],
+                vec![Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        crate::target::ChooseSpec::Source,
+                        crate::continuous::Modification::AddAbilityGeneric(lowered.into_runtime()),
+                        duration.clone(),
+                    ),
+                )],
                 Vec::new(),
             ))
         }
@@ -4346,12 +4356,13 @@ fn compile_subject_verb_effect(
         }
         SubjectVerbActionAst::DealDistributedDamage { amount, target } => {
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            let (mut effects, choices) = compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
-                Effect::new(crate::effects::DealDistributedDamageEffect::new(
-                    resolved_amount.clone(),
-                    spec,
-                ))
-            })?;
+            let (mut effects, choices) =
+                compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
+                    Effect::new(crate::effects::DealDistributedDamageEffect::new(
+                        resolved_amount.clone(),
+                        spec,
+                    ))
+                })?;
             if target_is_any_damage_target(target) {
                 let tag = ctx.next_tag("damaged");
                 ctx.last_object_tag = Some(tag.clone());
@@ -4479,9 +4490,10 @@ fn compile_subject_verb_effect(
             let (mut prelude, choices) = target_context_prelude_for_filter(&resolved_filter);
             if ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("untapped");
-                prelude.push(Effect::new(
-                    crate::effects::TagMatchingObjectsEffect::new(resolved_filter.clone(), tag.clone()),
-                ));
+                prelude.push(Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+                    resolved_filter.clone(),
+                    tag.clone(),
+                )));
                 ctx.last_object_tag = Some(tag);
             }
             prelude.push(Effect::untap_all(resolved_filter));
@@ -4840,9 +4852,8 @@ fn compile_subject_verb_effect(
                 }
                 ChooseSpec::Target(inner) => match inner.unhinted() {
                     ChooseSpec::Player(filter) | ChooseSpec::PlayerOrPlaneswalker(filter) => {
-                        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(
-                            filter.clone(),
-                        )));
+                        ctx.last_player_filter =
+                            Some(PlayerFilter::Target(Box::new(filter.clone())));
                     }
                     _ => {}
                 },
@@ -4861,7 +4872,8 @@ fn compile_subject_verb_effect(
             } else {
                 spec
             };
-            let effect = tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
+            let effect =
+                tag_object_target_effect(Effect::counter(spec.clone()), &spec, ctx, "countered");
             if let Some(tag) = ctx.last_object_tag.clone() {
                 ctx.last_player_filter = Some(PlayerFilter::ControllerOf(ObjectRef::tagged(tag)));
             }
@@ -4927,14 +4939,20 @@ fn compile_subject_verb_effect(
                 .iter()
                 .enumerate()
                 .map(|(idx, counter_type)| EffectMode {
-                    description: mode_texts.get(idx).cloned().unwrap_or_else(|| {
-                        format!("Put a {} counter", counter_type.description())
-                    }),
-                    effects: vec![Effect::put_counters(*counter_type, count.clone(), spec.clone())],
+                    description: mode_texts
+                        .get(idx)
+                        .cloned()
+                        .unwrap_or_else(|| format!("Put a {} counter", counter_type.description())),
+                    effects: vec![Effect::put_counters(
+                        *counter_type,
+                        count.clone(),
+                        spec.clone(),
+                    )],
                 })
                 .collect();
 
-            let effect = tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "counters");
+            let effect =
+                tag_object_target_effect(Effect::choose_one(modes), &spec, ctx, "counters");
             let choices = if spec.is_target() {
                 vec![spec.clone()]
             } else {
@@ -4976,9 +4994,11 @@ fn compile_subject_verb_effect(
             ctx.last_effect_id = Some(id);
             let compiled = compile_tagged_effect_for_target(target, ctx, "counters", |spec| {
                 let resolved_amount = match (&resolved_amount, counter_type) {
-                    (Value::CountersOn(counter_source, amount_counter_type), Some(counter_type))
-                        if matches!(counter_source.as_ref(), ChooseSpec::Source)
-                            && amount_counter_type == &Some(*counter_type) =>
+                    (
+                        Value::CountersOn(counter_source, amount_counter_type),
+                        Some(counter_type),
+                    ) if matches!(counter_source.as_ref(), ChooseSpec::Source)
+                        && amount_counter_type == &Some(*counter_type) =>
                     {
                         Value::CountersOn(Box::new(spec.clone()), Some(*counter_type))
                     }
@@ -5069,16 +5089,15 @@ fn compile_subject_verb_effect(
             } else {
                 crate::effects::ForEachCounterKindPutOrRemoveEffect::one_kind(spec)
             };
-            Ok((
-                vec![Effect::new(effect)],
-                choices,
-            ))
+            Ok((vec![Effect::new(effect)], choices))
         }
         SubjectVerbActionAst::PutCounterOfChosenKind { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             Ok((
-                vec![Effect::new(crate::effects::PutCounterOfChosenKindEffect::new(spec))],
+                vec![Effect::new(
+                    crate::effects::PutCounterOfChosenKindEffect::new(spec),
+                )],
                 choices,
             ))
         }
@@ -5801,7 +5820,8 @@ fn compile_subject_verb_effect(
             if !follow_up_effects.is_empty() {
                 let saved_last_object_tag = ctx.last_object_tag.clone();
                 ctx.last_object_tag = Some(IT_TAG.to_string());
-                let (compiled_follow_ups, follow_up_choices) = compile_effects(follow_up_effects, ctx)?;
+                let (compiled_follow_ups, follow_up_choices) =
+                    compile_effects(follow_up_effects, ctx)?;
                 follow_ups = compiled_follow_ups;
                 for choice in follow_up_choices {
                     push_choice(&mut choices, choice);
@@ -5813,12 +5833,8 @@ fn compile_subject_verb_effect(
                 crate::effect::Until::EndOfTurn,
             )
             .with_follow_up_effects(follow_ups);
-            let effect = tag_object_target_effect(
-                Effect::new(regenerate),
-                &spec,
-                ctx,
-                "regenerated",
-            );
+            let effect =
+                tag_object_target_effect(Effect::new(regenerate), &spec, ctx, "regenerated");
             Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::RegenerateAll { filter } => {

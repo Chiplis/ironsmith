@@ -925,7 +925,8 @@ fn perform_unlock_room_door(
     decision_maker: &mut impl crate::decision::DecisionMaker,
 ) -> Result<(), ActionError> {
     validate_unlock_room_door_common(game, player, room_id)?;
-    let locked_door = room_locked_door_definition(game, room_id).ok_or(ActionError::NoSuchAbility)?;
+    let locked_door =
+        room_locked_door_definition(game, room_id).ok_or(ActionError::NoSuchAbility)?;
     let cost = adjusted_room_unlock_cost(game, player, room_id)?;
     let action_provenance = game.provenance_graph_mut().alloc_root(
         crate::provenance::ProvenanceNodeKind::EffectExecution {

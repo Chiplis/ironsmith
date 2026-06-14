@@ -594,7 +594,10 @@ pub(crate) fn compile_if_do_with_player_did(
         return Ok(Some((first_compiled, choices)));
     }
 
-    if !matches!(first, EffectAst::IfResult { .. } | EffectAst::ResolvedIfResult { .. }) {
+    if !matches!(
+        first,
+        EffectAst::IfResult { .. } | EffectAst::ResolvedIfResult { .. }
+    ) {
         let (mut first_effects, mut choices) = compile_effect(first, ctx)?;
         let id = if let Some(last) = first_effects.pop() {
             let id = ctx.next_effect_id();
@@ -611,7 +614,11 @@ pub(crate) fn compile_if_do_with_player_did(
         for choice in inner_choices {
             push_choice(&mut choices, choice);
         }
-        first_effects.push(Effect::if_then(id, EffectPredicate::Happened, inner_effects));
+        first_effects.push(Effect::if_then(
+            id,
+            EffectPredicate::Happened,
+            inner_effects,
+        ));
         return Ok(Some((first_effects, choices)));
     }
 

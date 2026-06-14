@@ -804,7 +804,9 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::PutTaggedRemainderInZone { .. }
         | SubjectVerbActionAst::CastTagged { .. }
         | SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn { .. }
-        | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn { .. }
+        | SubjectVerbActionAst::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
+            ..
+        }
         | SubjectVerbActionAst::GrantPlayTaggedUntilYourNextTurn { .. }
         | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled { .. }
         | SubjectVerbActionAst::GrantPlayTaggedForAsLongAsYouControlSource { .. }

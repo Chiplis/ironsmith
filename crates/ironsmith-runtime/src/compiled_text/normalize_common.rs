@@ -9319,7 +9319,10 @@ pub(super) fn describe_apply_continuous_clauses(
     // Type-SETTING surface: RemoveAllSubtypesOfFamily(Creature) paired with
     // AddSubtypes renders as the oracle's plain "becomes a Bird Giant"
     // (CR 205.1b replacement), not "in addition to its other types".
-    let set_creature_subtypes = match (&effect.modification, effect.additional_modifications.as_slice()) {
+    let set_creature_subtypes = match (
+        &effect.modification,
+        effect.additional_modifications.as_slice(),
+    ) {
         (
             Some(crate::continuous::Modification::RemoveAllSubtypesOfFamily(
                 crate::types::SubtypeFamily::Creature,
@@ -9329,10 +9332,7 @@ pub(super) fn describe_apply_continuous_clauses(
         _ => None,
     };
     if let Some(subtypes) = set_creature_subtypes {
-        let mut words: Vec<String> = subtypes
-            .iter()
-            .map(ToString::to_string)
-            .collect();
+        let mut words: Vec<String> = subtypes.iter().map(ToString::to_string).collect();
         if plural_target {
             if let Some(last) = words.last_mut() {
                 *last = pluralize_word(last);
@@ -10869,9 +10869,8 @@ pub(super) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't be targeted", describe_player_set_filter(filter))
         }
         crate::effect::Restriction::BeTargetedPlayerFrom(player, source_filter) => {
-            let opponent_sources_only = source_filter.controller
-                == Some(crate::target::PlayerFilter::Opponent)
-                && {
+            let opponent_sources_only =
+                source_filter.controller == Some(crate::target::PlayerFilter::Opponent) && {
                     let mut stripped = source_filter.clone();
                     stripped.controller = None;
                     stripped == ObjectFilter::default()

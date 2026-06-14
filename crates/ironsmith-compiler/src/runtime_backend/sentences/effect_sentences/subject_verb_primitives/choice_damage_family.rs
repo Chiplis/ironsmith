@@ -137,7 +137,6 @@ fn choice_damage_clause_first_is(clause: SubjectVerbPrimitiveClause<'_>, expecte
     clause.first_word().is_some_and(|word| word == expected)
 }
 
-
 fn choice_damage_alternate_target_matches(clause: SubjectVerbPrimitiveClause<'_>) -> bool {
     let alt_target_words = clause.word_refs();
     word_slice_eq_any(&alt_target_words, THEM_OR_THAT_PLAYER_PHRASES)

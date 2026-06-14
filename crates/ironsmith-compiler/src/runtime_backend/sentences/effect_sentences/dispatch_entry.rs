@@ -2434,7 +2434,10 @@ fn time_travel_effect_ast() -> EffectAst {
         .with_counter_type(crate::object::CounterType::Time);
     let target = TargetAst::Object(
         ObjectFilter {
-            any_of: vec![permanent_with_time_counter, suspended_card_with_time_counter],
+            any_of: vec![
+                permanent_with_time_counter,
+                suspended_card_with_time_counter,
+            ],
             ..ObjectFilter::default()
         },
         None,
@@ -3218,7 +3221,9 @@ pub(crate) fn replace_it_target(effect: &mut EffectAst, target: &TargetAst) {
                 destination_target,
                 ..
             } => {
-                for effect_target in protected_target.iter_mut().chain(destination_target.iter_mut())
+                for effect_target in protected_target
+                    .iter_mut()
+                    .chain(destination_target.iter_mut())
                 {
                     if should_replace_self_replacement_target(effect_target) {
                         *effect_target = target.clone();

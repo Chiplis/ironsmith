@@ -3088,9 +3088,7 @@ impl GameState {
         ability: crate::static_abilities::StaticAbilityId,
     ) {
         self.grant_temporary_static_ability_payload_to_object_until_end_of_turn(
-            object_id,
-            ability,
-            None,
+            object_id, ability, None,
         );
     }
 
@@ -7034,7 +7032,10 @@ impl GameState {
         payment_source: Option<ObjectId>,
         reason: crate::costs::PaymentReason,
     ) -> bool {
-        unit.restrictions.iter().all(|restriction| match restriction {
+        unit.restrictions
+            .iter()
+            .all(|restriction| {
+                match restriction {
             crate::ability::ManaUsageRestriction::CastSpell {
                 card_types,
                 subtype_requirement,
@@ -7113,7 +7114,8 @@ impl GameState {
                         .is_some_and(|source_obj| source_obj.zone != Zone::Stack)
                 })
             }
-        })
+        }
+            })
     }
 
     fn remove_unpayable_restricted_mana_from_pool(
@@ -7175,11 +7177,7 @@ impl GameState {
             }
             for (idx, unit) in player.restricted_mana.iter().enumerate() {
                 if unit.symbol == symbol
-                    && self.restricted_mana_unit_is_payable_for_reason(
-                        unit,
-                        payment_source,
-                        reason,
-                    )
+                    && self.restricted_mana_unit_is_payable_for_reason(unit, payment_source, reason)
                 {
                     indices.push(idx);
                     restricted_to_remove -= 1;
@@ -7295,7 +7293,8 @@ impl GameState {
             return true;
         }
         let (paid, life_to_pay, payment_pool, spent_restricted) = {
-            let Some(before_pool) = self.player(payer).map(|player| player.mana_pool.clone()) else {
+            let Some(before_pool) = self.player(payer).map(|player| player.mana_pool.clone())
+            else {
                 return false;
             };
             let mut payment_pool = before_pool.clone();

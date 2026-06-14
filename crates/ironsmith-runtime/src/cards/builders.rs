@@ -11333,8 +11333,9 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
 
         let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
         assert!(
-            rendered
-                .contains("Detain all nonland permanents with mana value 4 or less your opponents control"),
+            rendered.contains(
+                "Detain all nonland permanents with mana value 4 or less your opponents control"
+            ),
             "expected detain each rendering, got {rendered}"
         );
     }
