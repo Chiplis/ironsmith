@@ -2627,6 +2627,234 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
   }
 });
 
+test("PeerJS Trusted peers import host checkpoints after guest reconnect and host takeover", { timeout: 90000 }, async () => {
+  const peerPort = await freePort();
+  const peerServer = await startPeerServer(peerPort);
+  const { vite, baseUrl } = await startHarnessServer(peerPort);
+  const browser = await chromium.launch();
+  const hostContext = await browser.newContext();
+  const guestContext = await browser.newContext();
+  let hostPage = null;
+  let guestPage = null;
+
+  try {
+    hostPage = await openHarness(hostContext, baseUrl, "trusted-host");
+    guestPage = await openHarness(guestContext, baseUrl, "trusted-guest");
+
+    await hostPage.evaluate((deckText) => {
+      window.__peerHarness.createLobby({
+        name: "Host",
+        desiredPlayers: 2,
+        startingLife: 20,
+        securityMode: "trusted",
+        deckText,
+      });
+    }, HOST_DECK);
+
+    const hostLobby = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.mode === "lobby"
+        && snap.multiplayer.lobbyId
+        && snap.multiplayer.securityMode === "trusted",
+      "trusted host creates a lobby",
+    );
+    const lobbyId = hostLobby.multiplayer.lobbyId;
+
+    await guestPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId: targetLobby,
+        deckText,
+      });
+    }, { lobbyId, deckText: GUEST_DECK });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.canStartHostedMatch
+        && snap.multiplayer.players.length === 2
+        && snap.multiplayer.players.every((player) => player.connected !== false),
+      "trusted peers join and are ready",
+    );
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.localPlayerIndex === 1
+        && snap.multiplayer.mode === "lobby"
+        && snap.multiplayer.securityMode === "trusted",
+      "trusted guest is assigned player 2",
+    );
+
+    await hostPage.evaluate(() => window.__peerHarness.startHostedMatch());
+    const hostStart = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.securityMode === "trusted",
+      "trusted host starts match",
+    );
+    const guestStart = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.securityMode === "trusted",
+      "trusted guest receives match start",
+    );
+    assert.equal(hostStart.visibleState.perspective, hostStart.multiplayer.localPlayerIndex);
+    assert.equal(guestStart.visibleState.perspective, guestStart.multiplayer.localPlayerIndex);
+    assert.equal(hostStart.visibleState.decision.player, guestStart.visibleState.decision.player);
+    assert.equal(hostStart.visibleState.decision.player, 0);
+
+    await hostPage.evaluate(() => {
+      window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: {
+          kind: "test_priority_action",
+          actor: 0,
+          sequence: 0,
+        },
+      }, "trusted host action");
+    });
+
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1,
+      "trusted host applies action 1",
+    );
+    const guestAfterAction = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.lastAppliedSequence === 1
+        && syncedCommandEvents(snap).length === 1,
+      "trusted guest applies normal apply_action locally",
+    );
+    assert.equal(
+      checkpointImportEvents(guestAfterAction).length,
+      0,
+      "normal trusted apply_action should not import a host checkpoint",
+    );
+
+    await guestPage.close();
+    guestPage = null;
+    await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.players.some((player) => Number(player.index) === 1 && player.connected === false),
+      "trusted host marks disconnected guest offline",
+    );
+
+    guestPage = await openHarness(guestContext, baseUrl, "trusted-guest-reconnect");
+    await guestPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Guest",
+        lobbyId: targetLobby,
+        deckText,
+      });
+    }, { lobbyId, deckText: GUEST_DECK });
+
+    const guestResync = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.securityMode === "trusted"
+        && snap.multiplayer.localPlayerIndex === 1
+        && snap.multiplayer.lastAppliedSequence === 1
+        && checkpointImportEvents(snap).length >= 1
+        && snap.statusEvents.some((event) => event.message.includes("Resynced with trusted host at action 1")),
+      "trusted guest reconnect imports host checkpoint",
+    );
+    assert.equal(guestResync.visibleState.snapshot_id, 1);
+    assert.equal(guestResync.visibleState.perspective, 1);
+    assert.equal(guestResync.visibleState.players[0].battlefield.length, 1);
+    assert.ok(
+      checkpointImportEvents(guestResync).length >= 1,
+      "trusted reconnect should import the host checkpoint instead of replaying signed actions",
+    );
+
+    await hostPage.close();
+    hostPage = null;
+    const promotedGuest = await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.role === "host"
+        && snap.multiplayer.securityMode === "trusted"
+        && snap.multiplayer.hostPeerId === lobbyId
+        && snap.multiplayer.localPeerId === lobbyId,
+      "trusted guest takes over as host after original host disconnects",
+      30000,
+    );
+    assert.equal(promotedGuest.multiplayer.localPlayerIndex, 1);
+
+    await sleep(2500);
+    hostPage = await openHarness(hostContext, baseUrl, "trusted-host-reconnect");
+    await hostPage.evaluate(({ lobbyId: targetLobby, deckText }) => {
+      window.__peerHarness.joinLobby({
+        name: "Host",
+        lobbyId: targetLobby,
+        deckText,
+      });
+    }, { lobbyId, deckText: HOST_DECK });
+
+    const hostResync = await waitForSnapshot(
+      hostPage,
+      (snap) => snap.multiplayer.matchStarted
+        && snap.multiplayer.securityMode === "trusted"
+        && snap.multiplayer.role === "client"
+        && snap.multiplayer.localPlayerIndex === 0
+        && snap.multiplayer.lastAppliedSequence === 1
+        && checkpointImportEvents(snap).length >= 1
+        && snap.statusEvents.some((event) => event.message.includes("Resynced with trusted host at action 1")),
+      "original host reconnects to trusted promoted host and imports checkpoint",
+      30000,
+    );
+    assert.equal(hostResync.visibleState.snapshot_id, 1);
+    assert.equal(hostResync.visibleState.perspective, 0);
+    assert.equal(hostResync.visibleState.players[0].battlefield.length, 1);
+    assert.ok(
+      checkpointImportEvents(hostResync).length >= 1,
+      "trusted host takeover resync should import the promoted host checkpoint",
+    );
+
+    await waitForSnapshot(
+      guestPage,
+      (snap) => snap.multiplayer.players.some((player) => Number(player.index) === 0 && player.connected !== false),
+      "trusted promoted host marks original host reconnected",
+    );
+
+    await guestPage.evaluate(async () => {
+      const snap = await window.__peerHarness.snapshot();
+      const action = snap.visibleState?.decision?.actions?.[0];
+      if (!action?.action_ref) {
+        throw new Error("trusted promoted guest has no action after original host reconnect");
+      }
+      return window.__peerHarness.submitMultiplayerCommand({
+        type: "priority_action",
+        action_ref: action.action_ref,
+      }, "trusted promoted guest action after host reconnect");
+    });
+
+    const afterPromotedGuestAction = await Promise.all([
+      waitForSnapshot(
+        hostPage,
+        (snap) => snap.multiplayer.lastAppliedSequence === 2
+          && snap.visibleState?.snapshot_id === 2,
+        "trusted original host accepts promoted host action",
+        30000,
+      ),
+      waitForSnapshot(
+        guestPage,
+        (snap) => snap.multiplayer.lastAppliedSequence === 2
+          && snap.visibleState?.snapshot_id === 2,
+        "trusted promoted host applies its action",
+        30000,
+      ),
+    ]);
+    assert.equal(afterPromotedGuestAction[0].visibleState.players[0].battlefield.length, 2);
+
+    assertNoPageErrors(hostPage, guestPage);
+  } finally {
+    await withTimeout(Promise.allSettled([
+      hostContext.close(),
+      guestContext.close(),
+      browser.close(),
+    ]), 10000);
+    await withTimeout(vite.close(), 10000);
+    await closePeerServer(peerServer);
+  }
+});
+
 test("PeerJS four browser peers join, start, relay actions, and flag a silent add-card cheat", { timeout: 120000 }, async () => {
   const peerPort = await freePort();
   const peerServer = await startPeerServer(peerPort);

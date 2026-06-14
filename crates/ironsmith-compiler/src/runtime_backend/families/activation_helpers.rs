@@ -1,5 +1,5 @@
 use crate::effect::Value;
-use crate::host::{CardTextError, EffectAst, OwnedLexToken, PlayerAst, SubjectAst};
+use crate::host::{CardTextError, EffectAst, IT_TAG, OwnedLexToken, PlayerAst, SubjectAst, TagKey};
 use crate::mana::ManaSymbol;
 use crate::target::ObjectFilter;
 
@@ -32,6 +32,26 @@ pub(crate) use super::util::{
 pub(crate) use super::value_helpers::{
     parse_equal_to_aggregate_filter_value, parse_filter_comparison_tokens,
 };
+
+const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
+
+fn bind_revealed_this_way_count_to_last_object(value: Value) -> Value {
+    match value {
+        Value::Count(mut filter) => {
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == PUBLIC_REVEALED_TAG {
+                    constraint.tag = TagKey::from(IT_TAG);
+                }
+            }
+            Value::Count(filter)
+        }
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_revealed_this_way_count_to_last_object(*value)),
+            hints,
+        },
+        other => other,
+    }
+}
 
 fn push_unique_color(colors: &mut Vec<crate::color::Color>, color: crate::color::Color) {
     crate::slice_primitives::push_unique(colors, color);
@@ -306,6 +326,7 @@ pub(crate) fn parse_add_mana(
             ));
         }
         if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            let amount = bind_revealed_this_way_count_to_last_object(amount);
             return Ok(EffectAst::subject_verb_add_mana_chosen_color(
                 player, amount, None,
             ));
@@ -403,7 +424,7 @@ pub(crate) fn parse_add_mana(
             && word_slice_ends_with(tail_words.as_slice(), FOR_EACH_REMOVED_THIS_WAY_SUFFIX)
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
-            amount = dynamic_amount;
+            amount = bind_revealed_this_way_count_to_last_object(dynamic_amount);
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -492,6 +513,7 @@ pub(crate) fn parse_add_mana(
                     clause_words.join(" ")
                 ))
             })?;
+            let amount = bind_revealed_this_way_count_to_last_object(amount);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,
             ));

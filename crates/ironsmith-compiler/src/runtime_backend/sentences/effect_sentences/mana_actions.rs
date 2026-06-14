@@ -53,6 +53,25 @@ const MANA_OPTION_SEPARATOR_WORDS: &[&str] = &[
     "and", "or", "and/or", "mana", "to", "your", "their", "its", "pool",
 ];
 const COLOR_OR_COLORS_WORDS: &[&str] = &["color", "colors"];
+const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
+
+fn bind_revealed_this_way_count_to_last_object(value: Value) -> Value {
+    match value {
+        Value::Count(mut filter) => {
+            for constraint in &mut filter.tagged_constraints {
+                if constraint.tag.as_str() == PUBLIC_REVEALED_TAG {
+                    constraint.tag = TagKey::from(IT_TAG);
+                }
+            }
+            Value::Count(filter)
+        }
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_revealed_this_way_count_to_last_object(*value)),
+            hints,
+        },
+        other => other,
+    }
+}
 
 fn mana_token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
     token.as_word().is_some() && token.parser_text() == expected
@@ -182,6 +201,7 @@ pub(crate) fn parse_add_mana(
             ));
         }
         if let Some(amount) = parse_dynamic_cost_modifier_value(tail_tokens)? {
+            let amount = bind_revealed_this_way_count_to_last_object(amount);
             return Ok(EffectAst::subject_verb_add_mana_chosen_color(
                 player, amount, None,
             ));
@@ -290,7 +310,7 @@ pub(crate) fn parse_add_mana(
             && word_slice_ends_with_any(&tail_words, &[FOR_EACH_REMOVED_THIS_WAY_SUFFIX])
             && let Some(dynamic_amount) = parse_dynamic_cost_modifier_value(tail_tokens)?
         {
-            amount = dynamic_amount;
+            amount = bind_revealed_this_way_count_to_last_object(dynamic_amount);
             if any_type {
                 return Err(CardTextError::ParseError(format!(
                     "unsupported any-type mana clause without producer filter (clause: '{}')",
@@ -383,6 +403,7 @@ pub(crate) fn parse_add_mana(
                     crate::runtime_backend::token_word_refs(tokens).join(" ")
                 ))
             })?;
+            let amount = bind_revealed_this_way_count_to_last_object(amount);
             parser_trace_stack("parse_add_mana:scaled", tokens);
             return Ok(EffectAst::subject_verb_add_mana_scaled(
                 player, mana, amount,

@@ -445,12 +445,9 @@ fn tokens_start_with_trigger_intro_surface(tokens: &[OwnedLexToken]) -> bool {
     tokens.first().is_some_and(token_is_trigger_intro_surface)
 }
 
+#[rustfmt::skip]
 fn tokens_mention_becomes_tapped_during_your_turn(tokens: &[OwnedLexToken]) -> bool {
-    let hit = word_slice_contains_phrase(
-        &token_word_refs(tokens),
-        BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE,
-    );
-    hit
+    word_slice_contains_phrase(&token_word_refs(tokens), BECOMES_TAPPED_DURING_YOUR_TURN_PHRASE)
 }
 
 fn do_this_frequency_surface_from_tokens(tokens: &[OwnedLexToken]) -> Option<u32> {
@@ -472,11 +469,9 @@ fn tokens_start_with_level_up(tokens: &[OwnedLexToken]) -> bool {
     word_slice_starts_with(&token_word_refs(tokens), &["level", "up"])
 }
 
+#[rustfmt::skip]
 fn tokens_match_each_player_and_their_creatures_damage(tokens: &[OwnedLexToken]) -> bool {
-    word_slice_contains_any_phrase(
-        &token_word_refs(tokens),
-        DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES,
-    )
+    word_slice_contains_any_phrase(&token_word_refs(tokens), DAMAGE_TO_EACH_PLAYER_CREATURES_PHRASES)
 }
 
 fn tokens_match_blocks_or_blocked_first_strike(tokens: &[OwnedLexToken]) -> bool {

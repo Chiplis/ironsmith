@@ -492,6 +492,7 @@ pub(crate) fn parse_exile(
     })
 }
 
+#[rustfmt::skip]
 fn parse_attached_object_exile_bundle(
     tokens: &[OwnedLexToken],
     face_down: bool,
@@ -532,11 +533,7 @@ fn parse_attached_object_exile_bundle(
     {
         return Ok(None);
     }
-    let it = word_slice_eq(
-        &crate::runtime_backend::token_word_refs(attachment_target_tokens),
-        &["it"],
-    );
-    if !it {
+    if !word_slice_eq(&crate::runtime_backend::token_word_refs(attachment_target_tokens), &["it"]) {
         return Ok(None);
     }
 
