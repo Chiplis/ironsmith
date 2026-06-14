@@ -186,6 +186,29 @@ const REVEALED_PICK_ON_TOP_LIBRARY_PREFIXES: &[&[&str]] = &[
     &["and", "put", "that", "card", "on", "top"],
     &["put", "that", "card", "on", "top"],
 ];
+const CHOSEN_NONLAND_BATTLEFIELD_PHRASE: &[&str] = &[
+    "all",
+    "nonland",
+    "cards",
+    "chosen",
+    "this",
+    "way",
+    "onto",
+    "the",
+    "battlefield",
+];
+const CHOSEN_LAND_BATTLEFIELD_TAPPED_PHRASE: &[&str] = &[
+    "all",
+    "land",
+    "cards",
+    "chosen",
+    "this",
+    "way",
+    "onto",
+    "the",
+    "battlefield",
+    "tapped",
+];
 const PUT_ONE_HAND_BOTTOM_EXILE_PREFIX: &[&str] =
     &["put", "one", "of", "them", "into", "your", "hand"];
 const PUT_ONE_HAND_BOTTOM_EXILE_BOTTOM_PHRASES: &[&[&str]] = &[
@@ -977,11 +1000,14 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
-    let Some((choice_count, count_stripped_tokens)) =
+    let Some((mut choice_count, count_stripped_tokens)) =
         looked_cards_choice_count(&action_tokens[..filter_end])
     else {
         return Ok(None);
     };
+    if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
+        choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
+    }
     let filter = if let Some(filter) =
         effect_sentences::parse_looked_card_choice_filter(&count_stripped_tokens)
     {
@@ -1157,12 +1183,12 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     });
 
     let mut effects = vec![if source_zone == Zone::Library {
-        EffectAst::ChooseObjects {
+        EffectAst::ChooseTaggedObjectsInZone {
             filter,
             count: choice_count,
-            count_value: None,
             player: chooser,
             tag: chosen_tag.clone(),
+            zone: Zone::Library,
         }
     } else {
         EffectAst::ChooseObjectsAcrossZones {
@@ -1228,6 +1254,120 @@ pub(crate) fn compose_choose_from_looked_cards_into_hand_rest_into_graveyard(
     }
 
     effects
+}
+
+fn parse_any_number_revealed_this_way_choice(
+    tokens: &[OwnedLexToken],
+) -> Option<(ChoiceCount, ObjectFilter)> {
+    let choice_tokens = trim_commas(tokens);
+    let choice_words = TokenWordView::new(&choice_tokens);
+    if !choice_words.first_is("choose") {
+        return None;
+    }
+    let tail_start = choice_words.token_index_after_words(1)?;
+    let tail_tokens = trim_commas(&choice_tokens[tail_start..]);
+    let Some((count, count_used)) = parse_choice_count_token_prefix_consumed(&tail_tokens) else {
+        return None;
+    };
+    if count != ChoiceCount::any_number() {
+        return None;
+    }
+
+    let after_count = trim_commas(&tail_tokens[count_used..]);
+    let after_count_words = TokenWordView::new(&after_count);
+    let revealed_idx =
+        word_slice_find_phrase_start(&after_count_words.word_refs(), &["revealed", "this", "way"])?;
+    if after_count_words.word_refs()[revealed_idx..] != ["revealed", "this", "way"] {
+        return None;
+    }
+    let filter_end = after_count_words
+        .token_index_for_word_index(revealed_idx)
+        .unwrap_or(after_count.len());
+    let filter_tokens = trim_commas(&after_count[..filter_end]);
+    let mut filter = effect_sentences::parse_looked_card_choice_filter(&filter_tokens)?;
+    effect_sentences::normalize_search_library_filter(&mut filter);
+    filter.zone = None;
+    Some((count, filter))
+}
+
+fn chosen_land_nonland_split_bottom_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    word_slice_starts_with(&words, PUT_REST_GRAVEYARD_PREFIXES[0])
+        && word_slice_contains_phrase(&words, CHOSEN_NONLAND_BATTLEFIELD_PHRASE)
+        && word_slice_contains_phrase(&words, CHOSEN_LAND_BATTLEFIELD_TAPPED_PHRASE)
+        && word_slice_contains_all_words(&words, &["rest", "bottom", "library"])
+        && effect_sentences::parse_consult_remainder_order(&words)
+            == Some(crate::cards::builders::LibraryBottomOrderAst::Random)
+}
+
+pub(crate) fn parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((player, count, true)) =
+        parse_top_cards_view_sentence(sentences[sentence_idx].lowered())
+    else {
+        return Ok(None);
+    };
+    let Some((choice_count, mut filter)) =
+        parse_any_number_revealed_this_way_choice(sentences[sentence_idx + 1].lowered())
+    else {
+        return Ok(None);
+    };
+    if !filter.card_types.contains(&CardType::Land) {
+        return Ok(None);
+    }
+    if !chosen_land_nonland_split_bottom_sentence(sentences[sentence_idx + 2].lowered()) {
+        return Ok(None);
+    }
+
+    let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "revealed");
+    let chosen_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "chosen");
+    filter.zone = Some(Zone::Library);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: revealed_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    let land_filter = ObjectFilter {
+        card_types: vec![CardType::Land],
+        ..Default::default()
+    };
+    let iterated = TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None);
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_top_cards(player, count, revealed_tag.clone()),
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count: choice_count,
+            player,
+            tag: chosen_tag.clone(),
+            zone: Zone::Library,
+        },
+        EffectAst::ForEachTagged {
+            tag: chosen_tag.clone(),
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::ItMatches(land_filter),
+                if_true: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    player,
+                    iterated.clone(),
+                    true,
+                    ReturnControllerAst::Preserve,
+                )],
+                if_false: vec![EffectAst::subject_verb_put_onto_battlefield(
+                    player,
+                    iterated,
+                    false,
+                    ReturnControllerAst::Preserve,
+                )],
+            }],
+        },
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            revealed_tag,
+            Some(chosen_tag),
+            crate::cards::builders::LibraryBottomOrderAst::Random,
+            player,
+        ),
+    ]))
 }
 
 /// Composes the "for each card type, put a card of that type from among the

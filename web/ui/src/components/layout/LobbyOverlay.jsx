@@ -20,6 +20,11 @@ import {
   parseCommanderList,
   parseDeckList,
 } from "@/lib/decklists";
+import {
+  MULTIPLAYER_SECURITY_TRUSTED,
+  MULTIPLAYER_SECURITY_VERIFIED,
+  normalizeMultiplayerSecurityMode,
+} from "@/lib/multiplayer-security";
 
 const pill =
   "stone-pill inline-flex items-center justify-center rounded-none px-3 py-2 text-[13px] font-semibold uppercase tracking-[0.18em] transition-all select-none";
@@ -37,11 +42,35 @@ const panelClass = "lobby-sheet-panel fantasy-sheet-section grid gap-4 p-4";
 const infoTextClass = "grid gap-1 text-[13px] leading-6 text-muted-foreground";
 const modeTabClass =
   "stone-pill inline-flex items-center justify-center rounded-none px-4 py-2 text-[13px] font-semibold uppercase tracking-[0.18em] transition-all";
+const securityModeOptions = [
+  {
+    value: MULTIPLAYER_SECURITY_TRUSTED,
+    label: "Trusted",
+    description: "Fast friend-table mode with open decklists and no cryptographic anticheat.",
+  },
+  {
+    value: MULTIPLAYER_SECURITY_VERIFIED,
+    label: "Verified",
+    description: "Cryptographic deck, hidden-info, and action verification with more setup time.",
+  },
+];
 
 function formatName(format) {
   return normalizeMatchFormat(format) === MATCH_FORMAT_COMMANDER
     ? "Commander"
     : "Normal";
+}
+
+function securityModeName(mode) {
+  return normalizeMultiplayerSecurityMode(mode) === MULTIPLAYER_SECURITY_VERIFIED
+    ? "Verified"
+    : "Trusted";
+}
+
+function securityModeSummary(mode) {
+  return normalizeMultiplayerSecurityMode(mode) === MULTIPLAYER_SECURITY_VERIFIED
+    ? "Cryptographic anticheat and hidden-info proofs are enabled."
+    : "Open decklists are used; cryptographic anticheat is off.";
 }
 
 function commanderDeckTarget(commanderCount) {
@@ -126,6 +155,9 @@ export default function LobbyOverlay({
   const [joinName, setJoinName] = useState(String(initialJoinName || defaultName));
   const [joinCode, setJoinCode] = useState(String(initialJoinCode || ""));
   const [desiredPlayers, setDesiredPlayers] = useState(2);
+  const [createSecurityMode, setCreateSecurityMode] = useState(
+    MULTIPLAYER_SECURITY_TRUSTED
+  );
   const [startingLife, setStartingLife] = useState(() => {
     const initialLife = Math.max(1, Number(defaultStartingLife) || 20);
     const normalizedFormat = normalizeMatchFormat(initialCreateFormat);
@@ -155,6 +187,7 @@ export default function LobbyOverlay({
   ).length;
   const slotsRemaining = Math.max(0, multiplayer.desiredPlayers - connectedPlayers);
   const activeFormat = normalizeMatchFormat(multiplayer.format);
+  const activeSecurityMode = normalizeMultiplayerSecurityMode(multiplayer.securityMode);
   const createDeckCount = useMemo(
     () => parseDeckList(createDeckText).length,
     [createDeckText]
@@ -216,6 +249,7 @@ export default function LobbyOverlay({
       desiredPlayers,
       startingLife,
       format: createFormat,
+      securityMode: createSecurityMode,
       deckText: createDeckText,
       commanderText: createCommanderText,
     });
@@ -337,6 +371,39 @@ export default function LobbyOverlay({
                         </select>
                       </label>
                     </div>
+                    <fieldset className="grid gap-2">
+                      <legend className="text-[12px] uppercase tracking-[0.18em] text-muted-foreground">
+                        Multiplayer Mode
+                      </legend>
+                      <div className="grid gap-2 md:grid-cols-2">
+                        {securityModeOptions.map((option) => {
+                          const selected = createSecurityMode === option.value;
+                          return (
+                            <label
+                              key={option.value}
+                              className={`lobby-sheet-panel fantasy-sheet-section grid cursor-pointer gap-2 p-3 transition-all ${
+                                selected ? "brightness-125" : "opacity-75"
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                className="sr-only"
+                                name="create-security-mode"
+                                value={option.value}
+                                checked={selected}
+                                onChange={() => setCreateSecurityMode(option.value)}
+                              />
+                              <span className="text-[13px] font-semibold uppercase tracking-[0.18em] text-foreground">
+                                {option.label}
+                              </span>
+                              <span className="text-[13px] leading-5 text-muted-foreground">
+                                {option.description}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </fieldset>
                     <label className={labelClass}>
                       Main Deck
                       <textarea
@@ -375,6 +442,8 @@ export default function LobbyOverlay({
                       {createFormat === MATCH_FORMAT_COMMANDER ? (
                         <span>Commander(s): {createCommanderCount}/1-2</span>
                       ) : null}
+                      <span>Mode: {securityModeName(createSecurityMode)}</span>
+                      <span>{securityModeSummary(createSecurityMode)}</span>
                       <span>{formatDeckRequirement(createFormat)}</span>
                       <span>
                         The host can start the match once every seat is filled and ready.
@@ -497,6 +566,12 @@ export default function LobbyOverlay({
                   </p>
                   <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">
                     Signaling: {multiplayer.signalingServer || "0.peerjs.com:443"}
+                  </p>
+                  <p className="text-[12px] uppercase tracking-[0.18em] text-[#c3a774]">
+                    Mode: {securityModeName(activeSecurityMode)}
+                  </p>
+                  <p className="text-[13px] text-muted-foreground">
+                    {securityModeSummary(activeSecurityMode)}
                   </p>
                 </div>
 

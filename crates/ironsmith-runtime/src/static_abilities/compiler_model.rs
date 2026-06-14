@@ -226,6 +226,12 @@ impl StaticAbility {
             Some(StaticAbilityId::ChooseColorAsBecomesAttached) => {
                 Self::choose_color_as_becomes_attached(label)
             }
+            Some(StaticAbilityId::RevealFromHandAsEnters) => Self::reveal_from_hand_as_enters(
+                crate::target::ObjectFilter::default(),
+                crate::ChoiceCount::any_number(),
+                true,
+                label,
+            ),
             Some(StaticAbilityId::ChoosePowerToughnessAsEntersOrTurnsFaceUp) => {
                 Self::rule_fallback_text(label)
             }

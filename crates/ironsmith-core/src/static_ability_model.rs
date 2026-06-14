@@ -1,11 +1,11 @@
 use std::any::Any;
 
 use crate::{
-    Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType, Color,
-    ColorSet, Condition, CostComponent, CounterType, DamagedBySource, DerivedAlternativeCast,
-    GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission, ObjectFilter,
-    PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype, SubtypeFamily, Supertype,
-    TotalCost, TriggeredAbility, Value, Zone,
+    Ability, AbilityKind, ActivatedAbility, AlternativeCastingMethod, AnthemValue, CardType,
+    ChoiceCount, Color, ColorSet, Condition, CostComponent, CounterType, DamagedBySource,
+    DerivedAlternativeCast, GrantSpec, Grantable, KeywordActionKind, ManaCost, ManaSpendPermission,
+    ObjectFilter, PlayerFilter, ProtectionFrom, Restriction, StaticAbilityId, Subtype,
+    SubtypeFamily, Supertype, TotalCost, TriggeredAbility, Value, Zone,
 };
 
 type AbilityModel<T, E, C, Cond> = Ability<StaticAbility<T, E, C, Cond>, T, E, C>;
@@ -403,6 +403,12 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
     },
     ChoosePlayerAsEnters(String),
     NoteLifeTotalAsEnters(String),
+    RevealFromHandAsEnters {
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        optional: bool,
+        display: String,
+    },
     ChooseCardNameAsEnters {
         display: String,
         reveal_opponents_hands: bool,
@@ -1270,6 +1276,17 @@ where
             StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbilityPayload::NoteLifeTotalAsEnters(display)
             }
+            StaticAbilityPayload::RevealFromHandAsEnters {
+                filter,
+                count,
+                optional,
+                display,
+            } => StaticAbilityPayload::RevealFromHandAsEnters {
+                filter,
+                count,
+                optional,
+                display,
+            },
             StaticAbilityPayload::ChooseCardNameAsEnters {
                 display,
                 reveal_opponents_hands,
@@ -3419,6 +3436,24 @@ impl<
             id: Some(StaticAbilityId::NoteLifeTotalAsEnters),
             label: display.clone(),
             payload: StaticAbilityPayload::NoteLifeTotalAsEnters(display),
+        }
+    }
+    pub fn reveal_from_hand_as_enters(
+        filter: ObjectFilter,
+        count: ChoiceCount,
+        optional: bool,
+        display: impl Into<String>,
+    ) -> Self {
+        let display = display.into();
+        Self {
+            id: Some(StaticAbilityId::RevealFromHandAsEnters),
+            label: display.clone(),
+            payload: StaticAbilityPayload::RevealFromHandAsEnters {
+                filter,
+                count,
+                optional,
+                display,
+            },
         }
     }
     pub fn choose_card_name_as_enters(display: impl Into<String>) -> Self {

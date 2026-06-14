@@ -532,7 +532,10 @@ fn parse_attached_object_exile_bundle(
     {
         return Ok(None);
     }
-    let it = word_slice_eq(&crate::runtime_backend::token_word_refs(attachment_target_tokens), &["it"]);
+    let it = word_slice_eq(
+        &crate::runtime_backend::token_word_refs(attachment_target_tokens),
+        &["it"],
+    );
     if !it {
         return Ok(None);
     }

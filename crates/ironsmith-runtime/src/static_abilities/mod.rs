@@ -642,6 +642,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Returns info for "as this enters, reveal cards from your hand" abilities.
+    fn reveal_from_hand_as_enters(&self) -> Option<RevealFromHandAsEntersSpec> {
+        None
+    }
+
     /// Returns info for "as this enters, choose a card name" abilities.
     fn card_name_choice_as_enters(&self) -> Option<ChooseCardNameAsEntersSpec> {
         None
@@ -988,6 +993,14 @@ pub struct ChoosePlayerAsEntersSpec;
 /// Spec for "as this enters, note your life total" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NoteLifeTotalAsEntersSpec;
+
+/// Spec for "as this enters, you may reveal cards from your hand" abilities.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RevealFromHandAsEntersSpec {
+    pub filter: crate::target::ObjectFilter,
+    pub count: crate::ChoiceCount,
+    pub optional: bool,
+}
 
 /// Spec for "as this enters, choose a card name" abilities.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -2792,6 +2805,17 @@ impl StaticAbility {
 
     pub fn note_life_total_as_enters(display: String) -> Self {
         Self::new(NoteLifeTotalAsEnters::new(display))
+    }
+
+    pub fn reveal_from_hand_as_enters(
+        filter: crate::target::ObjectFilter,
+        count: crate::ChoiceCount,
+        optional: bool,
+        display: String,
+    ) -> Self {
+        Self::new(RevealFromHandAsEnters::new(
+            filter, count, optional, display,
+        ))
     }
 
     pub fn choose_card_name_as_enters(display: String) -> Self {

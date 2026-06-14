@@ -110,16 +110,17 @@ use super::token_primitives::{
 use super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
     is_source_reference_words, leading_mana_cost_from_tokens, mana_pips_from_token,
-    parse_alternative_cast_words, parse_card_type, parse_color, parse_counter_type_from_tokens,
-    parse_counter_type_word, parse_counter_type_words, parse_filter_counter_constraint_words,
-    parse_flashback_keyword_line, parse_for_each_count_value_words,
-    parse_greater_than_or_equal_quantity_prefix, parse_greater_than_or_equal_quantity_prefix_words,
-    parse_less_than_or_equal_quantity_prefix, parse_less_than_or_equal_quantity_prefix_words,
-    parse_mana_symbol_word_flexible, parse_number_word_i32, parse_quantity_comparison_prefix,
-    parse_subtype_flexible, parse_value, parse_value_expr_words, parse_zone_word,
-    preserve_keyword_prefix_for_parse, source_reference_surface_for_possessive_words,
-    strip_leading_article_word_refs, strip_leading_token_words_any, strip_leading_word_refs_any,
-    trim_commas, trim_edge_punctuation_tokens, word_refs_at_is_article, words,
+    parse_alternative_cast_words, parse_card_type, parse_choice_count_token_prefix_consumed,
+    parse_color, parse_counter_type_from_tokens, parse_counter_type_word, parse_counter_type_words,
+    parse_filter_counter_constraint_words, parse_flashback_keyword_line,
+    parse_for_each_count_value_words, parse_greater_than_or_equal_quantity_prefix,
+    parse_greater_than_or_equal_quantity_prefix_words, parse_less_than_or_equal_quantity_prefix,
+    parse_less_than_or_equal_quantity_prefix_words, parse_mana_symbol_word_flexible,
+    parse_number_word_i32, parse_quantity_comparison_prefix, parse_subtype_flexible, parse_value,
+    parse_value_expr_words, parse_zone_word, preserve_keyword_prefix_for_parse,
+    source_reference_surface_for_possessive_words, strip_leading_article_word_refs,
+    strip_leading_token_words_any, strip_leading_word_refs_any, trim_commas,
+    trim_edge_punctuation_tokens, word_refs_at_is_article, words,
 };
 use super::util::{source_choose_spec_for_surface, source_reference_surface_for_words};
 use super::value_helpers::{
@@ -1096,7 +1097,10 @@ const THIS_SPELL_TARGETS_PREFIX_PATTERN: ClauseShape<'static> =
 const CONDITIONAL_SPELL_KEYWORD_WORDS: &[&str] = &["flash", "cascade"];
 const CONDITIONAL_SOURCE_SPELL_KEYWORD_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::phrase(&["this", "spell", "has"]),
-    LexPattern::action("keyword", LexCaptureKind::OneOf(CONDITIONAL_SPELL_KEYWORD_WORDS)),
+    LexPattern::action(
+        "keyword",
+        LexCaptureKind::OneOf(CONDITIONAL_SPELL_KEYWORD_WORDS),
+    ),
     LexPattern::phrase(&["as", "long", "as"]),
     LexPattern::condition("condition", LexCaptureKind::OneOrMoreWords),
 ]);
@@ -3129,6 +3133,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         ),
         single_static_ability_ast_rule!(parse_all_permanents_colorless_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_colorless_line),
+        multi_static_ability_ast_rule!(parse_all_are_pt_color_type_addition_line),
         multi_static_ability_ast_rule!(parse_all_are_color_and_type_addition_line),
         single_static_ability_ast_rule!(parse_all_cards_spells_permanents_add_chosen_color_line),
         single_static_ability_ast_rule!(parse_all_creatures_are_color_line),
@@ -3274,6 +3279,7 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
         multi_static_ability_ast_rule!(parse_enters_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
+        single_static_ability_ast_rule!(parse_as_enters_reveal_from_hand_line),
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
         single_static_ability_ast_rule!(parse_enters_untapped_for_filter_line),
@@ -3371,7 +3377,9 @@ fn title_case_count_as_card_name(words: &[&str]) -> String {
         .join(" ")
 }
 
-fn parse_count_as_card_named_for_spell_effect_line(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
+fn parse_count_as_card_named_for_spell_effect_line(
+    tokens: &[OwnedLexToken],
+) -> Option<StaticAbility> {
     let clause = LexedClause::new(tokens);
     if !COUNT_AS_CARD_NAMED_GRAVEYARD_PREFIX_PATTERN.matches(clause) {
         return None;
@@ -3784,7 +3792,10 @@ fn parse_activated_abilities_cost_increase_spec(
             LexCaptureKind::OneOf(ACTIVATED_ABILITY_COST_VERB_WORDS),
         ),
         LexPattern::phrase(ADDITIONAL_COST_PHRASE),
-        LexPattern::modifier("additional_cost", LexCaptureKind::UntilPhrase(TO_ACTIVATE_PHRASE)),
+        LexPattern::modifier(
+            "additional_cost",
+            LexCaptureKind::UntilPhrase(TO_ACTIVATE_PHRASE),
+        ),
         LexPattern::phrase(TO_ACTIVATE_PHRASE),
     ]);
 
@@ -4070,7 +4081,9 @@ pub(crate) fn parse_can_block_additional_creature_each_combat_line(
     idx += 1;
 
     let mut additional = 1usize;
-    let count_token_idx = words.token_index_for_word_index(idx).unwrap_or(tokens.len());
+    let count_token_idx = words
+        .token_index_for_word_index(idx)
+        .unwrap_or(tokens.len());
     if let Some((count, used)) = parse_number(&tokens[count_token_idx..]) {
         additional = count as usize;
         idx += used;
@@ -4152,14 +4165,18 @@ pub(crate) fn parse_ward_discard_card_type_cost(tokens: &[OwnedLexToken]) -> Opt
 
     let mut idx = 1usize;
     let mut count = 1u32;
-    let count_token_idx = words.token_index_for_word_index(idx).unwrap_or(tokens.len());
+    let count_token_idx = words
+        .token_index_for_word_index(idx)
+        .unwrap_or(tokens.len());
     if let Some((value, used)) = parse_number(&tokens[count_token_idx..]) {
         count = value;
         let used_end = count_token_idx.saturating_add(used).min(tokens.len());
         idx += LexedClause::new(&tokens[count_token_idx..used_end]).word_len();
     }
 
-    let tail_token_idx = words.token_index_for_word_or_end(idx).unwrap_or(tokens.len());
+    let tail_token_idx = words
+        .token_index_for_word_or_end(idx)
+        .unwrap_or(tokens.len());
     if WARD_DISCARD_HAND_TAIL_PATTERN.matches(LexedClause::new(&tokens[tail_token_idx..])) {
         return Some(TotalCost::from_cost(crate::costs::Cost::discard_hand()));
     }
@@ -4637,7 +4654,8 @@ pub(crate) fn parse_enters_tapped_with_choose_color_line(
                 render_token_slice(tokens)
             ))
         })?;
-    let tapped_token_idx = words.token_index_for_word_index(tapped_word_idx)
+    let tapped_token_idx = words
+        .token_index_for_word_index(tapped_word_idx)
         .ok_or_else(|| {
             CardTextError::ParseError(format!(
                 "unable to map tapped keyword in enters-tapped clause (clause: '{}')",
@@ -4904,7 +4922,8 @@ pub(crate) fn parse_source_is_chosen_color_line(
         _ => "This",
     };
 
-    let tail_start = words.token_index_for_word_or_end(is_idx + 1)
+    let tail_start = words
+        .token_index_for_word_or_end(is_idx + 1)
         .unwrap_or(tokens.len());
     let chosen_color_tail = LexedClause::new(&tokens[tail_start..]);
     if !CHOSEN_COLOR_TAIL_PATTERN.matches(chosen_color_tail) {
@@ -6351,8 +6370,8 @@ pub(crate) fn parse_no_more_than_creatures_can_attack_or_block_each_combat_line(
     };
 
     let tail = &tokens[used..];
-    let attack_you = CREATURES_CAN_ATTACK_YOU_EACH_COMBAT_TAIL_PATTERN
-        .matches_non_article_tokens(tail);
+    let attack_you =
+        CREATURES_CAN_ATTACK_YOU_EACH_COMBAT_TAIL_PATTERN.matches_non_article_tokens(tail);
     let ability = if attack_you {
         StaticAbility::max_attackers_can_attack_you_each_combat(maximum as usize)
     } else if CREATURES_CAN_ATTACK_EACH_COMBAT_TAIL_PATTERN.matches_non_article_tokens(tail) {
@@ -8547,6 +8566,14 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         )));
     }
     if REVEALED_THIS_WAY_PATTERN.matches(filter_clause) {
+        if matches!(
+            filter_words.as_slice(),
+            ["card", "revealed", "this", "way"] | ["cards", "revealed", "this", "way"]
+        ) {
+            return Ok(Some(Value::Count(ObjectFilter::tagged(TagKey::from(
+                "__public_revealed",
+            )))));
+        }
         let words_all = parser_token_word_refs(tokens);
         if let Some((value, used_words)) = parse_for_each_count_value_words(&words_all)
             && used_words == words_all.len()
@@ -8804,6 +8831,143 @@ pub(crate) fn parse_all_cards_spells_permanents_add_chosen_color_line(
     }
 
     Ok(None)
+}
+
+fn parse_conjoined_subject_filter(tokens: &[OwnedLexToken]) -> Result<ObjectFilter, CardTextError> {
+    let subject_tokens = trim_lexed_commas(tokens);
+    let subject_segments = split_lexed_slices_on_and(subject_tokens);
+    if subject_segments.len() <= 1 {
+        return parse_object_filter_lexed(subject_tokens, false);
+    }
+
+    let mut branches = Vec::with_capacity(subject_segments.len());
+    for segment in subject_segments {
+        let segment = trim_lexed_commas(segment);
+        if segment.is_empty() {
+            return parse_object_filter_lexed(subject_tokens, false);
+        }
+        branches.push(parse_object_filter_lexed(segment, false)?);
+    }
+    let mut filter = ObjectFilter::default();
+    filter.any_of = branches;
+    Ok(filter)
+}
+
+pub(crate) fn parse_all_are_pt_color_type_addition_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.words();
+    if words.len() < 10 {
+        return Ok(None);
+    }
+
+    let Some(be_idx) = words.find_window_by(1, |window| {
+        window
+            .first()
+            .is_some_and(|word| IS_OR_ARE_WORD_PATTERN.matches_word(word))
+    }) else {
+        return Ok(None);
+    };
+    if be_idx == 0 || be_idx + 1 >= words.len() {
+        return Ok(None);
+    }
+
+    let Some(pt_word) = words.get(be_idx + 1) else {
+        return Ok(None);
+    };
+    let (power, toughness) = match parse_pt_modifier(pt_word) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(None),
+    };
+
+    let Some(addition_idx) =
+        keyword_find_exact_clause_window(clause, 5, IN_ADDITION_TO_THEIR_OTHER_PREFIX_PATTERN)
+    else {
+        return Ok(None);
+    };
+    if addition_idx <= be_idx + 2 {
+        return Ok(None);
+    }
+    if !words
+        .get(addition_idx + 5)
+        .is_some_and(|word| keyword_static_shape_matches_word(word, TYPE_OR_TYPES_WORD_PATTERN))
+    {
+        return Ok(None);
+    }
+
+    let Some(descriptor_clause) = clause.between_word_range(be_idx + 2, addition_idx) else {
+        return Ok(None);
+    };
+    let mut colors = ColorSet::new();
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    for descriptor in descriptor_clause
+        .tokens()
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+    {
+        if is_article(descriptor)
+            || keyword_static_shape_matches_word(descriptor, AND_WORD_PATTERN)
+            || keyword_static_shape_matches_word(
+                descriptor,
+                TYPE_ADDITION_IGNORED_DESCRIPTOR_WORD_PATTERN,
+            )
+        {
+            continue;
+        }
+        if let Some(color) = parse_color(descriptor) {
+            colors = colors.union(color);
+            continue;
+        }
+        if let Some(card_type) = parse_card_type(descriptor) {
+            if !slice_contains(&card_types, &card_type) {
+                card_types.push(card_type);
+            }
+            continue;
+        }
+        if let Some(subtype) = parse_subtype_flexible(descriptor) {
+            if !slice_contains(&subtypes, &subtype) {
+                subtypes.push(subtype);
+            }
+            continue;
+        }
+        return Err(CardTextError::ParseError(format!(
+            "unsupported descriptor '{}' in pt-color-type-addition clause (clause: '{}')",
+            descriptor,
+            render_token_slice(tokens)
+        )));
+    }
+
+    if colors.is_empty() && card_types.is_empty() && subtypes.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(subject_tokens) = clause
+        .between_word_range(0, be_idx)
+        .map(|clause| clause.tokens())
+    else {
+        return Ok(None);
+    };
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_conjoined_subject_filter(subject_tokens)?;
+
+    let mut abilities = Vec::new();
+    if !colors.is_empty() {
+        abilities.push(StaticAbility::set_colors(filter.clone(), colors));
+    }
+    if !card_types.is_empty() {
+        abilities.push(StaticAbility::add_card_types(filter.clone(), card_types));
+    }
+    if !subtypes.is_empty() {
+        abilities.push(StaticAbility::add_subtypes(filter.clone(), subtypes));
+    }
+    abilities.push(StaticAbility::set_base_power_toughness(
+        filter, power, toughness,
+    ));
+    Ok(Some(abilities))
 }
 
 pub(crate) fn parse_all_are_color_and_type_addition_line(
@@ -10102,8 +10266,8 @@ pub(crate) fn parse_mana_value_instead_of_mana_cost_grant_line(
         return Ok(None);
     };
     let head_tokens = trim_lexed_commas(head_tokens);
-    let head_matches = MANA_VALUE_INSTEAD_OF_MANA_COST_GRANT_PREFIX_PATTERN
-        .matches(LexedClause::new(head_tokens));
+    let head_matches =
+        MANA_VALUE_INSTEAD_OF_MANA_COST_GRANT_PREFIX_PATTERN.matches(LexedClause::new(head_tokens));
     if !head_matches {
         return Ok(None);
     }

@@ -9,9 +9,9 @@ use super::{
     ChoosePowerToughnessAsEntersOrTurnsFaceUpSpec, ConditionalSpellKeywordKind,
     ConditionalSpellKeywordSpec, CountAsCardNamedForSpellEffectSpec, DieRollResultAdjustmentSpec,
     EnterAsCopyAsEntersSpec, GraveyardCountMetric, NoteLifeTotalAsEntersSpec,
-    PowerToughnessChoiceOption, StaticAbility, StaticAbilityId, StaticAbilityKind,
-    ThisSpellCastRestrictionKind, TriggerDuplicationSourceMatcher, TriggerDuplicationSpec,
-    TriggerSuppressionSpec,
+    PowerToughnessChoiceOption, RevealFromHandAsEntersSpec, StaticAbility, StaticAbilityId,
+    StaticAbilityKind, ThisSpellCastRestrictionKind, TriggerDuplicationSourceMatcher,
+    TriggerDuplicationSpec, TriggerSuppressionSpec,
     text_utils::{capitalize_first, join_with_and, number_word_u32},
 };
 use crate::ability::{Ability, AbilityKind, LevelAbility};
@@ -132,6 +132,32 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
         format!("one plus {rest}")
     } else {
         value
+    }
+}
+
+fn is_revealed_this_way_count_filter(filter: &ObjectFilter) -> bool {
+    let mut bare = filter.clone();
+    bare.tagged_constraints.clear();
+    bare == ObjectFilter::default()
+        && filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__public_revealed"
+                && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+        })
+}
+
+fn describe_enters_with_counters_count_filter(filter: &ObjectFilter) -> String {
+    if is_revealed_this_way_count_filter(filter) {
+        "cards revealed this way".to_string()
+    } else {
+        filter.description()
+    }
+}
+
+fn counter_indefinite_article(counter: &str) -> &'static str {
+    match counter.chars().next().map(|ch| ch.to_ascii_lowercase()) {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => "an",
+        _ => "a",
     }
 }
 
@@ -1260,22 +1286,35 @@ impl StaticAbilityKind for EntersWithCounters {
                 )
             }
             Value::Count(filter) => {
+                if is_revealed_this_way_count_filter(filter) {
+                    let article = counter_indefinite_article(&counter);
+                    return format!(
+                        "Enters the battlefield with {article} {counter} counter on it for each card revealed this way"
+                    );
+                }
+                let count_filter = describe_enters_with_counters_count_filter(filter);
                 format!(
                     "Enters the battlefield with X {counter} counters on it, where X is the number of {}",
-                    filter.description()
+                    count_filter
                 )
             }
             Value::CountScaled(filter, scale) => {
+                if *scale == 1 && is_revealed_this_way_count_filter(filter) {
+                    let article = counter_indefinite_article(&counter);
+                    return format!(
+                        "Enters the battlefield with {article} {counter} counter on it for each card revealed this way"
+                    );
+                }
+                let count_filter = describe_enters_with_counters_count_filter(filter);
                 if *scale == 1 {
                     format!(
                         "Enters the battlefield with X {counter} counters on it, where X is the number of {}",
-                        filter.description()
+                        count_filter
                     )
                 } else {
                     format!(
                         "Enters the battlefield with X {counter} counters on it, where X is {} times the number of {}",
-                        scale,
-                        filter.description()
+                        scale, count_filter
                     )
                 }
             }
@@ -1737,6 +1776,49 @@ impl StaticAbilityKind for NoteLifeTotalAsEnters {
 
     fn life_total_note_as_enters(&self) -> Option<NoteLifeTotalAsEntersSpec> {
         Some(NoteLifeTotalAsEntersSpec)
+    }
+}
+
+/// "As this enters, you may reveal cards from your hand."
+#[derive(Debug, Clone, PartialEq)]
+pub struct RevealFromHandAsEnters {
+    pub filter: ObjectFilter,
+    pub count: crate::ChoiceCount,
+    pub optional: bool,
+    pub display: String,
+}
+
+impl RevealFromHandAsEnters {
+    pub fn new(
+        filter: ObjectFilter,
+        count: crate::ChoiceCount,
+        optional: bool,
+        display: String,
+    ) -> Self {
+        Self {
+            filter,
+            count,
+            optional,
+            display,
+        }
+    }
+}
+
+impl StaticAbilityKind for RevealFromHandAsEnters {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::RevealFromHandAsEnters
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn reveal_from_hand_as_enters(&self) -> Option<RevealFromHandAsEntersSpec> {
+        Some(RevealFromHandAsEntersSpec {
+            filter: self.filter.clone(),
+            count: self.count,
+            optional: self.optional,
+        })
     }
 }
 

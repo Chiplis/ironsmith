@@ -1160,10 +1160,7 @@ pub(crate) fn parse_half_starting_life_total_value(
             HALF_TARGET_PLAYER_STARTING_LIFE_TOTAL_PHRASES,
         ) {
             Some(PlayerFilter::target_player())
-        } else if word_slice_eq_any(
-            &clause_words,
-            HALF_OPPONENT_STARTING_LIFE_TOTAL_PHRASES,
-        ) {
+        } else if word_slice_eq_any(&clause_words, HALF_OPPONENT_STARTING_LIFE_TOTAL_PHRASES) {
             Some(PlayerFilter::Opponent)
         } else {
             None

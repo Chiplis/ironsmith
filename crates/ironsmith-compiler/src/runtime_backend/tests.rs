@@ -6593,6 +6593,33 @@ fn scoped_revealed_this_way_choice_does_not_default_to_battlefield() {
 }
 
 #[test]
+fn rewrite_sequence_registry_matches_revealed_land_nonland_split_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match revealed land/nonland split bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "reveal-top-choose-any-revealed-land-nonland-split-rest-bottom"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("reveal: true"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("ItMatches"), "{debug}");
+    assert!(debug.contains("PutOntoBattlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn look_at_top_reveal_up_to_cards_bargain_branch_tracks_revealed_subset() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Thunderous Debut Variant")
         .card_types(vec![CardType::Sorcery])
@@ -8524,6 +8551,74 @@ fn rewrite_keyword_static_as_enters_revealed_hand_card_name_choice() {
                     }
                 )
     ));
+}
+
+#[test]
+fn rewrite_keyword_static_as_enters_reveal_from_hand_counted_cards() {
+    let tokens = lex_line(
+        "as this creature enters, you may reveal any number of other artifact cards from your hand.",
+        0,
+    )
+    .expect("rewrite lexer should classify as-enters reveal line");
+
+    let ability = super::keyword_static::parse_as_enters_reveal_from_hand_line(&tokens)
+        .expect("as-enters reveal line should parse")
+        .expect("as-enters reveal line should produce a static ability");
+
+    assert_eq!(ability.id(), StaticAbilityId::RevealFromHandAsEnters);
+    assert!(matches!(
+        &ability.payload,
+        crate::static_abilities::StaticAbilityPayload::RevealFromHandAsEnters {
+            filter,
+            count,
+            optional: true,
+            ..
+        } if filter.zone == Some(Zone::Hand)
+            && filter.other
+            && filter.card_types == [CardType::Artifact]
+            && *count == ChoiceCount::any_number()
+    ));
+}
+
+#[test]
+fn rewrite_keyword_static_pt_color_type_addition_bundle() {
+    let tokens = lex_line(
+        "All Forests and all Saprolings are 1/1 green Saproling creatures and Forest lands in addition to their other types.",
+        0,
+    )
+    .expect("rewrite lexer should classify Life and Limb style static line");
+
+    let abilities = super::keyword_static::parse_all_are_pt_color_type_addition_line(&tokens)
+        .expect("pt/color/type addition line should parse")
+        .expect("pt/color/type addition line should produce static abilities");
+    let ids = abilities
+        .iter()
+        .map(|ability| ability.id())
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        ids,
+        vec![
+            StaticAbilityId::SetColors,
+            StaticAbilityId::AddCardTypes,
+            StaticAbilityId::AddSubtypes,
+            StaticAbilityId::SetBasePowerToughnessForFilter,
+        ]
+    );
+    assert!(matches!(
+        &abilities[0].payload,
+        crate::static_abilities::StaticAbilityPayload::SetColors { colors, .. }
+            if *colors == ColorSet::GREEN
+    ));
+    let debug = format!("{abilities:#?}");
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("Forest")
+            && debug.contains("Saproling")
+            && debug.contains("Creature")
+            && debug.contains("Land"),
+        "expected typed union subject and characteristic additions, got {debug}"
+    );
 }
 
 #[test]
@@ -11581,6 +11676,27 @@ fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_graveyard_bundle(
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("ChooseObjects"), "{debug}");
     assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_graveyard_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top five cards of your library. You may put a creature or enchantment card from among them into your hand. Put the rest into your graveyard.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match reveal-top hand/graveyard bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(matched.name, "top-cards-put-match-into-hand-rest-graveyard");
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("RevealTagged"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("min: 0"), "{debug}");
+    assert!(debug.contains("zone: Library"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");
 }
 

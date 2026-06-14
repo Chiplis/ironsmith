@@ -164,6 +164,7 @@ pub enum StaticAbilityId {
     ChooseColorAsBecomesAttached,
     ChoosePlayerAsEnters,
     NoteLifeTotalAsEnters,
+    RevealFromHandAsEnters,
     ChooseCardNameAsEnters,
     ChooseBasicLandTypeAsEnters,
     ChooseLandTypeAsEnters,
@@ -438,6 +439,7 @@ impl StaticAbilityId {
             | ChooseColorAsBecomesAttached
             | ChoosePlayerAsEnters
             | NoteLifeTotalAsEnters
+            | RevealFromHandAsEnters
             | ChooseCardNameAsEnters
             | ChooseBasicLandTypeAsEnters
             | ChooseLandTypeAsEnters

@@ -309,6 +309,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_exile_until_match_cast_else_hand,
     },
     SequenceRuleDef {
+        name: "reveal-top-choose-any-revealed-land-nonland-split-rest-bottom",
+        feature_tag: Some("looked-cards-land-nonland-split"),
+        priority: 336,
+        consumed_sentences: 3,
+        predicate: first_word_reveal,
+        parser:
+            generic_subject_verb_sequences::triples::parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom,
+    },
+    SequenceRuleDef {
         name: "top-cards-put-match-into-hand-rest-graveyard",
         feature_tag: Some("looked-cards-hand-graveyard"),
         priority: 335,

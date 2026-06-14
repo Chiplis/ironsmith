@@ -15560,6 +15560,34 @@ pub(super) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 5 < filtered.len()
+            && let Some(sacrifice_choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(sacrifice_with_id) =
+                filtered[idx + 1].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(look_at_top) =
+                filtered[idx + 2].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(choose) =
+                filtered[idx + 3].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(split) =
+                filtered[idx + 4].downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(rest) = filtered[idx + 5]
+                .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+            )
+            && let Some(compact) =
+                describe_sacrifice_reveal_top_choose_land_nonland_split_rest_bottom(
+                    sacrifice_choose,
+                    sacrifice_with_id,
+                    look_at_top,
+                    choose,
+                    split,
+                    rest,
+                )
+        {
+            parts.push(compact);
+            idx += 6;
+            continue;
+        }
         if idx + 1 < filtered.len()
             && let Some(choose) =
                 filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -28546,6 +28574,136 @@ fn describe_look_at_top_then_reveal_any_matching_to_hand_rest_bottom(
 
     Some(format!(
         "Look at the top {count_text} {noun} of {owner} library{count_where_clause}. {may_prefix} reveal any number of {matching} from among them and put the revealed cards into {hand} hand. Put the rest on the bottom of {owner} library{order_text}"
+    ))
+}
+
+fn sacrificed_count_noun_for_reveal_split(filter: &ObjectFilter) -> Option<String> {
+    if filter.card_types == [CardType::Land]
+        && filter.subtypes.is_empty()
+        && filter.supertypes.is_empty()
+    {
+        return Some("lands".to_string());
+    }
+
+    let mut bare = filter.clone();
+    bare.zone = None;
+    if bare.controller == Some(PlayerFilter::You) {
+        bare.controller = None;
+    }
+    let description = bare.description();
+    let description = description
+        .strip_suffix(" on the battlefield")
+        .unwrap_or(&description);
+    Some(pluralize_noun_phrase(strip_leading_article(description)))
+}
+
+fn any_number_revealed_choice_text(choose: &crate::effects::ChooseObjectsEffect) -> String {
+    let mut base = choose.filter.clone();
+    base.zone = None;
+    base.tagged_constraints.retain(|constraint| {
+        !matches!(
+            constraint.relation,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        )
+    });
+
+    if base.card_types.len() == 2
+        && base.card_types.contains(&CardType::Artifact)
+        && base.card_types.contains(&CardType::Land)
+        && base.all_card_types.is_empty()
+        && base.subtypes.is_empty()
+        && base.any_of.is_empty()
+    {
+        return "artifact and/or land cards".to_string();
+    }
+
+    let description = base.description();
+    let mut card_desc = description
+        .split(" in ")
+        .next()
+        .unwrap_or(description.as_str())
+        .trim()
+        .to_string();
+    card_desc = normalize_looked_card_filter_description(&base, &card_desc);
+    if !card_desc.contains(" card") {
+        card_desc = format!("{card_desc} card");
+    }
+    pluralize_noun_phrase(strip_leading_article(&card_desc))
+}
+
+fn put_iterated_onto_battlefield(effect: &Effect, tapped: bool, controller: &PlayerFilter) -> bool {
+    let effect = unwrap_tag_wrapped_effect(effect);
+    matches!(
+        effect.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>(),
+        Some(put)
+            if put.tapped == tapped
+                && &put.controller == controller
+                && matches!(put.target, ChooseSpec::Iterated)
+    )
+}
+
+fn chosen_land_nonland_battlefield_split(
+    for_each: &crate::effects::ForEachTaggedEffect,
+    chosen_tag: &crate::TagKey,
+    controller: &PlayerFilter,
+) -> bool {
+    if for_each.tag != *chosen_tag || for_each.effects.len() != 1 {
+        return false;
+    }
+    let Some(conditional) = for_each.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
+    else {
+        return false;
+    };
+    let land_condition = matches!(
+        &conditional.condition,
+        crate::effect::Condition::TaggedObjectMatches(tag, filter)
+            if tag.as_str() == "__it__" && filter.card_types == [CardType::Land]
+    );
+    land_condition
+        && conditional.if_true.len() == 1
+        && conditional.if_false.len() == 1
+        && put_iterated_onto_battlefield(&conditional.if_true[0], true, controller)
+        && put_iterated_onto_battlefield(&conditional.if_false[0], false, controller)
+}
+
+fn describe_sacrifice_reveal_top_choose_land_nonland_split_rest_bottom(
+    sacrifice_choose: &crate::effects::ChooseObjectsEffect,
+    sacrifice_with_id: &crate::effects::WithIdEffect,
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    split: &crate::effects::ForEachTaggedEffect,
+    rest: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+) -> Option<String> {
+    let sacrifice = sacrifice_view(&sacrifice_with_id.effect)?;
+    describe_choose_then_sacrifice(sacrifice_choose, sacrifice)?;
+    if look_at_top.player != PlayerFilter::You
+        || !look_at_top.reveal
+        || !value_prefers_where_x(&look_at_top.count)
+        || !is_effect_count_reference(&look_at_top.count, Some(sacrifice_with_id.id))
+        || choose.chooser != PlayerFilter::You
+        || choose_primary_zone(choose) != Some(Zone::Library)
+        || !choose.count.is_any_number()
+        || choose.is_search
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == look_at_top.tag
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                )
+        })
+        || !chosen_land_nonland_battlefield_split(split, &choose.tag, &PlayerFilter::You)
+        || rest.tag != look_at_top.tag
+        || rest.keep_tagged.as_ref() != Some(&choose.tag)
+        || rest.order != crate::effects::consult_helpers::LibraryBottomOrder::Random
+        || rest.player != PlayerFilter::You
+    {
+        return None;
+    }
+
+    let sacrificed = sacrificed_count_noun_for_reveal_split(&sacrifice_choose.filter)?;
+    let matching = any_number_revealed_choice_text(choose);
+    Some(format!(
+        "Sacrifice any number of {sacrificed}. Reveal the top X cards of your library, where X is the number of {sacrificed} sacrificed this way. Choose any number of {matching} revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order"
     ))
 }
 

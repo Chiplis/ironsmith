@@ -19598,6 +19598,52 @@ fn parse_as_this_land_enters_reveal_unless_revealed_or_control_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_as_this_creature_enters_reveal_cards_counted_for_counters_line() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Arsenal Thresher Variant")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .parse_text(
+            "As this creature enters, you may reveal any number of other artifact cards from your hand. This creature enters with a +1/+1 counter on it for each card revealed this way.",
+        )
+        .expect("as-enters reveal counted by counters should parse");
+
+    let ids: Vec<_> = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        ids.contains(&StaticAbilityId::RevealFromHandAsEnters)
+            && ids.contains(&StaticAbilityId::EnterWithCounters),
+        "expected reveal-as-enters plus enters-with-counters static abilities, got {ids:?}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains(
+            "as this creature enters, you may reveal any number of other artifact cards from your hand"
+        ) && rendered_lower.contains(
+            "this creature enters with a +1/+1 counter on it for each card revealed this way"
+        ),
+        "expected Arsenal-style static reveal/counter wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def);
+    assert!(
+        debug.contains("RevealFromHandAsEnters")
+            && debug.contains("zone: Some(Hand)")
+            && debug.contains("other: true")
+            && debug.contains("__public_revealed")
+            && !debug.contains("RevealTaggedEffect"),
+        "expected typed as-enters reveal count without standalone reveal effect, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_starting_town_first_three_turns_etb_clause() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Starting Town")
         .card_types(vec![CardType::Land])
@@ -26655,6 +26701,52 @@ fn parse_all_goblins_are_black_and_are_zombies_in_addition_clause() {
     assert!(
         ids.contains(&crate::static_abilities::StaticAbilityId::AddSubtypes),
         "expected add-subtypes static ability, got {ids:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_all_forests_and_saprolings_pt_color_type_addition_bundle() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Life and Limb Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "All Forests and all Saprolings are 1/1 green Saproling creatures and Forest lands in addition to their other types.",
+        )
+        .expect("Life and Limb style static line should parse");
+
+    let ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        ids.contains(&crate::static_abilities::StaticAbilityId::SetColors)
+            && ids.contains(&crate::static_abilities::StaticAbilityId::AddCardTypes)
+            && ids.contains(&crate::static_abilities::StaticAbilityId::AddSubtypes)
+            && ids.contains(
+                &crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter
+            ),
+        "expected color/type/subtype/base-PT static bundle, got {ids:?}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "All Forests and all Saprolings are 1/1 green Saproling creatures and Forest lands in addition to their other types"
+        ),
+        "expected compact Life and Limb wording, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("any_of")
+            && debug.contains("Forest")
+            && debug.contains("Saproling")
+            && debug.contains("SetBasePowerToughness"),
+        "expected conjoined subject and characteristic static abilities, got {debug}"
     );
 }
 
@@ -68690,6 +68782,78 @@ fn parse_reveal_top_put_all_matching_into_hand_rest_graveyard_still_handles_simp
         rendered.contains("reveal the top five cards of your library")
             && rendered.contains("put all creature cards revealed this way into your hand and the rest into your graveyard"),
         "expected simple reveal-top split to stay intact, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_reveal_top_may_put_matching_card_into_hand_rest_graveyard_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "May Reveal Split Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Reveal the top five cards of your library. You may put a creature or enchantment card from among them into your hand. Put the rest into your graveyard.",
+        )
+        .expect("may reveal-top split should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("reveal the top five cards of your library")
+            && rendered_lower.contains(
+                "you may put a creature or enchantment card from among them into your hand"
+            )
+            && rendered_lower.contains("put the rest into your graveyard"),
+        "expected may reveal-top split to stay oracle-shaped, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Some(Library)")
+            && !debug.contains("additional_zones: [Hand"),
+        "expected looked-card choice to stay scoped to library, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_sacrifice_reveal_top_split_chosen_lands_and_nonlands_regression() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Hew the Entwood Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice any number of lands. Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
+        )
+        .expect("sacrifice/reveal/split/remainder sequence should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("sacrifice any number of lands")
+            && rendered_lower.contains(
+                "reveal the top x cards of your library, where x is the number of lands sacrificed this way"
+            )
+            && rendered_lower.contains(
+                "choose any number of artifact and/or land cards revealed this way"
+            )
+            && rendered_lower.contains("put all nonland cards chosen this way onto the battlefield")
+            && rendered_lower.contains(
+                "put all land cards chosen this way onto the battlefield tapped"
+            )
+            && rendered_lower.contains(
+                "put the rest on the bottom of your library in a random order"
+            ),
+        "expected Hew-style composed sequence to render oracle-shaped, got {rendered}"
+    );
+
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("LookAtTopCardsEffect")
+            && debug.contains("ForEachTaggedEffect")
+            && debug.contains("ConditionalEffect")
+            && debug.contains("PutTaggedRemainderOnLibraryBottomEffect")
+            && (debug.contains("EffectMetric") || debug.contains("EffectValue")),
+        "expected typed sacrifice/reveal/choice/split/remainder effects, got {debug}"
     );
 }
 

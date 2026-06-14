@@ -2943,6 +2943,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += consumed;
                 continue;
             }
+            if let Some((text, consumed)) =
+                describe_structural_pt_color_type_addition_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
             if ability_idx + 1 < def.abilities.len()
                 && let Some(echo) =
                     describe_structural_echo_pair(ability, &def.abilities[ability_idx + 1])
@@ -3125,6 +3132,190 @@ fn ability_prefers_card_name_subject(ability: &Ability) -> bool {
     static_ability
         .enter_as_copy_as_enters()
         .is_some_and(|spec| spec.linked_exile_pair.is_some())
+}
+
+fn static_display_with_id(
+    ability: &Ability,
+    expected_id: crate::static_abilities::StaticAbilityId,
+) -> Option<String> {
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    (static_ability.id() == expected_id).then(|| {
+        static_ability
+            .display()
+            .trim()
+            .trim_end_matches('.')
+            .to_string()
+    })
+}
+
+fn split_static_predicate<'a>(display: &'a str, marker: &str) -> Option<(&'a str, &'a str)> {
+    let (subject, predicate) = display.split_once(marker)?;
+    (!subject.trim().is_empty() && !predicate.trim().is_empty())
+        .then_some((subject.trim(), predicate.trim()))
+}
+
+fn render_all_union_subject(subject: &str) -> String {
+    let pieces = subject
+        .split(" or ")
+        .map(str::trim)
+        .filter(|piece| !piece.is_empty())
+        .collect::<Vec<_>>();
+    if pieces.len() < 2 {
+        return subject.to_string();
+    }
+    let rendered = pieces
+        .iter()
+        .map(|piece| {
+            if piece.starts_with("all ") || piece.starts_with("All ") {
+                piece.to_string()
+            } else {
+                format!("all {piece}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" and ");
+    capitalize_first(&rendered)
+}
+
+fn singular_subtype_word(word: &str) -> String {
+    let trimmed = word.trim_matches(|ch: char| !ch.is_ascii_alphabetic());
+    if trimmed.eq_ignore_ascii_case("plains") {
+        "Plains".to_string()
+    } else if trimmed.ends_with('s') && trimmed.len() > 1 {
+        trimmed.trim_end_matches('s').to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn is_land_subtype_surface(word: &str) -> bool {
+    matches!(
+        word.to_ascii_lowercase().as_str(),
+        "plains" | "island" | "swamp" | "mountain" | "forest"
+    )
+}
+
+fn render_pt_color_type_addition_descriptor(
+    color_text: &str,
+    card_type_text: &str,
+    subtype_text: &str,
+    pt_text: &str,
+) -> Option<String> {
+    let card_type_words = card_type_text
+        .split(" and ")
+        .map(str::trim)
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>();
+    let has_creatures = card_type_words
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("creatures"));
+    let has_lands = card_type_words
+        .iter()
+        .any(|word| word.eq_ignore_ascii_case("lands"));
+
+    let mut creature_subtypes = Vec::new();
+    let mut land_subtypes = Vec::new();
+    for word in subtype_text.split_whitespace() {
+        let subtype = singular_subtype_word(word);
+        if subtype.is_empty() {
+            continue;
+        }
+        if is_land_subtype_surface(&subtype) {
+            land_subtypes.push(subtype);
+        } else {
+            creature_subtypes.push(subtype);
+        }
+    }
+
+    let mut type_phrases = Vec::new();
+    if has_creatures {
+        if creature_subtypes.is_empty() {
+            type_phrases.push("creatures".to_string());
+        } else {
+            type_phrases.push(format!("{} creatures", creature_subtypes.join(" ")));
+        }
+    }
+    if has_lands {
+        if land_subtypes.is_empty() {
+            type_phrases.push("lands".to_string());
+        } else {
+            type_phrases.push(format!("{} lands", land_subtypes.join(" ")));
+        }
+    }
+    for card_type in card_type_words {
+        if (card_type.eq_ignore_ascii_case("creatures") && has_creatures)
+            || (card_type.eq_ignore_ascii_case("lands") && has_lands)
+        {
+            continue;
+        }
+        type_phrases.push(card_type.to_string());
+    }
+    if type_phrases.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "{pt_text} {color_text} {}",
+        type_phrases.join(" and ")
+    ))
+}
+
+fn describe_structural_pt_color_type_addition_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [
+        color_ability,
+        card_type_ability,
+        subtype_ability,
+        pt_ability,
+        ..,
+    ] = abilities
+    else {
+        return None;
+    };
+    let color_display = static_display_with_id(
+        color_ability,
+        crate::static_abilities::StaticAbilityId::SetColors,
+    )?;
+    let card_type_display = static_display_with_id(
+        card_type_ability,
+        crate::static_abilities::StaticAbilityId::AddCardTypes,
+    )?;
+    let subtype_display = static_display_with_id(
+        subtype_ability,
+        crate::static_abilities::StaticAbilityId::AddSubtypes,
+    )?;
+    let pt_display = static_display_with_id(
+        pt_ability,
+        crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter,
+    )?;
+
+    let (subject, color_text) = split_static_predicate(&color_display, " are ")?;
+    let (card_type_subject, card_type_tail) = split_static_predicate(&card_type_display, " are ")?;
+    let (subtype_subject, subtype_tail) = split_static_predicate(&subtype_display, " are ")?;
+    let (pt_subject, pt_text) =
+        split_static_predicate(&pt_display, " have base power and toughness ")?;
+    if card_type_subject != subject || subtype_subject != subject || pt_subject != subject {
+        return None;
+    }
+
+    let card_type_text = card_type_tail.strip_suffix(" in addition to their other types")?;
+    let subtype_text = subtype_tail.strip_suffix(" in addition to their other types")?;
+    let descriptor = render_pt_color_type_addition_descriptor(
+        color_text,
+        card_type_text,
+        subtype_text,
+        pt_text,
+    )?;
+    Some((
+        format!(
+            "{} are {descriptor} in addition to their other types",
+            render_all_union_subject(subject)
+        ),
+        4,
+    ))
 }
 
 fn describe_structural_station_keyword(ability: &Ability) -> Option<&'static str> {

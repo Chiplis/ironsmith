@@ -3334,6 +3334,75 @@ fn parse_reveal_from_hand_filter_clause<'a>(
         .map(LexedClause::trimmed)
 }
 
+pub(crate) fn parse_as_enters_reveal_from_hand_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    const ENTERS_PHRASE: &[&str] = &["enters"];
+    const MAY_REVEAL_PHRASE: &[&str] = &["you", "may", "reveal"];
+    const FROM_YOUR_HAND_PHRASE: &[&str] = &["from", "your", "hand"];
+    const PATTERN: LexPattern<'static> = LexPattern::new(&[
+        LexPattern::phrase(&["as", "this"]),
+        LexPattern::subject("source_kind", LexCaptureKind::UntilPhrase(ENTERS_PHRASE)),
+        LexPattern::phrase(ENTERS_PHRASE),
+        LexPattern::phrase(MAY_REVEAL_PHRASE),
+        LexPattern::object(
+            "reveal_filter",
+            LexCaptureKind::UntilPhrase(FROM_YOUR_HAND_PHRASE),
+        ),
+        LexPattern::phrase(FROM_YOUR_HAND_PHRASE),
+    ]);
+
+    let trimmed = trim_edge_punctuation(tokens);
+    let clause = LexedClause::new(&trimmed);
+    let Some(matched) = PATTERN.match_clause(clause) else {
+        return Ok(None);
+    };
+    let source_kind = matched
+        .capture_clause_by_role(LexCaptureRole::Subject, clause)
+        .map(LexedClause::trimmed)
+        .filter(|clause| !clause.is_empty());
+    let Some(reveal_filter_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Object, clause)
+    else {
+        return Ok(None);
+    };
+    let reveal_filter_tokens = trim_edge_punctuation(reveal_filter_clause.trimmed().tokens());
+    if reveal_filter_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let (count, count_used) = parse_choice_count_token_prefix_consumed(&reveal_filter_tokens)
+        .unwrap_or((crate::effect::ChoiceCount::exactly(1), 0));
+    let filter_tokens = trim_edge_punctuation(&reveal_filter_tokens[count_used..]);
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing reveal filter in as-enters reveal clause (clause: '{}')",
+            parser_token_word_refs(tokens).join(" ")
+        )));
+    }
+    let mut filter = parse_object_filter(&filter_tokens, false)?;
+    filter.zone = Some(Zone::Hand);
+
+    let source_subject = source_kind
+        .as_ref()
+        .map(|clause| {
+            let words = clause.word_refs();
+            if words.is_empty() {
+                "this".to_string()
+            } else {
+                format!("this {}", words.join(" "))
+            }
+        })
+        .unwrap_or_else(|| "this".to_string());
+    let reveal_filter_text = parser_token_word_refs(&reveal_filter_tokens).join(" ");
+    Ok(Some(StaticAbility::reveal_from_hand_as_enters(
+        filter,
+        count,
+        true,
+        format!("As {source_subject} enters, you may reveal {reveal_filter_text} from your hand"),
+    )))
+}
+
 pub(crate) fn parse_reveal_from_hand_or_enters_tapped_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {

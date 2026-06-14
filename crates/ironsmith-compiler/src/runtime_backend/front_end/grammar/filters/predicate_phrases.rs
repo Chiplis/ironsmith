@@ -1100,7 +1100,9 @@ fn is_counter_on_source_pronoun_tail_clause(clause: LexedClause<'_>) -> bool {
     )
 }
 
-fn parse_source_verbless_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+fn parse_source_verbless_counted_counter_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
     for source_len in 1..tokens.len() {
         let source_clause = LexedClause::new(&tokens[..source_len]);
         if !is_source_state_subject_clause(source_clause) {
@@ -2645,9 +2647,7 @@ fn demonstrative_descriptor_filter_tokens(
     let reference_end = reference.word_len;
     let tagged_that_enchantment = reference.tagged_that_enchantment;
 
-    let has_card = clause
-        .after_words(reference_end)
-        .is_some_and(|tail| {
+    let has_card = clause.after_words(reference_end).is_some_and(|tail| {
         tail.tokens()
             .iter()
             .any(|token| token_word_is(token, CARD_WORD))
@@ -5903,9 +5903,7 @@ fn parse_counted_object_counter_constraint_clause(
     ))
 }
 
-fn parse_counted_source_exiled_objects_predicate(
-    tokens: &[OwnedLexToken],
-) -> Option<PredicateAst> {
+fn parse_counted_source_exiled_objects_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
     let relation = parse_has_relation_clauses(tokens)?;
     let counted_object = relation.subject_clause;
     let (comparison, used) = predicate_quantity_prefix_tokens(counted_object.tokens())?;

@@ -1357,6 +1357,7 @@ test("PeerJS client actions can collect host ziffle shuffle steps", { timeout: 6
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_DECK);
@@ -1469,6 +1470,7 @@ test("PeerJS remote public openings can prove ziffle positions against original 
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_PUBLIC_OPEN_DECK);
@@ -1603,6 +1605,7 @@ test("PeerJS opened ziffle hand cards keep original slots when played", { timeou
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -1698,6 +1701,7 @@ test("PeerJS opened ziffle hand cards resolve positions when object export is go
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -1805,6 +1809,7 @@ test("PeerJS receivers infer ziffle positions for opened hand cards when audit o
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -1901,6 +1906,7 @@ test("PeerJS post-timed remote openings are revealed after dispatch", { timeout:
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -2012,6 +2018,7 @@ test("PeerJS local post-timed public openings are revealed before signing", { ti
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -2108,6 +2115,7 @@ test("PeerJS post-apply public openings are requested before signing", { timeout
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_ZIFFLE_OPENED_LAND_DECK);
@@ -2230,6 +2238,7 @@ test("PeerJS duplicate local click is dropped when the action is stale after syn
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_DECK);
@@ -2324,6 +2333,7 @@ test("PeerJS local pass reuses checkpoint hash and skips unchanged ziffle hand s
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_DECK);
@@ -2413,6 +2423,7 @@ test("PeerJS peers resync after guest reconnect and after host takeover reconnec
         name: "Host",
         desiredPlayers: 2,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, HOST_DECK);
@@ -2637,6 +2648,7 @@ test("PeerJS four browser peers join, start, relay actions, and flag a silent ad
         name: "Player 1",
         desiredPlayers: 4,
         startingLife: 20,
+        securityMode: "verified",
         deckText,
       });
     }, FOUR_PLAYER_DECKS[0]);

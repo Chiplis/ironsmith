@@ -22,6 +22,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { verifyLiveAuditTranscript } from "@/lib/multiplayer-audit";
+import {
+  MULTIPLAYER_SECURITY_TRUSTED,
+  MULTIPLAYER_SECURITY_VERIFIED,
+  isVerifiedMultiplayerSecurityMode,
+  normalizeMultiplayerSecurityMode,
+} from "@/lib/multiplayer-security";
 import { useI18n } from "@/i18n/I18nContext";
 
 const defaultTriggerClassName = "stone-pill table-zone-action-button inline-flex items-center justify-center rounded-none px-2.5 py-0.5 text-[13px] font-medium uppercase transition-all select-none hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45";
@@ -43,6 +49,16 @@ function compactHash(value) {
 
 function playerCountForTranscript(transcript) {
   return Array.isArray(transcript?.match?.players) ? transcript.match.players.length : 0;
+}
+
+function transcriptSecurityMode(transcript) {
+  if (transcript?.kind === "ironsmith-live-browser-trusted-log-v1") {
+    return MULTIPLAYER_SECURITY_TRUSTED;
+  }
+  return normalizeMultiplayerSecurityMode(
+    transcript?.securityMode || transcript?.match?.securityMode,
+    MULTIPLAYER_SECURITY_VERIFIED
+  );
 }
 
 function outcomeLabel(outcome = {}) {
@@ -114,9 +130,11 @@ export default function VerifyMatchSheet({
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [verification, setVerification] = useState(emptyVerification);
   const verifyInputRef = useRef(null);
+  const currentMatchIsVerified = isVerifiedMultiplayerSecurityMode(multiplayer?.securityMode);
 
   const canVerifyCurrentMatch = Boolean(
     typeof exportAuditTranscript === "function"
+    && currentMatchIsVerified
     && (
       multiplayer?.matchStarted
       || multiplayer?.matchDisputed
@@ -193,6 +211,9 @@ export default function VerifyMatchSheet({
     try {
       if (typeof replayAuditTranscript !== "function") {
         throw new Error("Match verification requires engine replay, but the replay engine is unavailable");
+      }
+      if (!isVerifiedMultiplayerSecurityMode(transcriptSecurityMode(transcript))) {
+        throw new Error("Trusted matches do not produce cryptographic audit transcripts.");
       }
       const report = await verifyLiveAuditTranscript(
         transcript,

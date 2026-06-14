@@ -156,7 +156,10 @@ fn parse_prefixed_top_of_your_library_value<T: Copy>(
     let (count, used) = parse_number_or_x_value_lexed(count_clause.tokens())?;
     let tail_clause = count_clause.from(used).trimmed();
     let tail_words = tail_clause.word_refs();
-    let ok = word_slice_starts_with_any(&tail_clause.word_refs(), LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES);
+    let ok = word_slice_starts_with_any(
+        &tail_clause.word_refs(),
+        LOOKED_CARD_OF_YOUR_LIBRARY_PREFIXES,
+    );
     if !ok {
         return None;
     }

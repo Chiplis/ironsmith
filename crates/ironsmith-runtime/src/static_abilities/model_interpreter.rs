@@ -1229,6 +1229,17 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::NoteLifeTotalAsEnters(display) => {
                 StaticAbility::note_life_total_as_enters(display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::RevealFromHandAsEnters {
+                filter,
+                count,
+                optional,
+                display,
+            } => StaticAbility::reveal_from_hand_as_enters(
+                filter.clone(),
+                count.clone(),
+                *optional,
+                display.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::ChooseCardNameAsEnters {
                 display,
                 reveal_opponents_hands,
@@ -1998,6 +2009,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ChoosePlayerAsEnters(_)
         )
         .then_some(super::ChoosePlayerAsEntersSpec)
+    }
+
+    fn reveal_from_hand_as_enters(&self) -> Option<super::RevealFromHandAsEntersSpec> {
+        let ironsmith_core::StaticAbilityPayload::RevealFromHandAsEnters {
+            filter,
+            count,
+            optional,
+            ..
+        } = self.payload()
+        else {
+            return None;
+        };
+        Some(super::RevealFromHandAsEntersSpec {
+            filter: filter.clone(),
+            count: *count,
+            optional: *optional,
+        })
     }
 
     fn card_name_choice_as_enters(&self) -> Option<super::ChooseCardNameAsEntersSpec> {
