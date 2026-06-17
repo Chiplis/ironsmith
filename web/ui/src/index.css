@@ -2026,11 +2026,57 @@
 }
 
 .game-card.hand-card {
+  --hand-card-footer-height: 20px;
   --aura-glow-radius: 18px;
   --aura-scale-1-min: 0.96;
   --aura-scale-1-max: 1.01;
   --aura-scale-2-min: 0.95;
   --aura-scale-2-max: 1.02;
+}
+
+.game-card.hand-card .game-card-surface {
+  transition:
+    inset 180ms ease,
+    aspect-ratio 180ms ease,
+    min-height 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.game-card.hand-card .hand-card-bottom-bar {
+  min-height: var(--hand-card-footer-height);
+  transition:
+    opacity 160ms ease,
+    transform 180ms ease,
+    border-color 180ms ease;
+}
+
+.game-card.hand-card.hand-card-no-visible-mana-cost:not(.hand-card-has-footer-stat):not(:hover):not(.hovered):not(.inspected) .hand-card-bottom-bar {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.game-card.hand-card.hand-card-no-visible-mana-cost .hand-card-bottom-bar {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.game-card.hand-card:hover .game-card-surface,
+.game-card.hand-card.hovered .game-card-surface,
+.game-card.hand-card.inspected .game-card-surface {
+  inset: auto 0 var(--hand-card-footer-height) 0;
+  aspect-ratio: 5 / 7;
+  min-height: calc(100% - var(--hand-card-footer-height));
+  overflow: visible;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.12),
+    0 12px 26px rgba(0, 0, 0, 0.48);
+}
+
+.game-card.hand-card:hover .hand-card-bottom-bar,
+.game-card.hand-card.hovered .hand-card-bottom-bar,
+.game-card.hand-card.inspected .hand-card-bottom-bar {
+  bottom: calc(-1 * var(--hand-card-footer-height));
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
 }
 
 .game-card.hand-card .game-card-surface::before {

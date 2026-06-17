@@ -942,7 +942,7 @@ export default function GameCard({
   const battlefieldSideRightClipId = `${battlefieldSvgIdBase}-side-right-clip`;
   const handFooterStat = variant === "hand" ? handCardFooterStat(card) : null;
   const handHasVisibleManaCost = variant === "hand" && hasVisibleManaCost(card);
-  const showHandFooter = variant === "hand" && handHasVisibleManaCost;
+  const showHandFooter = variant === "hand";
   const debugSimilarityLabel = semanticScore != null ? formatSemanticScore(semanticScore) : null;
   const showDebugSimilarityBadge = (
     inspectorDebug
@@ -1266,6 +1266,7 @@ export default function GameCard({
         useTokenBattlefield && "battlefield-token-card",
         variant === "hand" && "hand-card",
         variant === "hand" && !handHasVisibleManaCost && "hand-card-no-visible-mana-cost",
+        variant === "hand" && handFooterStat && "hand-card-has-footer-stat",
         compact && "w-[96px] min-w-[96px] min-h-[134px] p-1 text-[14px]",
         !compact && variant === "hand" && "flex-1 basis-0 min-w-0 max-w-[124px] min-h-[100px]",
         !compact && variant !== "hand" && "w-[124px] min-w-[124px] min-h-[172px]",
@@ -1600,11 +1601,12 @@ export default function GameCard({
               <span className="inline-flex items-center gap-px">
                 <ManaCostIcons cost={card.mana_cost} size={14} />
               </span>
-            ) : <span />}
+            ) : <span className="hand-card-empty-cost-slot" aria-hidden="true" />}
             {handFooterStat && (
               <span
                 className={cn(
                   "text-[12px] font-bold leading-none tracking-wide",
+                  !handHasVisibleManaCost && "ml-auto",
                   handFooterStat.className,
                 )}
                 title={handFooterStat.title}
