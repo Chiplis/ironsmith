@@ -527,7 +527,7 @@ function InspectorArtImageLayers({
           <img
             src={src}
             alt={objectName || "Card art"}
-            className="h-full w-full object-cover drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
+            className="h-full w-full object-fill drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
             loading="eager"
             decoding="async"
             referrerPolicy="no-referrer"
@@ -2536,62 +2536,62 @@ export default function HoverArtOverlay({
             </div>
           </div>
         )}
-        {!compactTopbarLayout && transitionTitle && (
-          <div className="pointer-events-none absolute bottom-2 right-2 z-[70] flex max-w-[min(52%,24rem)] flex-col items-end gap-1">
-            <div
-              className="pointer-events-auto flex max-w-full items-end justify-end"
-              aria-label="Card movement"
-            >
+        {!compactTopbarLayout && (transitionTitle || (!lowProfileInspector && displayStatsText)) && (
+          <div className="pointer-events-none absolute bottom-2 left-2 z-[70] flex max-w-[min(68%,34rem)] items-end justify-start gap-1">
+            {!lowProfileInspector && displayStatsText && (
               <div
                 className={cn(
-                  "inspector-banner inspector-banner--meta flex min-w-0 max-w-full items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
-                  topMetadataTextClassName
+                  "inspector-banner inspector-banner--stats shrink-0 rounded-none bg-[rgba(0,0,0,0.52)] px-2.5 py-1 text-[#f8d98e] tracking-wide backdrop-blur-[1.8px]",
+                  compact ? "text-[15px] font-extrabold leading-none" : "text-[20px] font-extrabold leading-none"
                 )}
-                style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                style={{ ...METADATA_TEXT_STYLE, ...inspectorStatsStyle }}
               >
-                {hasTransitionNavigator && (
-                  <button
-                    type="button"
-                    className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                    onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
-                    onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
-                    aria-label="Show previous moved card"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </button>
-                )}
-                <span className="min-w-0 whitespace-normal break-words text-right">{transitionTitle}</span>
-                {transitionSequenceLabel && (
-                  <span className="shrink-0 rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
-                    {transitionSequenceLabel}
-                  </span>
-                )}
-                {hasTransitionNavigator && (
-                  <button
-                    type="button"
-                    className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
-                    onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
-                    onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
-                    aria-label="Show next moved card"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </button>
-                )}
+                {displayStatsText}
               </div>
-            </div>
-          </div>
-        )}
-        {!compactTopbarLayout && !lowProfileInspector && displayStatsText && (
-          <div className="pointer-events-none absolute bottom-2 left-2 z-[70] flex max-w-[min(32%,14rem)] items-end justify-start">
-            <div
-              className={cn(
-                "inspector-banner inspector-banner--stats rounded-none bg-[rgba(0,0,0,0.52)] px-2.5 py-1 text-[#f8d98e] tracking-wide backdrop-blur-[1.8px]",
-                compact ? "text-[15px] font-extrabold leading-none" : "text-[20px] font-extrabold leading-none"
-              )}
-              style={{ ...METADATA_TEXT_STYLE, ...inspectorStatsStyle }}
-            >
-              {displayStatsText}
-            </div>
+            )}
+            {transitionTitle && (
+              <div
+                className="pointer-events-auto flex min-w-0 max-w-full items-end justify-start"
+                aria-label="Card movement"
+              >
+                <div
+                  className={cn(
+                    "inspector-banner inspector-banner--meta flex min-w-0 max-w-full items-center gap-1 rounded-none bg-[rgba(8,18,30,0.72)] px-2 py-1 font-extrabold tracking-[0.12em] text-[#d8ebff] backdrop-blur-[1.8px]",
+                    topMetadataTextClassName
+                  )}
+                  style={{ ...METADATA_TEXT_STYLE, ...inspectorTopMetaStyle }}
+                >
+                  {hasTransitionNavigator && (
+                    <button
+                      type="button"
+                      className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowPreviousTransientPreview, event)}
+                      onClick={(event) => handleInspectorChevronClick(onShowPreviousTransientPreview, event)}
+                      aria-label="Show previous moved card"
+                    >
+                      <ChevronLeft className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <span className="min-w-0 whitespace-normal break-words text-left">{transitionTitle}</span>
+                  {transitionSequenceLabel && (
+                    <span className="shrink-0 rounded-none border border-[#9bc6ec]/30 bg-[rgba(4,9,16,0.42)] px-1.5 py-0.5 text-[10px] tracking-[0.12em] text-[#cae5ff]">
+                      {transitionSequenceLabel}
+                    </span>
+                  )}
+                  {hasTransitionNavigator && (
+                    <button
+                      type="button"
+                      className="pointer-events-auto inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-none border border-[#9bc6ec]/40 bg-[rgba(4,9,16,0.45)] text-[#d8ebff] transition-colors hover:bg-[rgba(34,56,80,0.72)]"
+                      onPointerDown={(event) => handleInspectorChevronPointerDown(onShowNextTransientPreview, event)}
+                      onClick={(event) => handleInspectorChevronClick(onShowNextTransientPreview, event)}
+                      aria-label="Show next moved card"
+                    >
+                      <ChevronRight className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
         {!compactTopbarLayout && !lowProfileInspector && displayTopRightDetailLines.length > 0 && (
