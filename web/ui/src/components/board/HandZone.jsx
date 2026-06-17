@@ -159,6 +159,14 @@ function computeRouletteWidth(total, { mobileFan = false } = {}) {
   );
 }
 
+function computeHandRowWidth(total, { mobileFan = false } = {}) {
+  if (total <= 0) return 0;
+  const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
+  const overlap = computeHandOverlap(total, { mobileFan });
+  const stride = cardWidth - overlap;
+  return Math.round(cardWidth + Math.max(0, total - 1) * stride);
+}
+
 function buildHandCardRowStyle(index, total, { mobileFan = false } = {}) {
   const cardWidth = mobileFan ? MOBILE_FAN_CARD_WIDTH : HAND_CARD_WIDTH;
   const overlap = computeHandOverlap(total, { mobileFan });
@@ -471,13 +479,17 @@ export default function HandZone({
     () => computeRouletteWidth(renderedHandCardCount, { mobileFan: isMobileFan }),
     [isMobileFan, renderedHandCardCount]
   );
+  const nonRouletteWidth = useMemo(
+    () => computeHandRowWidth(renderedHandCardCount, { mobileFan: isMobileFan }) + 32,
+    [isMobileFan, renderedHandCardCount]
+  );
   const surfaceWidth = isVerticalRail
     ? "100%"
     : isMobileFan
-    ? "100%"
+    ? `min(${nonRouletteWidth}px, 100%)`
     : isRoulette
     ? `min(${rouletteWidth}px, calc(100vw - 290px))`
-    : "fit-content";
+    : `min(${nonRouletteWidth}px, 100%)`;
   const rouletteCycleIndexes = isRoulette
     ? Array.from({ length: HAND_ROULETTE_CYCLE_COUNT }, (_, index) => index)
     : [HAND_ROULETTE_CENTER_CYCLE];
@@ -675,6 +687,18 @@ export default function HandZone({
     requestAnimationFrame(() => {
       rouletteRecenteringRef.current = false;
     });
+  }, [handLayoutSignature, isRoulette]);
+
+  useLayoutEffect(() => {
+    if (isRoulette) return undefined;
+    const scrollEl = handScrollRef.current;
+    if (!scrollEl) return undefined;
+
+    scrollEl.scrollLeft = 0;
+    const frameId = requestAnimationFrame(() => {
+      scrollEl.scrollLeft = 0;
+    });
+    return () => cancelAnimationFrame(frameId);
   }, [handLayoutSignature, isRoulette]);
 
   const handleRouletteWheel = useCallback((event) => {

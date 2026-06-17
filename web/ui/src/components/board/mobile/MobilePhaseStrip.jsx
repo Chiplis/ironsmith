@@ -9,9 +9,9 @@ const PHASE_CELLS = [
   { key: "Untap", label: "Untap", Icon: Sparkles },
   { key: "Upkeep", label: "Upkeep", Icon: Eye },
   { key: "Draw", label: "Draw", Icon: BookOpen },
-  { key: "Main", label: "Main 1", Icon: Zap },
+  { key: "Main", label: "Pre-Main", Icon: Zap },
   { key: "Combat", label: "Combat", Icon: Swords },
-  { key: "Main2", label: "Main 2", Icon: Zap },
+  { key: "Main2", label: "Post-Main", Icon: Zap },
   { key: "End", label: "End", Icon: MoonStar },
   { key: "Cleanup", label: "Cleanup", Icon: Brush },
 ];

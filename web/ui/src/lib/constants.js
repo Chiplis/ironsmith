@@ -57,9 +57,9 @@ const STEP_KEYS = {
 
 const PHASE_LABELS = {
   Beginning: "Beginning",
-  FirstMain: "Main I",
+  FirstMain: "Pre-Main",
   Combat: "Combat",
-  NextMain: "Main II",
+  NextMain: "Post-Main",
   Ending: "Ending",
 };
 
@@ -122,12 +122,12 @@ export function nextPriorityAdvanceLabel(phase, step, stackSize, t = null) {
   switch (normalizeStepKey(step)) {
     case "Untap": return translatedLabel(t, "game.step.Upkeep", "Upkeep");
     case "Upkeep": return translatedLabel(t, "game.step.Draw", "Draw");
-    case "Draw": return translatedLabel(t, "game.advance.mainPhase", "Main Phase");
+    case "Draw": return translatedLabel(t, "game.advance.mainPhase", "Pre-Main");
     case "BeginCombat": return translatedLabel(t, "game.advance.attackers", "Attackers");
     case "DeclareAttackers": return translatedLabel(t, "game.advance.blockers", "Blockers");
     case "DeclareBlockers": return translatedLabel(t, "game.advance.damage", "Damage");
     case "CombatDamage": return translatedLabel(t, "game.step.EndCombat", "End Combat");
-    case "EndCombat": return translatedLabel(t, "game.advance.main2", "Main 2");
+    case "EndCombat": return translatedLabel(t, "game.advance.main2", "Post-Main");
     case "End": return translatedLabel(t, "game.step.Cleanup", "Cleanup");
     case "Cleanup": return translatedLabel(t, "game.advance.nextTurn", "Next Turn");
     default: break;
