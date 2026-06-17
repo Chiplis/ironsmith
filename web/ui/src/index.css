@@ -5596,7 +5596,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .hover-art-foreground-edge-blur {

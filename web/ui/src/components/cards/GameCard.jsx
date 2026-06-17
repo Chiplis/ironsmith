@@ -1362,7 +1362,7 @@ export default function GameCard({
           <img
             className={cn(
               "absolute inset-0 w-full h-full z-0 pointer-events-none",
-              variant === "battlefield" ? "object-contain" : "object-cover",
+              "object-cover",
               artTreatmentClass,
             )}
             src={artUrl}

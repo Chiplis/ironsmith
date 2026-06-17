@@ -527,7 +527,7 @@ function InspectorArtImageLayers({
           <img
             src={src}
             alt={objectName || "Card art"}
-            className="h-full w-full object-contain drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
+            className="h-full w-full object-cover drop-shadow-[0_22px_24px_rgba(0,0,0,0.4)]"
             loading="eager"
             decoding="async"
             referrerPolicy="no-referrer"
