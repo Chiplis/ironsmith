@@ -1,4 +1,4 @@
-import { Fragment, useRef, useMemo, useEffect, useLayoutEffect, useCallback } from "react";
+import { Fragment, useRef, useMemo, useEffect, useLayoutEffect, useCallback, useState } from "react";
 import { useGame } from "@/context/GameContext";
 import { useHover } from "@/context/HoverContext";
 import { useDragActions } from "@/context/DragContext";
@@ -19,6 +19,7 @@ const HAND_ROULETTE_WRAP_GAP = 20;
 const HAND_ROULETTE_CYCLE_COUNT = 3;
 const HAND_ROULETTE_CENTER_CYCLE = 1;
 const HAND_DRAG_START_DISTANCE_SQ = 14 * 14;
+const DRAW_TO_HAND_REVEAL_DELAY_MS = 1080;
 
 /** Map card_types array to a glow kind for hand display. */
 function handGlowFromTypes(cardTypes) {
@@ -206,9 +207,158 @@ export default function HandZone({
   const rouletteCycleSpanRef = useRef(0);
   const rouletteRecenteringRef = useRef(false);
   const mobileSelectedPreviewRafRef = useRef(null);
-  const handCards = useMemo(
+  const drawRevealTimersRef = useRef(new Map());
+  const [persistHiddenDrawCardIds, setPersistHiddenDrawCardIds] = useState(() => new Set());
+  const rawHandCards = useMemo(
     () => (player?.can_view_hand && player?.hand_cards) || [],
     [player?.can_view_hand, player?.hand_cards]
+  );
+  const drawTransitionIds = useMemo(() => {
+    const ids = new Set();
+    const playerKeys = new Set(
+      [player?.id, player?.index]
+        .filter((value) => value != null)
+        .map((value) => String(value))
+    );
+    for (const transition of state?.zone_transitions || []) {
+      const fromZone = String(transition?.from_zone ?? transition?.fromZone ?? "").trim().toLowerCase();
+      const toZone = String(transition?.to_zone ?? transition?.toZone ?? "").trim().toLowerCase();
+      if (fromZone !== "library" || toZone !== "hand") continue;
+      const ownerKey = transition?.owner ?? transition?.controller;
+      if (playerKeys.size > 0 && ownerKey != null && !playerKeys.has(String(ownerKey))) continue;
+      const objectId = transition?.new_object_id ?? transition?.newObjectId ?? transition?.card?.id ?? null;
+      if (objectId != null) ids.add(String(objectId));
+    }
+    return ids;
+  }, [player?.id, player?.index, state?.zone_transitions]);
+  const tuckTransitionIds = useMemo(() => {
+    const ids = new Set();
+    const playerKeys = new Set(
+      [player?.id, player?.index]
+        .filter((value) => value != null)
+        .map((value) => String(value))
+    );
+    for (const transition of state?.zone_transitions || []) {
+      const fromZone = String(transition?.from_zone ?? transition?.fromZone ?? "").trim().toLowerCase();
+      const toZone = String(transition?.to_zone ?? transition?.toZone ?? "").trim().toLowerCase();
+      if (fromZone !== "hand" || toZone !== "library") continue;
+      const ownerKey = transition?.owner ?? transition?.controller;
+      if (playerKeys.size > 0 && ownerKey != null && !playerKeys.has(String(ownerKey))) continue;
+      const objectId = transition?.old_object_id
+        ?? transition?.oldObjectId
+        ?? transition?.card?.id
+        ?? transition?.new_object_id
+        ?? transition?.newObjectId
+        ?? null;
+      if (objectId != null) ids.add(String(objectId));
+    }
+    return ids;
+  }, [player?.id, player?.index, state?.zone_transitions]);
+  const rawHandCardIdsSignature = useMemo(
+    () => rawHandCards.map((card) => String(card.id)).join("|"),
+    [rawHandCards]
+  );
+  const currentDrawHiddenIds = useMemo(() => {
+    const ids = new Set();
+    if (!player?.can_view_hand || drawTransitionIds.size === 0) return ids;
+    for (const card of rawHandCards) {
+      const id = String(card.id);
+      if (drawTransitionIds.has(id)) ids.add(id);
+    }
+    return ids;
+  }, [drawTransitionIds, player?.can_view_hand, rawHandCards]);
+  const currentTuckHiddenIds = useMemo(() => {
+    const ids = new Set();
+    if (!player?.can_view_hand || tuckTransitionIds.size === 0) return ids;
+    for (const card of rawHandCards) {
+      const id = String(card.id);
+      if (tuckTransitionIds.has(id)) ids.add(id);
+    }
+    return ids;
+  }, [player?.can_view_hand, rawHandCards, tuckTransitionIds]);
+  useLayoutEffect(() => {
+    void rawHandCardIdsSignature;
+    if (!player?.can_view_hand || drawTransitionIds.size === 0) return undefined;
+
+    const addedHiddenIds = [];
+    for (const card of rawHandCards) {
+      const id = String(card.id);
+      if (!drawTransitionIds.has(id) || drawRevealTimersRef.current.has(id)) continue;
+      addedHiddenIds.push(id);
+    }
+    if (addedHiddenIds.length === 0) return undefined;
+
+    addedHiddenIds.forEach((id, index) => {
+      const delay = DRAW_TO_HAND_REVEAL_DELAY_MS + (index * 90);
+      const timerId = window.setTimeout(() => {
+        drawRevealTimersRef.current.delete(id);
+        setPersistHiddenDrawCardIds((current) => {
+          if (!current.has(id)) return current;
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        });
+      }, delay);
+      drawRevealTimersRef.current.set(id, timerId);
+    });
+    queueMicrotask(() => {
+      setPersistHiddenDrawCardIds((current) => {
+        let next = current;
+        for (const id of addedHiddenIds) {
+          if (next.has(id)) continue;
+          if (next === current) next = new Set(current);
+          next.add(id);
+        }
+        return next;
+      });
+    });
+
+    return undefined;
+  }, [drawTransitionIds, player?.can_view_hand, rawHandCardIdsSignature, rawHandCards]);
+  useEffect(() => {
+    const visibleIds = new Set(rawHandCards.map((card) => String(card.id)));
+    const staleIds = [];
+    for (const id of persistHiddenDrawCardIds) {
+      if (visibleIds.has(id)) continue;
+      staleIds.push(id);
+      const timerId = drawRevealTimersRef.current.get(id);
+      if (timerId != null) window.clearTimeout(timerId);
+      drawRevealTimersRef.current.delete(id);
+    }
+    if (staleIds.length === 0) return;
+    queueMicrotask(() => {
+      setPersistHiddenDrawCardIds((current) => {
+        let next = current;
+        for (const id of staleIds) {
+          if (!next.has(id)) continue;
+          if (next === current) next = new Set(current);
+          next.delete(id);
+        }
+        return next;
+      });
+    });
+  }, [persistHiddenDrawCardIds, rawHandCards]);
+  const hiddenDrawCardIds = useMemo(() => {
+    const ids = new Set(currentDrawHiddenIds);
+    for (const id of currentTuckHiddenIds) {
+      ids.add(id);
+    }
+    for (const id of persistHiddenDrawCardIds) {
+      ids.add(id);
+    }
+    return ids;
+  }, [currentDrawHiddenIds, currentTuckHiddenIds, persistHiddenDrawCardIds]);
+  useEffect(() => () => {
+    for (const timerId of drawRevealTimersRef.current.values()) {
+      window.clearTimeout(timerId);
+    }
+    drawRevealTimersRef.current.clear();
+  }, []);
+  const handCards = useMemo(
+    () => hiddenDrawCardIds.size === 0
+      ? rawHandCards
+      : rawHandCards.filter((card) => !hiddenDrawCardIds.has(String(card.id))),
+    [hiddenDrawCardIds, rawHandCards]
   );
   const previousExpandedRef = useRef(isExpanded);
   const handCardIds = handCards.map((c) => c.id);
