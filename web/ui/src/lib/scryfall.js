@@ -265,6 +265,21 @@ function namedCardJsonUrls(cardName, printPreference = null) {
   return urls;
 }
 
+function nonFullArtSearchUrl(cardName, printPreference = null) {
+  const query = String(cardName || "").trim();
+  if (!query) return "";
+  const preference = normalizePrintPreference(printPreference);
+  const pieces = [`!"${query.replace(/"/g, '\\"')}"`, "-is:fullart"];
+  if (preference?.setCode) pieces.push(`set:${preference.setCode}`);
+  const params = new URLSearchParams({
+    q: pieces.join(" "),
+    unique: "cards",
+    order: "released",
+    dir: "desc",
+  });
+  return `https://api.scryfall.com/cards/search?${params.toString()}`;
+}
+
 function scryfallCardMatchesName(card, cardName) {
   const queryKey = customArtKey(cardName);
   if (!queryKey || !card || typeof card !== "object") return false;
@@ -406,11 +421,30 @@ async function fetchScryfallCardJson(cardName, printPreference = null) {
   if (cardJsonCache.has(key)) return cardJsonCache.get(key);
 
   const request = (async () => {
+    if (!preference?.collectorNumber) {
+      const searchUrl = nonFullArtSearchUrl(query, preference);
+      if (searchUrl) {
+        const response = await fetchScryfallApiJson(searchUrl);
+        if (response.ok) {
+          const payload = await response.json();
+          const card = (Array.isArray(payload?.data) ? payload.data : [])
+            .find((candidate) => scryfallCardMatchesName(candidate, query));
+          if (card) {
+            cacheResolvedImageUrls(query, card, preference);
+            return card;
+          }
+        }
+      }
+    }
+
     for (const url of namedCardJsonUrls(query, preference)) {
       const response = await fetchScryfallApiJson(url);
       if (!response.ok) continue;
       const card = await response.json();
       if (preference?.collectorNumber && !scryfallCardMatchesName(card, query)) {
+        continue;
+      }
+      if (!preference?.collectorNumber && card?.full_art === true) {
         continue;
       }
       cacheResolvedImageUrls(query, card, preference);
@@ -519,7 +553,9 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
 
   const localPayload = await fetchLocalCardPayload(query).catch(() => null);
   const localScryfall = localScryfallPayloadForName(localPayload, query);
-  const localResolved = imageUrlFromImageUris(localScryfall?.image_uris, version);
+  const localResolved = localScryfall?.full_art === true
+    ? ""
+    : imageUrlFromImageUris(localScryfall?.image_uris, version);
   if (localResolved) {
     resolvedCardImageUrlCache.set(defaultKey, localResolved);
     return localResolved;

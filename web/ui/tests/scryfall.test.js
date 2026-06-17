@@ -102,15 +102,21 @@ test("Scryfall API fallback resolves CDN image URLs without using format=image",
     if (String(url).startsWith("http://localhost/cards/api-fallback-card.json")) {
       return { status: 404, ok: false, json: async () => ({}) };
     }
-    assert.match(String(url), /^https:\/\/api\.scryfall\.com\/cards\/named\?/);
+    assert.match(String(url), /^https:\/\/api\.scryfall\.com\/cards\/search\?/);
     assert.doesNotMatch(String(url), /format=image/);
+    assert.match(String(url), /-is%3Afullart/);
     return {
       ok: true,
       json: async () => ({
-        image_uris: {
-          normal: "https://cards.example.test/api-fallback-normal.jpg",
-          art_crop: "https://cards.example.test/api-fallback-art.jpg",
-        },
+        data: [
+          {
+            name: "API Fallback Card",
+            image_uris: {
+              normal: "https://cards.example.test/api-fallback-normal.jpg",
+              art_crop: "https://cards.example.test/api-fallback-art.jpg",
+            },
+          },
+        ],
       }),
       headers: { get: () => null },
     };
@@ -120,6 +126,54 @@ test("Scryfall API fallback resolves CDN image URLs without using format=image",
     assert.equal(
       await resolveScryfallImageUrl("API Fallback Card", "normal"),
       "https://cards.example.test/api-fallback-normal.jpg"
+    );
+    assert.equal(urls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("full-art local metadata is skipped for default Scryfall art", async () => {
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    if (String(url).startsWith("http://localhost/cards/full-art-local-card.json")) {
+      return {
+        ok: true,
+        json: async () => ({
+          scryfall: {
+            full_art: true,
+            image_uris: {
+              normal: "https://cards.example.test/full-art-local-normal.jpg",
+            },
+          },
+        }),
+      };
+    }
+    assert.match(String(url), /^https:\/\/api\.scryfall\.com\/cards\/search\?/);
+    assert.match(String(url), /-is%3Afullart/);
+    return {
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            name: "Full Art Local Card",
+            full_art: false,
+            image_uris: {
+              normal: "https://cards.example.test/non-full-art-normal.jpg",
+            },
+          },
+        ],
+      }),
+      headers: { get: () => null },
+    };
+  };
+
+  try {
+    assert.equal(
+      await resolveScryfallImageUrl("Full Art Local Card", "normal"),
+      "https://cards.example.test/non-full-art-normal.jpg"
     );
     assert.equal(urls.length, 2);
   } finally {
