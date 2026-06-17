@@ -5251,7 +5251,7 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 
 .inspector-oracle-line {
   display: block;
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
   margin-left: 0;
   padding-inline: 0.28rem;
@@ -5261,6 +5261,8 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   -webkit-backdrop-filter: none;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .inspector-oracle-line--topbar {

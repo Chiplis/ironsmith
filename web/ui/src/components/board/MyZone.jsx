@@ -730,7 +730,7 @@ export default function MyZone({
           {headerInspectorDock ? (
             <div
               className="my-zone-header-inspector-dock pointer-events-none absolute inset-y-0 right-2 z-[110] flex items-end justify-end overflow-visible"
-              style={{ width: "min(25vw, 420px)" }}
+              style={{ width: "40vw" }}
               data-inspector-dock="middle"
             >
               {headerInspectorDock}

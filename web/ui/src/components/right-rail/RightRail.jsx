@@ -7,10 +7,10 @@ import { playerAccentVars } from "@/lib/player-colors";
 import { getVisibleStackObjects } from "@/lib/stack-targets";
 import { cn } from "@/lib/utils";
 
-const INSPECTOR_OVERLAY_WIDTH = "25vw";
-const INSPECTOR_INLINE_MAX_WIDTH_PX = 420;
+const INSPECTOR_OVERLAY_WIDTH = "40vw";
+const INSPECTOR_INLINE_MAX_WIDTH_PX = 2400;
 const INLINE_EXPANDED_MIN_WIDTH = 220;
-const INLINE_EXPANDED_MAX_WIDTH_PX = 1800;
+const INLINE_EXPANDED_MAX_WIDTH_PX = 2400;
 const INLINE_EXPANDED_MIN_HAND_WIDTH = 168;
 const DEFAULT_INSPECTOR_BOTTOM_OFFSET = 8;
 const INLINE_EXPANDED_DEFAULT_HEIGHT = 248;
@@ -27,13 +27,13 @@ const LARGE_DESKTOP_QUERY = "(min-width: 1800px)";
 function getViewportTierInspectorOverrides() {
   if (typeof window === "undefined" || typeof window.matchMedia !== "function") return {};
   if (window.matchMedia(TABLET_COMPACT_QUERY).matches) {
-    return { minWidth: 180, widthFraction: 0.22, expandedMaxWidth: 600, minHandWidth: 120 };
+    return { minWidth: 180, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 120 };
   }
   if (window.matchMedia(SMALL_DESKTOP_QUERY).matches) {
-    return { minWidth: 200, widthFraction: 0.22, expandedMaxWidth: 1000, minHandWidth: 140 };
+    return { minWidth: 200, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 140 };
   }
   if (window.matchMedia(LARGE_DESKTOP_QUERY).matches) {
-    return { minWidth: 260, widthFraction: 0.20, expandedMaxWidth: 2200, minHandWidth: 180 };
+    return { minWidth: 260, widthFraction: 0.4, expandedMaxWidth: 2400, minHandWidth: 180 };
   }
   return {};
 }
@@ -52,7 +52,7 @@ function viewportInspectorTargetWidthPx() {
   }
   const overrides = getViewportTierInspectorOverrides();
   const minW = overrides.minWidth ?? 220;
-  const fraction = overrides.widthFraction ?? 0.25;
+  const fraction = overrides.widthFraction ?? 0.4;
   return Math.max(minW, Math.floor(window.innerWidth * fraction));
 }
 
@@ -264,7 +264,6 @@ export default function RightRail({
   transientInspectorPreviewCount = 0,
   onShowPreviousTransientInspectorPreview = null,
   onShowNextTransientInspectorPreview = null,
-  suppressFallback = false,
   inspectorBottomOffset = DEFAULT_INSPECTOR_BOTTOM_OFFSET,
   inline = false,
   inlineDockPlacement = "bottom",
@@ -278,7 +277,6 @@ export default function RightRail({
   inspectorVariant = "normal",
 }) {
   const { state } = useGame();
-  const [preferredExpandedInlineWidth, setPreferredExpandedInlineWidth] = useState(null);
   const [preferredExpandedInlineHeight, setPreferredExpandedInlineHeight] = useState(null);
   const [maxExpandedInlineWidth, setMaxExpandedInlineWidth] = useState(INLINE_EXPANDED_MAX_WIDTH_PX);
   const railRef = useRef(null);
@@ -299,9 +297,6 @@ export default function RightRail({
   const hasRealStackEntries =
     (state?.stack_objects || []).length > 0 || (state?.stack_preview || []).length > 0;
   const topStackObject = stackObjects[0];
-  const topStackObjectId = topStackObject
-    ? String(topStackObject.inspect_object_id ?? topStackObject.id)
-    : null;
   const resolvingCastObjectId = state?.stack_size > 0 && topStackObject && !topStackObject.ability_kind
     ? String(topStackObject.inspect_object_id ?? topStackObject.id)
     : null;
@@ -341,16 +336,13 @@ export default function RightRail({
       : null
   );
   const relevantHoveredObjectId = directHoveredInspectorObjectId ?? linkedInspectorObjectId;
-  const fallbackDecisionObjectId = suppressFallback ? null : (resolvingCastObjectId ?? topStackObjectId);
-  // During focused decision steps, keep the resolving stack object as a fallback.
-  // Live hover should always win, even if the current decision does not reference it.
   const decisionLockedObjectId = focusedDecision
-    ? (relevantHoveredObjectId ?? relevantPinnedObjectId ?? fallbackDecisionObjectId)
+    ? (relevantHoveredObjectId ?? relevantPinnedObjectId)
     : null;
 
   const selectedObjectId = focusedDecision
     ? decisionLockedObjectId
-    : (relevantHoveredObjectId ?? relevantPinnedObjectId ?? fallbackDecisionObjectId);
+    : (relevantHoveredObjectId ?? relevantPinnedObjectId);
   const validSelectedObjectId = objectInspectableInCurrentContext(state, decision, selectedObjectId)
     ? selectedObjectId
     : null;
@@ -399,37 +391,17 @@ export default function RightRail({
     return () => window.removeEventListener("resize", handleResize);
   }, []);
   const baseInlineWidthPx = useMemo(() => {
+    void viewportSizeTick;
     return Math.min(INSPECTOR_INLINE_MAX_WIDTH_PX, viewportInspectorTargetWidthPx());
     // viewportSizeTick re-reads the window-size-dependent helpers on resize.
   }, [viewportSizeTick]);
   const expandedInlineWidth = useMemo(() => {
-    const effectiveMaxWidth = getViewportTierInspectorOverrides().expandedMaxWidth ?? INLINE_EXPANDED_MAX_WIDTH_PX;
-    const baseWidth = Math.max(baseInlineWidthPx, INLINE_EXPANDED_MIN_WIDTH);
-    const contentPreferredWidth = Number(preferredExpandedInlineWidth);
-    const hasPreferredWidth = Number.isFinite(contentPreferredWidth) && contentPreferredWidth > 0;
-    const preferredWidth = hasPreferredWidth ? Math.ceil(contentPreferredWidth) : baseWidth;
-    const measuredMaxWidth = Math.round(maxExpandedInlineWidth || effectiveMaxWidth);
-    const viewportTargetWidth = viewportInspectorTargetWidthPx();
-    const defaultWidthCap = Math.min(
-      measuredMaxWidth,
-      expandInlineToZoneViewer
-        ? effectiveMaxWidth
-        : viewportTargetWidth
+    const measuredMaxWidth = Math.round(maxExpandedInlineWidth || INSPECTOR_INLINE_MAX_WIDTH_PX);
+    return Math.max(
+      INLINE_EXPANDED_MIN_WIDTH,
+      Math.min(baseInlineWidthPx, measuredMaxWidth)
     );
-    const preferredWidthCap = Math.min(
-      measuredMaxWidth,
-      effectiveMaxWidth,
-      expandInlineToZoneViewer
-        ? effectiveMaxWidth
-        : Math.max(viewportTargetWidth, preferredWidth)
-    );
-    const defaultWidth = Math.max(baseWidth, defaultWidthCap);
-    if (!hasPreferredWidth) {
-      return defaultWidth;
-    }
-
-    return Math.max(baseWidth, Math.min(preferredWidth, preferredWidthCap));
-  }, [baseInlineWidthPx, expandInlineToZoneViewer, maxExpandedInlineWidth, preferredExpandedInlineWidth, viewportSizeTick]);
+  }, [baseInlineWidthPx, maxExpandedInlineWidth]);
 
   useLayoutEffect(() => {
     const railEl = railRef.current;
@@ -707,7 +679,7 @@ export default function RightRail({
                 availableInspectorWidth={inline ? expandedInlineWidth : undefined}
                 availableInspectorHeight={inline ? expandedInlineHeight : undefined}
                 onOracleTextHeightChange={inline ? setPreferredExpandedInlineHeight : null}
-                onPreferredInspectorWidthChange={inline ? setPreferredExpandedInlineWidth : null}
+                onPreferredInspectorWidthChange={null}
                 onInspectorAccentChange={setInspectorAccent}
               />
             </div>

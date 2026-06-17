@@ -1276,14 +1276,23 @@ export default function Workspace({
         }
       }
       clearTransientInspectorPreviews();
+      if (stackEntry) {
+        clearHover();
+        setSelectedObjectId(null);
+        setPinnedInspectorObjectId(null);
+        setSuppressFallbackInspector(false);
+        setFocusedStackObjectId(stackEntry.id != null ? String(stackEntry.id) : null);
+        return;
+      }
       setSelectedObjectId(objectId);
-      setFocusedStackObjectId(stackEntry?.id != null ? String(stackEntry.id) : null);
+      setFocusedStackObjectId(null);
       setPinnedInspectorObjectId(objectId == null ? null : String(objectId));
       setSuppressFallbackInspector(false);
       if (objectId != null) hoverCard(objectId);
     },
     [
       combatDeclarationActive,
+      clearHover,
       decision,
       game,
       hoverCard,
@@ -1691,6 +1700,7 @@ export default function Workspace({
                 inlineDockPlacement="top"
                 inlineExpandedAnchor="top"
                 expandInlineToZoneViewer
+                inlineFillWidth
                 inlineFillHeight
                 allowTopInlinePlacement
               />
@@ -1702,7 +1712,7 @@ export default function Workspace({
         <div
           className="pointer-events-none fixed left-[6px] top-[6px] z-[70] flex items-start justify-start overflow-visible"
           style={{
-            width: "min(760px, calc(100vw - 12px))",
+            width: "40vw",
             height: `${topLeftInspectorHeight}px`,
           }}
           data-inspector-dock="top"
