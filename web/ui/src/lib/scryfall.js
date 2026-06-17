@@ -11,6 +11,7 @@ const BASIC_LAND_KEYS = new Set(
 const PREFERRED_BASIC_LAND_SET = "fdn";
 
 const CUSTOM_CARD_ART_URLS_STORAGE_KEY = "ironsmith-custom-card-art-urls";
+const CARD_PRINT_PREFERENCES_STORAGE_KEY = "ironsmith-card-print-preferences";
 const HIDDEN_CARD_NAMES = new Set(["hidden card"]);
 const HIDDEN_CARD_BACK_SVG = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 680" role="img" aria-label="Hidden card">
@@ -71,12 +72,34 @@ function customArtKey(cardName) {
   return String(cardName || "").trim().toLowerCase();
 }
 
-function readCustomCardArtUrlMap() {
+function normalizeSetCode(raw) {
+  const value = String(raw || "").trim().toLowerCase();
+  return /^[a-z0-9]{2,8}$/.test(value) ? value : "";
+}
+
+function normalizeCollectorNumber(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/\*$/, "")
+    .slice(0, 24);
+}
+
+function normalizePrintPreference(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const setCode = normalizeSetCode(raw.setCode || raw.set || raw.code);
+  if (!setCode) return null;
+  const collectorNumber = normalizeCollectorNumber(
+    raw.collectorNumber || raw.collector_number || raw.number
+  );
+  return collectorNumber ? { setCode, collectorNumber } : { setCode };
+}
+
+function readJsonStorageMap(storageKey) {
   const localStorage = storage();
   if (!localStorage) return {};
 
   try {
-    const raw = localStorage.getItem(CUSTOM_CARD_ART_URLS_STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
@@ -85,19 +108,62 @@ function readCustomCardArtUrlMap() {
   }
 }
 
-function writeCustomCardArtUrlMap(map) {
+function writeJsonStorageMap(storageKey, map) {
   const localStorage = storage();
   if (!localStorage) return;
 
-  const entries = Object.entries(map)
-    .filter(([, url]) => typeof url === "string" && url.trim())
+  const entries = Object.entries(map || {})
+    .filter(([, value]) => {
+      if (typeof value === "string") return value.trim();
+      return value && typeof value === "object" && !Array.isArray(value);
+    })
     .sort(([left], [right]) => left.localeCompare(right));
   if (entries.length === 0) {
-    localStorage.removeItem(CUSTOM_CARD_ART_URLS_STORAGE_KEY);
+    localStorage.removeItem(storageKey);
     return;
   }
 
-  localStorage.setItem(CUSTOM_CARD_ART_URLS_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+  localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(entries)));
+}
+
+function readCustomCardArtUrlMap() {
+  return readJsonStorageMap(CUSTOM_CARD_ART_URLS_STORAGE_KEY);
+}
+
+function writeCustomCardArtUrlMap(map) {
+  writeJsonStorageMap(CUSTOM_CARD_ART_URLS_STORAGE_KEY, map);
+}
+
+function readCardPrintPreferenceMap() {
+  const rawMap = readJsonStorageMap(CARD_PRINT_PREFERENCES_STORAGE_KEY);
+  const out = {};
+  for (const [key, raw] of Object.entries(rawMap)) {
+    const preference = normalizePrintPreference(raw);
+    if (preference) out[key] = preference;
+  }
+  return out;
+}
+
+function writeCardPrintPreferenceMap(map) {
+  writeJsonStorageMap(CARD_PRINT_PREFERENCES_STORAGE_KEY, map);
+}
+
+function printPreferenceCacheKey(printPreference) {
+  const preference = normalizePrintPreference(printPreference);
+  if (!preference) return "default";
+  return [
+    `set:${preference.setCode}`,
+    preference.collectorNumber ? `number:${preference.collectorNumber.toLowerCase()}` : "",
+  ].filter(Boolean).join("|");
+}
+
+function clearCachedCardImageUrls(cardName) {
+  const keyPrefix = `${customArtKey(cardName)}|`;
+  for (const key of resolvedCardImageUrlCache.keys()) {
+    if (key.startsWith(keyPrefix)) {
+      resolvedCardImageUrlCache.delete(key);
+    }
+  }
 }
 
 export function customCardArtUrl(cardName) {
@@ -107,16 +173,26 @@ export function customCardArtUrl(cardName) {
   return typeof url === "string" ? url.trim() : "";
 }
 
+export function preferredCardPrint(cardName) {
+  const key = customArtKey(cardName);
+  if (!key) return null;
+  return readCardPrintPreferenceMap()[key] || null;
+}
+
 export function isHiddenCardName(cardName) {
   return HIDDEN_CARD_NAMES.has(customArtKey(cardName));
 }
 
-function cardImageCacheKey(cardName, version = "normal") {
-  return `${customArtKey(cardName)}|${String(version || "normal").trim() || "normal"}`;
+function cardImageCacheKey(cardName, version = "normal", printPreference = null) {
+  return [
+    customArtKey(cardName),
+    String(version || "normal").trim() || "normal",
+    printPreferenceCacheKey(printPreference),
+  ].join("|");
 }
 
-function cardJsonCacheKey(cardName) {
-  return customArtKey(cardName);
+function cardJsonCacheKey(cardName, printPreference = null) {
+  return `${customArtKey(cardName)}|${printPreferenceCacheKey(printPreference)}`;
 }
 
 function isBasicLandName(cardName) {
@@ -146,29 +222,55 @@ export function cardRouteKey(name) {
   return normalized || "";
 }
 
-function namedCardParams(cardName) {
+function namedCardParams(cardName, printPreference = null) {
   const query = String(cardName || "").trim();
   const params = new URLSearchParams();
+  const setCode = normalizePrintPreference(printPreference)?.setCode || "";
 
   if (isBasicLandName(query)) {
     params.set("exact", query);
-    params.set("set", PREFERRED_BASIC_LAND_SET);
+    params.set("set", setCode || PREFERRED_BASIC_LAND_SET);
   } else {
     params.set("fuzzy", query);
+    if (setCode) params.set("set", setCode);
   }
 
   return params;
 }
 
-function namedCardJsonUrls(cardName) {
+function namedCardJsonUrls(cardName, printPreference = null) {
   const query = String(cardName || "").trim();
-  if (isBasicLandName(query)) {
-    return [`https://api.scryfall.com/cards/named?${namedCardParams(query).toString()}`];
+  const preference = normalizePrintPreference(printPreference);
+  const urls = [];
+  if (preference?.setCode && preference?.collectorNumber) {
+    urls.push(
+      `https://api.scryfall.com/cards/${encodeURIComponent(preference.setCode)}/${encodeURIComponent(preference.collectorNumber)}`
+    );
   }
-  return [
-    `https://api.scryfall.com/cards/named?${new URLSearchParams({ exact: query }).toString()}`,
-    `https://api.scryfall.com/cards/named?${new URLSearchParams({ fuzzy: query }).toString()}`,
-  ];
+  if (isBasicLandName(query)) {
+    urls.push(`https://api.scryfall.com/cards/named?${namedCardParams(query, preference).toString()}`);
+    return urls;
+  }
+
+  const exactParams = new URLSearchParams({ exact: query });
+  const fuzzyParams = new URLSearchParams({ fuzzy: query });
+  if (preference?.setCode) {
+    exactParams.set("set", preference.setCode);
+    fuzzyParams.set("set", preference.setCode);
+  }
+  urls.push(
+    `https://api.scryfall.com/cards/named?${exactParams.toString()}`,
+    `https://api.scryfall.com/cards/named?${fuzzyParams.toString()}`
+  );
+  return urls;
+}
+
+function scryfallCardMatchesName(card, cardName) {
+  const queryKey = customArtKey(cardName);
+  if (!queryKey || !card || typeof card !== "object") return false;
+  if (customArtKey(card.name) === queryKey) return true;
+  return Array.isArray(card.card_faces)
+    && card.card_faces.some((face) => customArtKey(face?.name) === queryKey);
 }
 
 function imageUrlFromScryfallCard(card, version = "normal") {
@@ -194,7 +296,7 @@ function imageUrlFromImageUris(imageUris, version = "normal") {
   );
 }
 
-function cacheResolvedImageUrls(cardName, card) {
+function cacheResolvedImageUrls(cardName, card, printPreference = null) {
   const imageUris = card?.image_uris
     || (Array.isArray(card?.card_faces)
       ? card.card_faces.find((face) => face?.image_uris)?.image_uris
@@ -202,7 +304,7 @@ function cacheResolvedImageUrls(cardName, card) {
   if (!imageUris) return;
   for (const [version, url] of Object.entries(imageUris)) {
     if (!url) continue;
-    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version), String(url));
+    resolvedCardImageUrlCache.set(cardImageCacheKey(cardName, version, printPreference), String(url));
   }
 }
 
@@ -296,18 +398,22 @@ function fetchScryfallApiJson(url) {
   return request;
 }
 
-async function fetchScryfallCardJson(cardName) {
+async function fetchScryfallCardJson(cardName, printPreference = null) {
   const query = String(cardName || "").trim();
-  const key = cardJsonCacheKey(query);
+  const preference = normalizePrintPreference(printPreference);
+  const key = cardJsonCacheKey(query, preference);
   if (!query || isHiddenCardName(query)) return null;
   if (cardJsonCache.has(key)) return cardJsonCache.get(key);
 
   const request = (async () => {
-    for (const url of namedCardJsonUrls(query)) {
+    for (const url of namedCardJsonUrls(query, preference)) {
       const response = await fetchScryfallApiJson(url);
       if (!response.ok) continue;
       const card = await response.json();
-      cacheResolvedImageUrls(query, card);
+      if (preference?.collectorNumber && !scryfallCardMatchesName(card, query)) {
+        continue;
+      }
+      cacheResolvedImageUrls(query, card, preference);
       return card;
     }
     throw new Error(`Could not resolve Scryfall card for ${query}`);
@@ -337,13 +443,42 @@ export function setCustomCardArtUrls(entries) {
   writeCustomCardArtUrlMap(map);
 }
 
+export function setPreferredCardPrints(entries) {
+  const map = readCardPrintPreferenceMap();
+  let changed = false;
+
+  for (const entry of entries || []) {
+    const key = customArtKey(entry?.name);
+    if (!key) continue;
+
+    const preference = normalizePrintPreference(entry);
+    const previous = map[key] || null;
+    if (preference) {
+      if (
+        previous?.setCode !== preference.setCode
+        || previous?.collectorNumber !== preference.collectorNumber
+      ) {
+        map[key] = preference;
+        changed = true;
+        clearCachedCardImageUrls(entry.name);
+      }
+    } else if (previous) {
+      delete map[key];
+      changed = true;
+      clearCachedCardImageUrls(entry.name);
+    }
+  }
+
+  if (changed) writeCardPrintPreferenceMap(map);
+}
+
 export function scryfallImageUrl(cardName, version = "normal") {
   const query = String(cardName || "").trim();
   if (!query) return "";
   if (isHiddenCardName(query)) return HIDDEN_CARD_BACK_IMAGE_URL;
   const customUrl = customCardArtUrl(query);
   if (customUrl) return customUrl;
-  const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version));
+  const cached = resolvedCardImageUrlCache.get(cardImageCacheKey(query, version, preferredCardPrint(query)));
   if (cached) return cached;
   return "";
 }
@@ -355,15 +490,29 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const customUrl = customCardArtUrl(query);
   if (customUrl) return customUrl;
 
-  const key = cardImageCacheKey(query, version);
-  const cached = resolvedCardImageUrlCache.get(key);
+  const preference = preferredCardPrint(query);
+  const preferredKey = cardImageCacheKey(query, version, preference);
+  const cached = resolvedCardImageUrlCache.get(preferredKey);
   if (cached) return cached;
+
+  if (preference) {
+    const card = await fetchScryfallCardJson(query, preference).catch(() => null);
+    const resolved = imageUrlFromScryfallCard(card, version);
+    if (resolved) {
+      resolvedCardImageUrlCache.set(preferredKey, resolved);
+      return resolved;
+    }
+  }
+
+  const defaultKey = cardImageCacheKey(query, version);
+  const defaultCached = resolvedCardImageUrlCache.get(defaultKey);
+  if (defaultCached) return defaultCached;
 
   if (prefersLiveScryfallCard(query)) {
     const card = await fetchScryfallCardJson(query).catch(() => null);
     const resolved = imageUrlFromScryfallCard(card, version);
     if (resolved) {
-      resolvedCardImageUrlCache.set(key, resolved);
+      resolvedCardImageUrlCache.set(defaultKey, resolved);
       return resolved;
     }
   }
@@ -372,14 +521,14 @@ export async function resolveScryfallImageUrl(cardName, version = "normal") {
   const localScryfall = localScryfallPayloadForName(localPayload, query);
   const localResolved = imageUrlFromImageUris(localScryfall?.image_uris, version);
   if (localResolved) {
-    resolvedCardImageUrlCache.set(key, localResolved);
+    resolvedCardImageUrlCache.set(defaultKey, localResolved);
     return localResolved;
   }
 
   const card = await fetchScryfallCardJson(query);
   const resolved = imageUrlFromScryfallCard(card, version);
   if (resolved) {
-    resolvedCardImageUrlCache.set(key, resolved);
+    resolvedCardImageUrlCache.set(defaultKey, resolved);
     return resolved;
   }
   return "";

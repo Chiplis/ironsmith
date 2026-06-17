@@ -9,6 +9,10 @@ const MAIN_DECK_HEADER = /^Deck$/i;
 const COMMANDER_HEADER = /^(Commander|Commanders)$/i;
 const EXTRA_DECK_HEADER = /^(Sideboard|Companion|Maybeboard)$/i;
 const CARD_LINE = /^(\d+)x?\s+(.+)$/;
+const SET_COLLECTOR_SUFFIX =
+  /\s*(?:\((?<parenSet>[a-z0-9]{2,8})\)|\[(?<bracketSet>[a-z0-9]{2,8})\])\s*(?<collector>\d+[a-z]?\*?)?\s*$/i;
+const SET_COLLECTOR_COMPACT_SUFFIX =
+  /\s*\[(?<set>[a-z0-9]{2,8}):(?<collector>\d+[a-z]?\*?)\]\s*$/i;
 
 function normalizeCardName(raw) {
   return String(raw || "")
@@ -16,6 +20,37 @@ function normalizeCardName(raw) {
     .replace(/\s*(?:\([a-z0-9]{2,8}\)|\[[a-z0-9]{2,8}\])\s*\d*[a-z]?\*?\s*$/i, "")
     .replace(/\s*\[[a-z0-9]{2,8}:\d+[a-z]?\]\s*$/i, "")
     .trim();
+}
+
+function parseCardPrintPreference(raw) {
+  const source = String(raw || "")
+    .replace(/\s*(?:\*F\*|foil|nonfoil|etched|★)\s*$/i, "")
+    .trim();
+  if (!source) return null;
+
+  const compactMatch = source.match(SET_COLLECTOR_COMPACT_SUFFIX);
+  const suffixMatch = compactMatch || source.match(SET_COLLECTOR_SUFFIX);
+  if (!suffixMatch?.groups) return null;
+
+  const setCode = String(
+    suffixMatch.groups.set
+      || suffixMatch.groups.parenSet
+      || suffixMatch.groups.bracketSet
+      || ""
+  ).trim();
+  if (!setCode) return null;
+
+  const name = normalizeCardName(raw);
+  if (!name) return null;
+
+  const collectorNumber = String(suffixMatch.groups.collector || "")
+    .replace(/\*$/, "")
+    .trim();
+  return {
+    name,
+    setCode,
+    collectorNumber,
+  };
 }
 
 function normalizeDeckPresetName(raw) {
@@ -109,6 +144,29 @@ export function parseDeckList(text) {
   }
 
   return cards;
+}
+
+export function parseDeckPrintPreferences(text) {
+  const preferences = [];
+
+  for (const line of String(text || "").split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+    if (
+      MAIN_DECK_HEADER.test(trimmed)
+      || COMMANDER_HEADER.test(trimmed)
+      || EXTRA_DECK_HEADER.test(trimmed)
+    ) {
+      continue;
+    }
+
+    const match = trimmed.match(CARD_LINE);
+    const rawName = match ? match[2] : trimmed;
+    const preference = parseCardPrintPreference(rawName);
+    if (preference) preferences.push(preference);
+  }
+
+  return preferences;
 }
 
 export function parseSideboardList(text) {

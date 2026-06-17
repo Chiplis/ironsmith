@@ -340,6 +340,8 @@ impl CardRegistry {
         maybe_register!(basic_mountain);
         maybe_register!(basic_plains);
         maybe_register!(basic_swamp);
+        maybe_register!(preordain);
+        maybe_register!(barrier_of_bones);
         maybe_register!(ornithopter);
         maybe_register!(murder_of_crows);
         maybe_register!(goblin_guide);

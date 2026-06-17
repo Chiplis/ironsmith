@@ -68,8 +68,10 @@ import {
   normalizeMatchFormat,
   parseCommanderList,
   parseDeckList,
+  parseDeckPrintPreferences,
   parseSideboardList,
 } from "@/lib/decklists";
+import { setPreferredCardPrints } from "@/lib/scryfall";
 import { emitSyncFailureNotice } from "@/lib/ui-notices";
 import { isDisadvantageousActivePlayerClockAdvance } from "@/lib/match-clock";
 import {
@@ -1210,7 +1212,13 @@ function openingMatchesRequirement(opening, requirement) {
 function cachedOpeningMatchesZifflePosition(opening, position, positionCommitment) {
   if (!opening || typeof opening !== "object") return false;
   const expectedCommitment = String(positionCommitment || "");
-  const openingCommitment = String(opening.positionCommitment || opening.position_commitment || "");
+  const openingCommitment = String(
+    opening.positionCommitment
+    || opening.position_commitment
+    || opening.publicCommitment
+    || opening.public_commitment
+    || ""
+  );
   if (expectedCommitment && openingCommitment !== expectedCommitment) {
     return false;
   }
@@ -1248,7 +1256,13 @@ function ziffleOpeningLinkKey(opening) {
   ) {
     return null;
   }
-  const positionCommitment = String(opening.positionCommitment || "");
+  const positionCommitment = String(
+    opening.positionCommitment
+    || opening.position_commitment
+    || opening.publicCommitment
+    || opening.public_commitment
+    || ""
+  );
   if (!ziffleDeckHashFromCommitment(positionCommitment)) return null;
   const position = zifflePositionFromCommitment(positionCommitment) ?? Number(opening.position);
   if (!Number.isSafeInteger(position) || position < 0) return null;
@@ -2040,6 +2054,10 @@ function parseDeckSubmission(format, deckText, commanderText = "") {
   const deck = sanitizeCardList(parseDeckList(deckText));
   const sideboard = sanitizeCardList(parseSideboardList(deckText));
   const commanders = sanitizeCardList(parseCommanderList(commanderText));
+  setPreferredCardPrints([
+    ...parseDeckPrintPreferences(deckText),
+    ...parseDeckPrintPreferences(commanderText),
+  ]);
   const status = evaluateLobbyDeckSubmission(format, deck, commanders);
   return {
     deck,
@@ -2779,21 +2797,25 @@ function withPinnedPublicZifflePosition(opening, publicPosition) {
     ...opening,
     publicSlot: Number(publicPosition.publicSlot ?? publicPosition.position),
     publicCommitment: String(publicPosition.publicCommitment || publicPosition.positionCommitment || ""),
-    ...(publicPosition.useAsPosition === false
-      ? {}
-      : {
-        position: Number(publicPosition.position),
-        positionCommitment: String(publicPosition.positionCommitment || publicPosition.publicCommitment || ""),
-      }),
+    position: Number(publicPosition.position),
+    positionCommitment: String(publicPosition.positionCommitment || publicPosition.publicCommitment || ""),
   };
 }
 
 function openingHasZifflePosition(opening) {
   if (!opening || typeof opening !== "object") return false;
-  const positionCommitment = String(opening.positionCommitment || opening.position_commitment || "");
+  const positionCommitment = String(
+    opening.positionCommitment
+    || opening.position_commitment
+    || opening.publicCommitment
+    || opening.public_commitment
+    || ""
+  );
+  const publicSlot = Number(opening.publicSlot ?? opening.public_slot);
   return Boolean(ziffleDeckHashFromCommitment(positionCommitment))
     && (
       opening.position != null
+      || (Number.isSafeInteger(publicSlot) && publicSlot >= 0)
       || zifflePositionFromCommitment(positionCommitment) != null
     );
 }
@@ -2896,13 +2918,18 @@ function validationCommandersForMatchPayload(payload) {
 
 function canHostedMatchStart(session) {
   const playerCount = session.players.length;
-  return (
+  const lobbyReady = (
     session.role === "host" &&
     !session.matchStarted &&
     session.mode !== "starting" &&
     playerCount === session.desiredPlayers &&
     isCurrentAuditPlayerCount(playerCount) &&
     session.players.every((player) => player.connected !== false && player.ready)
+  );
+  if (!lobbyReady) return false;
+  if (isTrustedMultiplayerSecurityMode(sessionSecurityMode(session))) return true;
+  return session.players.every((player) =>
+    player.ziffleKey && isSupportedZiffleDeckCount(player.deckCount)
   );
 }
 
@@ -4032,15 +4059,38 @@ export function usePeerLobby({
 	  }, [currentAuditMatchId]);
 
   const rememberZiffleOpeningPosition = useCallback((owner, originalSlot, position) => {
-    void owner;
-    void originalSlot;
-    void position;
+    const normalizedOwner = Number(owner);
+    const normalizedSlot = Number(originalSlot);
+    const normalizedPosition = Number(position);
+    if (
+      !Number.isSafeInteger(normalizedOwner)
+      || normalizedOwner < 0
+      || !Number.isSafeInteger(normalizedSlot)
+      || normalizedSlot < 0
+      || !Number.isSafeInteger(normalizedPosition)
+      || normalizedPosition < 0
+    ) {
+      return;
+    }
+    ziffleOpeningPositionsRef.current.set(
+      `${normalizedOwner}:${normalizedSlot}`,
+      normalizedPosition
+    );
   }, []);
 
   const ziffleOpeningPositionForSlot = useCallback((owner, originalSlot) => {
-    void owner;
-    void originalSlot;
-    return null;
+    const normalizedOwner = Number(owner);
+    const normalizedSlot = Number(originalSlot);
+    if (
+      !Number.isSafeInteger(normalizedOwner)
+      || normalizedOwner < 0
+      || !Number.isSafeInteger(normalizedSlot)
+      || normalizedSlot < 0
+    ) {
+      return null;
+    }
+    const position = ziffleOpeningPositionsRef.current.get(`${normalizedOwner}:${normalizedSlot}`);
+    return Number.isSafeInteger(position) && position >= 0 ? position : null;
   }, []);
 
 	  const clearOwnerZiffleOpeningCache = useCallback((owner, matchId = currentAuditMatchId()) => {
@@ -4089,9 +4139,17 @@ export function usePeerLobby({
       writeStoredRevealedOpening(indexKey, entry);
     };
     const entryPositionCommitment = String(
-      details.positionCommitment || opening.positionCommitment || opening.position_commitment || ""
+      details.positionCommitment
+      || details.publicCommitment
+      || details.public_commitment
+      || opening.positionCommitment
+      || opening.position_commitment
+      || opening.publicCommitment
+      || opening.public_commitment
+      || ""
     );
     const entryPosition = zifflePositionFromCommitment(entryPositionCommitment);
+    const entryPublicSlot = Number(opening.publicSlot ?? opening.public_slot);
     const entry = {
       ...cloneMultiplayerPayload(opening),
       matchId,
@@ -4105,10 +4163,12 @@ export function usePeerLobby({
         entryPosition != null
           ? entryPosition
           : details.position != null
-          ? Number(details.position)
-          : opening.position != null
-            ? Number(opening.position)
-            : null,
+            ? Number(details.position)
+            : opening.position != null
+              ? Number(opening.position)
+              : Number.isSafeInteger(entryPublicSlot) && entryPublicSlot >= 0
+                ? entryPublicSlot
+                : null,
       positionCommitment: entryPositionCommitment,
       ziffleContext: String(details.ziffleContext || ziffleContextFromOpening(opening) || ""),
     };
@@ -6270,12 +6330,14 @@ export function usePeerLobby({
 		  const sanitizeObjectBoundOpening = useCallback(async (opening) => {
 		    if (!opening || typeof opening !== "object") return opening;
 		    const normalizedObjectId = Number(opening.objectId ?? opening.object_id);
-		    const ziffleCommitment = String(
-		      opening.positionCommitment
-	      || opening.position_commitment
-	      || (ziffleDeckHashFromCommitment(opening.commitment) ? opening.commitment : "")
-		      || ""
-		    );
+			    const ziffleCommitment = String(
+			      opening.positionCommitment
+		      || opening.position_commitment
+		      || opening.publicCommitment
+		      || opening.public_commitment
+		      || (ziffleDeckHashFromCommitment(opening.commitment) ? opening.commitment : "")
+			      || ""
+			    );
 		    const zifflePosition =
 		      zifflePositionFromCommitment(ziffleCommitment)
 		      ?? (opening.position != null ? Number(opening.position) : null);
@@ -9662,13 +9724,45 @@ export function usePeerLobby({
 	              localRevealObjectId = resolvedObjectId;
 	              localHiddenMetadata = resolvedMetadata;
 		            }
-		          }
-		        }
-		        if (
-		          !localHiddenMetadata
-		          && opening.position != null
-		          && ziffleDeckHashFromCommitment(openingPositionCommitment)
-		        ) {
+			          }
+			        }
+			        const localOwnerAlreadyKnowsObjectOpening = Boolean(
+			          timing === "post"
+			          && Number(opening.owner) === Number(resolveLocalCryptoPlayerIndex())
+			          && opening.objectId != null
+			          && localHiddenMetadata
+			          && !openingHasZifflePosition(opening)
+			          && Number(localHiddenMetadata.owner) === Number(opening.owner)
+			          && Number(localHiddenMetadata.slot) === Number(opening.slot)
+			          && opening.commitment
+			          && !ziffleDeckHashFromCommitment(opening.commitment)
+			          && (
+			            String(localHiddenMetadata.commitment || "") === String(opening.commitment || "")
+			            || String(localHiddenMetadata.publicCommitment || "") === String(opening.commitment || "")
+			          )
+			        );
+			        if (localOwnerAlreadyKnowsObjectOpening) {
+			          rememberLocalRevealedOpening(opening, {
+			            objectId: localRevealObjectId ?? opening.objectId,
+			          });
+			          previewAuditOpeningInInspector(opening, latestState, {
+			            ...options,
+			            previewIndex: openingIndex,
+			            previewTotal: openingList.length,
+			          });
+			          if (debugOpeningEntry) {
+			            debugProcessedPostOpenings.push({ ...debugOpeningEntry, status: "ok" });
+			            if (debugProcessedPostOpenings.length > 10) {
+			              debugProcessedPostOpenings.shift();
+			            }
+			          }
+			          continue;
+			        }
+			        if (
+			          !localHiddenMetadata
+			          && opening.position != null
+			          && ziffleDeckHashFromCommitment(openingPositionCommitment)
+			        ) {
 		          localRevealObjectId = null;
 		        }
 			        const localHiddenZiffleCommitment =
@@ -10818,16 +10912,91 @@ export function usePeerLobby({
 	  const buildLocalPrivateViewProofsForRequirements = useCallback(async (requirements = [], options = {}) => {
 	    const currentGame = gameRef.current;
 	    const proofs = [];
-		    const localSeat = resolveLocalCryptoPlayerIndex();
-      // The viewer (not the deck owner) is responsible for non-owner private
-      // views: it aggregates the other players' reveal tokens locally, so the
-      // owner never decrypts a card it is not entitled to see.
-      const privateOpenRequirements = (requirements || []).filter((requirement) =>
-        String(requirement?.type || "") === "private_open"
-        && !isOwnerPrivateViewRequirement(requirement)
-        && cryptoMaterialResponsibleSeat(requirement) === Number(localSeat)
-      );
-      const privateOpeningProofs = (await Promise.all(privateOpenRequirements.map(async (requirement) => {
+	    const localSeat = resolveLocalCryptoPlayerIndex();
+	    // The viewer (not the deck owner) is responsible for non-owner private
+	    // views: it aggregates the other players' reveal tokens locally, so the
+	    // owner never decrypts a card it is not entitled to see.
+	    const privateOpenRequirements = (requirements || []).filter((requirement) =>
+	      String(requirement?.type || "") === "private_open"
+	      && !isOwnerPrivateViewRequirement(requirement)
+	      && cryptoMaterialResponsibleSeat(requirement) === Number(localSeat)
+	    );
+
+	    let liveState = options.liveState || options.uiState || stateRef.current || null;
+	    if (!options.liveState && !options.uiState && currentGame && typeof currentGame.uiState === "function") {
+	      try {
+	        liveState = await currentGame.uiState();
+	      } catch {
+	        // Use the last React state snapshot if the live engine snapshot is unavailable.
+	      }
+	    }
+	    const viewedCards = liveState?.viewed_cards || liveState?.active_viewed_cards || null;
+	    const existingPrivateOpenKeys = new Set(
+	      privateOpenRequirements
+	        .map((requirement) => {
+	          const objectId = Number(requirement?.objectId ?? requirement?.object_id);
+	          return Number.isSafeInteger(objectId) && objectId > 0
+	            ? `${Number(requirement.owner)}:${Number(requirement.viewer)}:${objectId}`
+	            : null;
+	        })
+	        .filter(Boolean)
+	    );
+	    const syntheticPrivateOpenRequirements = [];
+	    for (const requirement of requirements || []) {
+	      if (String(requirement?.type || "") !== "private_view_window") continue;
+	      if (isOwnerPrivateViewRequirement(requirement)) continue;
+	      if (cryptoMaterialResponsibleSeat(requirement) !== Number(localSeat)) continue;
+	      if (!viewedCards || String(viewedCards.visibility || "") !== "private") continue;
+	      if (Number(viewedCards.viewer) !== Number(requirement.viewer)) continue;
+	      if (Number(viewedCards.subject) !== Number(requirement.owner)) continue;
+	      if (String(viewedCards.zone || "").toLowerCase() !== String(requirement.zone || "").toLowerCase()) {
+	        continue;
+	      }
+	      const count = Math.max(0, Number(requirement.count || 0));
+	      const cards = Array.isArray(viewedCards.cards) ? viewedCards.cards : [];
+	      const cardIds = Array.isArray(viewedCards.card_ids) ? viewedCards.card_ids : [];
+	      for (let index = 0; index < cards.length && syntheticPrivateOpenRequirements.length < count; index += 1) {
+	        const card = cards[index] || {};
+	        const objectId = Number(cardIds[index] ?? card.id ?? card.objectId ?? card.object_id);
+	        if (!Number.isSafeInteger(objectId) || objectId <= 0) continue;
+	        const key = `${Number(requirement.owner)}:${Number(requirement.viewer)}:${objectId}`;
+	        if (existingPrivateOpenKeys.has(key)) continue;
+	        let exported = null;
+	        if (currentGame && typeof currentGame.exportHiddenCardOpening === "function") {
+	          try {
+	            exported = await currentGame.exportHiddenCardOpening(wasmObjectIdArg(objectId));
+	          } catch {
+	            exported = null;
+	          }
+	        }
+	        const metadata = exported ? null : await currentHiddenCardMetadataForObject(objectId);
+	        const slot = Number(exported?.slot ?? metadata?.slot);
+	        const commitment = String(exported?.commitment || metadata?.commitment || "");
+	        if (!Number.isSafeInteger(slot) || slot < 0 || !commitment) continue;
+	        syntheticPrivateOpenRequirements.push({
+	          ...cloneMultiplayerPayload(requirement),
+	          type: "private_open",
+	          id: `${String(requirement.id || "private_view_window")}:object:${objectId}`,
+	          objectId,
+	          slot,
+	          commitment,
+	          publicSlot: exported?.publicSlot ?? exported?.public_slot ?? metadata?.publicSlot ?? null,
+	          publicCommitment:
+	            exported?.publicCommitment
+	            || exported?.public_commitment
+	            || metadata?.publicCommitment
+	            || "",
+	          card: String(exported?.card || card.name || ""),
+	        });
+	        existingPrivateOpenKeys.add(key);
+	      }
+	    }
+	    const allPrivateOpenRequirements = [
+	      ...privateOpenRequirements,
+	      ...syntheticPrivateOpenRequirements,
+	    ];
+
+	    const privateOpeningProofs = (await Promise.all(allPrivateOpenRequirements.map(async (requirement) => {
 	      const viewer = Number(requirement.viewer);
 	      const recipientPublicKey = auditEncryptionPublicKeyForPlayer(viewer);
 	      if (!recipientPublicKey) {
@@ -10845,91 +11014,93 @@ export function usePeerLobby({
 	        opening,
 	        owner,
 	        position,
-		        positionCommitment,
-		      } = await buildLocalOpeningFromRequirement(requirement, exported, options);
-		      const privateOpening = await sanitizeObjectBoundOpening({
-		        ...opening,
-		        objectId: Number(requirement.objectId),
-		        timing: "private",
-		      });
-		      const openingPayload = {
-		        type: "private_view_opening",
-		        matchId: currentAuditMatchId(),
-		        requirementId: String(requirement.id || ""),
+	        positionCommitment,
+	      } = await buildLocalOpeningFromRequirement(requirement, exported, options);
+	      const privateOpening = await sanitizeObjectBoundOpening({
+	        ...opening,
+	        objectId: Number(requirement.objectId),
+	        timing: "private",
+	      });
+	      const openingPayload = {
+	        type: "private_view_opening",
+	        matchId: currentAuditMatchId(),
+	        requirementId: String(requirement.id || ""),
 	        owner,
-        viewer,
+	        viewer,
 	        zone: String(requirement.zone || ""),
 	        objectId: Number(requirement.objectId),
 	        opening: privateOpening,
-		      };
-      const encryptedOpening = await encryptPrivateAuditPayload({
-        recipientPublicKey,
-        payload: openingPayload,
-      });
-      rememberPrivateViewDisclosure({
-        type: "private_view_opening_disclosure",
-        matchId: currentAuditMatchId(),
-        seq: Number(options.seq ?? 0),
-        requirementId: String(requirement.id || ""),
-        owner,
-        viewer,
-        zone: String(requirement.zone || ""),
-        objectId: Number(requirement.objectId),
-        plaintextHash: String(encryptedOpening.plaintextHash || ""),
-        payload: openingPayload,
-      });
-      const proof = {
-        type: "encrypted_private_opening",
-        requirementId: String(requirement.id || ""),
-        owner,
-        viewer,
-        zone: String(requirement.zone || ""),
-        objectId: Number(requirement.objectId),
-        slot: Number(opening.slot),
-        commitment: opening.commitment,
-        disclosurePolicy: "postgame_or_dispute",
-        encryptedOpening,
-      };
-      if (position != null) {
-        proof.position = position;
-        proof.positionCommitment = positionCommitment;
-      }
-      return proof;
+	      };
+	      const encryptedOpening = await encryptPrivateAuditPayload({
+	        recipientPublicKey,
+	        payload: openingPayload,
+	      });
+	      rememberPrivateViewDisclosure({
+	        type: "private_view_opening_disclosure",
+	        matchId: currentAuditMatchId(),
+	        seq: Number(options.seq ?? 0),
+	        requirementId: String(requirement.id || ""),
+	        owner,
+	        viewer,
+	        zone: String(requirement.zone || ""),
+	        objectId: Number(requirement.objectId),
+	        plaintextHash: String(encryptedOpening.plaintextHash || ""),
+	        payload: openingPayload,
+	      });
+	      const proof = {
+	        type: "encrypted_private_opening",
+	        requirementId: String(requirement.id || ""),
+	        owner,
+	        viewer,
+	        zone: String(requirement.zone || ""),
+	        objectId: Number(requirement.objectId),
+	        slot: Number(opening.slot),
+	        commitment: opening.commitment,
+	        disclosurePolicy: "postgame_or_dispute",
+	        encryptedOpening,
+	      };
+	      if (position != null) {
+	        proof.position = position;
+	        proof.positionCommitment = positionCommitment;
+	      }
+	      return proof;
 	    }))).filter(Boolean);
-      proofs.push(...privateOpeningProofs);
+	    proofs.push(...privateOpeningProofs);
 	    for (const requirement of requirements || []) {
 	      if (String(requirement?.type || "") !== "private_view_window") continue;
-      if (isOwnerPrivateViewRequirement(requirement)) continue;
+	      if (isOwnerPrivateViewRequirement(requirement)) continue;
 	      if (cryptoMaterialResponsibleSeat(requirement) !== Number(localSeat)) continue;
 	      const openingHashes = privateOpeningProofs
-        .filter((entry) =>
-          Number(entry.owner) === Number(requirement.owner)
-          && Number(entry.viewer) === Number(requirement.viewer)
-        )
-        .map((entry) => entry.encryptedOpening.plaintextHash);
-      const proof = {
-        type: "encrypted_private_view",
-        requirementId: String(requirement.id || ""),
-        owner: Number(requirement.owner),
-        viewer: Number(requirement.viewer),
-        zone: String(requirement.zone || ""),
-        count: Number(requirement.count || 0),
-        reason: String(requirement.reason || ""),
-        openingHashes,
-        disclosurePolicy: "postgame_or_dispute",
-      };
-      proof.materialHash = await sha256Hex(canonicalMultiplayerPayload(proof));
-      proofs.push(proof);
+	        .filter((entry) =>
+	          Number(entry.owner) === Number(requirement.owner)
+	          && Number(entry.viewer) === Number(requirement.viewer)
+	          && String(entry.zone || "") === String(requirement.zone || "")
+	        )
+	        .map((entry) => entry.encryptedOpening.plaintextHash);
+	      const proof = {
+	        type: "encrypted_private_view",
+	        requirementId: String(requirement.id || ""),
+	        owner: Number(requirement.owner),
+	        viewer: Number(requirement.viewer),
+	        zone: String(requirement.zone || ""),
+	        count: Number(requirement.count || 0),
+	        reason: String(requirement.reason || ""),
+	        openingHashes,
+	        disclosurePolicy: "postgame_or_dispute",
+	      };
+	      proof.materialHash = await sha256Hex(canonicalMultiplayerPayload(proof));
+	      proofs.push(proof);
 	    }
 	    return proofs;
 	  }, [
-	      auditEncryptionPublicKeyForPlayer,
-	      buildLocalOpeningFromRequirement,
-	      currentAuditMatchId,
-	      sanitizeObjectBoundOpening,
-      rememberPrivateViewDisclosure,
-      resolveLocalCryptoPlayerIndex,
-    ]);
+	    auditEncryptionPublicKeyForPlayer,
+	    buildLocalOpeningFromRequirement,
+	    currentAuditMatchId,
+	    currentHiddenCardMetadataForObject,
+	    sanitizeObjectBoundOpening,
+	    rememberPrivateViewDisclosure,
+	    resolveLocalCryptoPlayerIndex,
+	  ]);
 
 	  const buildLocalCryptoMaterialForRequirements = useCallback(async (requirements = [], options = {}) => {
 	    const openings = mergeAuditOpenings(
@@ -11619,22 +11790,24 @@ export function usePeerLobby({
       }
       const peerIndex = normalizePlayerIndex(peerPlayer?.index);
       const currentGame = gameRef.current;
-      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
-        throw new Error("Game engine cannot export a resync checkpoint");
-      }
-      const checkpoint =
-        peerIndex != null && typeof currentGame.exportRedactedSyncCheckpoint === "function"
-          ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
-          : await currentGame.exportSyncCheckpoint();
-      const serializedCheckpoint = cloneMultiplayerPayload(checkpoint);
-      const actions = (actionHistoryRef.current || [])
-        .map((entry) => cloneMultiplayerPayload(entry));
-      const lastSequence = Number(actions.at(-1)?.seq ?? 0);
-      const securityMode = sessionSecurityMode(
-        session,
-        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
-      );
-      const resyncEnvelope = isVerifiedMultiplayerSecurityMode(securityMode)
+	      if (!currentGame || typeof currentGame.exportSyncCheckpoint !== "function") {
+	        throw new Error("Game engine cannot export a resync checkpoint");
+	      }
+	      const securityMode = sessionSecurityMode(
+	        session,
+	        matchPayloadSecurityMode(payload.match, MULTIPLAYER_SECURITY_VERIFIED)
+	      );
+	      const checkpoint =
+	        isVerifiedMultiplayerSecurityMode(securityMode)
+	        && peerIndex != null
+	        && typeof currentGame.exportRedactedSyncCheckpoint === "function"
+	          ? await currentGame.exportRedactedSyncCheckpoint(peerIndex)
+	          : await currentGame.exportSyncCheckpoint();
+	      const serializedCheckpoint = cloneMultiplayerPayload(checkpoint);
+	      const actions = (actionHistoryRef.current || [])
+	        .map((entry) => cloneMultiplayerPayload(entry));
+	      const lastSequence = Number(actions.at(-1)?.seq ?? 0);
+	      const resyncEnvelope = isVerifiedMultiplayerSecurityMode(securityMode)
         ? await buildSignedResyncEnvelope({
             keyPair: auditKeyPairRef.current,
             matchId: payload.match?.auditMatchId || currentAuditMatchId(),
@@ -14256,14 +14429,19 @@ export function usePeerLobby({
         viewedCardsStateHint(remotePostOpeningState, appliedState)
       );
       await drainPendingSequencedActions();
-    } catch (err) {
-      console.error("[ironsmith] apply_action:failed", {
-        seq: nextSequence,
-        actor: Number(message?.actorIndex ?? -1),
-        phase: applyPhase,
-        command: summarizePeerCommand(message?.command),
-        error: err instanceof Error ? err.message : String(err),
-      });
+	    } catch (err) {
+	      const failureReason = err instanceof Error ? err.message : String(err);
+	      const rejectedActionCheat = isRejectedActionCheatReason(failureReason);
+	      const unauthorizedAddCardCheat = isUnauthorizedAddCardCommand(message?.command);
+	      if (!rejectedActionCheat && !unauthorizedAddCardCheat) {
+	        console.error("[ironsmith] apply_action:failed", {
+	          seq: nextSequence,
+	          actor: Number(message?.actorIndex ?? -1),
+	          phase: applyPhase,
+	          command: summarizePeerCommand(message?.command),
+	          error: failureReason,
+	        });
+	      }
       if (validationSnapshot) {
         try {
           await restoreValidationSnapshot();
@@ -14287,21 +14465,19 @@ export function usePeerLobby({
         await submitProtocolResponseTimeoutClaim(protocolTimeoutClaim);
         return;
       }
-      if (isUnauthorizedAddCardCommand(message?.command)) {
-        if (throwOnFailure) {
-          throw err;
-        }
-        const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
-        const reason = err instanceof Error ? err.message : String(err);
-        const status = isTrustedMultiplayerSecurityMode(message?.securityMode)
-          ? `Rejected add-card cheat from ${actorName}: ${reason}`
-          : `Rejected signed add-card cheat from ${actorName}: ${reason}`;
-        emitSyncFailureNotice("Cheat detected", status);
-        setStatus(status, true);
-        return;
-      }
-      const failureReason = err instanceof Error ? err.message : String(err);
-      if (isRejectedActionCheatReason(failureReason)) {
+	      if (unauthorizedAddCardCheat) {
+	        if (throwOnFailure) {
+	          throw err;
+	        }
+	        const actorName = playerNameForIndex(multiplayerRef.current.players, message.actorIndex);
+	        const status = isTrustedMultiplayerSecurityMode(message?.securityMode)
+	          ? `Rejected add-card cheat from ${actorName}: ${failureReason}`
+	          : `Rejected signed add-card cheat from ${actorName}: ${failureReason}`;
+	        emitSyncFailureNotice("Cheat detected", status);
+	        setStatus(status, true);
+	        return;
+	      }
+	      if (rejectedActionCheat) {
         if (throwOnFailure) {
           throw err;
         }
@@ -23013,11 +23189,15 @@ export function usePeerLobby({
               appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements
             ),
           },
-          () => buildLocalPrivateViewProofsForRequirements(
-            appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements,
-            actionCryptoOptions
-          )
-        );
+	          () => buildLocalPrivateViewProofsForRequirements(
+	            appliedRequirements.length > 0 ? appliedRequirements : cryptoRequirements,
+	            {
+	              ...actionCryptoOptions,
+	              liveState: appliedState,
+	              uiState: appliedState,
+	            }
+	          )
+	        );
         const privateViewProofs = mergePrivateViewProofs(
           localPrivateViewProofs,
           remoteCryptoMaterial.privateViewProofs
@@ -23506,12 +23686,12 @@ export function usePeerLobby({
     const finalStateHash = auditStateHashRef.current || INITIAL_AUDIT_STATE_HASH;
     const disputes = Array.isArray(transcript.disputes) ? transcript.disputes : [];
     const matchId = String(transcript.matchId || transcript.match?.auditMatchId || currentAuditMatchId());
-    const privateViewDisclosures = [...privateViewDisclosuresRef.current.values()]
-      .filter((disclosure) =>
-        String(disclosure?.matchId || disclosure?.payload?.matchId || "") === matchId
-      )
-      .map((disclosure) => cloneMultiplayerPayload(disclosure));
-    return {
+	    const privateViewDisclosures = [...privateViewDisclosuresRef.current.values()]
+	      .filter((disclosure) =>
+	        String(disclosure?.matchId || disclosure?.payload?.matchId || "") === matchId
+	      )
+	      .map((disclosure) => cloneMultiplayerPayload(disclosure));
+	    return {
       ...transcript,
       exportedAt: new Date().toISOString(),
       privateViewDisclosures,

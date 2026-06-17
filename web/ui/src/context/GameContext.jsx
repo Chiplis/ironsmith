@@ -2399,6 +2399,16 @@ export function GameProvider({ children }) {
             snapshot_id: state.snapshot_id,
             perspective: state.perspective,
             decision: summarizeDecision(state.decision || null),
+            decisionActions: state.decision?.kind === "priority"
+              ? (state.decision.actions || []).map((action, actionIndex) => ({
+                  index: Number.isFinite(Number(action.index))
+                    ? Number(action.index)
+                    : actionIndex,
+                  label: action.label ? String(action.label) : "",
+                  object_id: action.object_id == null ? null : Number(action.object_id),
+                  action_ref: action.action_ref || null,
+                }))
+              : undefined,
             decisionCandidates: state.decision?.kind === "select_objects"
               ? (state.decision.candidates || []).map((candidate) => ({
                   id: candidate.id,

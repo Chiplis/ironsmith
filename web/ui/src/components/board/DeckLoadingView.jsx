@@ -6,9 +6,11 @@ import {
   findSavedDeckPreset,
   listSavedDeckPresets,
   parseDeckList,
+  parseDeckPrintPreferences,
   parseSideboardList,
   saveSavedDeckPreset,
 } from "@/lib/decklists";
+import { setPreferredCardPrints } from "@/lib/scryfall";
 
 const fieldClass =
   "w-full border border-[rgba(154,126,82,0.46)] bg-[#0b0d0e] px-3 py-2 text-[13px] text-[#e7d9bc] outline-none transition-colors placeholder:text-[#8b806b] focus:border-[#d8bf7a]/75";
@@ -76,6 +78,7 @@ export default function DeckLoadingView({ onLoad, onCancel }) {
     const decks = texts.map(parseDeckList);
     const sideboards = texts.map(parseSideboardList);
     const normalizedPresetName = presetName.trim();
+    setPreferredCardPrints(texts.flatMap(parseDeckPrintPreferences));
 
     if (normalizedPresetName) {
       const existingPreset = findSavedDeckPreset(normalizedPresetName);

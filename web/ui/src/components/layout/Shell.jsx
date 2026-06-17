@@ -4,6 +4,10 @@ import { parseNames } from "@/lib/constants";
 import { UI_NOTICE_EVENT } from "@/lib/ui-notices";
 import { decodeBase64UrlUtf8, normalizePuzzlePayload, PUZZLE_ZONE_ORDER } from "@/lib/puzzles";
 import { MATCH_FORMAT_COMMANDER, MATCH_FORMAT_NORMAL } from "@/lib/decklists";
+import {
+  MULTIPLAYER_SECURITY_TRUSTED,
+  normalizeMultiplayerSecurityMode,
+} from "@/lib/multiplayer-security";
 import useViewportLayout from "@/hooks/useViewportLayout";
 import useTabAttention from "@/hooks/useTabAttention";
 import Topbar from "./Topbar";
@@ -531,6 +535,7 @@ export default function Shell() {
           initialCreateName={lobbyOverlayInitial.createName}
           initialCreateDeckText={lobbyOverlayInitial.createDeckText}
           initialCreateCommanderText={lobbyOverlayInitial.createCommanderText}
+          initialCreateSecurityMode={lobbyOverlayInitial.createSecurityMode}
           initialJoinCode={lobbyOverlayInitial.joinCode}
           initialJoinName={lobbyOverlayInitial.joinName}
           initialJoinDeckText={lobbyOverlayInitial.joinDeckText}
@@ -603,6 +608,10 @@ function readLobbyQueryParams() {
     name: String(params.get("name") || "").trim(),
     deckText: decodeBase64UrlUtf8(params.get("deck")),
     commanderText: decodeBase64UrlUtf8(params.get("commander")),
+    securityMode: normalizeMultiplayerSecurityMode(
+      params.get("securityMode") || params.get("security"),
+      MULTIPLAYER_SECURITY_TRUSTED
+    ),
   };
 }
 
@@ -627,6 +636,10 @@ function buildLobbyOverlayInitialState(query, mode = null) {
     createName: String(query?.name || "").trim(),
     createDeckText: String(query?.deckText || ""),
     createCommanderText: String(query?.commanderText || ""),
+    createSecurityMode: normalizeMultiplayerSecurityMode(
+      query?.securityMode,
+      MULTIPLAYER_SECURITY_TRUSTED
+    ),
     joinCode: String(query?.lobbyId || "").trim(),
     joinName: String(query?.name || "").trim(),
     joinDeckText: String(query?.deckText || ""),

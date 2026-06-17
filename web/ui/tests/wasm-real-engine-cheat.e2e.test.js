@@ -752,7 +752,7 @@ test("real WASM engine emits private openings for committed scry and surveil ins
 
       return {
         scry: advanceToInspectionPrompt({
-          spellName: "Witching Well",
+          spellName: "Preordain",
           landName: "Island",
           fillerName: "Mountain",
         }),
