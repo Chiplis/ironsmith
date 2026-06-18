@@ -603,7 +603,7 @@ pub fn apply_priority_response_with_dm(
                 (None, crate::resolution::ResolutionProgram::default())
             };
 
-            let (needs_x, max_x) = compute_spell_cast_x_bounds(
+            let (needs_x, min_x, max_x) = compute_spell_cast_x_bounds(
                 game,
                 player,
                 stack_id,
@@ -651,9 +651,9 @@ pub fn apply_priority_response_with_dm(
                     stack_id,
                 ));
 
-                let ctx = crate::decisions::context::NumberContext::x_value(
+                let ctx = crate::decisions::context::NumberContext::x_value_with_min(
                     player, stack_id, // Use stack_id
-                    max_x,
+                    min_x, max_x,
                 );
                 Ok(GameProgress::NeedsDecisionCtx(
                     crate::decisions::context::DecisionContext::Number(ctx),

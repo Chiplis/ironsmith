@@ -1759,7 +1759,7 @@ fn lower_rewrite_static_to_chunk_impl(
         );
     }
     if let Some(actions) = parse_source_has_keyword_actions(&lexed) {
-        return Ok(LineAst::Abilities(actions));
+        return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option_label);
     }
     if let Some(abilities) =
         crate::runtime_backend::families::keyword_static::parse_additional_land_play_line(&lexed)?
@@ -1790,7 +1790,7 @@ fn lower_rewrite_static_to_chunk_impl(
     if !should_skip_keyword_action_static_probe_tokens(parse_tokens)
         && let Some(actions) = parse_ability_line_lexed(&lexed)
     {
-        return Ok(LineAst::Abilities(actions));
+        return wrap_chosen_option_static_chunk(LineAst::Abilities(actions), chosen_option_label);
     }
     if let Some(chunk) = lower_split_rewrite_static_chunk(line, parse_tokens)? {
         return wrap_chosen_option_static_chunk(chunk, chosen_option_label);

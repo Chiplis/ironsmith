@@ -113,6 +113,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 format!("ThisSpellXMaximum {{ maximum: {maximum:?}, display: {display:?} }}")
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
+                format!("ThisSpellXMinimum {{ minimum: {minimum:?}, display: {display:?} }}")
+            }
             ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 format!("DieRollResultAdjustment {{ spec: {spec:?} }}")
             }
@@ -1211,6 +1214,9 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbility::this_spell_x_maximum(maximum.clone(), display.clone())
             }
+            ironsmith_core::StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
+                StaticAbility::this_spell_x_minimum(minimum.clone(), display.clone())
+            }
             ironsmith_core::StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbility::die_roll_result_adjustment(
                     spec.player.clone(),
@@ -2284,6 +2290,10 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
         self.leaf_static_ability()?.this_spell_x_maximum_value()
+    }
+
+    fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
+        self.leaf_static_ability()?.this_spell_x_minimum_value()
     }
 
     fn generic_attack_tax_per_attacker_against_you(

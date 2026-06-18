@@ -76,12 +76,149 @@ fn normalize_ast_surface_lines(lines: Vec<String>) -> Vec<String> {
         .into_iter()
         .map(|line| normalize_common_semantic_phrasing(&line))
         .collect();
-    merge_ast_surface_lines(lines)
+    let lines = merge_ast_surface_lines(lines)
         .into_iter()
         .map(finalize_ast_surface_line)
         .flat_map(expand_finalized_ast_surface_line)
         .map(normalize_mass_opponent_controller_surface)
-        .collect()
+        .collect();
+    compact_station_threshold_lines(lines)
+}
+
+fn compact_station_threshold_lines(lines: Vec<String>) -> Vec<String> {
+    if !lines.iter().any(|line| line.trim() == "Station") {
+        return lines;
+    }
+
+    let mut compacted = Vec::with_capacity(lines.len());
+    let mut pending_keyword_threshold: Option<i32> = None;
+    let mut pending_keywords: Vec<String> = Vec::new();
+
+    for line in lines {
+        let Some((threshold, body)) = split_station_threshold_condition(&line) else {
+            flush_station_keyword_row(
+                &mut compacted,
+                &mut pending_keyword_threshold,
+                &mut pending_keywords,
+            );
+            compacted.push(line);
+            continue;
+        };
+
+        if is_station_implicit_creature_support(&body) {
+            continue;
+        }
+
+        if let Some(keyword) = station_threshold_keyword_body(&body) {
+            if pending_keyword_threshold == Some(threshold) {
+                pending_keywords.push(keyword);
+            } else {
+                flush_station_keyword_row(
+                    &mut compacted,
+                    &mut pending_keyword_threshold,
+                    &mut pending_keywords,
+                );
+                pending_keyword_threshold = Some(threshold);
+                pending_keywords.push(keyword);
+            }
+            continue;
+        }
+
+        flush_station_keyword_row(
+            &mut compacted,
+            &mut pending_keyword_threshold,
+            &mut pending_keywords,
+        );
+        compacted.push(format!("{threshold}+ | {}", station_threshold_body(&body)));
+    }
+
+    flush_station_keyword_row(
+        &mut compacted,
+        &mut pending_keyword_threshold,
+        &mut pending_keywords,
+    );
+    compacted
+}
+
+fn flush_station_keyword_row(
+    out: &mut Vec<String>,
+    pending_threshold: &mut Option<i32>,
+    pending_keywords: &mut Vec<String>,
+) {
+    let Some(threshold) = pending_threshold.take() else {
+        return;
+    };
+    if !pending_keywords.is_empty() {
+        out.push(format!("{threshold}+ | {}", pending_keywords.join(", ")));
+        pending_keywords.clear();
+    }
+}
+
+fn split_station_threshold_condition(line: &str) -> Option<(i32, String)> {
+    const MARKER: &str = " as long as CountersOnSource is greater than or equal to ";
+    let trimmed = line.trim().trim_end_matches('.');
+    if let Some((body, threshold_text)) = trimmed.rsplit_once(MARKER) {
+        let threshold = parse_station_threshold_value(threshold_text.trim())?;
+        return Some((threshold, body.trim().to_string()));
+    }
+
+    const PREFIX: &str = "As long as CountersOnSource is greater than or equal to ";
+    let rest = trimmed.strip_prefix(PREFIX)?;
+    let (threshold_text, body) = rest.split_once(", ")?;
+    let threshold = parse_station_threshold_value(threshold_text.trim())?;
+    Some((threshold, body.trim().to_string()))
+}
+
+fn parse_station_threshold_value(text: &str) -> Option<i32> {
+    if let Ok(value) = text.parse::<i32>() {
+        return Some(value);
+    }
+    let words = text.split_whitespace().collect::<Vec<_>>();
+    let (value, used) = ironsmith_core::parse_cardinal_words(&words)?;
+    (used == words.len()).then_some(value as i32)
+}
+
+fn is_station_implicit_creature_support(body: &str) -> bool {
+    let lower = body.to_ascii_lowercase();
+    (lower.contains(" is creature in addition to ")
+        || lower.contains(" is a creature in addition to "))
+        || lower.contains(" has base power and toughness ")
+}
+
+fn station_threshold_keyword_body(body: &str) -> Option<String> {
+    let body = station_threshold_body(body);
+    let lower = body.to_ascii_lowercase();
+    let keyword = [
+        "this artifact creature has ",
+        "this artifact has ",
+        "this source has ",
+        "this creature has ",
+    ]
+    .into_iter()
+    .find_map(|prefix| lower.starts_with(prefix).then(|| &body[prefix.len()..]))
+    .unwrap_or(body.as_str())
+    .trim();
+    let normalized = normalize_keyword_predicate_case(keyword);
+    let keyword_parts = normalized
+        .split(" and ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    if keyword_parts.len() > 1 && keyword_parts.iter().all(|part| is_keyword_phrase(part)) {
+        return Some(capitalize_first(&keyword_parts.join(", ")));
+    }
+    if !is_keyword_phrase(&normalized) {
+        return None;
+    }
+    Some(capitalize_first(&normalized))
+}
+
+fn station_threshold_body(body: &str) -> String {
+    let body = body.trim().trim_end_matches('.');
+    if let Some(rest) = body.strip_prefix("This artifact source ") {
+        return format!("This artifact {rest}");
+    }
+    body.to_string()
 }
 
 fn normalize_scored_compiled_line(line: String) -> String {

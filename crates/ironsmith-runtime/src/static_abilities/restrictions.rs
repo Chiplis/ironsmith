@@ -569,9 +569,10 @@ impl StaticAbilityKind for RuleRestriction {
             return self.display.clone();
         };
         let body = self.display.trim();
-        if body
-            .to_ascii_lowercase()
-            .contains(&condition_text.to_ascii_lowercase())
+        let body_lower = body.to_ascii_lowercase();
+        if body_lower.contains(&condition_text.to_ascii_lowercase())
+            || (body_lower.contains(" unless ")
+                && matches!(condition, crate::ConditionExpr::Not(_)))
         {
             body.to_string()
         } else if matches!(
@@ -619,5 +620,35 @@ impl StaticAbilityKind for RuleRestriction {
         self.restriction
             .apply(game, &mut tracker, controller, Some(source), None);
         game.effect_store.cant_effects.merge(tracker);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::effect::{Value, ValueComparisonOperator};
+    use crate::zone::Zone;
+
+    #[test]
+    fn rule_restriction_display_does_not_duplicate_embedded_unless_condition() {
+        let condition =
+            crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::ValueComparison {
+                left: Value::Count(ObjectFilter::default().in_zone(Zone::Exile).nontoken()),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(7),
+            }));
+        let ability = RuleRestriction::new(
+            Restriction::attack_or_block(ObjectFilter::source()),
+            "This creature can't attack or block unless there are seven or more cards in exile."
+                .to_string(),
+        )
+        .with_condition(condition);
+
+        let rendered = ability.display();
+        assert_eq!(
+            rendered,
+            "This creature can't attack or block unless there are seven or more cards in exile."
+        );
+        assert!(!rendered.contains("as long as not"), "{rendered}");
     }
 }

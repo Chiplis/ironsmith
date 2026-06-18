@@ -5135,6 +5135,12 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
   isolation: isolate;
 }
 
+.hand-reveal-shell .hand-layout-item {
+  position: relative;
+  overflow: visible;
+  transform-origin: 50% 100%;
+}
+
 .hand-reveal-shell .hand-zone-cycle-gap {
   flex: 0 0 auto;
 }
@@ -5198,6 +5204,23 @@ body.ironsmith-exile-animating .ironsmith-inspector-shell .hover-art-stage * {
 .hand-reveal-shell[data-open="true"] .hand-zone-row {
   align-items: flex-end;
   overflow: visible;
+}
+
+.hand-reveal-shell[data-open="true"] .game-card.hand-card {
+  height: 100px !important;
+  min-height: 100px !important;
+}
+
+.hand-reveal-shell[data-open="true"] .game-card.hand-card:not(:hover):not(.hovered):not(.inspected) .game-card-surface {
+  inset: 0 !important;
+  height: 100% !important;
+  min-height: 100% !important;
+}
+
+.hand-reveal-shell[data-open="true"] .game-card.hand-card:not(:hover):not(.hovered):not(.inspected) .game-card-surface > img {
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .hand-reveal-shell .hand-zone-row-roulette {

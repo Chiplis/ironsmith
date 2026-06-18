@@ -148,6 +148,7 @@ enum GenericTopLevelProgram {
     ConsultRevealUntil { effects: Vec<EffectAst> },
     LookedCardsCountedRemainder { effects: Vec<EffectAst> },
     ConsultRevealUntilHand { effects: Vec<EffectAst> },
+    ConsultRevealUntilGraveyard { effects: Vec<EffectAst> },
     ConsultRevealUntilBattlefieldBottom { effects: Vec<EffectAst> },
     EachPlayerExileTopCast { effects: Vec<EffectAst> },
     Cant { effects: Vec<EffectAst> },
@@ -173,6 +174,9 @@ impl GenericTopLevelProgram {
             Self::ConsultRevealUntilHand { .. } => {
                 "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-hand"
             }
+            Self::ConsultRevealUntilGraveyard { .. } => {
+                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-graveyard"
+            }
             Self::ConsultRevealUntilBattlefieldBottom { .. } => {
                 "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-battlefield-bottom"
             }
@@ -194,6 +198,7 @@ impl GenericTopLevelProgram {
             Self::ConsultRevealUntil { effects }
             | Self::LookedCardsCountedRemainder { effects }
             | Self::ConsultRevealUntilHand { effects }
+            | Self::ConsultRevealUntilGraveyard { effects }
             | Self::ConsultRevealUntilBattlefieldBottom { effects }
             | Self::EachPlayerExileTopCast { effects }
             | Self::Cant { effects }
@@ -217,6 +222,55 @@ const ALL_REVEALED_INTO_HAND_PATTERN: LexPattern<'static> = LexPattern::new(&[Le
     "revealed_cards_destination",
     LexCaptureKind::OneOfPhrase(ALL_REVEALED_INTO_HAND_PHRASES),
 )]);
+const ALL_REVEALED_INTO_GRAVEYARD_PHRASES: &[&[&str]] = &[
+    &[
+        "put",
+        "all",
+        "cards",
+        "revealed",
+        "this",
+        "way",
+        "into",
+        "their",
+        "graveyard",
+    ],
+    &[
+        "puts",
+        "all",
+        "cards",
+        "revealed",
+        "this",
+        "way",
+        "into",
+        "their",
+        "graveyard",
+    ],
+    &["put", "those", "cards", "into", "their", "graveyard"],
+    &["puts", "those", "cards", "into", "their", "graveyard"],
+    &[
+        "put",
+        "those",
+        "cards",
+        "into",
+        "that",
+        "player's",
+        "graveyard",
+    ],
+    &[
+        "puts",
+        "those",
+        "cards",
+        "into",
+        "that",
+        "player's",
+        "graveyard",
+    ],
+];
+const ALL_REVEALED_INTO_GRAVEYARD_PATTERN: LexPattern<'static> =
+    LexPattern::new(&[LexPattern::object(
+        "revealed_cards_destination",
+        LexCaptureKind::OneOfPhrase(ALL_REVEALED_INTO_GRAVEYARD_PHRASES),
+    )]);
 const MATCH_ONTO_BATTLEFIELD_PREFIX_PHRASES: &[&[&str]] = &[
     &["put", "it", "onto", "the", "battlefield"],
     &["put", "that", "card", "onto", "the", "battlefield"],
@@ -403,11 +457,17 @@ const CHOICE_COMPLEMENT_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::action("choose", LexCaptureKind::OneOf(&["choose", "chooses"])),
     LexPattern::object("choice_clause", LexCaptureKind::UntilPhrase(&["then"])),
     LexPattern::word("then"),
-    LexPattern::action("sacrifice", LexCaptureKind::OneOf(&["sacrifice", "sacrifices"])),
+    LexPattern::action(
+        "sacrifice",
+        LexCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
+    ),
     LexPattern::phrase(&["the", "rest"]),
 ]);
 const CHOICE_COMPLEMENT_LIST_FROM_AMONG_PATTERN: LexPattern<'static> = LexPattern::new(&[
-    LexPattern::object("choice_list", LexCaptureKind::UntilPhrase(&["from", "among"])),
+    LexPattern::object(
+        "choice_list",
+        LexCaptureKind::UntilPhrase(&["from", "among"]),
+    ),
     LexPattern::phrase(&["from", "among"]),
     LexPattern::tail("base_filter", LexCaptureKind::Rest),
 ]);
@@ -625,7 +685,10 @@ const OPTIONAL_THEN_PATTERN_ATOMS: &[LexPatternAtom<'static>] = &[LexPattern::wo
 const THOSE_CHOICES_PHRASES: &[&[&str]] = &[&["those", "choices"]];
 const VOTE_REVEAL_PATTERN: LexPattern<'static> = LexPattern::new(&[
     LexPattern::optional(OPTIONAL_THEN_PATTERN_ATOMS),
-    LexPattern::subject("choices", LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES)),
+    LexPattern::subject(
+        "choices",
+        LexCaptureKind::OneOfPhrase(THOSE_CHOICES_PHRASES),
+    ),
     LexPattern::word("are"),
     LexPattern::action("reveal", LexCaptureKind::OneOf(&["revealed"])),
 ]);
@@ -796,6 +859,10 @@ pub(crate) fn parse_top_level_subject_verb_recognition(
     {
         Some(GenericTopLevelProgram::ConsultRevealUntilHand { effects })
     } else if let Some(effects) =
+        parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_verb(tokens)?
+    {
+        Some(GenericTopLevelProgram::ConsultRevealUntilGraveyard { effects })
+    } else if let Some(effects) =
         parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(tokens)?
     {
         Some(GenericTopLevelProgram::ConsultRevealUntilBattlefieldBottom { effects })
@@ -830,13 +897,11 @@ fn parse_generic_play_exiled_cards_for_as_long_as_exiled(
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-            "exiled",
+            "play", "the", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
         ]
         || words
             == [
-                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain",
-                "exiled",
+                "play", "exiled", "cards", "for", "as", "long", "as", "they", "remain", "exiled",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -855,18 +920,18 @@ fn parse_generic_mana_any_type_cast_tagged_this_way(tokens: &[OwnedLexToken]) ->
     let words = TokenWordView::new(&trimmed).word_refs();
     let matches = words
         == [
-            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells",
-            "this", "way",
+            "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "spells", "this",
+            "way",
         ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them",
-                "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "them", "this",
+                "way",
             ]
         || words
             == [
-                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that",
-                "spell", "this", "way",
+                "mana", "of", "any", "type", "can", "be", "spent", "to", "cast", "that", "spell",
+                "this", "way",
             ];
     matches.then(|| {
         EffectAst::subject_verb_grant_play_tagged_for_as_long_as_exiled(
@@ -1104,13 +1169,22 @@ fn parse_target_controlled_pump_program(
 fn keyword_abilities_from_clause(ability_clause: LexedClause<'_>) -> Vec<GrantedAbilityAst> {
     let ability_clause = ability_clause.trimmed();
     let mut abilities = Vec::new();
-    if ABILITY_FIRST_STRIKE_PATTERN.find_in_clause(ability_clause).is_some() {
+    if ABILITY_FIRST_STRIKE_PATTERN
+        .find_in_clause(ability_clause)
+        .is_some()
+    {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::FirstStrike));
     }
-    if ABILITY_HASTE_PATTERN.find_in_clause(ability_clause).is_some() {
+    if ABILITY_HASTE_PATTERN
+        .find_in_clause(ability_clause)
+        .is_some()
+    {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Haste));
     }
-    if ABILITY_TRAMPLE_PATTERN.find_in_clause(ability_clause).is_some() {
+    if ABILITY_TRAMPLE_PATTERN
+        .find_in_clause(ability_clause)
+        .is_some()
+    {
         abilities.push(GrantedAbilityAst::KeywordAction(KeywordAction::Trample));
     }
     abilities
@@ -1152,10 +1226,7 @@ fn put_counted_top_cards_owner(
 }
 
 fn generic_words_contain_phrase(words: &[&str], phrase: &[&str]) -> bool {
-    !phrase.is_empty()
-        && words
-            .windows(phrase.len())
-            .any(|window| window == phrase)
+    !phrase.is_empty() && words.windows(phrase.len()).any(|window| window == phrase)
 }
 
 pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb(
@@ -1271,6 +1342,73 @@ fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb(
     effects.push(EffectAst::subject_verb_move_to_zone(
         TargetAst::Tagged(parts.all_tag, None),
         Zone::Hand,
+        false,
+        crate::cards::builders::ReturnControllerAst::Preserve,
+        false,
+        None,
+    ));
+    Ok(Some(effects))
+}
+
+fn parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_verb(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let sentence_tokens = trim_commas(tokens);
+    let sentence_clause = LexedClause::new(&sentence_tokens);
+    let Some(matched) = CONSULT_REVEAL_UNTIL_HAND_PATTERN.match_clause(sentence_clause) else {
+        return Ok(None);
+    };
+    let Some(consult_clause) = matched.capture_clause("consult_clause", sentence_clause) else {
+        return Ok(None);
+    };
+    let Some(followup_clause) =
+        matched.capture_clause_by_role(LexCaptureRole::Tail, sentence_clause)
+    else {
+        return Ok(None);
+    };
+    let consult_tokens = trim_commas(consult_clause.tokens());
+    let followup_tokens = trim_commas(followup_clause.tokens());
+    if consult_tokens.is_empty() || followup_tokens.is_empty() {
+        return Ok(None);
+    }
+
+    let parts = if let Some(parts) =
+        super::consult_family::parse_consult_traversal_sentence(&consult_tokens)?
+    {
+        parts
+    } else {
+        let stripped_consult_tokens = without_deferred_mana_value_clause(&consult_tokens);
+        let Some(parts) =
+            super::consult_family::parse_consult_traversal_sentence(&stripped_consult_tokens)?
+        else {
+            return Ok(None);
+        };
+        parts
+    };
+    if !matches!(
+        parts.effects.last(),
+        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ConsultTopOfLibrary {
+                mode: crate::cards::builders::LibraryConsultModeAst::Reveal,
+                ..
+            },
+            ..
+        }))
+    ) {
+        return Ok(None);
+    }
+    let mut parts = parts;
+    apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
+
+    let followup_clause = LexedClause::new(&followup_tokens).trimmed();
+    if !ALL_REVEALED_INTO_GRAVEYARD_PATTERN.matches_clause(followup_clause) {
+        return Ok(None);
+    }
+
+    let mut effects = parts.effects;
+    effects.push(EffectAst::subject_verb_move_to_zone(
+        TargetAst::Tagged(parts.all_tag, None),
+        Zone::Graveyard,
         false,
         crate::cards::builders::ReturnControllerAst::Preserve,
         false,
@@ -1535,7 +1673,11 @@ fn parse_generic_meld_subject_verb(
             clause_display.trim()
         )));
     }
-    Ok(Some(EffectAst::subject_verb_meld(result_name, false, false)))
+    Ok(Some(EffectAst::subject_verb_meld(
+        result_name,
+        false,
+        false,
+    )))
 }
 
 fn parse_generic_control_combat_choices_subject_verb(
@@ -2364,6 +2506,28 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("MoveToZone"), "{debug}");
         assert!(debug.contains("Hand"), "{debug}");
         assert!(debug.contains("revealed"), "{debug}");
+    }
+
+    #[test]
+    fn consult_reveal_until_graveyard_moves_all_revealed_cards() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each opponent reveals cards from the top of their library until they reveal X land cards, then puts all cards revealed this way into their graveyard.",
+            0,
+        )
+        .expect("consult all-revealed-to-graveyard text should lex");
+        let effects =
+            parse_generic_consult_reveal_until_put_all_revealed_into_graveyard_subject_verb(
+                &tokens,
+            )
+            .expect("consult graveyard parser should not error")
+            .expect("consult graveyard parser should match");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+        assert!(debug.contains("MoveToZone"), "{debug}");
+        assert!(debug.contains("Graveyard"), "{debug}");
+        assert!(debug.contains("revealed"), "{debug}");
+        assert!(debug.contains("Opponent"), "{debug}");
     }
 
     #[test]

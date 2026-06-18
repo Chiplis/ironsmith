@@ -953,6 +953,11 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
         None
     }
 
+    /// Return the minimum legal value for X while casting this spell, if any.
+    fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
+        None
+    }
+
     /// Return a pregame-action descriptor, if this ability creates one.
     fn pregame_action_kind(&self) -> Option<PregameActionKind> {
         None
@@ -1242,6 +1247,10 @@ impl StaticAbility {
 
     pub fn this_spell_x_maximum_value(&self) -> Option<crate::effect::Value> {
         self.0.this_spell_x_maximum_value()
+    }
+
+    pub fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
+        self.0.this_spell_x_minimum_value()
     }
 
     pub fn pregame_action_kind(&self) -> Option<PregameActionKind> {
@@ -2785,6 +2794,10 @@ impl StaticAbility {
 
     pub fn this_spell_x_maximum(maximum: crate::effect::Value, display: impl Into<String>) -> Self {
         Self::new(ThisSpellXMaximum::new(maximum, display))
+    }
+
+    pub fn this_spell_x_minimum(minimum: crate::effect::Value, display: impl Into<String>) -> Self {
+        Self::new(ThisSpellXMinimum::new(minimum, display))
     }
 
     pub fn damage_not_removed_during_cleanup() -> Self {

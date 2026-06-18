@@ -194,6 +194,41 @@ function buildHandCardRowStyle(index, total, { mobileFan = false } = {}) {
   };
 }
 
+function splitHandCardRowStyle(style, { scrollSnapAlign } = {}) {
+  const {
+    flex,
+    width,
+    minWidth,
+    maxWidth,
+    marginLeft,
+    zIndex,
+    "--card-rotate": cardRotate,
+    "--card-translate-x": cardTranslateX,
+    "--card-translate-y": cardTranslateY,
+  } = style;
+
+  return {
+    wrapperStyle: {
+      flex,
+      width,
+      minWidth,
+      maxWidth,
+      marginLeft,
+      zIndex,
+      scrollSnapAlign,
+    },
+    cardStyle: {
+      flex,
+      width: "100%",
+      minWidth: "100%",
+      maxWidth: "100%",
+      "--card-rotate": cardRotate,
+      "--card-translate-x": cardTranslateX,
+      "--card-translate-y": cardTranslateY,
+    },
+  };
+}
+
 export default function HandZone({
   player,
   selectedObjectId,
@@ -516,8 +551,8 @@ export default function HandZone({
   }, [extraCards, handCards, hasExtra]);
 
   useLayoutReflow(handListRef, handLayoutSignature, {
-    children: ".game-card",
-    disabled: isRoulette,
+    children: ".hand-layout-item",
+    disabled: isRoulette || isMobileFan,
     delay: stagger(24),
     duration: 360,
     bounce: 0.14,
@@ -953,29 +988,35 @@ export default function HandZone({
           if (visualIndex > 0 && newIds.has(handCards[visualIndex - 1].id)) bumpDir = 1;
           else if (visualIndex < handCards.length - 1 && newIds.has(handCards[visualIndex + 1].id)) bumpDir = -1;
         }
+        const { wrapperStyle, cardStyle } = splitHandCardRowStyle(
+          buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
+          { scrollSnapAlign: isRoulette ? "start" : undefined }
+        );
         return (
-          <GameCard
+          <div
             key={`${cycleIndex}-${entry.key}`}
-            card={card}
-            variant="hand"
-            isPlayable={isPlayable}
-            glowKind={glowKind}
-            isNew={isNew}
-            isBumped={isBumped}
-            bumpDirection={bumpDir}
-            handCircuitMode={isExpanded ? "full" : "top"}
-            suppressTooltip={isMobileFan}
-            isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
-            onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
-            onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
-            onMouseEnter={() => handleHoverEnter(card.id)}
-            onMouseLeave={handleHoverLeave}
-            className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
-            style={{
-              ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
-              scrollSnapAlign: isRoulette ? "start" : undefined,
-            }}
-          />
+            className="hand-layout-item shrink-0 overflow-visible"
+            style={wrapperStyle}
+          >
+            <GameCard
+              card={card}
+              variant="hand"
+              isPlayable={isPlayable}
+              glowKind={glowKind}
+              isNew={isNew}
+              isBumped={isBumped}
+              bumpDirection={bumpDir}
+              handCircuitMode={isExpanded ? "full" : "top"}
+              suppressTooltip={isMobileFan}
+              isInspected={selectedObjectId != null && String(card.id) === String(selectedObjectId)}
+              onClick={isPlayable ? undefined : (e) => handleCardClick(e, card)}
+              onPointerDown={isPlayable ? (e) => handlePointerDown(e, card, plays, glowKind) : undefined}
+              onMouseEnter={() => handleHoverEnter(card.id)}
+              onMouseLeave={handleHoverLeave}
+              className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
+              style={cardStyle}
+            />
+          </div>
         );
       }
 
@@ -992,29 +1033,35 @@ export default function HandZone({
           && priorityActionObjectIds.has(String(extra.id))
         )
       );
+      const { wrapperStyle, cardStyle } = splitHandCardRowStyle(
+        buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
+        { scrollSnapAlign: isRoulette ? "start" : undefined }
+      );
       return (
-        <GameCard
+        <div
           key={`${cycleIndex}-${entry.key}`}
-          card={card}
-          variant="hand"
-          isPlayable={isPlayable}
-          glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
-          isNew={isPrimaryCycle}
-          handCircuitMode={isExpanded ? "full" : "top"}
-          suppressTooltip={isMobileFan}
-          isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
-          onClick={plays.length === 0
-            ? (e) => handleCardClick(e, card)
-            : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}
-          onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
-          onMouseEnter={() => handleHoverEnter(extra.id)}
-          onMouseLeave={handleHoverLeave}
-          className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
-          style={{
-            ...buildHandCardRowStyle(visualIndex, renderedHandCardCount, { mobileFan: isMobileFan }),
-            scrollSnapAlign: isRoulette ? "start" : undefined,
-          }}
-        />
+          className="hand-layout-item shrink-0 overflow-visible"
+          style={wrapperStyle}
+        >
+          <GameCard
+            card={card}
+            variant="hand"
+            isPlayable={isPlayable}
+            glowKind={isActionLinkedHover ? "action-link" : baseGlowKind}
+            isNew={isPrimaryCycle}
+            handCircuitMode={isExpanded ? "full" : "top"}
+            suppressTooltip={isMobileFan}
+            isInspected={selectedObjectId != null && String(extra.id) === String(selectedObjectId)}
+            onClick={plays.length === 0
+              ? (e) => handleCardClick(e, card)
+              : plays.length <= 1 ? undefined : (e) => handleCardClick(e, card)}
+            onPointerDown={plays.length > 0 ? (e) => handlePointerDown(e, card, plays, baseGlowKind || "extra") : undefined}
+            onMouseEnter={() => handleHoverEnter(extra.id)}
+            onMouseLeave={handleHoverLeave}
+            className={isMobileFan && isPlayable ? "hand-card--mobile-draggable" : undefined}
+            style={cardStyle}
+          />
+        </div>
       );
     };
 

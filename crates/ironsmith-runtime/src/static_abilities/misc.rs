@@ -4683,6 +4683,36 @@ impl StaticAbilityKind for ThisSpellXMaximum {
     }
 }
 
+/// "X can't be less than ..." spell-casting X restriction.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ThisSpellXMinimum {
+    pub minimum: crate::effect::Value,
+    pub display: String,
+}
+
+impl ThisSpellXMinimum {
+    pub fn new(minimum: crate::effect::Value, display: impl Into<String>) -> Self {
+        Self {
+            minimum,
+            display: display.into(),
+        }
+    }
+}
+
+impl StaticAbilityKind for ThisSpellXMinimum {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::ThisSpellXMinimum
+    }
+
+    fn display(&self) -> String {
+        self.display.clone()
+    }
+
+    fn this_spell_x_minimum_value(&self) -> Option<crate::effect::Value> {
+        Some(self.minimum.clone())
+    }
+}
+
 /// "Each opponent's maximum hand size is equal to seven minus the number of card types in your graveyard."
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaximumHandSizeSevenMinusYourGraveyardCardTypes {

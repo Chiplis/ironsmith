@@ -212,6 +212,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         maximum: Value,
         display: String,
     },
+    ThisSpellXMinimum {
+        minimum: Value,
+        display: String,
+    },
     DieRollResultAdjustment(DieRollResultAdjustment),
     LevelAbility(Box<LevelAbilityModel<T, E, C, Cond>>),
     HexproofFrom(ObjectFilter),
@@ -948,6 +952,9 @@ where
             }
             StaticAbilityPayload::ThisSpellXMaximum { maximum, display } => {
                 StaticAbilityPayload::ThisSpellXMaximum { maximum, display }
+            }
+            StaticAbilityPayload::ThisSpellXMinimum { minimum, display } => {
+                StaticAbilityPayload::ThisSpellXMinimum { minimum, display }
             }
             StaticAbilityPayload::DieRollResultAdjustment(spec) => {
                 StaticAbilityPayload::DieRollResultAdjustment(spec)
@@ -1868,6 +1875,15 @@ impl<
             id: Some(StaticAbilityId::ThisSpellXMaximum),
             label: display.clone(),
             payload: StaticAbilityPayload::ThisSpellXMaximum { maximum, display },
+        }
+    }
+
+    pub fn this_spell_x_minimum(minimum: Value, text: impl Into<String>) -> Self {
+        let display = text.into();
+        Self {
+            id: Some(StaticAbilityId::ThisSpellXMinimum),
+            label: display.clone(),
+            payload: StaticAbilityPayload::ThisSpellXMinimum { minimum, display },
         }
     }
 

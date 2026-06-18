@@ -455,6 +455,33 @@ fn max_x_from_static_abilities(
     max_x
 }
 
+fn min_x_from_static_abilities(
+    game: &GameState,
+    caster: PlayerId,
+    source: ObjectId,
+) -> Option<u32> {
+    let spell = game.object(source)?;
+    let mut min_x = None;
+    for ability in &spell.abilities {
+        if !ability.functional_zones.contains(&Zone::Stack) {
+            continue;
+        }
+        let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+            continue;
+        };
+        let Some(value) = static_ability.this_spell_x_minimum_value() else {
+            continue;
+        };
+        let ctx = crate::effects::ExecutionContext::new_default(source, caster);
+        let Ok(resolved) = crate::effects::helpers::resolve_value(game, &value, &ctx) else {
+            continue;
+        };
+        let resolved = resolved.max(0) as u32;
+        min_x = Some(min_x.map_or(resolved, |prev: u32| prev.max(resolved)));
+    }
+    min_x
+}
+
 pub(super) fn activation_cost_steps_reference_x(steps: &[ActivationCostStep]) -> bool {
     steps.iter().any(|step| match step {
         ActivationCostStep::Cost(cost) => cost_references_x(cost),
@@ -484,9 +511,9 @@ pub(super) fn compute_spell_cast_x_bounds(
     stack_id: ObjectId,
     casting_method: &CastingMethod,
     mana_cost_to_pay: Option<&crate::mana::ManaCost>,
-) -> (bool, u32) {
+) -> (bool, u32, u32) {
     let Some(spell) = game.object(stack_id) else {
-        return (false, 0);
+        return (false, 0, 0);
     };
 
     let printed_has_x = spell.mana_cost.as_ref().is_some_and(|cost| cost.has_x());
@@ -498,9 +525,10 @@ pub(super) fn compute_spell_cast_x_bounds(
     let costs_need_x = non_mana_costs.iter().any(cost_references_x);
     let needs_x = printed_has_x || pay_has_x || costs_need_x;
     if !needs_x {
-        return (false, 0);
+        return (false, 0, 0);
     }
 
+    let min_x = min_x_from_static_abilities(game, caster, stack_id).unwrap_or(0);
     let mut max_x = None;
 
     if pay_has_x && let Some(cost) = mana_cost_to_pay {
@@ -528,7 +556,7 @@ pub(super) fn compute_spell_cast_x_bounds(
         max_x = Some(max_x.map_or(max_static, |prev| prev.min(max_static)));
     }
 
-    (true, max_x.unwrap_or(0))
+    (true, min_x, max_x.unwrap_or(0))
 }
 
 /// Format an alternative casting method's name and cost description.

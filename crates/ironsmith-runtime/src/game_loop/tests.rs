@@ -5772,7 +5772,7 @@ fn open_the_way_x_choice_is_capped_by_players_in_game() {
     let spell_id = game.create_object_from_definition(&open_the_way, alice, Zone::Stack);
     let mana_cost = game.object(spell_id).unwrap().mana_cost.clone();
 
-    let (needs_x, max_x) = compute_spell_cast_x_bounds(
+    let (needs_x, _min_x, max_x) = compute_spell_cast_x_bounds(
         &game,
         alice,
         spell_id,
@@ -5783,7 +5783,7 @@ fn open_the_way_x_choice_is_capped_by_players_in_game() {
     assert_eq!(max_x, 3, "three players in game should cap X at 3");
 
     game.player_mut(charlie).unwrap().has_lost = true;
-    let (_, max_x_after_player_lost) = compute_spell_cast_x_bounds(
+    let (_, _, max_x_after_player_lost) = compute_spell_cast_x_bounds(
         &game,
         alice,
         spell_id,
@@ -35436,6 +35436,87 @@ fn test_cleanup_discard_decision() {
     assert_eq!(game.player(alice).unwrap().hand.len(), 7);
     // Verify graveyard has 2 cards
     assert_eq!(game.player(alice).unwrap().graveyard.len(), 2);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn necropotence_cleanup_discard_exiles_discarded_card() {
+    use crate::turn::{apply_cleanup_discard, get_cleanup_discard_spec};
+
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    game.turn.active_player = alice;
+
+    let necropotence = CardDefinitionBuilder::new(CardId::new(), "Necropotence")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "Skip your draw step.\n\
+             Whenever you discard a card, exile that card from your graveyard.\n\
+             Pay 1 life: Exile the top card of your library face down. Put that card into your hand at the beginning of your next end step.",
+        )
+        .expect("Necropotence should parse");
+    let necropotence_debug = format!("{:#?}", necropotence.abilities);
+    assert!(
+        necropotence_debug.contains("YouDiscardCardTrigger")
+            && necropotence_debug.contains("TagTriggeringObjectEffect")
+            && necropotence_debug.contains("ExileEffect"),
+        "Necropotence should compile its discard trigger into a tagged exile effect, got {necropotence_debug}"
+    );
+    game.create_object_from_definition(&necropotence, alice, Zone::Battlefield);
+
+    let mut hand_ids = Vec::new();
+    for idx in 0..8 {
+        let card = CardBuilder::new(CardId::new(), &format!("Cleanup Card {idx}"))
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        hand_ids.push(game.create_object_from_card(&card, alice, Zone::Hand));
+    }
+    let discarded_name = game
+        .object(hand_ids[0])
+        .expect("discard candidate should exist")
+        .name
+        .clone();
+
+    let mut trigger_queue = TriggerQueue::new();
+    let mut decision_maker = AutoPassDecisionMaker;
+    let (player, spec) = get_cleanup_discard_spec(&game).expect("cleanup discard should be needed");
+    assert_eq!(player, alice);
+    assert_eq!(spec.count, 1);
+
+    apply_cleanup_discard(&mut game, &[hand_ids[0]], &mut decision_maker);
+    drain_pending_trigger_events(&mut game, &mut trigger_queue);
+    assert_eq!(
+        trigger_queue.entries.len(),
+        1,
+        "Necropotence should trigger from cleanup discard"
+    );
+    put_triggers_on_stack(&mut game, &mut trigger_queue)
+        .expect("Necropotence discard trigger should go on stack");
+    resolve_stack_entry_with(&mut game, &mut decision_maker)
+        .expect("Necropotence discard trigger should resolve");
+
+    let graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .collect();
+    let exile_names: Vec<_> = game
+        .exile
+        .iter()
+        .filter_map(|id| game.object(*id).map(|obj| obj.name.clone()))
+        .collect();
+
+    assert_eq!(game.player(alice).expect("alice").hand.len(), 7);
+    assert!(
+        !graveyard_names.contains(&discarded_name),
+        "{discarded_name} should not remain in graveyard after Necropotence trigger"
+    );
+    assert!(
+        exile_names.contains(&discarded_name),
+        "{discarded_name} should be exiled by Necropotence after cleanup discard"
+    );
 }
 
 #[test]

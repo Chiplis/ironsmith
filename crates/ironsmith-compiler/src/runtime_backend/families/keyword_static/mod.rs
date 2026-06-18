@@ -2094,6 +2094,8 @@ const X_CANT_EXCEED_PLAYER_COUNT_PATTERN: ClauseShape<'static> = clause_shape!(
             "x", "cant", "be", "greater", "than", "number", "of", "players", "in", "game",
         ]
 );
+const X_CANT_BE_ZERO_PATTERN: ClauseShape<'static> =
+    clause_shape!(exact & ["x", "cant", "be", "0"]);
 const EXHAUST_AS_THOUGH_UNACTIVATED_PATTERN: ClauseShape<'static> = clause_shape!(
     exact
         & [
@@ -3493,6 +3495,11 @@ fn parse_static_ability_ast_line_early_lexed(
                 "X can't be greater than the number of players in the game.",
             )
             .into(),
+        ]));
+    }
+    if X_CANT_BE_ZERO_PATTERN.matches_non_article_tokens(tokens) {
+        return Ok(Some(vec![
+            StaticAbility::this_spell_x_minimum(Value::Fixed(1), "X can't be 0.").into(),
         ]));
     }
     if EXHAUST_AS_THOUGH_UNACTIVATED_PATTERN.matches_non_article_tokens(tokens) {

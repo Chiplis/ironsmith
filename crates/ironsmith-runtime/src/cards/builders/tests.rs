@@ -29993,6 +29993,46 @@ fn parse_persecute_discards_all_cards_of_chosen_color() {
     );
 }
 
+#[test]
+fn hand_reveal_choice_effects_render_oracle_style_surfaces() {
+    let cases = [
+        (
+            "Never Happened Variant",
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it.",
+            "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it.",
+        ),
+        (
+            "Memory Theft Variant",
+            "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. You may put a card that has an Adventure that player owns from exile into that player's graveyard.",
+            "Target opponent reveals their hand. You choose a nonland card from it. That player discards that card. You may put a card that has an Adventure that player owns from exile into that player's graveyard.",
+        ),
+        (
+            "Persecute Variant",
+            "Choose a color. Target player reveals their hand and discards all cards of that color.",
+            "Choose a color. Target player reveals their hand and discards all cards of that color.",
+        ),
+        (
+            "Harsh Scrutiny Variant",
+            "Target opponent reveals their hand. You choose a creature card from it. That player discards that card. Scry 1.",
+            "Target opponent reveals their hand. You choose a creature card from it. That player discards that card. Scry 1.",
+        ),
+        (
+            "Appetite Variant",
+            "Target opponent reveals their hand. You choose a card from it with mana value 4 or greater and exile that card.",
+            "Target opponent reveals their hand. You choose a card with mana value 4 or greater from it and exile that card.",
+        ),
+    ];
+
+    for (name, oracle, expected) in cases {
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(oracle)
+            .unwrap_or_else(|err| panic!("{name} should parse: {err:?}"));
+        let rendered = compiled_text_lines(&def).join("\n");
+        assert_eq!(rendered, expected, "{name} rendered unexpectedly");
+    }
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn discard_up_to_two_permanents_then_draw_that_many_still_fails_loudly() {
@@ -50037,6 +50077,41 @@ fn parse_station_threshold_reminder_adds_creature_pt_support() {
             && rendered.contains("creature in addition to its other types")
             && rendered.contains("base power and toughness 2/2"),
         "expected station threshold to include creature/PT support, got {rendered}"
+    );
+}
+
+#[test]
+fn station_threshold_rows_render_as_station_rows() {
+    let sawship = CardDefinitionBuilder::new(CardId::new(), "Station Sawship Variant")
+        .card_types(vec![CardType::Artifact])
+        .power_toughness(PowerToughness::fixed(6, 5))
+        .parse_text("Station\n3+ | Flying, haste")
+        .expect("station keyword threshold should parse");
+    assert_eq!(
+        compiled_text_lines(&sawship),
+        vec!["Station".to_string(), "3+ | Flying, haste".to_string()]
+    );
+
+    let frigate = CardDefinitionBuilder::new(CardId::new(), "Station Frigate Variant")
+        .card_types(vec![CardType::Artifact])
+        .power_toughness(PowerToughness::fixed(3, 5))
+        .parse_text("Station\n2+ | Other creatures you control get +1/+1.\n12+ | Flying, lifelink")
+        .expect("station mixed thresholds should parse");
+    assert_eq!(
+        compiled_text_lines(&frigate),
+        vec![
+            "Station".to_string(),
+            "2+ | Other creatures you control get +1/+1".to_string(),
+            "12+ | Flying, lifelink".to_string(),
+        ]
+    );
+
+    let debug = format!("{:?}", frigate.abilities);
+    assert!(
+        debug.contains("CountersOnSource(Charge)")
+            && debug.contains("GreaterThanOrEqual")
+            && debug.contains("Fixed(12)"),
+        "expected station keyword threshold to remain conditional, got {debug}"
     );
 }
 

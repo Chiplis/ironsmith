@@ -2621,7 +2621,7 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     }
     let should_skip = match carried_context {
         CarryContext::Player(_) => {
-            matches!(
+            (matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     subject: SubjectVerbSubjectAst {
@@ -2630,7 +2630,18 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     },
                     action: SubjectVerbActionAst::Draw { .. },
                 })
-            ) && word_slice_first_is(&clause_words, DRAW_WORD)
+            ) && word_slice_first_is(&clause_words, DRAW_WORD))
+                || (matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: SubjectVerbSubjectAst {
+                            player: PlayerAst::Implicit,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::Scry { .. }
+                            | SubjectVerbActionAst::Surveil { .. },
+                    })
+                ) && matches!(clause_words.first().copied(), Some("scry" | "surveil")))
         }
         CarryContext::ForEachPlayer
         | CarryContext::ForEachTargetPlayers(_)

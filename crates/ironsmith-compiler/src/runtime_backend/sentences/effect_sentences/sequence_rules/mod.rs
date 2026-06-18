@@ -261,6 +261,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_mill_then_may_put_from_among_into_hand_then_if_you_dont,
     },
     SequenceRuleDef {
+        name: "each-player-mill-exile-milled-creatures-create-power-token",
+        feature_tag: Some("mill-exile-power-token"),
+        priority: 340,
+        consumed_sentences: 3,
+        predicate: first_word_each,
+        parser: generic_subject_verb_sequences::triples::parse_each_player_mill_then_exile_milled_creatures_then_create_power_token,
+    },
+    SequenceRuleDef {
         name: "reveal-top-opponent-exiles-one-rest-hand-then-may-cast",
         feature_tag: Some("reveal-opponent-exile-rest-hand-cast"),
         priority: 340,

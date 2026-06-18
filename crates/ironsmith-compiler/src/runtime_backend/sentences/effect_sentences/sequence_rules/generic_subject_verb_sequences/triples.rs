@@ -422,6 +422,129 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     )
 }
 
+pub(crate) fn parse_each_player_mill_then_exile_milled_creatures_then_create_power_token(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn is_mill_effect(effect: &EffectAst) -> bool {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Mill { .. },
+                ..
+            })
+        )
+    }
+
+    fn rewrite_total_power_value(value: &mut Value, tag: &TagKey) {
+        match value {
+            Value::TotalPower(filter) => {
+                *filter = ObjectFilter::tagged(tag.clone()).in_zone(Zone::Exile);
+            }
+            Value::SurfaceHinted { value, .. } => rewrite_total_power_value(value, tag),
+            _ => {}
+        }
+    }
+
+    fn rewrite_total_power_effect(effect: &mut EffectAst, tag: &TagKey) {
+        match effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SetBasePowerToughness {
+                        power, toughness, ..
+                    },
+                ..
+            }) => {
+                rewrite_total_power_value(power, tag);
+                rewrite_total_power_value(toughness, tag);
+            }
+            EffectAst::Sequence { effects }
+            | EffectAst::May { effects }
+            | EffectAst::MayByPlayer { effects, .. }
+            | EffectAst::ForEachPlayer { effects }
+            | EffectAst::ForEachOpponent { effects }
+            | EffectAst::ForEachTagged { effects, .. }
+            | EffectAst::ForEachObject { effects, .. } => {
+                for effect in effects {
+                    rewrite_total_power_effect(effect, tag);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let first = sentences[sentence_idx].lowered();
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let third = sentences[sentence_idx + 2].lowered();
+
+    let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
+        return Ok(None);
+    };
+    let first_is_mill = match first_effects.as_slice() {
+        [effect] if is_mill_effect(effect) => true,
+        [EffectAst::ForEachPlayer { effects }] if matches!(effects.as_slice(), [effect] if is_mill_effect(effect)) => {
+            true
+        }
+        _ => false,
+    };
+    if !first_is_mill {
+        return Ok(None);
+    }
+
+    let words = TokenWordView::new(&second).word_refs();
+    if !word_slice_starts_with(&words, &["exile", "up", "to", "two"])
+        || !word_slice_contains_phrase(&words, &["creature", "cards"])
+        || !(word_slice_contains_phrase(&words, &["put", "into", "graveyards", "this", "way"])
+            || word_slice_contains_phrase(&words, &["put", "into", "graveyard", "this", "way"]))
+    {
+        return Ok(None);
+    }
+
+    let milled_tag = helper_tag_for_tokens(first, "milled");
+    let exiled_tag = helper_tag_for_tokens(&second, "exiled");
+    let mut milled_creature_filter =
+        ObjectFilter::tagged(milled_tag.clone()).in_zone(Zone::Graveyard);
+    milled_creature_filter.card_types.push(CardType::Creature);
+
+    let mut third_effects = effect_sentences::parse_effect_sentence_lexed(third)?;
+    if third_effects.is_empty() {
+        return Ok(None);
+    }
+    for effect in &mut third_effects {
+        rewrite_total_power_effect(effect, &exiled_tag);
+    }
+
+    let mut effects = match first_effects.as_slice() {
+        [effect] if is_mill_effect(effect) => vec![EffectAst::TagAffected {
+            effect: Box::new(effect.clone()),
+            tag: milled_tag,
+        }],
+        [EffectAst::ForEachPlayer { effects }] if matches!(effects.as_slice(), [effect] if is_mill_effect(effect)) =>
+        {
+            vec![EffectAst::ForEachPlayer {
+                effects: vec![EffectAst::TagAffected {
+                    effect: Box::new(effects[0].clone()),
+                    tag: milled_tag,
+                }],
+            }]
+        }
+        _ => return Ok(None),
+    };
+    effects.push(EffectAst::ChooseTaggedObjectsInZone {
+        filter: milled_creature_filter,
+        count: ChoiceCount::up_to(2),
+        player: PlayerAst::You,
+        tag: exiled_tag.clone(),
+        zone: Zone::Graveyard,
+    });
+    effects.push(EffectAst::subject_verb_exile(
+        TargetAst::Tagged(exiled_tag.clone(), None),
+        false,
+    ));
+    effects.extend(third_effects);
+    Ok(Some(effects))
+}
+
 pub(crate) fn parse_reveal_top_opponent_exiles_one_put_rest_hand_then_may_cast(
     sentences: &[SentenceInput],
     sentence_idx: usize,

@@ -3438,7 +3438,7 @@ pub(super) fn apply_casting_method_choice_response(
         (None, crate::resolution::ResolutionProgram::default())
     };
 
-    let (needs_x, max_x) =
+    let (needs_x, min_x, max_x) =
         compute_spell_cast_x_bounds(game, player, stack_id, &casting_method, mana_cost.as_ref());
 
     if needs_x {
@@ -3471,9 +3471,9 @@ pub(super) fn apply_casting_method_choice_response(
             stack_id,
         ));
 
-        let ctx = crate::decisions::context::NumberContext::x_value(
+        let ctx = crate::decisions::context::NumberContext::x_value_with_min(
             player, stack_id, // Use stack_id
-            max_x,
+            min_x, max_x,
         );
         Ok(GameProgress::NeedsDecisionCtx(
             crate::decisions::context::DecisionContext::Number(ctx),

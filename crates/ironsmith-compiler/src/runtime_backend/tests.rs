@@ -6593,6 +6593,30 @@ fn scoped_revealed_this_way_choice_does_not_default_to_battlefield() {
 }
 
 #[test]
+fn each_player_milled_this_way_choice_stays_tied_to_milled_cards() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stitcher Geralf Variant")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Wizard])
+        .power_toughness(crate::card::PowerToughness::fixed(3, 4))
+        .parse_text(
+            "{2}{U}, {T}: Each player mills three cards. Exile up to two creature cards put into graveyards this way. Create an X/X blue Zombie creature token, where X is the total power of the cards exiled this way.",
+        )
+        .expect("Stitcher Geralf-style activated ability should parse");
+
+    let rendered = format!("{def:#?}");
+    assert!(
+        rendered.matches("__sentence_helper_milled").count() >= 2
+            && rendered.contains("tagged_constraints")
+            && rendered.contains("relation: IsTaggedObject")
+            && rendered.contains("Graveyard")
+            && rendered.contains("__sentence_helper_exiled")
+            && rendered.contains("SetBasePowerToughnessEffect")
+            && rendered.contains("TotalPower"),
+        "expected milled-this-way choice and X/X token sizing to stay tied to the milled/exiled helper tags, got {rendered}"
+    );
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_revealed_land_nonland_split_bottom_bundle() {
     let sentences = registry_sentence_inputs(
         "Reveal the top X cards of your library, where X is the number of lands sacrificed this way. Choose any number of artifact and/or land cards revealed this way. Put all nonland cards chosen this way onto the battlefield, then put all land cards chosen this way onto the battlefield tapped, then put the rest on the bottom of your library in a random order.",
@@ -11697,6 +11721,27 @@ fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_graveyard_bun
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
     assert!(debug.contains("min: 0"), "{debug}");
     assert!(debug.contains("zone: Library"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
+fn rewrite_lexed_effect_sequence_preserves_reveal_top_counted_match_hand_rest_graveyard_bundle() {
+    let text = "Reveal the top five cards of your library. Put up to two instant and/or sorcery cards from among them into your hand and the rest into your graveyard.";
+    let lexed =
+        lex_line(text, 0).expect("rewrite lexer should classify counted looked-card bundle");
+
+    let parsed = super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("counted looked-card hand/graveyard sequence");
+    let debug = format!("{parsed:#?}");
+    let compact_debug = format!("{parsed:?}");
+
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+    assert!(debug.contains("Instant"), "{debug}");
+    assert!(debug.contains("Sorcery"), "{debug}");
+    assert!(debug.contains("min: 0"), "{debug}");
+    assert!(compact_debug.contains("max: Some(2)"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");
 }
 

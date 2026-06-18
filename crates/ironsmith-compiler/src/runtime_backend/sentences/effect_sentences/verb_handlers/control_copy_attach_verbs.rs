@@ -53,11 +53,10 @@ const CCA_PERMANENT_WORD_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPatte
     "permanent",
     LexCaptureKind::OneOf(CCA_PERMANENT_WORDS),
 )]);
-const CCA_FROM_COMMAND_ZONE_SHAPE: LexPattern<'static> =
-    LexPattern::new(&[LexPattern::modifier(
-        "source_zone",
-        LexCaptureKind::OneOfPhrase(CCA_FROM_COMMAND_ZONE_PHRASES),
-    )]);
+const CCA_FROM_COMMAND_ZONE_SHAPE: LexPattern<'static> = LexPattern::new(&[LexPattern::modifier(
+    "source_zone",
+    LexCaptureKind::OneOfPhrase(CCA_FROM_COMMAND_ZONE_PHRASES),
+)]);
 const CCA_REST_TARGET_PHRASES: &[&[&str]] = &[&["the", "rest"], &["rest"]];
 const CCA_FROM_COMMAND_ZONE_PHRASES: &[&[&str]] = &[
     &["from", "the", "command", "zone"],
@@ -291,7 +290,6 @@ fn cca_tokens_contain_any_phrase(tokens: &[OwnedLexToken], phrases: &[&[&str]]) 
     let words = crate::runtime_backend::token_word_refs(tokens);
     cca_words_contain_any_phrase(&words, phrases)
 }
-
 
 fn cca_words_contain_word(words: &[&str], expected: &str) -> bool {
     let expected_words = [expected];
@@ -540,6 +538,82 @@ fn parse_cca_put_tagged_into_hand_shape(
     }
 
     Ok(None)
+}
+
+fn compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
+    player: PlayerAst,
+    mut filter: ObjectFilter,
+    count: ChoiceCount,
+    looked_tag: TagKey,
+    chosen_tag: TagKey,
+) -> Vec<EffectAst> {
+    filter.zone = Some(Zone::Library);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: looked_tag.clone(),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+
+    vec![
+        EffectAst::SnapshotLastObjectTag {
+            into: looked_tag.clone(),
+        },
+        EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            count,
+            player,
+            tag: chosen_tag.clone(),
+            zone: Zone::Library,
+        },
+        EffectAst::MoveTaggedGroupToZone {
+            tag: chosen_tag.clone(),
+            zone: Zone::Hand,
+        },
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag: looked_tag,
+                keep_tagged: chosen_tag,
+                zone: Zone::Graveyard,
+            },
+        ),
+    ]
+}
+
+fn parse_put_from_among_hand_choice(
+    tokens: &[OwnedLexToken],
+    from_among_word_idx: usize,
+    clause_words: &[&str],
+) -> Result<Option<(ChoiceCount, ObjectFilter)>, CardTextError> {
+    let word_view = TokenWordView::new(tokens);
+    let filter_end = word_view
+        .token_index_for_word_index(from_among_word_idx)
+        .unwrap_or(tokens.len());
+    let choice_tokens = trim_commas(&tokens[..filter_end]);
+    let choice_tokens = if token_slice_first_is(&choice_tokens, CCA_PUT_WORD) {
+        &choice_tokens[1..]
+    } else {
+        &choice_tokens[..]
+    };
+    let choice_tokens = trim_commas(choice_tokens);
+    let (count, filter_tokens) =
+        if let Some((count, used)) = parse_choice_count_token_prefix_consumed(&choice_tokens) {
+            (count, trim_commas(&choice_tokens[used..]))
+        } else {
+            (ChoiceCount::up_to(1), choice_tokens)
+        };
+    if filter_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter =
+        crate::runtime_backend::effect_sentences::parse_looked_card_choice_filter(&filter_tokens)
+            .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unable to parse from-among hand filter (clause: '{}')",
+                clause_words.join(" ")
+            ))
+        })?;
+    Ok(Some((count, filter)))
 }
 
 fn parse_cca_put_tagged_on_top_library_count(
@@ -1114,7 +1188,8 @@ pub(crate) fn parse_put_into_hand(
         ));
     }
 
-    let from_among_words = TokenWordView::new(tokens).word_refs();
+    let from_among_view = TokenWordView::new(tokens);
+    let from_among_words = from_among_view.word_refs();
     if CCA_FROM_AMONG_HAND_SHAPE
         .find_in_word_refs(&from_among_words)
         .is_some()
@@ -1125,6 +1200,17 @@ pub(crate) fn parse_put_into_hand(
         let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
             tokens, "chosen",
         );
+        if let Some(from_among_word_idx) =
+            word_slice_find_phrase_start(&from_among_words, &["from", "among", "them"])
+            && let Some((count, filter)) =
+                parse_put_from_among_hand_choice(tokens, from_among_word_idx, &clause_words)?
+        {
+            return Ok(EffectAst::Sequence {
+                effects: compose_put_filtered_looked_cards_into_hand_rest_into_graveyard(
+                    player, filter, count, looked_tag, chosen_tag,
+                ),
+            });
+        }
         return Ok(EffectAst::Sequence {
             effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
                 player,
@@ -1168,14 +1254,12 @@ pub(crate) fn parse_put_into_hand(
             && let Some(choice_count) = put_shape.count
         {
             let dest_player = cca_destination_player_from_tokens(tokens, player);
-            let looked_tag =
-                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-                    tokens, "looked",
-                );
-            let chosen_tag =
-                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-                    tokens, "chosen",
-                );
+            let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                tokens, "looked",
+            );
+            let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                tokens, "chosen",
+            );
 
             return Ok(EffectAst::Sequence {
                 effects: EffectAst::compose_put_some_into_hand_rest_on_bottom_of_library(
@@ -1193,14 +1277,12 @@ pub(crate) fn parse_put_into_hand(
         {
             // The chooser is typically the player whose hand is referenced.
             let dest_player = cca_destination_player_from_tokens(tokens, player);
-            let looked_tag =
-                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-                    tokens, "looked",
-                );
-            let chosen_tag =
-                crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
-                    tokens, "chosen",
-                );
+            let looked_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                tokens, "looked",
+            );
+            let chosen_tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
+                tokens, "chosen",
+            );
 
             return Ok(EffectAst::Sequence {
                 effects: EffectAst::compose_put_some_into_hand_rest_into_graveyard(
@@ -1467,9 +1549,11 @@ pub(crate) fn parse_put_into_hand(
         && !target_slice
             .iter()
             .any(|token| token.as_word().is_some_and(|word| word == "onto"))
-        && !target_slice
-            .iter()
-            .any(|token| token.as_word().is_some_and(|word| word == CCA_BATTLEFIELD_WORD))
+        && !target_slice.iter().any(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| word == CCA_BATTLEFIELD_WORD)
+        })
     {
         let target_tokens = trim_commas(target_slice);
         if target_tokens.is_empty() {

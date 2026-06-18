@@ -18,6 +18,21 @@ function queryVisible(selector) {
   return null;
 }
 
+function perspectiveHandDockRect() {
+  const shell = document.querySelector(".hand-reveal-shell");
+  const rect = visibleRect(shell);
+  if (!rect) return null;
+
+  const centerX = rect.left + (rect.width / 2);
+  const width = Math.min(
+    156,
+    Math.max(96, Number(shell?.offsetWidth) || 0, rect.width * 0.28)
+  );
+  const height = 52;
+  const bottom = Math.min(window.innerHeight - 8, rect.bottom);
+  return new DOMRect(centerX - (width / 2), bottom - height, width, height);
+}
+
 export function getZoneAnchorRect(playerKey, zone, { isPerspective = false } = {}) {
   const key = String(playerKey ?? "");
   const zoneId = String(zone || "").toLowerCase();
@@ -25,7 +40,9 @@ export function getZoneAnchorRect(playerKey, zone, { isPerspective = false } = {
   // The perspective player's hand is the hand dock at the bottom of the
   // screen, not the zone strip entry.
   if (zoneId === "hand" && isPerspective) {
-    const handRect = queryVisible(".hand-zone-surface") || queryVisible(".hand-reveal-shell");
+    const handRect = perspectiveHandDockRect()
+      || queryVisible(".hand-reveal-shell")
+      || queryVisible(".hand-zone-surface");
     if (handRect) return handRect;
   }
 

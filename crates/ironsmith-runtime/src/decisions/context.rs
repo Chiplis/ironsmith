@@ -213,10 +213,15 @@ impl NumberContext {
 
     /// Create a NumberContext for an X value decision.
     pub fn x_value(player: PlayerId, source: ObjectId, max: u32) -> Self {
+        Self::x_value_with_min(player, source, 0, max)
+    }
+
+    /// Create a NumberContext for an X value decision with a nonzero minimum.
+    pub fn x_value_with_min(player: PlayerId, source: ObjectId, min: u32, max: u32) -> Self {
         Self {
             player,
             source: Some(source),
-            min: 0,
+            min,
             max,
             description: "Choose value for X".to_string(),
             is_x_value: true,

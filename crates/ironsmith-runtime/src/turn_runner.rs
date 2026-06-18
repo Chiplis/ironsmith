@@ -706,6 +706,7 @@ impl TurnRunner {
             }
 
             TurnState::CleanupRecursiveCheck => {
+                drain_pending_trigger_events(game, tq);
                 let triggers_fired = !tq.is_empty();
                 let sbas_happened = !check_state_based_actions(game).is_empty();
 

@@ -566,9 +566,11 @@ pub fn apply_cleanup_discard(
 ) -> Vec<crate::ids::ObjectId> {
     use crate::events::cause::EventCause;
     use crate::events::processing::execute_discard;
+    use crate::snapshot::ObjectSnapshot;
     use crate::zone::Zone;
 
     let mut madness_cards = Vec::new();
+    let mut successful_discards = Vec::new();
     let active_player = game.turn.active_player;
 
     // All discards go through execute_discard which handles:
@@ -579,6 +581,9 @@ pub fn apply_cleanup_discard(
     let cause = EventCause::from_game_rule();
 
     for &card_id in cards_to_discard {
+        let pre_discard_snapshot = game
+            .object(card_id)
+            .map(|obj| ObjectSnapshot::from_object(obj, game));
         let discard_provenance = game
             .provenance_graph_mut()
             .alloc_root_event(crate::events::EventKind::Discard);
@@ -591,6 +596,14 @@ pub fn apply_cleanup_discard(
             discard_provenance,
             decision_maker,
         );
+        if !result.prevented {
+            successful_discards.push((
+                card_id,
+                pre_discard_snapshot,
+                result.final_zone,
+                discard_provenance,
+            ));
+        }
 
         // Track cards that were exiled via Madness (can be cast from exile)
         if result.final_zone == Zone::Exile
@@ -598,6 +611,38 @@ pub fn apply_cleanup_discard(
         {
             madness_cards.push(new_id);
         }
+    }
+
+    let batch_cards: Vec<_> = successful_discards
+        .iter()
+        .map(|(card_id, _, _, _)| *card_id)
+        .collect();
+    let batch_snapshots: Vec<_> = successful_discards
+        .iter()
+        .filter_map(|(_, snapshot, _, _)| snapshot.clone())
+        .collect();
+    for (batch_index, (card_id, pre_discard_snapshot, final_zone, provenance)) in
+        successful_discards.into_iter().enumerate()
+    {
+        let discard_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::cards::DiscardEvent::with_cause(card_id, active_player, cause.clone())
+                .with_destination(final_zone),
+            provenance,
+        );
+        game.queue_trigger_event(provenance, discard_event);
+
+        let mut card_discarded_event = crate::events::other::CardDiscardedEvent::with_cause(
+            active_player,
+            card_id,
+            cause.clone(),
+        )
+        .with_batch(batch_cards.clone(), batch_snapshots.clone(), batch_index);
+        if let Some(snapshot) = pre_discard_snapshot {
+            card_discarded_event = card_discarded_event.with_snapshot(snapshot);
+        }
+        let trigger_event =
+            crate::triggers::TriggerEvent::new_with_provenance(card_discarded_event, provenance);
+        game.queue_trigger_event(provenance, trigger_event);
     }
 
     madness_cards
