@@ -28272,15 +28272,13 @@ fn parse_ninjutsu_keyword_line_builds_hand_activated_ability() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        (rendered.contains("effect(ninjutsucosteffect)")
-            && rendered.contains("effect(ninjutsueffect)"))
-            || (rendered.contains("return an unblocked attacker")
-                && rendered.contains("put this card onto the battlefield tapped and attacking")),
-        "expected compiled output to include ninjutsu effect pipeline, got {rendered}"
+        rendered.contains("ninjutsu {1}{b}"),
+        "expected compact ninjutsu keyword surface, got {rendered}"
     );
+    let debug = format!("{def:#?}");
     assert!(
-        rendered.contains("return an unblocked attacker you control to its owner's hand"),
-        "ninjutsu cost should keep owner-hand wording, got {rendered}"
+        debug.contains("NinjutsuCostEffect") && debug.contains("NinjutsuEffect"),
+        "expected compiled model to keep the ninjutsu effect pipeline, got {debug}"
     );
 }
 
@@ -30314,12 +30312,11 @@ fn parse_sakashimas_student_copy_exception_adds_ninja_subtype() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lower.contains("return an unblocked attacker you control")
-            && rendered_lower.contains("put this card onto the battlefield tapped and attacking")
+        rendered_lower.contains("ninjutsu {1}{u}")
             && rendered_lower.contains(
                 "copy of any creature on the battlefield except it's a ninja in addition to its other creature types"
             ),
-        "expected Sakashima's Student compiled text to include ninjutsu behavior and the Ninja copy exception, got {rendered}"
+        "expected Sakashima's Student compiled text to include compact ninjutsu and the Ninja copy exception, got {rendered}"
     );
 
     let debug = format!("{def:#?}");
@@ -43170,6 +43167,27 @@ fn dream_tides_strict_parser_and_compiled_text_regression() {
     );
 }
 
+#[test]
+fn optional_source_damage_followups_render_player_conditions() {
+    let vexing = parse_oracle_card_definition("Vexing Devil");
+    let vexing_rendered = unprocessed_compiled_lines(&vexing).join(" ");
+    assert!(
+        vexing_rendered.contains(
+            "When this creature enters, any opponent may have it deal 4 damage to them. If a player does, sacrifice this creature."
+        ),
+        "expected Vexing Devil optional damage follow-up to use player condition, got {vexing_rendered}"
+    );
+
+    let breaking = parse_oracle_card_definition("Breaking Point");
+    let breaking_rendered = unprocessed_compiled_lines(&breaking).join(" ");
+    assert!(
+        breaking_rendered.contains(
+            "Any player may have it deal 6 damage to them. If no one does, destroy all creatures. Creatures destroyed this way can't be regenerated."
+        ),
+        "expected Breaking Point optional damage follow-up to stay conditional, got {breaking_rendered}"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn render_source_surface_for_hard_triggered_and_static_clauses() {
@@ -50073,10 +50091,8 @@ fn parse_station_threshold_reminder_adds_creature_pt_support() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("flying")
-            && rendered.contains("creature in addition to its other types")
-            && rendered.contains("base power and toughness 2/2"),
-        "expected station threshold to include creature/PT support, got {rendered}"
+        rendered.contains("station") && rendered.contains("4+ | flying"),
+        "expected station threshold to compact to the station row surface, got {rendered}"
     );
 }
 
@@ -54793,7 +54809,7 @@ fn unprocessed_compiled_lines_normalize_remaining_tag_scaffolding_regressions() 
         unprocessed_compiled_lines(&parse_oracle_card_definition("Ainok Wayfarer")).join("\n");
     assert!(
         ainok.contains(
-            "When this creature enters, mill three cards. You may put a land card from among them into your hand. If you don't, put a +1/+1 counter on this creature."
+            "When this creature enters, mill three cards. You may put a land card from among the milled cards into your hand. If you don't, put a +1/+1 counter on this creature."
         ),
         "expected Ainok Wayfarer helper chain to normalize, got {ainok}"
     );
@@ -56596,6 +56612,7 @@ fn target_assignments_for_requirements(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },
@@ -74327,8 +74344,44 @@ fn incriminate_keeps_same_controller_choice_sacrifice() {
     assert!(
         debug.contains("ChooseObjectsEffect")
             && debug.contains("ControllerOf")
+            && debug.contains("target_set_same_controller: true")
             && debug.contains("SacrificeTargetEffect"),
         "expected target set, controller choice, and sacrifice, got {debug}"
+    );
+}
+
+#[test]
+fn barrins_spite_keeps_same_controller_choice_sacrifice_return_other() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Barrin's Spite Probe")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(2)],
+            vec![ManaSymbol::Blue],
+            vec![ManaSymbol::Black],
+        ]))
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose two target creatures controlled by the same player. Their controller chooses and sacrifices one of them. Return the other to its owner's hand.",
+        )
+        .expect("parse Barrin's Spite text");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Choose two target creatures controlled by the same player. Their controller chooses and sacrifices one of them. Return the other to its owner's hand"
+        ),
+        "expected same-controller choice-sacrifice-return wording, got {rendered}"
+    );
+
+    let effects = def.spell_effect.as_ref().expect("spell effect");
+    let debug = format!("{effects:?}");
+    assert!(
+        debug.contains("target_set_same_controller: true")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("ControllerOf")
+            && debug.contains("SacrificeTargetEffect")
+            && debug.contains("ReturnToHandEffect")
+            && debug.contains("IsNotTaggedObject"),
+        "expected target set, controller choice, sacrifice, and return-other, got {debug}"
     );
 }
 

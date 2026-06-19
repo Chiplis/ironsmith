@@ -9406,6 +9406,43 @@ pub(crate) fn parse_lands_are_pt_creatures_still_lands_line(
     ]))
 }
 
+fn parse_static_base_power_toughness_value_tail(
+    tail_tokens: &[OwnedLexToken],
+) -> Option<(Value, Value)> {
+    const BASE_POWER_AND_BASE_TOUGHNESS_WORDS: &[&str] =
+        &["base", "power", "and", "base", "toughness"];
+    const BASE_POWER_TOUGHNESS_WORDS: &[&str] = &["base", "power", "and", "toughness"];
+    const EACH_EQUAL_TO_WORDS: &[&str] = &["each", "equal", "to"];
+    const ITERATED_MANA_VALUE_WORDS: &[&[&str]] = &[
+        &["its", "mana", "value"],
+        &["their", "mana", "value"],
+        &["that", "permanent", "s", "mana", "value"],
+        &["that", "permanents", "mana", "value"],
+        &["that", "object", "s", "mana", "value"],
+        &["that", "objects", "mana", "value"],
+    ];
+
+    let comma_trimmed = trim_commas(tail_tokens);
+    let trimmed = trim_edge_punctuation_tokens(&comma_trimmed);
+    let words = LexedClause::new(trimmed).word_refs();
+    let rhs = if words.starts_with(BASE_POWER_AND_BASE_TOUGHNESS_WORDS) {
+        &words[BASE_POWER_AND_BASE_TOUGHNESS_WORDS.len()..]
+    } else if words.starts_with(BASE_POWER_TOUGHNESS_WORDS) {
+        &words[BASE_POWER_TOUGHNESS_WORDS.len()..]
+    } else {
+        return None;
+    };
+    if !rhs.starts_with(EACH_EQUAL_TO_WORDS) {
+        return None;
+    }
+    let value_words = &rhs[EACH_EQUAL_TO_WORDS.len()..];
+    if !word_slice_eq_any(value_words, ITERATED_MANA_VALUE_WORDS) {
+        return None;
+    }
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    Some((value.clone(), value))
+}
+
 pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
@@ -9449,23 +9486,43 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     let skipped_article_words = raw_before_has_words
         .len()
         .saturating_sub(before_has_words.len());
-    if before_has_words.len() < 8 {
-        return Ok(None);
-    }
-
-    let (power, toughness) = match parse_pt_modifier(before_has_words[0]) {
-        Ok(parsed) => parsed,
-        Err(_) => return Ok(None),
-    };
     let Some(creature_idx) = find_index(&before_has_words, |word| {
         keyword_static_shape_matches_word(word, STATIC_CREATURE_OR_CREATURES_WORD_PATTERN)
     }) else {
         return Ok(None);
     };
-    if creature_idx == 0 {
-        return Ok(None);
-    }
-    let subtype_words = &before_has_words[1..creature_idx];
+    let (base_power_toughness, subtype_start_word, granted_tail) = match before_has_words
+        .first()
+        .and_then(|word| parse_pt_modifier(word).ok())
+    {
+        Some((power, toughness)) => {
+            if creature_idx == 0 {
+                return Ok(None);
+            }
+            let Some(granted_tail) = parse_heterogeneous_granted_tail(
+                &tokens[has_idx + 1..],
+                &clause_words,
+                attached_subject,
+            )?
+            else {
+                return Ok(None);
+            };
+            (
+                (Value::Fixed(power), Value::Fixed(toughness)),
+                1usize,
+                granted_tail,
+            )
+        }
+        None => {
+            let Some((power, toughness)) =
+                parse_static_base_power_toughness_value_tail(&tokens[has_idx + 1..])
+            else {
+                return Ok(None);
+            };
+            ((power, toughness), 0usize, ParsedGrantedTailAst::default())
+        }
+    };
+    let subtype_words = &before_has_words[subtype_start_word..creature_idx];
     let mut subtypes = Vec::new();
     for word in subtype_words {
         if is_article(word) {
@@ -9491,12 +9548,6 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         return Ok(None);
     }
 
-    let Some(granted_tail) =
-        parse_heterogeneous_granted_tail(&tokens[has_idx + 1..], &clause_words, attached_subject)?
-    else {
-        return Ok(None);
-    };
-
     Ok(Some(lower_static_animation_bundle(
         StaticAnimationBundleAst {
             subject,
@@ -9504,7 +9555,7 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
             ensure_creature_type: true,
             subtypes,
             subtype_mode: AnimationSubtypeMode::Add,
-            base_power_toughness: Some((power, toughness)),
+            base_power_toughness: Some(base_power_toughness),
             granted_tail,
         },
     )))
@@ -9642,7 +9693,7 @@ pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
             ensure_creature_type: true,
             subtypes,
             subtype_mode: AnimationSubtypeMode::ReplaceCreatureTypes,
-            base_power_toughness: Some((power, toughness)),
+            base_power_toughness: Some((Value::Fixed(power), Value::Fixed(toughness))),
             granted_tail,
         },
     )))

@@ -368,6 +368,7 @@ pub struct ObjectFilter {
     pub targets_any_of: bool,
     pub stack_kind: Option<StackObjectKind>,
     pub target_count: Option<ChoiceCount>,
+    pub target_set_same_controller: bool,
     pub targets_only_player: Option<PlayerFilter>,
     pub targets_only_object: Option<Box<ObjectFilter>>,
     pub targets_only_any_of: bool,
@@ -1222,7 +1223,12 @@ impl ObjectFilter {
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),
                 PlayerFilter::Attacking => parts.push("an attacking player's".to_string()),
-                PlayerFilter::DamagedPlayer => parts.push("the damaged player's".to_string()),
+                PlayerFilter::DamagedPlayer => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
+                }
                 PlayerFilter::IteratedPlayer => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -2596,6 +2602,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "a dynamic blocker count".to_string()
             }
             Value::EffectValue(_) => "that result".to_string(),
+            Value::ColorsOfManaSpentToCastThisSpell => {
+                "the number of colors of mana spent to cast this spell".to_string()
+            }
             Value::EffectMetric {
                 metric: EffectMetric::OtherNumber,
                 ..

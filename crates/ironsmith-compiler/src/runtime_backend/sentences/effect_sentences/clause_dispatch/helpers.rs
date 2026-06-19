@@ -19,6 +19,17 @@ const ENCHANTED_CREATURE_CONTROLLER_OR_OWNER_CLAUSES: &[&[&str]] = &[
     &["enchanted", "creature's", "owner"],
 ];
 const BASE_POWER_TOUGHNESS_WORDS: &[&str] = &["base", "power", "and", "toughness"];
+const BASE_POWER_AND_BASE_TOUGHNESS_WORDS: &[&str] = &["base", "power", "and", "base", "toughness"];
+const POWER_TOUGHNESS_WORDS: &[&str] = &["power", "and", "toughness"];
+const EACH_EQUAL_TO_WORDS: &[&str] = &["each", "equal", "to"];
+const ITERATED_MANA_VALUE_WORDS: &[&[&str]] = &[
+    &["its", "mana", "value"],
+    &["their", "mana", "value"],
+    &["that", "permanent", "s", "mana", "value"],
+    &["that", "permanents", "mana", "value"],
+    &["that", "object", "s", "mana", "value"],
+    &["that", "objects", "mana", "value"],
+];
 
 pub(super) fn render_lower_words(tokens: &[OwnedLexToken]) -> String {
     LexedClause::new(tokens).text()
@@ -181,6 +192,33 @@ pub(super) fn parse_become_base_pt_tail<'a>(
         return Ok(None);
     }
     Ok(Some((&become_words[..with_idx], power, toughness)))
+}
+
+pub(super) fn parse_become_power_toughness_equal_value_tail<'a>(
+    become_words: &'a [&'a str],
+) -> Result<Option<(&'a [&'a str], Value, Value)>, CardTextError> {
+    let Some(with_idx) = become_words.iter().position(|word| *word == "with") else {
+        return Ok(None);
+    };
+    let tail = &become_words[with_idx + 1..];
+    let rhs = if tail.starts_with(BASE_POWER_AND_BASE_TOUGHNESS_WORDS) {
+        &tail[BASE_POWER_AND_BASE_TOUGHNESS_WORDS.len()..]
+    } else if tail.starts_with(BASE_POWER_TOUGHNESS_WORDS) {
+        &tail[BASE_POWER_TOUGHNESS_WORDS.len()..]
+    } else if tail.starts_with(POWER_TOUGHNESS_WORDS) {
+        &tail[POWER_TOUGHNESS_WORDS.len()..]
+    } else {
+        return Ok(None);
+    };
+    if !rhs.starts_with(EACH_EQUAL_TO_WORDS) {
+        return Ok(None);
+    }
+    let value_words = &rhs[EACH_EQUAL_TO_WORDS.len()..];
+    if !word_slice_eq_any(value_words, ITERATED_MANA_VALUE_WORDS) {
+        return Ok(None);
+    }
+    let value = Value::ManaValueOf(Box::new(ChooseSpec::Iterated));
+    Ok(Some((&become_words[..with_idx], value.clone(), value)))
 }
 
 pub(super) fn parse_pt_value_words(words: &[&str]) -> Option<(Value, Value, usize)> {

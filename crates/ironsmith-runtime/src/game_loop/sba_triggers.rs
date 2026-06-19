@@ -763,6 +763,7 @@ fn trigger_target_requirement_contexts(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },
@@ -850,9 +851,16 @@ fn target_requirements_from_explicit_choices(
                 &view,
             );
 
+            let legal_target_sets = crate::targeting::legal_target_sets_for_spec(
+                game,
+                &resolved_target_spec,
+                &legal_targets,
+            );
+
             TargetRequirement {
                 spec: resolved_target_spec,
                 legal_targets,
+                legal_target_sets,
                 description: format!("target for {}", trigger.source_name),
                 min_targets: count.min,
                 max_targets: count.max,

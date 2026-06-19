@@ -2339,6 +2339,16 @@ impl StaticAbility {
         ))
     }
 
+    pub fn set_base_power_toughness_value(
+        filter: crate::target::ObjectFilter,
+        power: crate::effect::Value,
+        toughness: crate::effect::Value,
+    ) -> Self {
+        Self::new(SetBasePowerToughnessValueForFilter::new(
+            filter, power, toughness,
+        ))
+    }
+
     pub fn set_colors(filter: crate::target::ObjectFilter, colors: crate::color::ColorSet) -> Self {
         Self::new(SetColorsForFilter::new(filter, colors))
     }

@@ -2,8 +2,8 @@ use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::TextSpan;
 use crate::cards::builders::{
-    AdditionalCostChoiceOptionAst, CardTextError, IT_TAG, KeywordAction, ParsedAbility, PlayerAst,
-    ReferenceImports, TargetAst,
+    AdditionalCostChoiceOptionAst, CHOSEN_OBJECTS_TAG, CardTextError, IT_TAG, KeywordAction,
+    ParsedAbility, PlayerAst, ReferenceImports, TargetAst,
 };
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
@@ -4590,7 +4590,29 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         && shared_util_shape_matches_word(remaining_words[0], CHOSEN_WORD_PATTERN)
         && is_demonstrative_object_head(remaining_words[1])
     {
-        let filter = parse_object_filter(tokens, false)?;
+        let chosen_word_idx = all_words
+            .iter()
+            .position(|word| shared_util_shape_matches_word(word, CHOSEN_WORD_PATTERN))
+            .ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "missing chosen object marker in target phrase '{}'",
+                    all_words.join(" ")
+                ))
+            })?;
+        let filter_start = token_word_view
+            .token_index_for_word_index(chosen_word_idx + 1)
+            .unwrap_or(tokens.len());
+        let filter_tokens = trim_commas(&tokens[filter_start..]);
+        let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
+        let mut filter = if matches!(filter_words.as_slice(), ["card"] | ["cards"]) {
+            ObjectFilter::default()
+        } else {
+            parse_object_filter(&filter_tokens, false)?
+        };
+        filter = filter.match_tagged(
+            TagKey::from(CHOSEN_OBJECTS_TAG),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
         return Ok(wrap_target_count(
             TargetAst::Object(filter, None, None),
             target_count,
@@ -5277,6 +5299,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         )));
     }
 
+    let (remaining_tokens, target_set_same_controller) =
+        strip_same_controller_target_set_suffix(remaining);
+    let remaining = remaining_tokens.as_slice();
     let remaining_word_view = UtilWordView::new(remaining);
     let remaining_words_with_articles = remaining_word_view.to_word_refs();
     if target_count.is_none_or(|count| count.is_single())
@@ -5292,7 +5317,10 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     {
         let object_tokens = trim_commas(&remaining[..for_each_token_idx]);
         if !object_tokens.is_empty() {
-            let filter = parse_object_filter(&object_tokens, other)?;
+            let mut filter = parse_object_filter(&object_tokens, other)?;
+            if target_set_same_controller {
+                filter.target_set_same_controller = true;
+            }
             return Ok(TargetAst::WithCountValue(
                 Box::new(TargetAst::Object(filter, target_span, None)),
                 ChoiceCount::dynamic_x(),
@@ -5302,6 +5330,9 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
+    if target_set_same_controller {
+        filter.target_set_same_controller = true;
+    }
     if filter.with_counter.is_none()
         && remaining_words
             .first()
@@ -5337,6 +5368,28 @@ fn parse_target_phrase_inner(tokens: &[OwnedLexToken]) -> Result<TargetAst, Card
         TargetAst::Object(filter, target_span, it_span),
         target_count,
     ))
+}
+
+fn strip_same_controller_target_set_suffix(tokens: &[OwnedLexToken]) -> (Vec<OwnedLexToken>, bool) {
+    let view = UtilWordView::new(tokens);
+    let words = view.to_word_refs();
+    let Some(tail_start) = words
+        .len()
+        .checked_sub(5)
+        .filter(|start| words[*start..] == ["controlled", "by", "the", "same", "player"])
+        .or_else(|| {
+            words
+                .len()
+                .checked_sub(4)
+                .filter(|start| words[*start..] == ["controlled", "by", "same", "player"])
+        })
+    else {
+        return (tokens.to_vec(), false);
+    };
+    let Some(token_end) = view.token_index_for_word_index(tail_start) else {
+        return (tokens.to_vec(), false);
+    };
+    (trim_commas(&tokens[..token_end]), true)
 }
 
 /// Splits a token slice into "or"-separated option slices, preserving the

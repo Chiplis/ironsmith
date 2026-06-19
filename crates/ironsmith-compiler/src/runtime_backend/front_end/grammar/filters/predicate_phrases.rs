@@ -2987,7 +2987,31 @@ fn parse_demonstrative_shares_predicate(tokens: &[OwnedLexToken]) -> Option<Pred
             ObjectFilter::default().shares_most_common_permanent_color(),
         ));
     }
-    None
+    let words = descriptor.words();
+    let shares_color_with_idx = words.find_window_by(4, |window| {
+        matches!(
+            window,
+            ["shares", "a", "color", "with"] | ["shares", "color", "with", _]
+        )
+    })?;
+    let filter_start = if descriptor
+        .between_word_range(shares_color_with_idx, shares_color_with_idx + 4)
+        .is_some_and(|clause| clause_matches_phrase(clause, &["shares", "a", "color", "with"]))
+    {
+        shares_color_with_idx + 4
+    } else {
+        shares_color_with_idx + 3
+    };
+    let filter_tokens = descriptor.after_words(filter_start)?.tokens();
+    let mut filter = parse_object_filter(filter_tokens, false).ok()?;
+    let player = match filter.controller.take() {
+        Some(PlayerFilter::You) | None => PlayerAst::You,
+        Some(PlayerFilter::Opponent) | Some(PlayerFilter::NotYou) => PlayerAst::Opponent,
+        Some(PlayerFilter::Any) => PlayerAst::Any,
+        _ => return None,
+    };
+    filter = filter.shares_color_with_tagged(IT_TAG);
+    Some(PredicateAst::PlayerControls { player, filter })
 }
 
 fn contains_most_common_color_among_all_permanents_clause(tokens: &[OwnedLexToken]) -> bool {

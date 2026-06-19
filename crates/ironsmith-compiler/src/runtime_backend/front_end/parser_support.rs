@@ -57,6 +57,7 @@ pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
         || looks_like_when_it_connives_this_way_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
+        || looks_like_if_no_one_does_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
 }
 
@@ -231,6 +232,18 @@ fn parse_when_you_do_followup_intro_inner<'a>(
 
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     starts_with_lexed_parser(tokens, 0, parse_when_you_do_followup_intro_inner)
+}
+
+fn parse_if_no_one_does_followup_intro_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    grammar::phrase(&["if", "no", "one", "does"])
+        .void()
+        .parse_next(input)
+}
+
+fn looks_like_if_no_one_does_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    starts_with_lexed_parser(tokens, 0, parse_if_no_one_does_followup_intro_inner)
 }
 
 fn parse_otherwise_followup_intro_inner<'a>(

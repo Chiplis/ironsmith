@@ -779,6 +779,7 @@ mod tests {
             vec![TargetRequirementContext {
                 description: "two targets".to_string(),
                 legal_targets: vec![first, second],
+                legal_target_sets: Vec::new(),
                 min_targets: 2,
                 max_targets: Some(2),
             }],

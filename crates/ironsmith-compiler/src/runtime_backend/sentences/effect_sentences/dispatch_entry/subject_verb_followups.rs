@@ -18,6 +18,7 @@ const UNTIL_END_OF_TURN_PHRASE: &[&str] = &["until", "end", "of", "turn"];
 const WHEN_ONE_OR_MORE_CARDS_MILLED_THIS_WAY_PREFIX: &[&str] = &[
     "when", "one", "or", "more", "cards", "are", "milled", "this", "way",
 ];
+const IF_NO_ONE_DOES_PREFIX: &[&str] = &["if", "no", "one", "does"];
 const SKIP_TURN_WHILE_THIS_ARTIFACT_TAPPED_WORDS: &[&str] = &[
     "if", "you", "would", "begin", "your", "turn", "while", "this", "artifact", "is", "tapped",
     "you", "may", "skip", "that", "turn", "instead",
@@ -1001,6 +1002,25 @@ fn pre_rule_when_milled_this_way_followup(
     Ok(Some(PreParseFollowupResult::Plan(plan)))
 }
 
+fn pre_rule_if_no_one_does_followup(
+    _state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    sentence_tokens: &[OwnedLexToken],
+) -> Result<Option<PreParseFollowupResult>, CardTextError> {
+    if !word_slice_starts_with(&token_word_refs(sentence_tokens), IF_NO_ONE_DOES_PREFIX) {
+        return Ok(None);
+    }
+    let Some((_before, after)) =
+        grammar::split_lexed_once_on_delimiter(sentence_tokens, TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let mut plan = SentenceParsePlan::new(trim_commas(after).to_vec());
+    plan.wrap_if_result = Some(IfResultPredicate::DidNot);
+    Ok(Some(PreParseFollowupResult::Plan(plan)))
+}
+
 fn is_destroy_those_creatures_sentence(tokens: &[OwnedLexToken]) -> bool {
     LexedClause::new(tokens).matches_any_words(&[
         &["destroy", "those", "creatures"],
@@ -1389,6 +1409,12 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
         priority: 55,
         heads: &["when"],
         run: pre_rule_when_milled_this_way_followup,
+    },
+    SubjectVerbFollowupRuleDef {
+        id: "if-no-one-does",
+        priority: 55,
+        heads: &["if"],
+        run: pre_rule_if_no_one_does_followup,
     },
     SubjectVerbFollowupRuleDef {
         id: "future-zone-replacement",

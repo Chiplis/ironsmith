@@ -3217,7 +3217,12 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
                 PlayerFilter::Defending => parts.push("the defending player's".to_string()),
                 PlayerFilter::Attacking => parts.push("an attacking player's".to_string()),
-                PlayerFilter::DamagedPlayer => parts.push("the damaged player's".to_string()),
+                PlayerFilter::DamagedPlayer => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("that player controls".to_string());
+                }
                 PlayerFilter::IteratedPlayer => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -4970,6 +4975,9 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!("the amount of unspent mana {subject} {verb}")
             }
             Value::EffectValue(_) => "that result".to_string(),
+            Value::ColorsOfManaSpentToCastThisSpell => {
+                "the number of colors of mana spent to cast this spell".to_string()
+            }
             Value::EffectMetric {
                 metric: crate::effect::EffectMetric::OtherNumber,
                 ..

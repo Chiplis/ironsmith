@@ -348,6 +348,11 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         power: i32,
         toughness: i32,
     },
+    SetBasePowerToughnessValue {
+        filter: ObjectFilter,
+        power: Value,
+        toughness: Value,
+    },
     SourceCharacteristicsOfLastExiledCreatureCard {
         filter: ObjectFilter,
         retained_subtypes: Vec<Subtype>,
@@ -1197,6 +1202,15 @@ where
                 power,
                 toughness,
             } => StaticAbilityPayload::SetBasePowerToughness {
+                filter,
+                power,
+                toughness,
+            },
+            StaticAbilityPayload::SetBasePowerToughnessValue {
+                filter,
+                power,
+                toughness,
+            } => StaticAbilityPayload::SetBasePowerToughnessValue {
                 filter,
                 power,
                 toughness,
@@ -2117,6 +2131,22 @@ impl<
             id: Some(StaticAbilityId::SetBasePowerToughnessForFilter),
             label: "set base power toughness".to_string(),
             payload: StaticAbilityPayload::SetBasePowerToughness {
+                filter,
+                power,
+                toughness,
+            },
+        }
+    }
+
+    pub fn set_base_power_toughness_value(
+        filter: ObjectFilter,
+        power: Value,
+        toughness: Value,
+    ) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SetBasePowerToughnessForFilter),
+            label: "set base power toughness value".to_string(),
+            payload: StaticAbilityPayload::SetBasePowerToughnessValue {
                 filter,
                 power,
                 toughness,

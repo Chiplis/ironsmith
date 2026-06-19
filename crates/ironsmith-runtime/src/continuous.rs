@@ -21,7 +21,7 @@ use crate::object_query::candidate_ids_for_filter;
 use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbility;
 use crate::tag::{SOURCE_EXILED_TAG, TagKey};
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -1211,6 +1211,7 @@ pub struct CalculationContext<'a> {
     pub effects: &'a ContinuousEffectManager,
     pub battlefield: &'a [ObjectId],
     pub game: &'a crate::game_state::GameState,
+    pub current_object: ObjectId,
 }
 
 impl ContinuousEffectManager {
@@ -1232,6 +1233,7 @@ impl ContinuousEffectManager {
             effects: self,
             battlefield,
             game,
+            current_object: object_id,
         };
 
         Some(calculate_with_layers(object, &ctx))
@@ -2907,6 +2909,7 @@ pub(crate) fn resolve_value_direct(
         commanders: &HashSet<ObjectId>,
         game: &crate::game_state::GameState,
         filter_ctx: &crate::target::FilterContext,
+        current_object: ObjectId,
     ) -> i32 {
         let empty_effects = ContinuousEffectManager::new();
         let ctx = CalculationContext {
@@ -2914,6 +2917,7 @@ pub(crate) fn resolve_value_direct(
             effects: &empty_effects,
             battlefield,
             game,
+            current_object,
         };
         if !type_sensitive_filter(filter) {
             return count_filter_matches(filter, &ctx, filter_ctx);
@@ -2947,6 +2951,7 @@ pub(crate) fn resolve_value_direct(
         effects: &empty_effects,
         battlefield,
         game,
+        current_object: source,
     };
     match value {
         Value::SurfaceHinted { value, .. } => resolve_value_direct(
@@ -3050,6 +3055,7 @@ pub(crate) fn resolve_value_direct(
                 commanders,
                 game,
                 &filter_ctx,
+                source,
             )
         }
         Value::CountScaled(filter, multiplier) => {
@@ -3062,6 +3068,7 @@ pub(crate) fn resolve_value_direct(
                 commanders,
                 game,
                 &filter_ctx,
+                source,
             ) * *multiplier
         }
         _ => resolve_value_with_context(value, &ctx, source, controller),
@@ -4096,6 +4103,21 @@ fn resolve_value_with_context(
     source: ObjectId,
     controller: PlayerId,
 ) -> i32 {
+    fn object_for_value_spec<'a>(
+        spec: &ChooseSpec,
+        ctx: &'a CalculationContext<'_>,
+        source: ObjectId,
+    ) -> Option<&'a Object> {
+        match spec.base() {
+            ChooseSpec::Iterated => ctx.objects.get(&ctx.current_object).map(|object| &**object),
+            ChooseSpec::Source => ctx.objects.get(&source).map(|object| &**object),
+            ChooseSpec::SpecificObject(object_id) => {
+                ctx.objects.get(object_id).map(|object| &**object)
+            }
+            _ => None,
+        }
+    }
+
     match value {
         Value::SurfaceHinted { value, .. } => {
             resolve_value_with_context(value, ctx, source, controller)
@@ -4342,6 +4364,19 @@ fn resolve_value_with_context(
             .and_then(|o| o.toughness())
             .unwrap_or(0),
 
+        Value::PowerOf(spec) => object_for_value_spec(spec, ctx, source)
+            .and_then(|object| object.power())
+            .unwrap_or(0),
+
+        Value::ToughnessOf(spec) => object_for_value_spec(spec, ctx, source)
+            .and_then(|object| object.toughness())
+            .unwrap_or(0),
+
+        Value::ManaValueOf(spec) => object_for_value_spec(spec, ctx, source)
+            .and_then(|object| object.mana_cost.as_ref())
+            .map(|cost| cost.mana_value() as i32)
+            .unwrap_or(0),
+
         Value::CountersOnSource(counter_type) => ctx
             .objects
             .get(&source)
@@ -4496,9 +4531,6 @@ fn resolve_value_with_context(
         | Value::ManaSpentToCastThisSpell
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::CountersOn(_, _)
-        | Value::PowerOf(_)
-        | Value::ToughnessOf(_)
-        | Value::ManaValueOf(_)
         | Value::LifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)

@@ -1261,6 +1261,9 @@ pub struct TargetRequirementContext {
     pub description: String,
     /// Legal targets for this requirement.
     pub legal_targets: Vec<crate::game_state::Target>,
+    /// Legal target groups for constraints that apply to the selected set.
+    /// If empty, any combination of legal targets is allowed.
+    pub legal_target_sets: Vec<Vec<crate::game_state::Target>>,
     /// Minimum number of targets to choose.
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
@@ -1276,6 +1279,7 @@ impl TargetRequirementContext {
         Self {
             description: description.into(),
             legal_targets,
+            legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
         }

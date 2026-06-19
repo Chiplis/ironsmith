@@ -682,6 +682,21 @@ fn function_source<'a>(content: &'a str, start_marker: &str, end_marker: &str) -
     &tail[..end]
 }
 
+fn source_contains_required(source: &str, required: &str) -> bool {
+    if source.contains(required) {
+        return true;
+    }
+    let compact_source = source
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace() && *ch != ',')
+        .collect::<String>();
+    let compact_required = required
+        .chars()
+        .filter(|ch| !ch.is_ascii_whitespace() && *ch != ',')
+        .collect::<String>();
+    compact_source.contains(&compact_required)
+}
+
 #[test]
 fn raw_text_checks_in_lower_module_are_legacy_allowlisted() {
     let root = workspace_root();
@@ -13946,7 +13961,7 @@ fn target_controlled_pump_parser_uses_lex_pattern_captures() {
         "TargetControlledPumpProgram",
     ] {
         assert!(
-            parser.contains(required),
+            source_contains_required(parser, required),
             "{relative} should preserve target-controlled pump parsing through captured roles: missing `{required}`"
         );
     }
@@ -14680,7 +14695,7 @@ fn vote_reveal_parser_uses_lex_pattern_captures() {
         "EffectAst::SecretChoiceReveal",
     ] {
         assert!(
-            shape.contains(required) || parser.contains(required),
+            source_contains_required(shape, required) || source_contains_required(parser, required),
             "{relative} should preserve vote-reveal parsing through named captures: missing `{required}`"
         );
     }
@@ -14809,7 +14824,7 @@ fn choice_complement_parser_uses_lex_pattern_captures() {
         "capture_clause_by_role(LexCaptureRole::Tail, choice_clause)",
     ] {
         assert!(
-            shape.contains(required) || parser.contains(required),
+            source_contains_required(shape, required) || source_contains_required(parser, required),
             "{relative} should preserve choice-complement parsing through named captures: missing `{required}`"
         );
     }
@@ -14868,7 +14883,7 @@ fn meld_result_parser_uses_lex_pattern_capture() {
         "EffectAst::subject_verb_meld(result_name, false, false)",
     ] {
         assert!(
-            content.contains(required),
+            source_contains_required(&content, required),
             "{relative} should preserve meld result parsing through captured roles: missing `{required}`"
         );
     }
@@ -15194,9 +15209,14 @@ fn top_cards_hand_remainder_parser_uses_lex_pattern_captures() {
     let root = workspace_root();
     let relative = "crates/ironsmith-compiler/src/runtime_backend/sentences/effect_sentences/dispatch_inner/generic_subject_verb_programs.rs";
     let content = read_repo_file(&root, relative);
-    let parser = function_source(
+    let shape = function_source(
         &content,
         "const PUT_COUNTED_TOP_CARDS_OBJECT_PHRASES",
+        "pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb",
+    );
+    let parser = function_source(
+        &content,
+        "pub(crate) fn parse_generic_top_cards_put_counted_into_hand_rest_graveyard_subject_verb",
         "fn parse_generic_consult_reveal_until_put_all_revealed_into_hand_subject_verb",
     );
     let actual = non_test_raw_text_check_literals(parser)
@@ -15234,7 +15254,7 @@ fn top_cards_hand_remainder_parser_uses_lex_pattern_captures() {
         "put_counted_top_cards_owner(hand_owner_clause, player)",
     ] {
         assert!(
-            parser.contains(required),
+            source_contains_required(shape, required) || source_contains_required(parser, required),
             "{relative} should preserve top-card hand/remainder parsing through named captures: missing `{required}`"
         );
     }

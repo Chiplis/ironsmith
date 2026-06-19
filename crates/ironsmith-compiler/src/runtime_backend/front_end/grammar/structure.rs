@@ -84,6 +84,7 @@ const THAT_PLAYER_DO_RESULTS: &[&[&str]] =
     &[&["that", "player", "do"], &["that", "player", "does"]];
 const FIRST_PLAYER_DO_RESULTS: &[&[&str]] =
     &[&["first", "player", "do"], &["first", "player", "does"]];
+const NO_ONE_DOES_RESULTS: &[&[&str]] = &[&["no", "one", "do"], &["no", "one", "does"]];
 const RESULT_OBJECT_WORDS: &[&str] = &[
     "card",
     "cards",
@@ -897,6 +898,9 @@ fn classify_if_result_predicate(words: &[&str]) -> Option<IfResultPredicate> {
         return Some(IfResultPredicate::DidNot);
     }
     if is_exact_negated_result("they") || is_negated_this_way_result("they") {
+        return Some(IfResultPredicate::DidNot);
+    }
+    if structure_words_equal_any(words, NO_ONE_DOES_RESULTS) {
         return Some(IfResultPredicate::DidNot);
     }
     if structure_words_equal_any(words, PLAYER_SHORT_NEGATED_RESULTS)

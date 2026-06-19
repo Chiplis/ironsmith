@@ -19,7 +19,7 @@ use crate::filter::{
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::CounterType;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -2935,6 +2935,101 @@ impl StaticAbilityKind for SetBasePowerToughnessForFilter {
                 Modification::SetPowerToughness {
                     power: Value::Fixed(self.power),
                     toughness: Value::Fixed(self.toughness),
+                    sublayer: PtSublayer::Setting,
+                },
+            )
+            .with_source_type(EffectSourceType::StaticAbility),
+            &self.condition,
+        )]
+    }
+}
+
+/// Set dynamic base P/T: "... have base power and toughness each equal to ..."
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetBasePowerToughnessValueForFilter {
+    /// Filter for which permanents get base P/T set.
+    pub filter: ObjectFilter,
+    /// Base power value.
+    pub power: Value,
+    /// Base toughness value.
+    pub toughness: Value,
+    pub condition: Option<crate::ConditionExpr>,
+}
+
+impl SetBasePowerToughnessValueForFilter {
+    pub fn new(filter: ObjectFilter, power: Value, toughness: Value) -> Self {
+        Self {
+            filter,
+            power,
+            toughness,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+fn describe_static_iterated_value(value: &Value) -> String {
+    if let Value::ManaValueOf(spec) = value.unhinted()
+        && matches!(spec.base(), ChooseSpec::Iterated)
+    {
+        return "its mana value".to_string();
+    }
+    crate::compiled_text::describe_value(value)
+}
+
+impl StaticAbilityKind for SetBasePowerToughnessValueForFilter {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SetBasePowerToughnessForFilter
+    }
+
+    fn display(&self) -> String {
+        let subject = pluralized_subject_text(&self.filter);
+        let singular = subject.starts_with("enchanted ")
+            || subject.starts_with("equipped ")
+            || subject.starts_with("this ")
+            || subject.starts_with("that ");
+        let verb = if singular { "has" } else { "have" };
+        let mut text = if self.power == self.toughness {
+            format!(
+                "{subject} {verb} base power and base toughness each equal to {}",
+                describe_static_iterated_value(&self.power)
+            )
+        } else {
+            format!(
+                "{subject} {verb} base power {} and base toughness {}",
+                describe_static_iterated_value(&self.power),
+                describe_static_iterated_value(&self.toughness)
+            )
+        };
+        if let Some(condition) = &self.condition {
+            text.push(' ');
+            text.push_str(&describe_static_condition(condition));
+        }
+        text
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
+    }
+
+    fn generate_effects(
+        &self,
+        source: ObjectId,
+        controller: PlayerId,
+        _game: &GameState,
+    ) -> Vec<ContinuousEffect> {
+        vec![effect_with_optional_static_condition(
+            ContinuousEffect::new(
+                source,
+                controller,
+                EffectTarget::Filter(self.filter.clone()),
+                Modification::SetPowerToughness {
+                    power: self.power.clone(),
+                    toughness: self.toughness.clone(),
                     sublayer: PtSublayer::Setting,
                 },
             )

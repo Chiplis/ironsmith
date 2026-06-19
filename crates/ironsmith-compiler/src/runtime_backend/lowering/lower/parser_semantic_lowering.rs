@@ -683,6 +683,11 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     {
         return true;
     }
+    if words.first().is_some_and(|word| *word == "target")
+        && word_slice_contains_any_word(&words, &["become", "becomes"])
+    {
+        return true;
+    }
     (word_slice_contains_word(&words, "if") && word_slice_contains_word(&words, "instead"))
         || (word_slice_contains_phrase(&words, TARGETED_TEMPORARY_MODIFIER_PHRASE)
             && word_slice_contains_word(&words, "target")

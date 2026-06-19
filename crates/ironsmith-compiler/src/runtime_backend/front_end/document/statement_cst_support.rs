@@ -23,7 +23,7 @@ fn parse_any_player_no_one_does_statement(
     line: &PreprocessedLine,
 ) -> Result<Option<StatementLineCst>, CardTextError> {
     let sentences = normalize_statement_parse_sentences_lexed(&line.tokens);
-    let [may_sentence, no_one_sentence, followup_sentence] = sentences.as_slice() else {
+    let [may_sentence, no_one_sentence, _followup_sentence] = sentences.as_slice() else {
         return Ok(None);
     };
     if !token_slice_starts_with_any(may_sentence, &[&["any", "player", "may"]])
@@ -32,21 +32,7 @@ fn parse_any_player_no_one_does_statement(
         return Ok(None);
     }
 
-    let Some(comma_idx) = no_one_sentence
-        .iter()
-        .position(|token| token.kind == TokenKind::Comma)
-    else {
-        return Ok(None);
-    };
-    let consequence = trim_lexed_commas(&no_one_sentence[comma_idx + 1..]);
-    if consequence.is_empty() {
-        return Ok(None);
-    }
-
-    let parse_groups = vec![
-        join_statement_parse_sentence_group(&[may_sentence.clone()]),
-        join_statement_parse_sentence_group(&[consequence.to_vec(), followup_sentence.clone()]),
-    ];
+    let parse_groups = vec![join_statement_parse_sentence_group(&sentences)];
     for group_tokens in &parse_groups {
         parse_effect_sentences_lexed(group_tokens)?;
     }

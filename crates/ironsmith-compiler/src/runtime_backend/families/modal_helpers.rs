@@ -31,6 +31,10 @@ const PLAYER_DOES_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::a
     &["players", "do"],
     &["players", "does"],
 ])]);
+const NO_ONE_DOES_PATTERN: LexPattern<'static> = LexPattern::new(&[LexPattern::any_phrase(&[
+    &["no", "one", "do"],
+    &["no", "one", "does"],
+])]);
 const YOU_WIN_PREFIX_PATTERN: LexPattern<'static> =
     LexPattern::new(&[LexPattern::any_phrase(&[&["you", "win"], &["you", "won"]])]);
 const YOU_SEARCHED_PREFIX_PATTERN: LexPattern<'static> =
@@ -280,6 +284,9 @@ pub(crate) fn parse_if_result_predicate_lexed(
         })
     ) {
         return Some(IfResultPredicate::Did);
+    }
+    if modal_clause_matches_pattern(clause, NO_ONE_DOES_PATTERN) {
+        return Some(IfResultPredicate::DidNot);
     }
     if modal_clause_matches_pattern(clause, PLAYER_DEALT_DAMAGE_THIS_WAY_PATTERN) {
         return Some(IfResultPredicate::Did);

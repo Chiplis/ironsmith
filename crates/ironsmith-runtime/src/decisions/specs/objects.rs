@@ -885,6 +885,9 @@ pub struct TargetRequirement {
     pub description: String,
     /// Legal targets that match this specification.
     pub legal_targets: Vec<crate::game_state::Target>,
+    /// Legal target groups for constraints that apply to the selected set.
+    /// If empty, any combination of legal targets is allowed.
+    pub legal_target_sets: Vec<Vec<crate::game_state::Target>>,
     /// Minimum number of targets to choose.
     pub min_targets: usize,
     /// Maximum number of targets to choose (None = unlimited).
@@ -900,6 +903,7 @@ impl TargetRequirement {
         Self {
             description: description.into(),
             legal_targets,
+            legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
         }
@@ -913,6 +917,7 @@ impl TargetRequirement {
         Self {
             description: description.into(),
             legal_targets,
+            legal_target_sets: Vec::new(),
             min_targets: 0,
             max_targets: None,
         }
@@ -927,6 +932,7 @@ fn runtime_requirements(
         .map(|req| crate::decisions::context::TargetRequirementContext {
             description: req.description.clone(),
             legal_targets: req.legal_targets.clone(),
+            legal_target_sets: req.legal_target_sets.clone(),
             min_targets: req.min_targets,
             max_targets: req.max_targets,
         })
@@ -1149,6 +1155,7 @@ mod tests {
             vec![TargetRequirement {
                 description: "two targets".to_string(),
                 legal_targets: vec![first, second],
+                legal_target_sets: Vec::new(),
                 min_targets: 2,
                 max_targets: Some(2),
             }],

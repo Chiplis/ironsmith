@@ -207,6 +207,24 @@ fn strip_controlled_by_same_player_suffix(tokens: &[OwnedLexToken]) -> Option<Ve
     Some(head.trim())
 }
 
+fn mark_target_set_same_controller(target: TargetAst) -> TargetAst {
+    match target {
+        TargetAst::Object(mut filter, target_span, it_span) => {
+            filter.target_set_same_controller = true;
+            TargetAst::Object(filter, target_span, it_span)
+        }
+        TargetAst::WithCount(inner, count) => {
+            TargetAst::WithCount(Box::new(mark_target_set_same_controller(*inner)), count)
+        }
+        TargetAst::WithCountValue(inner, count, value) => TargetAst::WithCountValue(
+            Box::new(mark_target_set_same_controller(*inner)),
+            count,
+            value,
+        ),
+        other => other,
+    }
+}
+
 const EXILE_LOOKED_CARD_FACE_DOWN_PHRASES: &[&[&str]] = &[
     &["exile", "it", "face", "down"],
     &["exile", "that", "card", "face", "down"],
@@ -225,6 +243,36 @@ const PERMANENT_OR_PERMANENTS_WORDS: &[&str] = &["permanent", "permanents"];
 const CARD_OR_CARDS_WORDS: &[&str] = &["card", "cards"];
 const THIS_SPELL_OR_ABILITY_PHRASES: &[&[&str]] = &[&["this", "spell"], &["this", "ability"]];
 const SACRIFICE_ONE_OF_THOSE_CHOSEN_TARGETS_PHRASES: &[&[&str]] = &[
+    &[
+        "their",
+        "controller",
+        "chooses",
+        "and",
+        "sacrifices",
+        "one",
+        "of",
+        "them",
+    ],
+    &[
+        "their",
+        "controller",
+        "choose",
+        "and",
+        "sacrifice",
+        "one",
+        "of",
+        "them",
+    ],
+    &[
+        "its",
+        "controller",
+        "chooses",
+        "and",
+        "sacrifices",
+        "one",
+        "of",
+        "them",
+    ],
     &[
         "that",
         "player",
@@ -248,6 +296,12 @@ const SACRIFICE_ONE_OF_THOSE_CHOSEN_TARGETS_PHRASES: &[&[&str]] = &[
         "their",
         "choice",
     ],
+];
+
+const RETURN_OTHER_TO_OWNER_HAND_PHRASES: &[&[&str]] = &[
+    &["return", "other", "to", "its", "owners", "hand"],
+    &["return", "other", "to", "its", "owner's", "hand"],
+    &["return", "other", "to", "its", "owner", "hand"],
 ];
 const CHOOSE_DRAW_MAIN_OR_COMBAT_PHASE_PHRASES: &[&[&str]] = &[
     &[
@@ -805,6 +859,46 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
     sentences: &[SentenceInput],
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    Ok(
+        parse_same_controller_targets_choose_sacrifice(sentences, sentence_idx)?
+            .map(|(effects, _, _)| effects),
+    )
+}
+
+pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one_return_other(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some((mut effects, target_set_tag, chosen_tag)) =
+        parse_same_controller_targets_choose_sacrifice(sentences, sentence_idx)?
+    else {
+        return Ok(None);
+    };
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let third_words = non_article_token_word_refs(&third_tokens);
+    if !word_slice_eq_any(&third_words, RETURN_OTHER_TO_OWNER_HAND_PHRASES) {
+        return Ok(None);
+    }
+
+    let mut other_filter = ObjectFilter::tagged(target_set_tag);
+    other_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag,
+            relation: TaggedOpbjectRelation::IsNotTaggedObject,
+        });
+    effects.push(EffectAst::subject_verb_return_to_hand(
+        TargetAst::Object(other_filter, None, None),
+        false,
+    ));
+    Ok(Some(effects))
+}
+
+fn parse_same_controller_targets_choose_sacrifice(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<(Vec<EffectAst>, TagKey, TagKey)>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
     if !first_tokens
         .first()
@@ -819,7 +913,9 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
     if first_without_controller_tail.len() <= 1 {
         return Ok(None);
     }
-    let target = effect_sentences::parse_target_phrase(&first_without_controller_tail[1..])?;
+    let target = mark_target_set_same_controller(effect_sentences::parse_target_phrase(
+        &first_without_controller_tail[1..],
+    )?);
     let TargetAst::WithCount(_, target_count) = &target else {
         return Ok(None);
     };
@@ -833,23 +929,31 @@ pub(crate) fn parse_choose_same_controller_targets_then_sacrifice_one(
         return Ok(None);
     }
 
+    let target_set_tag = helper_tag_for_tokens(&first_tokens, "target_set");
     let chosen_tag = helper_tag_for_tokens(&second_tokens, "chosen");
-    Ok(Some(vec![
-        EffectAst::subject_verb_target_only(target),
-        EffectAst::ChooseObjects {
-            filter: ObjectFilter::tagged(TagKey::from(IT_TAG)),
-            count: ChoiceCount::exactly(1),
-            count_value: None,
-            player: PlayerAst::ItsController,
-            tag: chosen_tag.clone(),
-        },
-        EffectAst::subject_verb_sacrifice(
-            PlayerAst::That,
-            ObjectFilter::tagged(chosen_tag),
-            1,
-            None,
-        ),
-    ]))
+    Ok(Some((
+        vec![
+            EffectAst::subject_verb_target_only(target),
+            EffectAst::SnapshotLastObjectTag {
+                into: target_set_tag.clone(),
+            },
+            EffectAst::ChooseObjects {
+                filter: ObjectFilter::tagged(target_set_tag.clone()),
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::ItsController,
+                tag: chosen_tag.clone(),
+            },
+            EffectAst::subject_verb_sacrifice(
+                PlayerAst::That,
+                ObjectFilter::tagged(chosen_tag.clone()),
+                1,
+                None,
+            ),
+        ],
+        target_set_tag,
+        chosen_tag,
+    )))
 }
 
 #[derive(Clone, Copy)]
@@ -1766,6 +1870,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand(
         chooser,
         filter,
         Vec::new(),
+        ChoiceCount::up_to(1),
     )
 }
 
@@ -1783,6 +1888,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
     chooser: PlayerAst,
     filter: ObjectFilter,
     if_not_chosen: Vec<EffectAst>,
+    choice_count: ChoiceCount,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = sentences[sentence_idx].lowered();
     let Ok(first_effects) = effect_sentences::parse_effect_sentence_lexed(first) else {
@@ -1810,7 +1916,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_with_if_not_chosen(
             Zone::Graveyard,
             false,
             if_not_chosen,
-            ChoiceCount::up_to(1),
+            choice_count,
         ),
     );
     Ok(Some(effects))

@@ -1162,6 +1162,15 @@ impl StaticAbilityModelInterpreter {
                 power,
                 toughness,
             } => StaticAbility::set_base_power_toughness(filter.clone(), *power, *toughness),
+            ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+                filter,
+                power,
+                toughness,
+            } => StaticAbility::set_base_power_toughness_value(
+                filter.clone(),
+                power.clone(),
+                toughness.clone(),
+            ),
             ironsmith_core::StaticAbilityPayload::SourceCharacteristicsOfLastExiledCreatureCard {
                 filter,
                 retained_subtypes,

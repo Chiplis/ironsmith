@@ -13069,7 +13069,10 @@ If a card would be put into your graveyard from anywhere this turn, exile that c
         let debug = format!("{:?}", def.spell_effect);
         assert!(
             debug.contains("ConditionalEffect")
-                && (debug.contains("TargetMatches") || debug.contains("TaggedObjectMatches")),
+                && (debug.contains("TargetMatches")
+                    || debug.contains("TaggedObjectMatches")
+                    || (debug.contains("PlayerControls")
+                        && debug.contains("SharesColorWithTagged"))),
             "expected conditional target-match lowering, got {debug}"
         );
     }

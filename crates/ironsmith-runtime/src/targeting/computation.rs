@@ -3,6 +3,8 @@
 //! This module provides functions for computing legal targets
 //! for spells and abilities.
 
+use std::collections::HashMap;
+
 use crate::ability::extract_static_abilities;
 use crate::filter::ObjectFilterExt as _;
 use crate::filter::player_filter_matches_game;
@@ -16,6 +18,60 @@ use crate::types::CardType;
 use crate::zone::Zone;
 
 use super::types::{TargetingInvalidReason, TargetingResult};
+
+fn spec_requires_same_controller_target_set(spec: &ChooseSpec) -> bool {
+    match spec {
+        ChooseSpec::SurfaceHinted { spec, .. }
+        | ChooseSpec::Target(spec)
+        | ChooseSpec::WithCount(spec, _)
+        | ChooseSpec::WithCountValue(spec, _, _) => spec_requires_same_controller_target_set(spec),
+        ChooseSpec::Object(filter) => filter.target_set_same_controller,
+        _ => false,
+    }
+}
+
+pub fn legal_target_sets_for_spec(
+    game: &GameState,
+    spec: &ChooseSpec,
+    legal_targets: &[Target],
+) -> Vec<Vec<Target>> {
+    if !spec_requires_same_controller_target_set(spec) {
+        return Vec::new();
+    }
+
+    let mut by_controller: HashMap<PlayerId, Vec<Target>> = HashMap::new();
+    for target in legal_targets {
+        let Target::Object(object_id) = target else {
+            continue;
+        };
+        let Some(object) = game.object(*object_id) else {
+            continue;
+        };
+        by_controller
+            .entry(game.controller_of(object))
+            .or_default()
+            .push(*target);
+    }
+
+    by_controller.into_values().collect()
+}
+
+pub fn has_enough_legal_targets_for_spec(
+    game: &GameState,
+    spec: &ChooseSpec,
+    legal_targets: &[Target],
+    min_targets: usize,
+) -> bool {
+    if min_targets == 0 {
+        return true;
+    }
+    let legal_target_sets = legal_target_sets_for_spec(game, spec, legal_targets);
+    if legal_target_sets.is_empty() {
+        legal_targets.len() >= min_targets
+    } else {
+        legal_target_sets.iter().any(|set| set.len() >= min_targets)
+    }
+}
 
 /// Check if a source can target a specific object.
 ///

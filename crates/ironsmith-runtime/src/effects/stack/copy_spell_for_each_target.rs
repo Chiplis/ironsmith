@@ -67,7 +67,14 @@ fn extract_requirements(
                 Some(&entry.tagged_objects)
             },
         );
-        let has_enough = count.min == 0 || legal_targets.len() >= count.min;
+        let legal_target_sets =
+            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
+        let has_enough = crate::targeting::has_enough_legal_targets_for_spec(
+            game,
+            spec,
+            &legal_targets,
+            count.min,
+        );
         if !has_enough {
             return None;
         }
@@ -75,6 +82,7 @@ fn extract_requirements(
         requirements.push(TargetRequirementContext {
             description: effect.0.target_description().to_string(),
             legal_targets,
+            legal_target_sets,
             min_targets: count.min,
             max_targets: count.max,
         });

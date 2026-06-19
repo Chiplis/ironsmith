@@ -1,9 +1,11 @@
+use super::super::super::clause_primitives::parse_choose_card_name_clause;
 use super::super::super::dispatch_entry::{
     ConsultCastCost, consult_cast_effects, consult_stop_rule_is_single_match,
     find_from_among_looked_cards_phrase, parse_bargained_face_down_cast_mana_value_gate,
     parse_consult_bottom_remainder_clause, parse_consult_cast_clause,
     parse_consult_traversal_sentence, parse_if_declined_put_match_into_hand,
-    parse_if_you_dont_sentence, parse_looked_card_choice_filter, parse_top_cards_view_sentence,
+    parse_if_you_cant_sentence, parse_if_you_dont_sentence, parse_looked_card_choice_filter,
+    parse_top_cards_view_sentence,
 };
 use crate::cards::builders::{
     CardTextError, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
@@ -145,6 +147,26 @@ const IF_CAST_NON_HAND_PUT_EACH_LOOKED_INTO_HAND_INSTEAD_WORDS: &[&str] = &[
 ];
 const WITHOUT_PAYING_ITS_MANA_COST_PREFIX: &[&str] = &["without", "paying", "its", "mana", "cost"];
 const REVEALED_CARDS_INTO_HAND_TAIL_PREFIX: &[&str] = &["and", "put", "the", "revealed"];
+const PUT_ALL_WITH_CHOSEN_NAME_INTO_HAND_PREFIXES: &[&[&str]] = &[
+    &[
+        "and", "put", "all", "of", "them", "with", "that", "name", "into",
+    ],
+    &[
+        "and", "puts", "all", "of", "them", "with", "that", "name", "into",
+    ],
+    &[
+        "and", "put", "all", "of", "those", "cards", "with", "that", "name", "into",
+    ],
+    &[
+        "and", "puts", "all", "of", "those", "cards", "with", "that", "name", "into",
+    ],
+    &[
+        "and", "put", "all", "of", "them", "with", "the", "chosen", "name", "into",
+    ],
+    &[
+        "and", "puts", "all", "of", "them", "with", "the", "chosen", "name", "into",
+    ],
+];
 const AND_WORD: &str = "and";
 const SPELL_OR_SPELLS_WORDS: &[&str] = &["spell", "spells"];
 const YOU_CAST_THIS_TURN_TAILS: &[&[&str]] = &[
@@ -407,8 +429,15 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
     else {
         return Ok(None);
     };
-    let Some(if_not_chosen) = parse_if_you_dont_sentence(sentences[sentence_idx + 2].lowered())?
-    else {
+    let (if_not_chosen, choice_count) = if let Some(if_not_chosen) =
+        parse_if_you_dont_sentence(sentences[sentence_idx + 2].lowered())?
+    {
+        (if_not_chosen, ChoiceCount::up_to(1))
+    } else if let Some(if_not_chosen) =
+        parse_if_you_cant_sentence(sentences[sentence_idx + 2].lowered())?
+    {
+        (if_not_chosen, ChoiceCount::exactly(1))
+    } else {
         return Ok(None);
     };
 
@@ -419,6 +448,7 @@ pub(crate) fn parse_mill_then_may_put_from_among_into_hand_then_if_you_dont(
         chooser,
         filter,
         if_not_chosen,
+        choice_count,
     )
 }
 
@@ -764,6 +794,93 @@ pub(crate) fn parse_search_then_player_names_card_conditional_put_then_shuffle(
     ));
 
     Ok(Some(effects))
+}
+
+pub(crate) fn parse_choose_name_reveal_top_matching_hand_rest_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(choose_name) = parse_choose_card_name_clause(sentences[sentence_idx].lowered())?
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::ChooseCardName {
+            tag: chosen_tag, ..
+        },
+        ..
+    }) = &choose_name
+    else {
+        return Ok(None);
+    };
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second_tokens);
+    let second_word_refs = second_words.word_refs();
+    let Some(and_idx) = triple_find_any_prefix_start(
+        &second_word_refs,
+        PUT_ALL_WITH_CHOSEN_NAME_INTO_HAND_PREFIXES,
+    ) else {
+        return Ok(None);
+    };
+    let Some(and_token_idx) = second_words.token_index_for_word_index(and_idx) else {
+        return Ok(None);
+    };
+    let view_tokens = trim_commas(&second_tokens[..and_token_idx]);
+    let Some((player, count, true)) = parse_top_cards_view_sentence(&view_tokens) else {
+        return Ok(None);
+    };
+    if word_slice_find_word(&second_word_refs[and_idx..], "hand").is_none() {
+        return Ok(None);
+    }
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered());
+    let third_word_refs = third_words.word_refs();
+    let third_rest_words = if third_word_refs.first() == Some(&THEN_WORD) {
+        &third_word_refs[1..]
+    } else {
+        &third_word_refs[..]
+    };
+    if !triple_words_start_put_or_puts_and_contain_all(third_rest_words, &["rest", "graveyard"]) {
+        return Ok(None);
+    }
+
+    let looked_tag = helper_tag_for_tokens(&view_tokens, "revealed");
+    let mut name_match_filter = ObjectFilter::default();
+    name_match_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: chosen_tag.clone(),
+            relation: TaggedOpbjectRelation::SameNameAsTagged,
+        });
+
+    Ok(Some(vec![
+        choose_name,
+        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
+        EffectAst::subject_verb_reveal_tagged(looked_tag.clone()),
+        EffectAst::ForEachTagged {
+            tag: looked_tag,
+            effects: vec![EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(TagKey::from(IT_TAG), name_match_filter),
+                if_true: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Hand,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+                if_false: vec![EffectAst::subject_verb_move_to_zone(
+                    TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    Zone::Graveyard,
+                    false,
+                    ReturnControllerAst::Preserve,
+                    false,
+                    None,
+                )],
+            }],
+        },
+    ]))
 }
 
 pub(crate) fn parse_search_two_then_put_one_hand_other_graveyard_then_shuffle(
@@ -1493,6 +1610,106 @@ pub(crate) fn parse_reveal_top_choose_any_revealed_land_nonland_split_rest_botto
     ]))
 }
 
+pub(crate) fn parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first = trim_commas(sentences[sentence_idx].lowered());
+    let first_words = TokenWordView::new(&first);
+    let first_refs = first_words.word_refs();
+    let Some(and_put_idx) = word_slice_find_phrase_start(&first_refs, &["and", "put"]) else {
+        return Ok(None);
+    };
+    let Some(prefix_end) = first_words.token_index_for_word_index(and_put_idx) else {
+        return Ok(None);
+    };
+    let Some(tail_start) = first_words.token_index_for_word_index(and_put_idx + 1) else {
+        return Ok(None);
+    };
+    let Some((player, count, true)) = parse_top_cards_view_sentence(&first[..prefix_end]) else {
+        return Ok(None);
+    };
+
+    let tail_words = TokenWordView::new(&first[tail_start..]).word_refs();
+    if !word_slice_starts_with_any(&tail_words, PUT_ONE_LOOKED_CARD_INTO_HAND_PREFIXES) {
+        return Ok(None);
+    }
+
+    let second = trim_commas(sentences[sentence_idx + 1].lowered());
+    let second_words = TokenWordView::new(&second).word_refs();
+    if !word_slice_starts_with(&second_words, &["you", "gain", "life"])
+        || !word_slice_contains_phrase(&second_words, &["mana", "value"])
+        || !second_words.iter().any(|word| word.starts_with("card"))
+    {
+        return Ok(None);
+    }
+    let Ok(mut gain_effects) = effect_sentences::parse_effect_sentence_lexed(&second) else {
+        return Ok(None);
+    };
+
+    let third_words = TokenWordView::new(sentences[sentence_idx + 2].lowered()).word_refs();
+    let third_rest_words = if third_words.first() == Some(&THEN_WORD) {
+        &third_words[1..]
+    } else {
+        &third_words[..]
+    };
+    if !word_slice_starts_with_any(third_rest_words, PUT_REST_GRAVEYARD_PREFIXES)
+        || !third_rest_words.contains(&"other")
+        || !third_rest_words.contains(&"revealed")
+        || !third_rest_words.contains(&"graveyard")
+    {
+        return Ok(None);
+    }
+
+    let revealed_tag = helper_tag_for_tokens(&first, "revealed");
+    let chosen_tag = helper_tag_for_tokens(&first, "chosen");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::GainLife { amount },
+            ..
+        }),
+    ] = gain_effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    *amount = Value::ManaValueOf(Box::new(ChooseSpec::Tagged(chosen_tag.clone())));
+
+    let mut choice_filter = ObjectFilter::tagged(revealed_tag.clone());
+    choice_filter.zone = Some(Zone::Library);
+
+    Ok(Some(vec![
+        EffectAst::subject_verb_reveal_top_cards(player, count, revealed_tag.clone()),
+        EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: ChoiceCount::exactly(1),
+            count_value: None,
+            player,
+            tag: chosen_tag.clone(),
+        },
+        EffectAst::ForEachTagged {
+            tag: chosen_tag.clone(),
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+                Zone::Hand,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        },
+        gain_effects.remove(0),
+        EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::PutTaggedRemainderInZone {
+                tag: revealed_tag,
+                keep_tagged: chosen_tag,
+                zone: Zone::Graveyard,
+            },
+        ),
+    ]))
+}
+
 /// Composes the "for each card type, put a card of that type from among the
 /// revealed cards into your hand, rest on bottom" follow-up shape from reusable
 /// primitives. This replaces the retired
@@ -1863,10 +2080,10 @@ pub(crate) fn parse_top_cards_may_cast_match_rest_bottom(
     Ok(Some(effects))
 }
 
-fn parse_reveal_any_number_from_looked_cards_into_hand_action(
+fn parse_reveal_matching_from_looked_cards_into_hand_action(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
-) -> Result<Option<(PlayerAst, ObjectFilter)>, CardTextError> {
+) -> Result<Option<(PlayerAst, ChoiceCount, ObjectFilter, bool)>, CardTextError> {
     let second_tokens = trim_commas(tokens);
     let Some(action_match) = parse_leading_may_action_lexed(&second_tokens, &["reveal"], true)
     else {
@@ -1876,26 +2093,28 @@ fn parse_reveal_any_number_from_looked_cards_into_hand_action(
     let action_tokens = trim_commas(action_match.tail_tokens);
     let action_words = TokenWordView::new(&action_tokens);
     let action_word_refs = action_words.word_refs();
-    let Some((count, count_used)) = parse_choice_count_token_prefix_consumed(&action_tokens) else {
-        return Ok(None);
-    };
-    if count != ChoiceCount::any_number() {
-        return Ok(None);
-    }
     let Some((from_among_word_idx, from_among_len)) =
         effect_sentences::find_from_among_looked_cards_phrase(&action_words)
     else {
         return Ok(None);
     };
-    let filter_start = count_used;
     let filter_end = action_words
         .token_index_for_word_index(from_among_word_idx)
         .unwrap_or(action_tokens.len());
+    let Some((mut choice_count, filter_tokens)) =
+        looked_cards_choice_count(&action_tokens[..filter_end])
+    else {
+        return Ok(None);
+    };
+    if !matches!(action_match.actor, LeadingMayActor::Default) && choice_count.min > 0 {
+        choice_count = ChoiceCount::up_to(choice_count.max.unwrap_or(choice_count.min));
+    }
+    let filter_tokens = trim_commas(&filter_tokens);
+    let filter_words = crate::runtime_backend::token_word_refs(&filter_tokens);
     let mut filter =
-        effect_sentences::parse_looked_card_choice_filter(&action_tokens[filter_start..filter_end])
-            .ok_or_else(|| {
-                CardTextError::ParseError("unable to parse revealed looked-card filter".to_string())
-            })?;
+        effect_sentences::parse_looked_card_choice_filter(&filter_tokens).ok_or_else(|| {
+            CardTextError::ParseError("unable to parse revealed looked-card filter".to_string())
+        })?;
     filter.zone = Some(Zone::Library);
 
     let after_from_words = &action_word_refs[from_among_word_idx + from_among_len..];
@@ -1905,7 +2124,8 @@ fn parse_reveal_any_number_from_looked_cards_into_hand_action(
     if !puts_revealed_into_hand {
         return Ok(None);
     }
-    Ok(Some((chooser, filter)))
+    let filter_uses_and_or = filter_words.iter().any(|word| *word == AND_OR_WORD);
+    Ok(Some((chooser, choice_count, filter, filter_uses_and_or)))
 }
 
 pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
@@ -1920,10 +2140,11 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
     if reveal_top {
         return Ok(None);
     }
-    let Some((chooser, mut filter)) = parse_reveal_any_number_from_looked_cards_into_hand_action(
-        sentences[sentence_idx + 1].lowered(),
-        player,
-    )?
+    let Some((chooser, choice_count, mut filter, filter_uses_and_or)) =
+        parse_reveal_matching_from_looked_cards_into_hand_action(
+            sentences[sentence_idx + 1].lowered(),
+            player,
+        )?
     else {
         return Ok(None);
     };
@@ -1948,39 +2169,79 @@ pub(crate) fn parse_top_cards_reveal_any_matching_to_hand_rest_bottom(
 
     let looked_tag = helper_tag_for_tokens(sentences[sentence_idx].lowered(), "looked");
     let revealed_tag = helper_tag_for_tokens(sentences[sentence_idx + 1].lowered(), "revealed");
-    filter.tagged_constraints.push(TaggedObjectConstraint {
-        tag: looked_tag.clone(),
-        relation: TaggedOpbjectRelation::IsTaggedObject,
-    });
 
-    Ok(Some(vec![
-        EffectAst::subject_verb_look_at_top_cards(player, count, looked_tag.clone()),
-        EffectAst::ChooseObjects {
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        player,
+        count,
+        looked_tag.clone(),
+    )];
+
+    if choice_count == ChoiceCount::up_to(1)
+        && filter_uses_and_or
+        && filter.card_types.len() > 1
+        && filter.all_card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.static_abilities.is_empty()
+        && filter.any_of.is_empty()
+    {
+        for card_type in &filter.card_types {
+            let mut choice_filter = filter.clone();
+            choice_filter.card_types = vec![*card_type];
+            choice_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: looked_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            choice_filter
+                .tagged_constraints
+                .push(TaggedObjectConstraint {
+                    tag: revealed_tag.clone(),
+                    relation: TaggedOpbjectRelation::IsNotTaggedObject,
+                });
+            effects.push(EffectAst::ChooseObjects {
+                filter: choice_filter,
+                count: ChoiceCount::up_to(1),
+                count_value: None,
+                player: chooser,
+                tag: revealed_tag.clone(),
+            });
+        }
+    } else {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: looked_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        effects.push(EffectAst::ChooseObjects {
             filter,
-            count: ChoiceCount::any_number(),
+            count: choice_count,
             count_value: None,
             player: chooser,
             tag: revealed_tag.clone(),
-        },
-        EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()),
-        EffectAst::ForEachTagged {
-            tag: revealed_tag.clone(),
-            effects: vec![EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-                Zone::Hand,
-                false,
-                crate::cards::builders::ReturnControllerAst::Preserve,
-                false,
-                None,
-            )],
-        },
+        });
+    }
+
+    effects.push(EffectAst::subject_verb_reveal_tagged(revealed_tag.clone()));
+    effects.push(EffectAst::ForEachTagged {
+        tag: revealed_tag.clone(),
+        effects: vec![EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+            Zone::Hand,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            false,
+            None,
+        )],
+    });
+    effects.push(
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
             looked_tag,
             Some(revealed_tag),
             order,
             chooser,
         ),
-    ]))
+    );
+    Ok(Some(effects))
 }
 
 fn trim_keyword_choice_segment(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {

@@ -103,6 +103,11 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             } else if let Some(stripped) = subject.strip_prefix("an ") {
                 subject = stripped.to_string();
             }
+            if subject == "creature" {
+                subject = "creatures".to_string();
+            } else if let Some(rest) = subject.strip_prefix("creature ") {
+                subject = format!("creatures {rest}");
+            }
             let player = if matches!(self.player, PlayerFilter::Opponent) {
                 "one or more of your opponents".to_string()
             } else {
@@ -190,7 +195,7 @@ mod tests {
         );
         assert_eq!(
             trigger.display(),
-            "Whenever one or more creature deal combat damage to one or more of your opponents"
+            "Whenever one or more creatures deal combat damage to one or more of your opponents"
         );
     }
 

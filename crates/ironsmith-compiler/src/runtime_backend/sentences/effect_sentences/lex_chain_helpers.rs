@@ -409,7 +409,31 @@ const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "open",
     "manifest",
     "connive",
+    "endure",
+    "endures",
+    "explore",
+    "explores",
     "earthbend",
+];
+const KEYWORD_ACTION_EFFECT_HEAD_WORDS: &[&str] = &[
+    "adapt",
+    "adapts",
+    "bolster",
+    "bolsters",
+    "connive",
+    "connives",
+    "earthbend",
+    "earthbends",
+    "endure",
+    "endures",
+    "explore",
+    "explores",
+    "manifest",
+    "manifests",
+    "open",
+    "opens",
+    "support",
+    "supports",
 ];
 const ATTACH_OR_ATTACHES_WORDS: &[&str] = &["attach", "attaches"];
 const DEAL_OR_DEALS_WORDS: &[&str] = &["deal", "deals"];
@@ -570,9 +594,15 @@ fn starts_with_nonverb_effect_head(words: &[&str]) -> bool {
                 | "manifest"
                 | "populate"
                 | "connive"
+                | "endure"
+                | "endures"
+                | "explore"
+                | "explores"
                 | "earthbend"
         )
-    })
+    }) || words
+        .iter()
+        .any(|word| KEYWORD_ACTION_EFFECT_HEAD_WORDS.contains(word))
 }
 
 fn starts_with_player_may_clause_lexed(words: &[&str]) -> bool {

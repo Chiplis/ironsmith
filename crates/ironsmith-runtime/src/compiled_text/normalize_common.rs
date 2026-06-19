@@ -9525,17 +9525,19 @@ fn object_filter_is_land_kind(filter: &ObjectFilter) -> bool {
         || filter.subtypes.iter().any(Subtype::is_land_subtype)
 }
 
-fn is_up_to_land_subtype_target(spec: &ChooseSpec) -> bool {
-    let count = spec.count();
-    if count.min != 0 || count.max.is_none() || count.dynamic_x || count.up_to_x || count.random {
-        return false;
-    }
+fn choose_spec_prefers_land_addition_surface(
+    spec: &ChooseSpec,
+    dynamic_equal_pt: bool,
+    plural_target: bool,
+) -> bool {
     let ChooseSpec::Object(filter) = spec.base() else {
         return false;
     };
     filter.card_types.is_empty()
-        && filter.subtypes.iter().any(Subtype::is_land_subtype)
         && filter.controller.is_none()
+        && filter.owner.is_none()
+        && filter.subtypes.iter().any(Subtype::is_land_subtype)
+        && (dynamic_equal_pt || plural_target)
 }
 
 fn choose_spec_guarantees_artifact(spec: &ChooseSpec) -> bool {
@@ -9687,28 +9689,52 @@ pub(super) fn describe_apply_continuous_animation_effect(
     } else {
         false
     };
+    let dynamic_equal_pt_uses_mana_value =
+        if let (Some(power), Some(toughness)) = (power, toughness) {
+            power == toughness && matches!(power.unhinted(), Value::ManaValueOf(_))
+        } else {
+            false
+        };
     let pt_where_clause = if let (Some(power), _) = (power, toughness) {
-        (dynamic_equal_pt && !matches!(power, Value::X)).then(|| describe_value(power))
+        (dynamic_equal_pt && !dynamic_equal_pt_uses_mana_value && !matches!(power, Value::X))
+            .then(|| describe_value(power))
     } else {
         None
     };
 
     let mut text = if let (Some(power), Some(toughness)) = (power, toughness) {
-        let pt = if dynamic_equal_pt {
-            "X/X".to_string()
+        if dynamic_equal_pt_uses_mana_value {
+            let pt_noun_phrase = format!(
+                "{noun_phrase} with power and toughness each equal to {}",
+                describe_value(power)
+            );
+            if returned_permanent_animation {
+                format!("{target_text} are {pt_noun_phrase}")
+            } else if plural_target {
+                format!("{target_text} become {pt_noun_phrase}")
+            } else {
+                format!(
+                    "{target_text} becomes {}",
+                    with_indefinite_article(&pt_noun_phrase)
+                )
+            }
         } else {
-            format!("{}/{}", describe_value(power), describe_value(toughness))
-        };
-        let pt_noun_phrase = format!("{pt} {noun_phrase}");
-        if returned_permanent_animation {
-            format!("{target_text} are {pt_noun_phrase}")
-        } else if plural_target {
-            format!("{target_text} become {pt_noun_phrase}")
-        } else {
-            format!(
-                "{target_text} becomes {}",
-                with_indefinite_article(&pt_noun_phrase)
-            )
+            let pt = if dynamic_equal_pt {
+                "X/X".to_string()
+            } else {
+                format!("{}/{}", describe_value(power), describe_value(toughness))
+            };
+            let pt_noun_phrase = format!("{pt} {noun_phrase}");
+            if returned_permanent_animation {
+                format!("{target_text} are {pt_noun_phrase}")
+            } else if plural_target {
+                format!("{target_text} become {pt_noun_phrase}")
+            } else {
+                format!(
+                    "{target_text} becomes {}",
+                    with_indefinite_article(&pt_noun_phrase)
+                )
+            }
         }
     } else if power.is_none() && toughness.is_none() {
         if plural_target {
@@ -9734,14 +9760,15 @@ pub(super) fn describe_apply_continuous_animation_effect(
         .as_ref()
         .is_some_and(choose_spec_guarantees_artifact);
     let artifact_type_is_redundant = target_is_guaranteed_artifact && adds_artifact_type;
+    let land_addition_surface = preserves_land_types
+        && adds_named_types
+        && !dynamic_equal_pt_uses_mana_value
+        && effect.target_spec.as_ref().is_some_and(|spec| {
+            choose_spec_prefers_land_addition_surface(spec, dynamic_equal_pt, plural_target)
+        });
     let render_as_addition_to_other_types = returned_permanent_animation
         || (!preserves_land_types && !ability_text.is_empty() && !has_generic_ability)
-        || (preserves_land_types
-            && adds_named_types
-            && effect
-                .target_spec
-                .as_ref()
-                .is_some_and(is_up_to_land_subtype_target));
+        || land_addition_surface;
     if render_as_addition_to_other_types && !artifact_type_is_redundant {
         if plural_target {
             text.push_str(" in addition to their other types");
@@ -13578,6 +13605,111 @@ mod tests {
                 "Enchanted artifact is creature. Enchanted artifact has base power and toughness 5/5."
             ),
             "Enchanted artifact is a creature with base power and toughness 5/5 in addition to its other types."
+        );
+    }
+
+    #[test]
+    fn land_animation_prefers_still_land_surface_for_land_targets() {
+        let target = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::land().you_control()));
+        let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+            target,
+            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            Until::EndOfTurn,
+        );
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(4),
+                toughness: Value::Fixed(4),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            });
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::AddSubtypes(vec![
+                Subtype::Elemental,
+            ]));
+
+        let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+        assert_eq!(
+            describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+                .as_deref(),
+            Some(
+                "Target land you control becomes 4/4 elemental creature until end of turn. It's still a land"
+            )
+        );
+    }
+
+    #[test]
+    fn subtype_dynamic_land_animation_keeps_addition_surface() {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::default().with_subtype(Subtype::Forest),
+        ));
+        let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+            target,
+            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            Until::EndOfTurn,
+        );
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::SetPowerToughness {
+                power: Value::X,
+                toughness: Value::X,
+                sublayer: crate::continuous::PtSublayer::Setting,
+            });
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::AddSubtypes(vec![
+                Subtype::Treefolk,
+            ]));
+
+        let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+        assert_eq!(
+            describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+                .as_deref(),
+            Some(
+                "Target Forest becomes an X/X treefolk creature in addition to its other types until end of turn"
+            )
+        );
+    }
+
+    #[test]
+    fn plural_subtype_land_animation_keeps_addition_surface() {
+        let target = ChooseSpec::target(ChooseSpec::Object(
+            ObjectFilter::default().with_subtype(Subtype::Swamp),
+        ))
+        .with_count(ChoiceCount {
+            min: 0,
+            max: Some(2),
+            dynamic_x: false,
+            up_to_x: false,
+            random: false,
+        });
+        let mut effect = crate::effects::ApplyContinuousEffect::with_spec(
+            target,
+            crate::continuous::Modification::AddCardTypes(vec![CardType::Creature]),
+            Until::EndOfTurn,
+        );
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::SetPowerToughness {
+                power: Value::Fixed(3),
+                toughness: Value::Fixed(5),
+                sublayer: crate::continuous::PtSublayer::Setting,
+            });
+        effect
+            .additional_modifications
+            .push(crate::continuous::Modification::AddSubtypes(vec![
+                Subtype::Treefolk,
+                Subtype::Warrior,
+            ]));
+
+        let (target_text, plural_target) = describe_apply_continuous_target(&effect);
+        assert_eq!(
+            describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
+                .as_deref(),
+            Some(
+                "Up to two target Swamps become 3/5 treefolk warrior creatures in addition to their other types until end of turn"
+            )
         );
     }
 

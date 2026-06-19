@@ -140,6 +140,9 @@ pub struct TargetRequirement {
     pub spec: ChooseSpec,
     /// Legal targets that match this specification.
     pub legal_targets: Vec<Target>,
+    /// Legal target groups for constraints that apply to the selected set.
+    /// If empty, any combination of legal targets is allowed.
+    pub legal_target_sets: Vec<Vec<Target>>,
     /// Description of what's being targeted.
     pub description: String,
     /// Minimum number of targets to choose (default 1).
@@ -154,6 +157,7 @@ impl TargetRequirement {
         Self {
             spec,
             legal_targets,
+            legal_target_sets: Vec::new(),
             description,
             min_targets: 1,
             max_targets: Some(1),
@@ -165,6 +169,7 @@ impl TargetRequirement {
         Self {
             spec,
             legal_targets,
+            legal_target_sets: Vec::new(),
             description,
             min_targets: 0,
             max_targets: None,
@@ -182,6 +187,7 @@ impl TargetRequirement {
         Self {
             spec,
             legal_targets,
+            legal_target_sets: Vec::new(),
             description,
             min_targets: min,
             max_targets: max,

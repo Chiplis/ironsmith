@@ -71,7 +71,14 @@ fn choose_reflexive_targets(
             Some(&ctx.tagged_objects),
         );
 
-        if legal_targets.len() < count.min {
+        let legal_target_sets =
+            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
+        if !crate::targeting::has_enough_legal_targets_for_spec(
+            game,
+            spec,
+            &legal_targets,
+            count.min,
+        ) {
             return None;
         }
 
@@ -82,6 +89,7 @@ fn choose_reflexive_targets(
             vec![TargetRequirementContext {
                 description: describe_choice(spec),
                 legal_targets: legal_targets.clone(),
+                legal_target_sets,
                 min_targets: count.min,
                 max_targets: count.max,
             }],

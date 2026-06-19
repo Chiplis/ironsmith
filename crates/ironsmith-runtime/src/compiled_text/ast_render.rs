@@ -477,6 +477,31 @@ pub(super) fn describe_resolution_program(
                 rendered_segments.push(describe_effect(effect));
                 continue;
             }
+            if let [exile_top_effect, grant_play_effect, grant_free_cast_effect] =
+                segment.default_effects.as_slice()
+                && let Some(exile_top) =
+                    exile_top_effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+                && let Some(grant_play) =
+                    grant_play_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                && let Some(grant_free_cast) = grant_free_cast_effect
+                    .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+                && let Some(rendered) =
+                    describe_exile_top_then_play_without_paying_mana(exile_top, grant_play, grant_free_cast)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
+            if let [create_effect, manifest_effect] = segment.default_effects.as_slice()
+                && let Some(create) =
+                    create_effect.downcast_ref::<crate::effects::CreateTokenEffect>()
+                && let Some(manifest) =
+                    manifest_effect.downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                && let Some(rendered) =
+                    describe_create_token_and_manifest_top_card(create, manifest)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
             rendered_segments.push(
                 describe_effect_clause_list(&segment.default_effects)
                     .map(|text| capitalize_first(&text))
@@ -2944,6 +2969,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
+                describe_structural_type_base_pt_addition_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
                 describe_structural_pt_color_type_addition_bundle(&def.abilities[ability_idx..])
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
@@ -3315,6 +3347,109 @@ fn describe_structural_pt_color_type_addition_bundle(
             render_all_union_subject(subject)
         ),
         4,
+    ))
+}
+
+fn split_static_predicate_with_verb<'a>(
+    display: &'a str,
+    verbs: &[&str],
+) -> Option<(&'a str, &'a str, &'static str)> {
+    for verb in verbs {
+        if let Some((subject, tail)) = split_static_predicate(display, verb) {
+            let normalized = match *verb {
+                " are " => "are",
+                " is " => "is",
+                " have " => "have",
+                " has " => "has",
+                _ => continue,
+            };
+            return Some((subject, tail, normalized));
+        }
+    }
+    None
+}
+
+fn static_subject_is_land_kind(subject: &str) -> bool {
+    let lower = subject.trim().to_ascii_lowercase();
+    let lower = lower
+        .strip_prefix("all ")
+        .or_else(|| lower.strip_prefix("other "))
+        .unwrap_or(lower.as_str());
+    matches!(
+        lower,
+        "lands"
+            | "forests"
+            | "islands"
+            | "mountains"
+            | "plains"
+            | "swamps"
+            | "deserts"
+            | "gates"
+            | "lairs"
+            | "locuses"
+            | "loci"
+            | "mines"
+            | "power-plants"
+            | "towers"
+            | "urza's lands"
+    )
+}
+
+fn describe_structural_type_base_pt_addition_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [card_type_ability, pt_ability, ..] = abilities else {
+        return None;
+    };
+    let card_type_display = static_display_with_id(
+        card_type_ability,
+        crate::static_abilities::StaticAbilityId::AddCardTypes,
+    )?;
+    let pt_display = static_display_with_id(
+        pt_ability,
+        crate::static_abilities::StaticAbilityId::SetBasePowerToughnessForFilter,
+    )?;
+
+    let (subject, card_type_tail, type_verb) =
+        split_static_predicate_with_verb(&card_type_display, &[" are ", " is "])?;
+    let (pt_subject, pt_tail, pt_verb) =
+        split_static_predicate_with_verb(&pt_display, &[" have ", " has "])?;
+    if pt_subject != subject {
+        return None;
+    }
+
+    let (type_text, other_types) = card_type_tail
+        .strip_suffix(" in addition to their other types")
+        .map(|text| (text, "their"))
+        .or_else(|| {
+            card_type_tail
+                .strip_suffix(" in addition to its other types")
+                .map(|text| (text, "its"))
+        })?;
+    let base_prefix = if pt_tail.starts_with("base power and base toughness ") {
+        "base power and base toughness "
+    } else if pt_tail.starts_with("base power and toughness ") {
+        "base power and toughness "
+    } else {
+        return None;
+    };
+    let pt_text = pt_tail.strip_prefix(base_prefix)?;
+    if static_subject_is_land_kind(subject) {
+        let still_land_tail = if type_verb == "is" {
+            "that's still a land"
+        } else {
+            "that are still lands"
+        };
+        return Some((
+            format!("{subject} {type_verb} {pt_text} {type_text} {still_land_tail}"),
+            2,
+        ));
+    }
+    Some((
+        format!(
+            "{subject} {type_verb} {type_text} in addition to {other_types} other types and {pt_verb} base power and base toughness {pt_text}"
+        ),
+        2,
     ))
 }
 

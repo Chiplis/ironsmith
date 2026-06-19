@@ -43,7 +43,6 @@ const ITS_ATTACHED_TO_PHRASE: &[&str] = &["its", "attached", "to"];
 const EXILED_WITH_PHRASE: &[&str] = &["exiled", "with"];
 const USED_TO_CRAFT_PHRASE: &[&str] = &["used", "to", "craft"];
 const REFERENCE_HEAD_WORDS: &[&str] = &["this", "that", "the", "it", "them"];
-const EXILED_CARD_OWNER_TAIL_WORDS: &[&str] = &["you", "your", "they", "their", "own", "owns"];
 const REFERENCE_OBJECT_NOUN_WORDS: &[&str] = &[
     "artifact",
     "creature",
@@ -983,16 +982,8 @@ pub(super) fn apply_reference_and_tag_stage(
     }
     let has_exiled_with_phrase = find_phrase_start(all_words, EXILED_WITH_PHRASE).is_some();
     let has_used_to_craft_phrase = find_phrase_start(all_words, USED_TO_CRAFT_PHRASE).is_some();
-    let owner_only_tail_after_exiled_cards = starts_with_exiled_card
-        && all_words
-            .iter()
-            .skip(2)
-            .all(|word| word_is_any(word, EXILED_CARD_OWNER_TAIL_WORDS));
     let is_source_linked_exile_reference = has_exiled_with_phrase
-        || (starts_with_exiled_card
-            && (all_words.len() == 2
-                || owner_only_tail_after_exiled_cards
-                || has_used_to_craft_phrase));
+        || (starts_with_exiled_card && (all_words.len() == 2 || has_used_to_craft_phrase));
     let mut source_linked_exile_reference = false;
     if is_source_linked_exile_reference {
         source_linked_exile_reference = true;

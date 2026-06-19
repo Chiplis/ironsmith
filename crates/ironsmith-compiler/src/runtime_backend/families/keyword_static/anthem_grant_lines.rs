@@ -2353,7 +2353,7 @@ pub(crate) struct StaticAnimationBundleAst {
     pub(crate) ensure_creature_type: bool,
     pub(crate) subtypes: Vec<Subtype>,
     pub(crate) subtype_mode: AnimationSubtypeMode,
-    pub(crate) base_power_toughness: Option<(i32, i32)>,
+    pub(crate) base_power_toughness: Option<(Value, Value)>,
     pub(crate) granted_tail: ParsedGrantedTailAst,
 }
 
@@ -6000,8 +6000,18 @@ pub(crate) fn lower_static_animation_bundle(
         ));
     }
     if let Some((power, toughness)) = bundle.base_power_toughness {
+        let ability = match (&power, &toughness) {
+            (Value::Fixed(power), Value::Fixed(toughness)) => {
+                StaticAbility::set_base_power_toughness(filter.clone(), *power, *toughness)
+            }
+            _ => StaticAbility::set_base_power_toughness_value(
+                filter.clone(),
+                power,
+                toughness,
+            ),
+        };
         lowered.push(wrap_conditioned_animation_static_ability(
-            StaticAbility::set_base_power_toughness(filter.clone(), power, toughness),
+            ability,
             &bundle.condition,
         ));
     }

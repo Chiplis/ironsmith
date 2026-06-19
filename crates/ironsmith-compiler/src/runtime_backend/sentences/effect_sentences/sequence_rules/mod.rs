@@ -245,6 +245,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::triples::parse_choose_land_or_nonland_then_consult_to_hand_bottom,
     },
     SequenceRuleDef {
+        name: "choose-name-reveal-top-matching-hand-rest-graveyard",
+        feature_tag: Some("looked-cards-chosen-name-rest-graveyard"),
+        priority: 341,
+        consumed_sentences: 3,
+        predicate: first_word_choose,
+        parser: generic_subject_verb_sequences::triples::parse_choose_name_reveal_top_matching_hand_rest_graveyard,
+    },
+    SequenceRuleDef {
         name: "search-two-put-one-hand-other-graveyard-then-shuffle",
         feature_tag: Some("search-two-hand-graveyard"),
         priority: 341,
@@ -324,6 +332,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         predicate: first_word_reveal,
         parser:
             generic_subject_verb_sequences::triples::parse_reveal_top_choose_any_revealed_land_nonland_split_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "reveal-top-one-hand-gain-mana-value-rest-graveyard",
+        feature_tag: Some("revealed-card-hand-value-rest"),
+        priority: 336,
+        consumed_sentences: 3,
+        predicate: first_word_reveal,
+        parser:
+            generic_subject_verb_sequences::triples::parse_reveal_top_one_hand_gain_mana_value_rest_graveyard,
     },
     SequenceRuleDef {
         name: "top-cards-put-match-into-hand-rest-graveyard",
@@ -559,6 +576,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 2,
         predicate: first_word_choose,
         parser: generic_subject_verb_sequences::pairs::parse_choose_then_do_same_for_filter_then_return_to_battlefield,
+    },
+    SequenceRuleDef {
+        name: "choose-same-controller-targets-then-sacrifice-one-return-other",
+        feature_tag: Some("same-controller-target-choice"),
+        priority: 239,
+        consumed_sentences: 3,
+        predicate: first_word_choose,
+        parser: generic_subject_verb_sequences::pairs::parse_choose_same_controller_targets_then_sacrifice_one_return_other,
     },
     SequenceRuleDef {
         name: "choose-same-controller-targets-then-sacrifice-one",

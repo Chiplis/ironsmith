@@ -1,6 +1,6 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst, SubjectVerbActionAst,
-    SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
+    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, IT_TAG, IdGenContext, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbRoleAst, TargetAst, TriggerSpec,
 };
 use crate::effect::{EffectId, EventValueSpec};
 use crate::filter::{Comparison, TaggedOpbjectRelation};
@@ -125,6 +125,15 @@ fn next_reference_tag(id_gen: &mut IdGenContext, prefix: &str) -> String {
     };
     id_gen.next_tag_id += 1;
     tag
+}
+
+fn remember_chosen_object_alias(frame: &mut ReferenceFrame, tag: &str) {
+    frame
+        .snapshot_tag_aliases
+        .retain(|(alias, _)| alias != CHOSEN_OBJECTS_TAG);
+    frame
+        .snapshot_tag_aliases
+        .push((CHOSEN_OBJECTS_TAG.to_string(), tag.to_string()));
 }
 
 fn generated_object_result_tag_prefix(effect: &EffectAst) -> Option<&'static str> {
@@ -1057,6 +1066,7 @@ fn advance_reference_frame_for_effect(
             }
             frame.last_object_tag = Some(chosen_tag);
             frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            remember_chosen_object_alias(frame, tag.as_str());
         }
         EffectAst::ChooseObjectsAcrossZones {
             filter,
@@ -1114,6 +1124,7 @@ fn advance_reference_frame_for_effect(
             }
             frame.last_object_tag = Some(chosen_tag);
             frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
+            remember_chosen_object_alias(frame, tag.as_str());
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
         EffectAst::May { effects }

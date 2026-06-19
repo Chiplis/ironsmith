@@ -696,6 +696,11 @@ pub(super) fn find_from_among_looked_cards_phrase(
         })
         .or_else(|| {
             word_view
+                .find_phrase_start(&["from", "among", "the", "milled", "cards"])
+                .map(|idx| (idx, 5usize))
+        })
+        .or_else(|| {
+            word_view
                 .find_phrase_start(&["from", "among", "them"])
                 .map(|idx| (idx, 3usize))
         })
@@ -1257,6 +1262,12 @@ pub(super) fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     consult_family::parse_if_you_dont_sentence(tokens)
+}
+
+pub(super) fn parse_if_you_cant_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    consult_family::parse_if_you_cant_sentence(tokens)
 }
 
 fn parse_effect_sentences_from_sentence_inputs(

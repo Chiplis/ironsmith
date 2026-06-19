@@ -196,6 +196,7 @@ pub fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLexToken]
 pub fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
+        || looks_like_if_no_one_does_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
 }
 
@@ -230,6 +231,10 @@ fn looks_like_when_one_or_more_this_way_followup_lexed(tokens: &[OwnedLexToken])
 fn looks_like_when_you_do_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens);
     words.starts_with_any(&[&["when", "you", "do"], &["whenever", "you", "do"]])
+}
+
+fn looks_like_if_no_one_does_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    TokenWordView::new(tokens).starts_with(&["if", "no", "one", "does"])
 }
 
 fn looks_like_otherwise_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
@@ -285,10 +290,12 @@ mod tests {
     fn followup_intro_detection_covers_reflexive_and_next_turn_cases() {
         let delayed = lex_line("At the beginning of your next end step", 0).expect("lex");
         let reflexive = lex_line("When you do, draw a card", 0).expect("lex");
+        let declined = lex_line("If no one does, draw a card", 0).expect("lex");
         let otherwise = lex_line("Otherwise, sacrifice this creature", 0).expect("lex");
 
         assert!(looks_like_spell_resolution_followup_intro_lexed(&delayed));
         assert!(looks_like_reflexive_followup_intro_lexed(&reflexive));
+        assert!(looks_like_reflexive_followup_intro_lexed(&declined));
         assert!(looks_like_reflexive_followup_intro_lexed(&otherwise));
     }
 

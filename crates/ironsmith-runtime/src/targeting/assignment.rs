@@ -4,6 +4,44 @@ use std::ops::Range;
 use crate::decisions::context::TargetRequirementContext;
 use crate::game_state::Target;
 
+fn selected_targets_satisfy_requirement(
+    req: &TargetRequirementContext,
+    selected: &[Target],
+) -> bool {
+    if selected
+        .iter()
+        .any(|target| !req.legal_targets.contains(target))
+    {
+        return false;
+    }
+
+    req.legal_target_sets.is_empty()
+        || req
+            .legal_target_sets
+            .iter()
+            .any(|set| selected.iter().all(|target| set.contains(target)))
+}
+
+fn legal_pool_for_selected(
+    req: &TargetRequirementContext,
+    selected: &[Target],
+) -> Option<Vec<Target>> {
+    if req.legal_target_sets.is_empty() {
+        return Some(req.legal_targets.clone());
+    }
+
+    req.legal_target_sets
+        .iter()
+        .find(|set| selected.iter().all(|target| set.contains(target)))
+        .cloned()
+        .or_else(|| {
+            selected
+                .is_empty()
+                .then(|| req.legal_target_sets.first().cloned())
+                .flatten()
+        })
+}
+
 fn assign_target_counts(
     requirements: &[TargetRequirementContext],
     targets: &[Target],
@@ -45,10 +83,7 @@ fn assign_target_counts(
                     }
 
                     let slice = &targets[cursor..cursor + count];
-                    if slice
-                        .iter()
-                        .any(|target| !req.legal_targets.contains(target))
-                    {
+                    if !selected_targets_satisfy_requirement(req, slice) {
                         continue;
                     }
 
@@ -98,7 +133,8 @@ pub fn normalize_targets_for_requirements(
         cursor += count;
 
         if selected.len() < req.min_targets {
-            for legal in &req.legal_targets {
+            let legal_pool = legal_pool_for_selected(req, &selected)?;
+            for legal in &legal_pool {
                 if selected.len() >= req.min_targets {
                     break;
                 }
@@ -166,12 +202,14 @@ mod tests {
             TargetRequirementContext {
                 description: "any number".to_string(),
                 legal_targets: vec![a, b, c],
+                legal_target_sets: Vec::new(),
                 min_targets: 0,
                 max_targets: None,
             },
             TargetRequirementContext {
                 description: "final target".to_string(),
                 legal_targets: vec![d],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
             },
@@ -193,6 +231,7 @@ mod tests {
         let requirements = vec![TargetRequirementContext {
             description: "required".to_string(),
             legal_targets: vec![a],
+            legal_target_sets: Vec::new(),
             min_targets: 1,
             max_targets: Some(1),
         }];
@@ -211,17 +250,56 @@ mod tests {
             TargetRequirementContext {
                 description: "first".to_string(),
                 legal_targets: vec![a],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
             },
             TargetRequirementContext {
                 description: "second".to_string(),
                 legal_targets: vec![b],
+                legal_target_sets: Vec::new(),
                 min_targets: 1,
                 max_targets: Some(1),
             },
         ];
 
         assert!(!validate_flat_target_assignment(&requirements, &[b, a]));
+    }
+
+    #[test]
+    fn grouped_requirement_rejects_mixed_target_sets() {
+        let a = Target::Object(ObjectId::from_raw(1));
+        let b = Target::Object(ObjectId::from_raw(2));
+        let c = Target::Object(ObjectId::from_raw(3));
+        let d = Target::Object(ObjectId::from_raw(4));
+        let requirements = vec![TargetRequirementContext {
+            description: "same controller targets".to_string(),
+            legal_targets: vec![a, b, c, d],
+            legal_target_sets: vec![vec![a, b], vec![c, d]],
+            min_targets: 2,
+            max_targets: Some(2),
+        }];
+
+        assert!(validate_flat_target_assignment(&requirements, &[a, b]));
+        assert!(!validate_flat_target_assignment(&requirements, &[a, c]));
+    }
+
+    #[test]
+    fn grouped_requirement_autofills_from_selected_group() {
+        let a = Target::Object(ObjectId::from_raw(1));
+        let b = Target::Object(ObjectId::from_raw(2));
+        let c = Target::Object(ObjectId::from_raw(3));
+        let d = Target::Object(ObjectId::from_raw(4));
+        let requirements = vec![TargetRequirementContext {
+            description: "same controller targets".to_string(),
+            legal_targets: vec![a, b, c, d],
+            legal_target_sets: vec![vec![a, b], vec![c, d]],
+            min_targets: 2,
+            max_targets: Some(2),
+        }];
+
+        let normalized = normalize_targets_for_requirements(&requirements, vec![c]).expect("valid");
+
+        assert_eq!(normalized, vec![c, d]);
     }
 }

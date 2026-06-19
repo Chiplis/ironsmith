@@ -16,7 +16,8 @@ use super::super::parse_subtype_word;
 use super::super::search_library::parse_restriction_duration;
 use super::super::zone_counter_helpers::parse_half_starting_life_total_value;
 use super::helpers::{
-    parse_become_base_pt_tail, parse_become_creature_descriptor_words, parse_pt_value_words,
+    parse_become_base_pt_tail, parse_become_creature_descriptor_words,
+    parse_become_power_toughness_equal_value_tail, parse_pt_value_words,
     parse_subtype_word_or_plural, push_unique_card_type, push_unique_subtype, render_lower_words,
     strip_base_power_toughness_subject_tokens, subject_references_base_power_toughness,
 };
@@ -478,6 +479,24 @@ pub(crate) fn parse_become_clause(
     }
 
     if let Some((descriptor_words, power, toughness)) = parse_become_base_pt_tail(become_words)?
+        && let Some((card_types, subtypes, colors)) =
+            parse_become_creature_descriptor_words(descriptor_words)
+    {
+        return Ok(EffectAst::subject_verb_become_base_pt_creature(
+            power,
+            toughness,
+            target,
+            card_types,
+            subtypes,
+            colors,
+            Vec::new(),
+            Vec::new(),
+            duration,
+        ));
+    }
+
+    if let Some((descriptor_words, power, toughness)) =
+        parse_become_power_toughness_equal_value_tail(become_words)?
         && let Some((card_types, subtypes, colors)) =
             parse_become_creature_descriptor_words(descriptor_words)
     {

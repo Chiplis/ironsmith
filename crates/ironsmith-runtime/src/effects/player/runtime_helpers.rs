@@ -236,6 +236,7 @@ fn target_assignments_for_requirements(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },
@@ -280,6 +281,7 @@ fn choose_effect_driven_cast_targets(
             |requirement| crate::decisions::context::TargetRequirementContext {
                 description: requirement.description.clone(),
                 legal_targets: requirement.legal_targets.clone(),
+                legal_target_sets: requirement.legal_target_sets.clone(),
                 min_targets: requirement.min_targets,
                 max_targets: requirement.max_targets,
             },

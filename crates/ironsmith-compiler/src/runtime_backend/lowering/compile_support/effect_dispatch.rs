@@ -45,6 +45,44 @@ fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Val
     }
 }
 
+fn bind_iterated_value_to_choose_spec(value: &Value, spec: &ChooseSpec) -> Value {
+    match value {
+        Value::PowerOf(inner) if matches!(inner.base(), ChooseSpec::Iterated) => {
+            Value::PowerOf(Box::new(spec.clone()))
+        }
+        Value::ToughnessOf(inner) if matches!(inner.base(), ChooseSpec::Iterated) => {
+            Value::ToughnessOf(Box::new(spec.clone()))
+        }
+        Value::ManaValueOf(inner) if matches!(inner.base(), ChooseSpec::Iterated) => {
+            Value::ManaValueOf(Box::new(spec.clone()))
+        }
+        Value::Add(left, right) => Value::Add(
+            Box::new(bind_iterated_value_to_choose_spec(left, spec)),
+            Box::new(bind_iterated_value_to_choose_spec(right, spec)),
+        ),
+        Value::Scaled(inner, multiplier) => Value::Scaled(
+            Box::new(bind_iterated_value_to_choose_spec(inner, spec)),
+            *multiplier,
+        ),
+        Value::DividedRoundedDown(inner, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_iterated_value_to_choose_spec(inner, spec)),
+            *divisor,
+        ),
+        Value::HalfRoundedDown(inner) => {
+            Value::HalfRoundedDown(Box::new(bind_iterated_value_to_choose_spec(inner, spec)))
+        }
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_iterated_value_to_choose_spec(left, spec)),
+            Box::new(bind_iterated_value_to_choose_spec(right, spec)),
+        ),
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_iterated_value_to_choose_spec(value, spec)),
+            hints: hints.clone(),
+        },
+        _ => value.clone(),
+    }
+}
+
 fn prevention_target_from_non_choice_target(
     target: &TargetAst,
     ctx: &EffectLoweringContext,
@@ -3090,12 +3128,14 @@ fn compile_subject_verb_effect(
             target,
             duration,
         } => compile_tagged_effect_for_target(target, ctx, "set_base_pt", |spec| {
+            let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
+            let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
             Effect::new(
                 crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
                     crate::continuous::Modification::SetPowerToughness {
-                        power: power.clone(),
-                        toughness: toughness.clone(),
+                        power: resolved_power,
+                        toughness: resolved_toughness,
                         sublayer: crate::continuous::PtSublayer::Setting,
                     },
                     duration.clone(),
@@ -3118,14 +3158,16 @@ fn compile_subject_verb_effect(
             let granted_modifications =
                 lower_granted_ability_grant_modifications(granted_abilities)?;
             compile_tagged_effect_for_target(target, ctx, "animated_creature", |spec| {
+                let resolved_power = bind_iterated_value_to_choose_spec(power, &spec);
+                let resolved_toughness = bind_iterated_value_to_choose_spec(toughness, &spec);
                 let mut apply = crate::effects::ApplyContinuousEffect::with_spec(
                     spec,
                     crate::continuous::Modification::AddCardTypes(card_types.clone()),
                     duration.clone(),
                 )
                 .with_additional_modification(crate::continuous::Modification::SetPowerToughness {
-                    power: power.clone(),
-                    toughness: toughness.clone(),
+                    power: resolved_power,
+                    toughness: resolved_toughness,
                     sublayer: crate::continuous::PtSublayer::Setting,
                 })
                 .resolve_set_pt_values_at_resolution();

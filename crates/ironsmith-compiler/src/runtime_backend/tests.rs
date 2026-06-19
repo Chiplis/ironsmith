@@ -11746,6 +11746,87 @@ fn rewrite_lexed_effect_sequence_preserves_reveal_top_counted_match_hand_rest_gr
 }
 
 #[test]
+fn rewrite_sequence_registry_matches_counted_revealed_cards_hand_rest_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Look at the top four cards of your library. You may reveal up to two instant and/or sorcery cards from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match counted revealed-cards hand/bottom bundle");
+    let debug = format!("{:#?}", matched.effects);
+    let compact_debug = format!("{:?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "top-cards-reveal-any-matching-to-hand-rest-bottom"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("Instant"), "{debug}");
+    assert!(debug.contains("Sorcery"), "{debug}");
+    assert!(compact_debug.contains("max: Some(2)"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_sequence_registry_splits_and_or_single_revealed_cards_hand_rest_bottom_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Look at the top four cards of your library. You may reveal a creature card and/or a land card from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match split revealed-cards hand/bottom bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "top-cards-reveal-any-matching-to-hand-rest-bottom"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("Creature"), "{debug}");
+    assert!(debug.contains("Land"), "{debug}");
+    assert!(
+        debug.matches("ChooseObjects").count() >= 2,
+        "expected separate up-to-one choices for and/or card types, got {debug}"
+    );
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn rewrite_sequence_registry_matches_reveal_one_gain_mana_value_other_revealed_graveyard_bundle() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top three cards of your library and put one of them into your hand. You gain life equal to that card's mana value. Put all other cards revealed this way into your graveyard.",
+    );
+
+    let matched = super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+        .expect("registry lookup should not error")
+        .expect("registry should match revealed-card value/remainder bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "reveal-top-one-hand-gain-mana-value-rest-graveyard"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert!(debug.contains("LookAtTopCards"), "{debug}");
+    assert!(debug.contains("reveal: true"), "{debug}");
+    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(debug.contains("ManaValueOf"), "{debug}");
+    assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
+    assert!(debug.contains("zone: Graveyard"), "{debug}");
+}
+
+#[test]
 fn rewrite_sequence_registry_matches_tap_lock_followup() {
     let sentences = registry_sentence_inputs(
         "tap all creatures target player controls. they don't untap during their controllers' next untap steps for as long as this artifact remains tapped.",

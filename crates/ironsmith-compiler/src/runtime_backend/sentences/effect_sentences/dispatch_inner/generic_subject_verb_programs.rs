@@ -788,9 +788,69 @@ fn has_where_x_value_binding(tokens: &[OwnedLexToken]) -> bool {
             .is_some()
 }
 
+fn parse_any_player_may_have_source_deal_damage(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let Some((player_ast, player_filter, prefix_len)) = (match words.as_slice() {
+        ["any", "opponent", "may", "have", ..] => {
+            Some((PlayerAst::Opponent, PlayerFilter::Opponent, 4usize))
+        }
+        ["any", "player", "may", "have", ..] => Some((PlayerAst::Any, PlayerFilter::Any, 4usize)),
+        _ => None,
+    }) else {
+        return Ok(None);
+    };
+
+    let Some(deal_word_idx) = words
+        .iter()
+        .enumerate()
+        .skip(prefix_len)
+        .find_map(|(idx, word)| matches!(*word, "deal" | "deals").then_some(idx))
+    else {
+        return Ok(None);
+    };
+    if deal_word_idx == prefix_len {
+        return Ok(None);
+    }
+    let Some(deal_token_idx) = token_index_for_word_index(tokens, deal_word_idx) else {
+        return Ok(None);
+    };
+    let deal_tail = trim_edge_punctuation(&tokens[deal_token_idx + 1..]);
+    let Some((amount, used)) = parse_value(&deal_tail) else {
+        return Ok(None);
+    };
+    if !deal_tail
+        .get(used)
+        .and_then(OwnedLexToken::as_word)
+        .is_some_and(|word| word == "damage")
+    {
+        return Ok(None);
+    }
+    let target_tail = trim_edge_punctuation(&deal_tail[used + 1..]);
+    let target_words = crate::runtime_backend::token_word_refs(&target_tail);
+    if !word_slice_eq_any(&target_words, &[&["to", "them"], &["to", "that", "player"]]) {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![EffectAst::MayByPlayer {
+        player: player_ast,
+        effects: vec![EffectAst::subject_verb_damage(
+            amount,
+            TargetAst::Player(player_filter, None),
+        )],
+    }]))
+}
+
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    if let Some(effects) = parse_any_player_may_have_source_deal_damage(tokens)? {
+        return Ok(Some((
+            "subject-verb verb=Deal subject=source recognizer=any-player-may-have-source-damage",
+            effects,
+        )));
+    }
     if let Some(effect) = parse_generic_play_exiled_cards_for_as_long_as_exiled(tokens) {
         return Ok(Some((
             "subject-verb verb=Play subject=implicit recognizer=exiled-cards-play-permission",

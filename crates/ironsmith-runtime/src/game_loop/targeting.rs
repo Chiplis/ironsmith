@@ -1069,9 +1069,12 @@ pub(super) fn extract_target_requirements_from_effect_internal(
             declare_target(&profile, declared_targets);
             let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
             if !legal_targets.is_empty() {
+                let legal_target_sets =
+                    crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
                 requirements.push(TargetRequirement {
                     spec,
                     legal_targets,
+                    legal_target_sets,
                     description: "target".to_string(),
                     min_targets: 1,
                     max_targets: Some(1),
@@ -1091,13 +1094,21 @@ pub(super) fn extract_target_requirements_from_effect_internal(
         let legal_targets = compute_legal_targets(game, extracted.spec, caster, source_id);
         let (min_targets, max_targets) =
             resolved_target_bounds(game, &extracted, caster, source_id);
+        let legal_target_sets =
+            crate::targeting::legal_target_sets_for_spec(game, extracted.spec, &legal_targets);
         // For "any number" effects (min_targets == 0), we can cast even with no legal targets.
         // For required targets (min_targets > 0), we need at least min_targets legal targets.
-        let has_enough_targets = min_targets == 0 || legal_targets.len() >= min_targets;
+        let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
+            game,
+            extracted.spec,
+            &legal_targets,
+            min_targets,
+        );
         if has_enough_targets {
             requirements.push(TargetRequirement {
                 spec: extracted.spec.clone(),
                 legal_targets,
+                legal_target_sets,
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,
@@ -1180,11 +1191,19 @@ fn extract_target_requirements_from_iterated_effect(
         declare_target(&profile, declared_targets);
         let legal_targets = compute_legal_targets(game, &spec, caster, source_id);
         let (min_targets, max_targets) = resolved_target_bounds(game, &profile, caster, source_id);
-        let has_enough_targets = min_targets == 0 || legal_targets.len() >= min_targets;
+        let legal_target_sets =
+            crate::targeting::legal_target_sets_for_spec(game, &spec, &legal_targets);
+        let has_enough_targets = crate::targeting::has_enough_legal_targets_for_spec(
+            game,
+            &spec,
+            &legal_targets,
+            min_targets,
+        );
         if has_enough_targets {
             requirements.push(TargetRequirement {
                 spec,
                 legal_targets,
+                legal_target_sets,
                 description: extracted.description.to_string(),
                 min_targets,
                 max_targets,

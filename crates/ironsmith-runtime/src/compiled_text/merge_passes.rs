@@ -2004,6 +2004,7 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "bloodthirst ",
         "foretell ",
         "flashback ",
+        "ninjutsu ",
         "cycling ",
         "landcycling ",
         "basic landcycling ",

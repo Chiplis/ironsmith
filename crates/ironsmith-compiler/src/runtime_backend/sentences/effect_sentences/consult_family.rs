@@ -542,6 +542,33 @@ fn parse_if_you_dont_remainder_inner<'a>(
     .parse_next(input)
 }
 
+fn parse_if_you_cant_remainder_inner<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<&'a [OwnedLexToken], ErrMode<ContextError>> {
+    dispatch! {peek(grammar::word_parser_text);
+        "if" => (
+            alt((
+                grammar::phrase(&["if", "you", "cant"]),
+                grammar::phrase(&["if", "you", "can't"]),
+                grammar::phrase(&["if", "you", "cannot"]),
+            ))
+            .context(StrContext::Label("if-you-can't prefix"))
+            .context(StrContext::Expected(StrContextValue::Description(
+                "if you can't",
+            ))),
+            cut_err(grammar::comma())
+                .context(StrContext::Label("if-you-can't separator"))
+                .context(StrContext::Expected(StrContextValue::Description(
+                    "comma after if-you-can't clause",
+                ))),
+            cut_err(take_remaining_clause_tokens),
+        )
+            .map(|(_, _, remainder)| remainder),
+        _ => fail::<_, &'a [OwnedLexToken], _>,
+    }
+    .parse_next(input)
+}
+
 pub(crate) fn parse_consult_mana_value_condition_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultCastManaValueCondition> {
@@ -985,6 +1012,25 @@ pub(crate) fn parse_if_you_dont_sentence(
         tokens,
         parse_if_you_dont_remainder_inner,
         "if-you-don't clause",
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let effects = parse_effect_chain(after)?;
+    if effects.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(effects))
+}
+
+pub(crate) fn parse_if_you_cant_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(after) = grammar::parse_all_or_none(
+        tokens,
+        parse_if_you_cant_remainder_inner,
+        "if-you-can't clause",
     )?
     else {
         return Ok(None);
